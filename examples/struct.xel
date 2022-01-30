@@ -1,0 +1,23 @@
+struct Value {
+    value: int
+}
+
+func (v Value) to_int(): int {
+    return v.value
+}
+
+struct Rectangle {
+    height: Value,
+    width: Value
+}
+
+func (r Rectangle) area(): int {
+    return r.height.to_int() * r.width.to_int()
+}
+
+entry main() {
+    let rectangle: Rectangle = Rectangle { height: Value { value: 10 }, width: Value { value: 20 } }
+    rectangle.area()
+
+    return 0
+}

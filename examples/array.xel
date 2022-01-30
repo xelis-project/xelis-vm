@@ -1,0 +1,6 @@
+entry main() {
+    let array: int[] = [10, 20, 30, 40]
+    array[0] = 1
+
+    return 0
+}
