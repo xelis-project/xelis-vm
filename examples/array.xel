@@ -1,6 +1,10 @@
+func test_array(): int[] {
+    return [1, 2, 3]
+}
+
 entry main() {
     let array: int[] = [10, 20, 30, 40]
-    array[0] = 1
+    array[0] = test_array()[0]
 
     return 0
 }

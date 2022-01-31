@@ -1,3 +1,5 @@
+const ZERO: int = 0;
+
 struct Value {
     value: int
 }

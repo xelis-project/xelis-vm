@@ -11,7 +11,7 @@ use std::fs;
 
 fn main() {
     let code: String =
-    fs::read_to_string("examples/array.xel").expect("Something went wrong reading the file");
+    fs::read_to_string("examples/struct.xel").expect("Something went wrong reading the file");
 
     match Lexer::new(code.chars().collect()).get() {
         Ok(result) => {

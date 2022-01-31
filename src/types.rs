@@ -12,7 +12,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(HashMap<String, Value>),
+    Struct(String, HashMap<String, Value>),
     Array(Vec<Value>)
 }
 
@@ -24,6 +24,8 @@ pub struct Struct {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
+    Null,
+
     Byte,
     Short,
     Int,
@@ -55,6 +57,26 @@ impl Type {
         };
 
         Some(value)
+    }
+
+    pub fn from_value(value: &Value, structures: &HashMap<String, Struct>) -> Option<Self> {
+        let _type = match value {
+            Value::Null => Type::Null,
+            Value::Byte(_) => Type::Byte,
+            Value::Short(_) => Type::Short,
+            Value::Int(_) => Type::Int,
+            Value::Long(_) => Type::Long,
+            Value::String(_) => Type::String,
+            Value::Boolean(_) => Type::Boolean,
+            Value::Array(values) => match values.get(0) {
+                Some(v) => Type::Array(Box::new(Type::from_value(v, structures)?)),
+                None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
+            },
+            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone()),
+            _ => return None
+        };
+
+        Some(_type)
     }
 
     fn get_type_from_array(_type: &Type) -> &Type {
