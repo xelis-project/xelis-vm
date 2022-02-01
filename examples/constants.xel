@@ -1,0 +1,12 @@
+func hello(): string {
+    return "Hello World!"
+}
+
+const ZERO: int = 0
+const HELLO_WORLD: string = hello()
+
+entry main() {
+    let message: string = HELLO_WORLD + " " + ZERO
+
+    return 0
+}

@@ -1,13 +1,13 @@
+func factorial(n: long): long {
+    if n == 0L {
+        return 1L
+    }
+    return n * factorial(n - 1L)
+}
+
 entry main() {
     let a: long = 144L
     println(factorial(a))
 
     return 0
-}
-
-func factorial(n: long): long {
-    if n == 0L {
-        return 1L
-    }
-    return n*factorial(n - 1L)
 }

@@ -4,7 +4,7 @@ func test_array(): int[] {
 
 entry main() {
     let array: int[] = [10, 20, 30, 40]
-    array[0] = test_array()[0]
+    array[0] =  test_array()[0]
 
     return 0
 }

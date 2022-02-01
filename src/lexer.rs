@@ -106,9 +106,17 @@ impl Lexer {
             else if c == '\n' || c == ' ' || c == ';' {
                 // we just skip these characters
             } else if c.is_numeric() { // read a number value
-                let mut chars = self.read_chars_while(c, |v| -> bool {
-                    v.is_numeric() || *v == '_'
-                })?;
+                let mut chars = vec![c];
+                while match self.chars.get(0) {
+                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L',
+                    None => return Err(LexerError::EndOfFile)
+                } {
+                    let c = self.next_char();
+                    chars.push(c);
+                    if c == 'L' {
+                        break;
+                    }
+                }
 
                 let token: Token = if *chars.last().unwrap() == 'L' { // we can use the unwrap here because we have at least one value inside
                     chars.pop();

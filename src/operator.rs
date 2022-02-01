@@ -1,5 +1,5 @@
 use crate::token::Token;
-use crate::parser::Expression;
+use crate::expressions::Expression;
 
 pub enum Operator {
     OperatorEquals(Box<Expression>, Box<Expression>), // ==

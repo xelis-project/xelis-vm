@@ -1,67 +1,15 @@
-use crate::token::Token;
+use crate::expressions::{Statement, Expression, DeclarationStatement, Parameter};
+use crate::functions::{CustomFunction, FunctionType};
 use crate::types::{Value, Type, Struct};
+use crate::environment::Environment;
+use crate::token::Token;
 use std::collections::HashMap;
-
-
-#[derive(Debug)]
-pub enum Expression {
-    FunctionCall(String, Vec<Expression>), // function name, parameters
-    ArrayCall(Box<Expression>, Box<Expression>), // expr, index
-    ArrayConstructor(Vec<Expression>),
-    StructConstructor(String, HashMap<String, Expression>),
-    Variable(String), // variable name
-    Value(Value), // hardcoded value
-    Operator(Token, Box<Expression>, Box<Expression>),
-    SubExpression(Box<Expression>), // ( ... )
-    Path(Box<Expression>, Box<Expression>)
-}
-
-#[derive(Debug)]
-pub struct DeclarationStatement {
-    pub name: String,
-    pub value_type: Type,
-    pub value: Expression,
-}
-
-#[derive(Debug)]
-pub enum Statement {
-    If(Expression, Vec<Statement>),
-    Else(Vec<Statement>),
-    ElseIf(Expression, Vec<Statement>),
-    While(Expression, Vec<Statement>),
-    ForEach(String, Expression, Vec<Statement>), // for a in array
-    For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: int = 0; i < 10; i++ (; will not be saved)
-    Expression(Expression),
-    Return(Option<Expression>),
-    Scope(Vec<Statement>),
-    Break,
-    Continue,
-    Variable(DeclarationStatement),
-}
-
-
-#[derive(Debug)]
-pub struct Parameter {
-    name: String,
-    value_type: Type
-}
-
-#[derive(Debug)]
-pub struct Function {
-    name: String,
-    for_type: Option<Type>,
-    instance_name: Option<String>,
-    parameters: Vec<Parameter>,
-    statements: Vec<Statement>,
-    entry: bool,
-    return_type: Option<Type>
-}
 
 #[derive(Debug)]
 pub struct Program {
     constants: Vec<DeclarationStatement>,
     structures: HashMap<String, Struct>,
-    functions: Vec<Function>
+    functions: Vec<FunctionType>
 }
 
 #[derive(Clone)]
@@ -140,9 +88,15 @@ impl Context {
         }
     }
 
-    pub fn register_variable(&mut self, key: String, var_type: Type) {
+    pub fn register_variable(&mut self, key: String, var_type: Type) -> Result<(), ParserError> {
+        if self.has_variable(&key) {
+            return Err(ParserError::VariableNameAlreadyUsed(key))
+        }
+
         let last = self.variables.len() - 1;
         self.variables[last].insert(key, var_type);
+
+        Ok(())
     }
 
     pub fn create_new_scope(&mut self) {
@@ -160,7 +114,7 @@ impl Context {
     }
 
     pub fn reset(&mut self) {
-        self.variables.clear();
+        self.variables.drain(1..self.variables.len());
         self.return_type = None;
         self.has_if = false;
     }
@@ -169,7 +123,7 @@ impl Context {
 pub struct Parser {
     constants: Vec<DeclarationStatement>,
     tokens: Vec<Token>,
-    functions: Vec<Function>,
+    functions: Vec<FunctionType>,
     structures: HashMap<String, Struct>,
     context: Context
 }
@@ -196,17 +150,30 @@ pub enum ParserError {
     InvalidOperationNotSameType(Type, Type),
     InvalidArrayCallIndexType(Type),
     InvalidTypeInArray(Type, Type),
-    InvalidValueType(Type, Type)
+    InvalidValueType(Type, Type),
+    InvalidFunctionType(Type)
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<Token>, env: Environment) -> Self {
+        // first, we add the environment
+        let mut functions = Vec::new();
+        let mut structures = HashMap::new();
+        let (env_funcs, env_structures) = env.consume();
+        for func in env_funcs {
+            functions.push(FunctionType::Native(func));
+        }
+
+        for structure in env_structures {
+            structures.insert(structure.name.clone(), structure);
+        }
+
         Parser {
             constants: Vec::new(),
             tokens,
             context: Context::new(),
-            functions: vec![],
-            structures: HashMap::new()
+            functions,
+            structures
         }
     }
 
@@ -269,7 +236,6 @@ impl Parser {
             },
             Expression::Variable(ref var_name) => {
                 let _type = self.context.get_type_of_variable(var_name)?.clone();
-                self.context.set_current_type(_type.clone());
                 _type
             },
             Expression::FunctionCall(name, parameters) => {
@@ -284,7 +250,7 @@ impl Parser {
                 }
 
                 let func = self.get_function(self.context.get_current_type(), name, &_types)?;
-                match &func.return_type {
+                match &func.return_type() {
                     Some(ref v) => v.clone(),
                     None => return Err(ParserError::FunctionNoReturnType(name.clone()))
                 }
@@ -307,8 +273,11 @@ impl Parser {
                 }
             }
             Expression::Path(left, right) => {
-                self.get_type_from_expression(left)?;
-                self.get_type_from_expression(right)?
+                let var_type = self.get_type_from_expression(left)?;
+                self.context.set_current_type(var_type);
+                let _type = self.get_type_from_expression(right)?;
+                self.context.remove_current_type();
+                _type
             },
             Expression::Operator(_, left, right) => { // TODO verify all operations
                 let left_type = self.get_type_from_expression(left)?;
@@ -401,7 +370,8 @@ impl Parser {
                                 _types.push(t);
                             }
 
-                            if !self.has_function(self.context.get_current_type(), &id, &_types) {
+                            // Function call cannot call entry function
+                            if self.get_function(self.context.get_current_type(), &id, &_types)?.is_entry() {
                                 return Err(ParserError::FunctionNotFound(id, parameters.len()))
                             }
 
@@ -474,12 +444,8 @@ impl Parser {
                 Token::Dot => {
                     match last_expression {
                         Some(value) => {
-                            match &value {
-                                Expression::Variable(id) => {
-                                    self.context.set_current_type(self.context.get_type_of_variable(&id)?.clone());
-                                }
-                                _ => {}
-                            };
+                            let _type = self.get_type_from_expression(&value)?;
+                            self.context.set_current_type(_type);
                             let right_expr = self.read_expression()?;
                             self.context.remove_current_type();
                             required_operator = !required_operator; // because we read operator DOT + right expression
@@ -494,12 +460,12 @@ impl Parser {
                     }
                     match last_expression {
                         Some(e) => {
+                            self.context.remove_current_type();
                             required_operator = !required_operator;
                             let left_type = self.get_type_from_expression(&e)?;
                             let expr = self.read_expression()?;
                             let right_type = self.get_type_from_expression(&expr)?;
-
-                            if left_type != Type::String || right_type != Type::String {
+                            if left_type != Type::String && right_type != Type::String {
                                 if left_type != right_type {
                                     return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
                                 }
@@ -565,7 +531,8 @@ impl Parser {
             Expression::Value(Value::Null)
         };
 
-        self.context.register_variable(name.clone(), value_type.clone());
+        self.context.register_variable(name.clone(), value_type.clone())?;
+
         Ok(DeclarationStatement {
             name,
             value_type,
@@ -573,6 +540,13 @@ impl Parser {
         })
     }
 
+    fn read_loop_body(&mut self) -> Result<Vec<Statement>, ParserError> {
+        self.context.is_in_loop = true;
+        let statements = self.read_body()?;
+        self.context.is_in_loop = false;
+
+        Ok(statements)
+    }
     fn read_statements(&mut self) -> Result<Vec<Statement>, ParserError> {
         let mut statements: Vec<Statement> = vec![];
         while *self.see() != Token::BraceClose {
@@ -583,10 +557,7 @@ impl Parser {
                     let var = self.read_variable()?;
                     let condition = self.read_expression()?;
                     let increment = self.read_expression()?;
-                    
-                    self.context.is_in_loop = true;
-                    let statements = self.read_body()?;
-                    self.context.is_in_loop = false;
+                    let statements = self.read_loop_body()?;
 
                     Statement::For(var, condition, increment, statements)
                 }
@@ -598,9 +569,7 @@ impl Parser {
                     };
 
                     let condition = self.read_expression()?;
-                    self.context.is_in_loop = true;
-                    let statements = self.read_body()?;
-                    self.context.is_in_loop = false;
+                    let statements = self.read_loop_body()?;
 
                     Statement::ForEach(variable, condition, statements)
                 },
@@ -608,9 +577,7 @@ impl Parser {
                     self.expect_token(Token::While)?;
 
                     let condition = self.read_expression()?;
-                    self.context.is_in_loop = true;
-                    let statements = self.read_body()?;
-                    self.context.is_in_loop = false;
+                    let statements = self.read_loop_body()?;
 
                     Statement::While(condition, statements)
                 },
@@ -711,13 +678,10 @@ impl Parser {
                 self.expect_token(Token::Colon)?;
                 let value_type = self.read_type()?;
                 
-                if parameters.len() > 0 && parameters.iter().any(|p| *p.name == name) { // verify that we have unique names here
+                if parameters.len() > 0 && parameters.iter().any(|p| *p.get_name() == name) { // verify that we have unique names here
                     return Err(ParserError::VariableNameAlreadyUsed(name))
                 }
-                parameters.push(Parameter {
-                    name,
-                    value_type
-                });
+                parameters.push(Parameter::new(name, value_type));
 
                 if *self.see() != Token::Comma {
                     break;
@@ -743,14 +707,18 @@ impl Parser {
      * - Signature is based on function name, and parameters
      * - Entry function are "public callable" function and must return a int value
      */
-    fn read_function(&mut self, entry: bool) -> Result<Function, ParserError> {
+    fn read_function(&mut self, entry: bool) -> Result<(), ParserError> {
         self.context.reset();
         self.context.create_new_scope();
         let (instance_name, for_type) = if *self.see() == Token::ParenthesisOpen {
             self.next();
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
-            self.context.register_variable(instance_name.clone(), for_type.clone());
+            if !for_type.is_struct() { // TODO only types that are declared by the same program
+                return Err(ParserError::InvalidFunctionType(for_type))
+            }
+
+            self.context.register_variable(instance_name.clone(), for_type.clone())?;
             self.expect_token(Token::ParenthesisClose)?;
 
             (Some(instance_name), Some(for_type))
@@ -777,20 +745,40 @@ impl Parser {
         }
 
         for param in &parameters {
-            self.context.register_variable(param.name.clone(), param.value_type.clone());
+            self.context.register_variable(param.get_name().clone(), param.get_type().clone())?;
         }
-        let statements = self.read_body()?;
-        self.context.remove_last_scope();
 
-        Ok(Function {
+        let statements = vec![];
+        let function = FunctionType::Custom(CustomFunction::new(
             name,
-            instance_name,
             for_type,
+            instance_name,
             parameters,
             statements,
             entry,
             return_type
-        })
+        ));
+
+        let params: Vec<&Type> = function.get_parameters().iter().map(|s| s.get_type()).collect();
+        if self.has_function(&function.for_type(), function.get_name(), &params) {
+           return Err(ParserError::FunctionSignatureAlreadyExist(function.get_name().clone())) 
+        }
+        self.functions.push(function); // push function before reading statements to allow recursive calls
+
+        let statements = self.read_body()?;        
+        self.context.remove_last_scope();
+
+        let last = self.functions.len() - 1;
+        match self.functions.get_mut(last) {
+            Some(function) => {
+                if let FunctionType::Custom(f) = function {
+                    f.set_statements(statements);
+                }
+            },
+            None => return Err(ParserError::FunctionNotFound(String::from("last one"), 0)) // shouldn't happen
+        };
+
+        Ok(())
     }
 
     fn has_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> bool {
@@ -798,11 +786,12 @@ impl Parser {
     }
 
     // get a function exist based on signature (name + params)
-    fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&Function, ParserError> {
+    fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
         'funcs: for f in &self.functions {
-            if f.for_type == *for_type && *f.name == *name && f.parameters.len() == params.len() {
+            if *f.for_type() == *for_type && *f.get_name() == *name && f.get_parameters().len() == params.len() {
+                let func_params = f.get_parameters();
                 for i in 0..params.len() {
-                    if *params[i] != f.parameters[i].value_type {
+                    if *params[i] != *func_params[i].get_type() {
                         continue 'funcs;
                     }
                 }
@@ -826,7 +815,8 @@ impl Parser {
         self.expect_token(Token::BraceOpen)?;
         let mut fields: HashMap<String, Type> = HashMap::new();
         for param in self.read_parameters()? {
-            fields.insert(param.name, param.value_type);
+            let (name, _type) = param.consume();
+            fields.insert(name, _type);
         }
         self.expect_token(Token::BraceClose)?;
 
@@ -836,18 +826,8 @@ impl Parser {
         })
     }
 
-    fn create_function(&mut self, entry: bool) -> Result<(), ParserError> {
-        let function = self.read_function(entry)?;
-        let params: Vec<&Type> = function.parameters.iter().map(|s| &s.value_type).collect();
-        if self.has_function(&function.for_type, &function.name, &params) {
-           return Err(ParserError::FunctionSignatureAlreadyExist(function.name)) 
-        }
-        self.functions.push(function);
-
-        Ok(())
-    }
-
-    pub fn parse(mut self) -> Result<Program, ParserError> { // TODO return a program
+    pub fn parse(mut self) -> Result<Program, ParserError> {
+        // parse all tokens
         while self.tokens.len() > 0 {
             match self.next() {
                 Token::Import => {},
@@ -856,10 +836,10 @@ impl Parser {
                     self.constants.push(var);
                 },
                 Token::Function => {
-                    self.create_function(false)?;
+                    self.read_function(false)?;
                 },
                 Token::Entry => {
-                    self.create_function(true)?;
+                    self.read_function(true)?;
                 },
                 Token::Struct => {
                     let new_struct = self.read_struct()?;
