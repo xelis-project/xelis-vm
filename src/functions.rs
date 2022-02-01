@@ -1,32 +1,30 @@
 use crate::types::{Type, Value};
 use crate::expressions::{Statement, Parameter};
 
-// first parameter is the current value that represent
+// first parameter is the current value that represent (if the function has no 'for_type' value is Null)
 // second is the list of all parameters for this function call
-pub type OnCallFn = fn(Option<&mut Value>, Vec<Value>) -> Option<Value>;
+pub type OnCallFn = fn(&mut Value, Vec<Value>) -> Option<Value>;
 
 pub struct NativeFunction {
     name: String,
     for_type: Option<Type>,
-    instance_name: Option<String>,
-    parameters: Vec<Parameter>,
+    parameters: Vec<Type>,
     on_call: OnCallFn,
     return_type: Option<Type>
 }
 
 impl NativeFunction {
-    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<String>, parameters: Vec<Parameter>, on_call: OnCallFn, return_type: Option<Type>) -> Self {
+    pub fn new(name: String, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, return_type: Option<Type>) -> Self {
         Self {
             name,
             for_type,
-            instance_name,
             parameters,
             on_call,
             return_type
         }
     }
 
-    pub fn call_function(&self, current_value: Option<&mut Value>, parameters: Vec<Value>) -> Option<Value> {
+    pub fn call_function(&self, current_value: &mut Value, parameters: Vec<Value>) -> Option<Value> {
         (self.on_call)(current_value, parameters)
     }
 }
@@ -37,7 +35,6 @@ impl std::fmt::Debug for NativeFunction {
         f.debug_struct("Point")
          .field("name", &self.name)
          .field("for_type", &self.for_type)
-         .field("instance_name", &self.instance_name)
          .field("parameters", &self.parameters)
          .field("return_type", &self.return_type)
          .finish()
@@ -87,10 +84,10 @@ impl FunctionType {
         }
     }
 
-    pub fn get_parameters(&self) -> &Vec<Parameter> {
+    pub fn get_parameters_types(&self) -> Vec<&Type> {
         match &self {
-            FunctionType::Native(ref f) => &f.parameters,
-            FunctionType::Custom(ref f) => &f.parameters
+            FunctionType::Native(ref f) => f.parameters.iter().map(|p| p).collect(),
+            FunctionType::Custom(ref f) => f.parameters.iter().map(|p| p.get_type()).collect()
         }
     }
 

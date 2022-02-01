@@ -759,7 +759,7 @@ impl Parser {
             return_type
         ));
 
-        let params: Vec<&Type> = function.get_parameters().iter().map(|s| s.get_type()).collect();
+        let params: Vec<&Type> = function.get_parameters_types();
         if self.has_function(&function.for_type(), function.get_name(), &params) {
            return Err(ParserError::FunctionSignatureAlreadyExist(function.get_name().clone())) 
         }
@@ -788,15 +788,34 @@ impl Parser {
     // get a function exist based on signature (name + params)
     fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
         'funcs: for f in &self.functions {
-            if *f.for_type() == *for_type && *f.get_name() == *name && f.get_parameters().len() == params.len() {
-                let func_params = f.get_parameters();
-                for i in 0..params.len() {
-                    if *params[i] != *func_params[i].get_type() {
-                        continue 'funcs;
+            let types = f.get_parameters_types();
+            if *f.get_name() == *name && types.len() == params.len() {
+                let same_type: bool = 
+                if let Some(type_a) = for_type {
+                    if let Some(type_b) = f.for_type() {
+                        type_a.is_compatible_with(type_b)
+                    } else {
+                        false
                     }
-                }
+                } else {
+                    *for_type == *f.for_type()
+                };
 
-                return Ok(&f);
+                if same_type {
+                    for i in 0..params.len() {
+                        let _type = types[i];
+                        if *params[i] != *_type && *_type != Type::Any {
+                            /*if let Some(for_type) = f.for_type() {
+                                if _type == Type::T && for_type == params[i] {
+                                    continue;
+                                }
+                            }*/
+                            continue 'funcs;
+                        }
+                    }
+    
+                    return Ok(&f);
+                }
             }
         }
 

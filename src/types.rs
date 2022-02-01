@@ -16,6 +16,28 @@ pub enum Value {
     Array(Vec<Value>)
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Null => write!(f, "null"),
+            Value::Byte(v) => write!(f, "{}", v),
+            Value::Short(v) => write!(f, "{}", v),
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Long(v) => write!(f, "{}", v),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::Struct(name, fields) => {
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
+            },
+            Value::Array(values) => {
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", s.join(", "))
+            },
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
     pub name: String,
@@ -25,6 +47,8 @@ pub struct Struct {
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
     Null,
+    Any,
+    //T, // TODO T must be same as for type
 
     Byte,
     Short,
@@ -79,15 +103,22 @@ impl Type {
         Some(_type)
     }
 
-    fn get_type_from_array(_type: &Type) -> &Type {
-        match _type {
-            Type::Array(ref array) => Type::get_type_from_array(array),
-            _ => _type
+    pub fn get_array_type(&self) -> &Type {
+        match &self {
+            Type::Array(ref _type) => _type,
+            _ => &self
         }
     }
 
-    pub fn get_real_type(&self) -> &Type {
-        Type::get_type_from_array(&self)
+    pub fn is_compatible_with(&self, other: &Type) -> bool {
+        match other {
+            Type::Any => true,
+            Type::Array(sub_type) => match sub_type.as_ref() {
+                Type::Any => self.is_array(),
+                o => *o == *self
+            },
+            o => *o == *self 
+        }
     }
 
     pub fn is_array(&self) -> bool {
