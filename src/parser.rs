@@ -151,7 +151,8 @@ pub enum ParserError {
     InvalidArrayCallIndexType(Type),
     InvalidTypeInArray(Type, Type),
     InvalidValueType(Type, Type),
-    InvalidFunctionType(Type)
+    InvalidFunctionType(Type),
+    EmptyArrayConstructor
 }
 
 impl Parser {
@@ -232,7 +233,7 @@ impl Parser {
         let _type: Type = match expression {
             Expression::ArrayConstructor(ref values) => match values.get(0) {
                 Some(v) => Type::Array(Box::new(self.get_type_from_expression(v)?)),
-                None => return Err(ParserError::NotImplemented) // TODO Real error
+                None => return Err(ParserError::EmptyArrayConstructor) // TODO Real error
             },
             Expression::Variable(ref var_name) => {
                 let _type = self.context.get_type_of_variable(var_name)?.clone();
@@ -319,7 +320,7 @@ impl Parser {
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = vec![];
                             let mut array_type: Option<Type> = None;
-                            loop {
+                            while *self.see() != Token::BracketClose {
                                 let expr = self.read_expression()?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
@@ -333,12 +334,12 @@ impl Parser {
                                     }
                                 };
                                 expressions.push(expr);
-                                if *self.see() != Token::Comma {
-                                    break;
-                                } else {
+
+                                if *self.see() == Token::Comma {
                                     self.expect_token(Token::Comma)?;
                                 }
                             }
+
                             self.expect_token(Token::BracketClose)?;
                             Expression::ArrayConstructor(expressions)
                         }
@@ -521,7 +522,17 @@ impl Parser {
         let value: Expression = if *self.see() == Token::OperatorAssign {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expression()?;
-            let expr_type = self.get_type_from_expression(&expr)?;
+            let expr_type = match self.get_type_from_expression(&expr) {
+                Ok(_type) => _type,
+                Err(e) => match e {
+                    ParserError::EmptyArrayConstructor => if value_type.is_array() { // support empty array declaration
+                        value_type.clone()
+                    } else {
+                        return Err(e)
+                    },
+                    _ => return Err(e)
+                }
+            };
             if expr_type != value_type {
                 return Err(ParserError::InvalidValueType(expr_type, value_type))
             }
@@ -732,7 +743,7 @@ impl Parser {
         self.expect_token(Token::ParenthesisClose)?;
 
         let return_type: Option<Type> = if entry { // all entries must return a int value
-            Some(Type::Int) // TODO entry should really return something ?
+            Some(Type::Int)
         } else if *self.see() == Token::Colon { // read returned type
             self.next();
             Some(self.read_type()?)
