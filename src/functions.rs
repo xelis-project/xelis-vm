@@ -1,8 +1,9 @@
-use crate::types::{Type, Value};
 use crate::expressions::{Statement, Parameter};
-
+use crate::interpreter::InterpreterError;
+use crate::types::{Type, Value};
 // first parameter is the current value that represent (if the function has no 'for_type' value is Null)
 // second is the list of all parameters for this function call
+// pub type OnCallFn = fn(Option<&mut Value>, Vec<Value>) -> Result<Option<Value>, InterpreterError>;
 pub type OnCallFn = fn(&mut Value, Vec<Value>) -> Option<Value>;
 
 pub struct NativeFunction {
@@ -24,15 +25,19 @@ impl NativeFunction {
         }
     }
 
-    pub fn call_function(&self, current_value: &mut Value, parameters: Vec<Value>) -> Option<Value> {
-        (self.on_call)(current_value, parameters)
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
+        if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
+            return Err(InterpreterError::InvalidNativeFunctionCall)
+        }
+
+        Ok((self.on_call)(instance_value.unwrap_or(&mut Value::Null), parameters))
     }
 }
 
 // we implement it ourself to prevent the printing of on_call param
 impl std::fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Point")
+        f.debug_struct("NativeFunction")
          .field("name", &self.name)
          .field("for_type", &self.for_type)
          .field("parameters", &self.parameters)
@@ -68,6 +73,10 @@ impl CustomFunction {
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         self.statements = statements;
     }
+
+    pub fn get_statements(&self) -> &Vec<Statement> {
+        &self.statements
+    }
 }
 
 #[derive(Debug)]
@@ -91,6 +100,13 @@ impl FunctionType {
         }
     }
 
+    pub fn get_parameters_count(&self) -> usize {
+        match &self {
+            FunctionType::Native(ref f) => f.parameters.len(),
+            FunctionType::Custom(ref f) => f.parameters.len()
+        } 
+    }
+
     pub fn for_type(&self) -> &Option<Type> {
         match &self {
             FunctionType::Native(ref f) => &f.for_type,
@@ -110,5 +126,46 @@ impl FunctionType {
             FunctionType::Custom(ref f) => f.entry,
             _ => false
         }
+    }
+}
+
+pub struct NativeFunctionCallManager {
+    instance_type: Option<Value>,
+    values: Vec<Value>,
+}
+
+impl NativeFunctionCallManager {
+    pub fn new(instance_type: Option<Value>, values: Vec<Value>) -> Self {
+        Self {
+            instance_type,
+            values
+        }
+    }
+
+    pub fn get_parameters_count(&self) -> usize {
+        self.values.len()
+    }
+
+    pub fn has_instance_type(&self) -> bool {
+        self.instance_type.is_some()
+    }
+
+    pub fn get_instance_type(&mut self) -> Result<&mut Value, InterpreterError> {
+        match self.instance_type {
+            Some(ref mut v) => Ok(v),
+            None => Err(InterpreterError::NoInstanceType) 
+        }
+    }
+
+    pub fn get_parameter_at(&mut self, index: usize) -> Result<Value, InterpreterError> {
+        if self.get_parameters_count() <= index {
+            return Err(InterpreterError::OutOfBounds(self.get_parameters_count(), index))
+        }
+
+        Ok(self.values.remove(index))
+    }
+
+    pub fn get_parameter(&mut self) -> Result<Value, InterpreterError> {
+        self.get_parameter_at(0)
     }
 }

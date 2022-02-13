@@ -6,10 +6,12 @@ mod types;
 mod environment;
 mod functions;
 mod expressions;
+mod interpreter;
 
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::environment::Environment;
+use crate::interpreter::Interpreter;
 
 use std::fs;
 
@@ -19,9 +21,16 @@ fn main() {
 
     match Lexer::new(code.chars().collect()).get() {
         Ok(result) => {
-            println!("{:?}", result);
+            //println!("{:?}", result);
             match Parser::new(result, Environment::default()).parse() {
-                Ok(result) => println!("Result: {:?}", result),
+                Ok(result) => {
+                    println!("Parser: {:?}", result);
+                    let mut interpreter = Interpreter::new(result);
+                    match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
+                        Ok(value) => println!("Exit code: {}", value),
+                        Err(e) => println!("Error: {:?}", e)
+                    }
+                } 
                 Err(e) => println!("Parser error: {:?}", e)
             };
         }

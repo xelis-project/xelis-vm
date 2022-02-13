@@ -7,9 +7,9 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Program {
-    constants: Vec<DeclarationStatement>,
-    structures: HashMap<String, Struct>,
-    functions: Vec<FunctionType>
+    pub constants: Vec<DeclarationStatement>,
+    pub structures: HashMap<String, Struct>,
+    pub functions: Vec<FunctionType>
 }
 
 #[derive(Clone)]
@@ -524,12 +524,8 @@ impl Parser {
             let expr = self.read_expression()?;
             let expr_type = match self.get_type_from_expression(&expr) {
                 Ok(_type) => _type,
-                Err(e) => match e {
-                    ParserError::EmptyArrayConstructor => if value_type.is_array() { // support empty array declaration
-                        value_type.clone()
-                    } else {
-                        return Err(e)
-                    },
+                Err(e) => match e { // support empty array declaration
+                    ParserError::EmptyArrayConstructor if value_type.is_array() => value_type.clone(),
                     _ => return Err(e)
                 }
             };
@@ -552,12 +548,14 @@ impl Parser {
     }
 
     fn read_loop_body(&mut self) -> Result<Vec<Statement>, ParserError> {
+        let old_value = self.context.is_in_loop; // support loop in loop
         self.context.is_in_loop = true;
         let statements = self.read_body()?;
-        self.context.is_in_loop = false;
+        self.context.is_in_loop = old_value;
 
         Ok(statements)
     }
+
     fn read_statements(&mut self) -> Result<Vec<Statement>, ParserError> {
         let mut statements: Vec<Statement> = vec![];
         while *self.see() != Token::BraceClose {
@@ -799,8 +797,8 @@ impl Parser {
     // get a function exist based on signature (name + params)
     fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
         'funcs: for f in &self.functions {
-            let types = f.get_parameters_types();
-            if *f.get_name() == *name && types.len() == params.len() {
+            if *f.get_name() == *name && f.get_parameters_count() == params.len() {
+                let types = f.get_parameters_types();
                 let same_type: bool = 
                 if let Some(type_a) = for_type {
                     if let Some(type_b) = f.for_type() {
