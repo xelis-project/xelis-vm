@@ -61,6 +61,12 @@ impl Value {
     }
 
     // TODO struct
+    pub fn to_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
+        match self {
+            Value::Struct(_, fields) => Ok(fields),
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
+        }
+    }
 
     pub fn to_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
         match self {

@@ -25,7 +25,7 @@ fn main() {
             match Parser::new(result, Environment::default()).parse() {
                 Ok(result) => {
                     println!("Parser: {:?}", result);
-                    let mut interpreter = Interpreter::new(result);
+                    let interpreter = Interpreter::new(result);
                     match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
                         Ok(value) => println!("Exit code: {}", value),
                         Err(e) => println!("Error: {:?}", e)

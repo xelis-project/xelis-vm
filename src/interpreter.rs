@@ -14,6 +14,7 @@ pub enum InterpreterError {
     InvalidNativeFunctionCall,
     NoInstanceType,
     OutOfBounds(usize, usize),
+    InvalidStructValue(Value),
     InvalidValue(Value, Type) // got value, but expected type
 }
 

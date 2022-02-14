@@ -32,19 +32,20 @@ impl Context {
         }
     }
 
-    pub fn set_current_type(&mut self, current_type: Type) {
+    pub fn set_current_type(&mut self, current_type: Type) -> Result<(), ParserError> {
         self.remove_current_type(); // prevent any bug
 
         match &current_type {
             Type::Struct(ref s) => {
                 self.create_new_scope();
                 for (name, _type) in &s.fields {
-                    self.register_variable(name.clone(), _type.clone());
+                    self.register_variable(name.clone(), _type.clone())?;
                 }
             }
             _ => {}
         }
         self.current_type = Some(current_type);
+        Ok(())
     }
 
     pub fn remove_current_type(&mut self) {
@@ -140,6 +141,7 @@ pub enum ParserError {
     FunctionSignatureAlreadyExist(String),
     UnexpectedVariable(String),
     InvalidStructField(String),
+    InvalidStructureName(String),
     StructureNotFound(String),
     FunctionNotFound(String, usize),
     FunctionNoReturnType(String),
@@ -208,6 +210,18 @@ impl Parser {
         Ok(token)
     }
 
+    /**
+     * Example: let message: string[] = ["hello", "world", "!"];
+     * Types: (unsigned)
+     * - byte
+     * - short
+     * - int
+     * - long
+     * - string
+     * - bool
+     * - Struct (Structure with name that starts with a uppercase letter)
+     * - T[] (where T is any above Type)
+     */
     fn read_type(&mut self) -> Result<Type, ParserError> {
         let type_name = self.next_identifier()?;
         let mut _type = match Type::from_string(&type_name, &self.structures) {
@@ -275,7 +289,7 @@ impl Parser {
             }
             Expression::Path(left, right) => {
                 let var_type = self.get_type_from_expression(left)?;
-                self.context.set_current_type(var_type);
+                self.context.set_current_type(var_type)?;
                 let _type = self.get_type_from_expression(right)?;
                 self.context.remove_current_type();
                 _type
@@ -446,7 +460,7 @@ impl Parser {
                     match last_expression {
                         Some(value) => {
                             let _type = self.get_type_from_expression(&value)?;
-                            self.context.set_current_type(_type);
+                            self.context.set_current_type(_type)?;
                             let right_expr = self.read_expression()?;
                             self.context.remove_current_type();
                             required_operator = !required_operator; // because we read operator DOT + right expression
@@ -838,8 +852,28 @@ impl Parser {
         }
     }
 
+    /**
+     * Example: Message { message_id: int, message: string }
+     * Rules:
+     * - Structure name should start with a uppercase letter
+     * - only letters in name
+     */
     fn read_struct(&mut self) -> Result<Struct, ParserError> {
         let name = self.next_identifier()?;
+        if !name.chars().all(char::is_alphabetic) {
+            return Err(ParserError::InvalidStructureName(name))
+        }
+
+        match name.chars().nth(0) { // check if the first letter is in uppercase
+            Some(v) => {
+                let chars: Vec<char> =  v.to_uppercase().collect();
+                if chars.len() == 0 || chars[0] != v {
+                    return Err(ParserError::InvalidStructureName(name))
+                }
+            },
+            None => return Err(ParserError::EmptyValue)
+        };
+
         self.expect_token(Token::BraceOpen)?;
         let mut fields: HashMap<String, Type> = HashMap::new();
         for param in self.read_parameters()? {
