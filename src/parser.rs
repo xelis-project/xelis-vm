@@ -510,15 +510,42 @@ impl Parser {
                             let left_type = self.get_type_from_expression(&e)?;
                             let expr = self.read_expression()?;
                             let right_type = self.get_type_from_expression(&expr)?;
-                            if left_type != Type::String && right_type != Type::String {
-                                if left_type != right_type {
-                                    return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
-                                }
-                            }
+
                             let op: Operator = match Operator::value_of(&token) {
                                 Some(op) => op,
                                 None => return Err(ParserError::OperatorNotFound(token))
                             };
+                            match &op {
+                                Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
+                                | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
+                                | Operator::BitwiseLeft | Operator::BitwiseRight
+                                | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
+                                | Operator::GreaterOrEqual => {
+                                    if left_type != right_type || !left_type.is_number() || !right_type.is_number() {
+                                        return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
+                                    }
+                                },
+                                Operator::Plus => {
+                                    if left_type != Type::String && right_type != Type::String {
+                                        if left_type != right_type {
+                                            return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
+                                        }
+                                    }
+                                },
+                                Operator::And | Operator::Or => {
+                                    if left_type != Type::Boolean {
+                                        return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Boolean))
+                                    }
+
+                                    if right_type != Type::Boolean {
+                                        return Err(ParserError::InvalidOperationNotSameType(right_type, Type::Boolean))
+                                    }
+                                },
+                                _ => if left_type != right_type {
+                                    return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
+                                }
+                            };
+
                             Expression::Operator(op, Box::new(e), Box::new(expr))
                         }
                         None => return Err(ParserError::InvalidOperation)

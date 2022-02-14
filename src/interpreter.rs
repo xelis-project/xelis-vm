@@ -54,7 +54,6 @@ impl Interpreter {
                         continue 'funcs;
                     }
                 }
-
                 return Ok(f)
             }
         }

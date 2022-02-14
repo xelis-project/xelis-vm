@@ -194,4 +194,11 @@ impl Type {
             _ => false
         }
     }
+
+    pub fn is_number(&self) -> bool {
+        match &self {
+            Type::Byte | Type::Short | Type::Int | Type::Long => true,
+            _ => false
+        }
+    }
 }
