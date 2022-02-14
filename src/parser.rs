@@ -33,7 +33,7 @@ impl Context {
     }
 
     pub fn set_current_type(&mut self, current_type: Type) -> Result<(), ParserError> {
-        self.remove_current_type(); // prevent any bug
+        //self.remove_current_type(); // prevent any bug
 
         match &current_type {
             Type::Struct(ref s) => {
@@ -307,6 +307,11 @@ impl Parser {
                     | Operator::LessOrEqual
                     | Operator::LessThan
                     | Operator::And => Type::Boolean,
+                    Operator::Assign
+                    | Operator::AssignPlus
+                    | Operator::AssignMinus
+                    | Operator::AssignDivide
+                    | Operator::AssignMultiply => Type::Null, // Assignation doesn't returns anything
                     _ => {
                         let left_type = self.get_type_from_expression(left)?;
                         let right_type = self.get_type_from_expression(right)?;

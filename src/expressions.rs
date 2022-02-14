@@ -48,7 +48,12 @@ pub enum Operator {
     Divide, // /
     Modulo, // %
     BitwiseLeft, // <<
-    BitwiseRight // >>
+    BitwiseRight, // >>
+    Assign, // =
+    AssignPlus, // +=
+    AssignMinus, // -=
+    AssignDivide, // /=
+    AssignMultiply, // *=
 }
 
 #[derive(Debug)]
@@ -104,6 +109,11 @@ impl Operator {
             Token::OperatorModulo => Modulo,
             Token::OperatorBitwiseLeft => BitwiseLeft,
             Token::OperatorBitwiseRight => BitwiseRight,
+            Token::OperatorAssign => Assign,
+            Token::OperatorPlusAssign => AssignPlus,
+            Token::OperatorMinusAssign => AssignMinus,
+            Token::OperatorDivideAssign => AssignDivide,
+            Token::OperatorMultiplyAssign => AssignMultiply,
             _ => return None,
         };
         Some(value)

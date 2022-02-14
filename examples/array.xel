@@ -6,7 +6,7 @@ entry main() {
     let array: int[] = [10, 20, 30, 40]
     println(array)
 
-    array[0] =  test_array()[0]
+    array[0] = test_array()[0]
     println(array)
 
     array.push(50)
