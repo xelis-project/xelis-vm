@@ -10,7 +10,7 @@ pub enum Expression {
     StructConstructor(String, HashMap<String, Expression>),
     Variable(String), // variable name
     Value(Value), // hardcoded value
-    Operator(Token, Box<Expression>, Box<Expression>),
+    Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
     Path(Box<Expression>, Box<Expression>)
 }
@@ -29,6 +29,25 @@ pub enum Statement {
     Break,
     Continue,
     Variable(DeclarationStatement),
+}
+
+#[derive(Debug)]
+pub enum Operator {
+    Equals, // ==
+    NotEquals, // !=
+    And, // &&
+    Or, // ||
+    GreaterThan, // >
+    LessThan, // <
+    GreaterOrEqual, // >=
+    LessOrEqual, // <=
+    Plus, // +
+    Minus, // -
+    Multiply, // *
+    Divide, // /
+    Modulo, // %
+    BitwiseLeft, // <<
+    BitwiseRight // >>
 }
 
 #[derive(Debug)]
@@ -62,5 +81,30 @@ impl Parameter {
 
     pub fn consume(self) -> (String, Type) {
         (self.name, self.value_type)
+    }
+}
+
+impl Operator {
+    pub fn value_of(token: &Token) -> Option<Operator> {
+        use Operator::*;
+        let value = match token {
+            Token::OperatorEquals => Equals,
+            Token::OperatorNotEquals => NotEquals,
+            Token::OperatorAnd => And,
+            Token::OperatorOr => Or,
+            Token::OperatorGreaterThan => GreaterThan,
+            Token::OperatorLessThan => LessThan,
+            Token::OperatorGreaterOrEqual => GreaterOrEqual,
+            Token::OperatorLessOrEqual => LessOrEqual,
+            Token::OperatorPlus => Plus,
+            Token::OperatorMinus => Minus,
+            Token::OperatorMultiply => Multiply,
+            Token::OperatorDivide => Divide,
+            Token::OperatorModulo => Modulo,
+            Token::OperatorBitwiseLeft => BitwiseLeft,
+            Token::OperatorBitwiseRight => BitwiseRight,
+            _ => return None,
+        };
+        Some(value)
     }
 }

@@ -1,0 +1,20 @@
+func invalid_test(): string {
+    return "test"
+}
+
+func bool_test(): bool {
+    return true
+}
+
+entry main() {
+    if bool_test() == false {
+        return 1
+    }
+
+    let i: int = 10
+    if i == 10 {
+        return 0
+    } else {
+        return 1
+    }
+}

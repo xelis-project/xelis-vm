@@ -1,4 +1,4 @@
-use crate::expressions::{Statement, Expression, DeclarationStatement, Parameter};
+use crate::expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter};
 use crate::functions::{CustomFunction, FunctionType};
 use crate::types::{Value, Type, Struct};
 use crate::environment::Environment;
@@ -150,6 +150,8 @@ pub enum ParserError {
     InvalidArrayCall,
     NotImplemented,
     InvalidOperation,
+    OperatorNotFound(Token),
+    InvalidCondition(Expression, Type),
     InvalidOperationNotSameType(Type, Type),
     InvalidArrayCallIndexType(Type),
     InvalidTypeInArray(Type, Type),
@@ -295,14 +297,26 @@ impl Parser {
                 self.context.remove_current_type();
                 _type
             },
-            Expression::Operator(_, left, right) => { // TODO verify all operations
-                let left_type = self.get_type_from_expression(left)?;
-                let right_type = self.get_type_from_expression(right)?;
-
-                if left_type == Type::String || right_type == Type::String {
-                    Type::String
-                } else {
-                    left_type
+            Expression::Operator(op, left, right) => { // TODO verify all operations
+                match op {
+                    Operator::Or
+                    | Operator::Equals
+                    | Operator::NotEquals
+                    | Operator::GreaterOrEqual
+                    | Operator::GreaterThan
+                    | Operator::LessOrEqual
+                    | Operator::LessThan
+                    | Operator::And => Type::Boolean,
+                    _ => {
+                        let left_type = self.get_type_from_expression(left)?;
+                        let right_type = self.get_type_from_expression(right)?;
+        
+                        if left_type == Type::String || right_type == Type::String {
+                            Type::String
+                        } else {
+                            left_type
+                        }
+                    }
                 }
             },
         };
@@ -486,8 +500,11 @@ impl Parser {
                                     return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
                                 }
                             }
-
-                            Expression::Operator(token, Box::new(e), Box::new(expr))
+                            let op: Operator = match Operator::value_of(&token) {
+                                Some(op) => op,
+                                None => return Err(ParserError::OperatorNotFound(token))
+                            };
+                            Expression::Operator(op, Box::new(e), Box::new(expr))
                         }
                         None => return Err(ParserError::InvalidOperation)
                     }
@@ -575,17 +592,22 @@ impl Parser {
         let mut statements: Vec<Statement> = vec![];
         while *self.see() != Token::BraceClose {
             let statement: Statement = match self.see() {
-                Token::For => {
+                Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
                     self.expect_token(Token::For)?;
                     self.expect_token(Token::Let)?;
                     let var = self.read_variable()?;
                     let condition = self.read_expression()?;
+                    let condition_type = self.get_type_from_expression(&condition)?;
+                    if  condition_type != Type::Boolean {
+                        return Err(ParserError::InvalidCondition(condition, condition_type))
+                    }
+
                     let increment = self.read_expression()?;
                     let statements = self.read_loop_body()?;
 
                     Statement::For(var, condition, increment, statements)
                 }
-                Token::ForEach => {
+                Token::ForEach => { // Example: foreach a in array {}
                     self.expect_token(Token::ForEach)?;
                     let variable: String = match self.next() {
                         Token::Identifier(v) => v,
@@ -597,10 +619,15 @@ impl Parser {
 
                     Statement::ForEach(variable, condition, statements)
                 },
-                Token::While => {
+                Token::While => { // Example: while i < 10 {}
                     self.expect_token(Token::While)?;
 
                     let condition = self.read_expression()?;
+                    let condition_type = self.get_type_from_expression(&condition)?;
+                    if  condition_type != Type::Boolean {
+                        return Err(ParserError::InvalidCondition(condition, condition_type))
+                    }
+
                     let statements = self.read_loop_body()?;
 
                     Statement::While(condition, statements)
@@ -608,6 +635,11 @@ impl Parser {
                 Token::If => {
                     self.expect_token(Token::If)?;
                     let condition = self.read_expression()?;
+                    let condition_type = self.get_type_from_expression(&condition)?;
+                    if  condition_type != Type::Boolean {
+                        return Err(ParserError::InvalidCondition(condition, condition_type))
+                    }
+
                     Statement::If(condition, self.read_body()?)
                 },
                 Token::Else => {
@@ -618,7 +650,12 @@ impl Parser {
 
                     if *self.see() == Token::If {
                         self.expect_token(Token::If)?;
-                        Statement::ElseIf(self.read_expression()?, self.read_body()?)
+                        let condition = self.read_expression()?;
+                        let condition_type = self.get_type_from_expression(&condition)?;
+                        if  condition_type != Type::Boolean {
+                            return Err(ParserError::InvalidCondition(condition, condition_type))
+                        }
+                        Statement::ElseIf(condition, self.read_body()?)
                     } else {
                         Statement::Else(self.read_body()?)
                     }
@@ -690,7 +727,6 @@ impl Parser {
 
             statements.push(statement);
         }
-
         Ok(statements)
     }
 
@@ -751,6 +787,7 @@ impl Parser {
 
         ok
     }
+
     /**
      * Examples:
      * - entry foo() { ... }

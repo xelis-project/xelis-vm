@@ -30,6 +30,7 @@ pub enum Token {
     Break,
     Continue,
     In,
+    IsNot, // !
 
     ParenthesisOpen,
     ParenthesisClose,
@@ -87,6 +88,7 @@ impl Token {
             "break" => Break,
             "continue" => Continue,
             "in" => In,
+            "!" => IsNot,
 
             "(" => ParenthesisOpen,
             ")" => ParenthesisClose,
