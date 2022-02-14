@@ -145,6 +145,7 @@ pub enum ParserError {
     StructureNotFound(String),
     FunctionNotFound(String, usize),
     FunctionNoReturnType(String),
+    NoReturnFound,
     EmptyValue,
     InvalidArrayCall,
     NotImplemented,
@@ -719,6 +720,37 @@ impl Parser {
         Ok(parameters)
     }
 
+    fn ends_with_return(&self, statements: &Vec<Statement>) -> bool {
+        let mut ok = false;
+        let mut i = 0;
+        let size = statements.len();
+        for statement in statements {
+            match statement {
+                Statement::If(_, statements) => {
+                    if i + 1 < size { // verify that there is not a if alone
+                        ok = self.ends_with_return(statements);
+                    }
+                }
+                Statement::ElseIf(_, statements) => {
+                    if ok {
+                        ok = self.ends_with_return(statements);
+                    }
+                }
+                Statement::Else(statements) => {
+                    if ok {
+                        ok = self.ends_with_return(statements);
+                    }
+                }
+                Statement::Return(_) => {
+                    ok = true;
+                },
+                _ => {}
+            }
+            i += 1;
+        }
+
+        ok
+    }
     /**
      * Examples:
      * - entry foo() { ... }
@@ -788,7 +820,11 @@ impl Parser {
         }
         self.functions.push(function); // push function before reading statements to allow recursive calls
 
-        let statements = self.read_body()?;        
+        let statements = self.read_body()?;
+        if self.context.return_type.is_some() && !self.ends_with_return(&statements) {
+            return Err(ParserError::NoReturnFound)
+        }
+
         self.context.remove_last_scope();
 
         let last = self.functions.len() - 1;
@@ -892,7 +928,7 @@ impl Parser {
         // parse all tokens
         while self.tokens.len() > 0 {
             match self.next() {
-                Token::Import => {},
+                Token::Import => {}, // TODO
                 Token::Const => {
                     let var = self.read_variable()?;
                     self.constants.push(var);

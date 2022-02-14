@@ -5,10 +5,13 @@ func test_array(): int[] {
 entry main() {
     let array: int[] = [10, 20, 30, 40]
     println(array)
+
     array[0] =  test_array()[0]
     println(array)
+
     array.push(50)
     println(array)
+
     let size: int = array.len()
     let value: int = array[size - 1]
     println(value)
