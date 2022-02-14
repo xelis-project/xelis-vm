@@ -319,6 +319,7 @@ impl Parser {
                     }
                 }
             },
+            Expression::IsNot(_) => Type::Boolean
         };
 
         Ok(_type)
@@ -483,7 +484,16 @@ impl Parser {
                         },
                         None => return Err(ParserError::UnexpectedToken(Token::Dot))
                     }
-                }
+                },
+                Token::IsNot => {
+                    let expr = self.read_expression()?;
+                    let expr_type = self.get_type_from_expression(&expr)?;
+                    if expr_type != Type::Boolean {
+                        return Err(ParserError::InvalidValueType(expr_type, Type::Boolean))
+                    }
+                    required_operator = !required_operator;
+                    Expression::IsNot(Box::new(expr))
+                },
                 token => {
                     if !token.is_operator() {
                         return Err(ParserError::UnexpectedToken(token))
@@ -621,7 +631,6 @@ impl Parser {
                         return Err(ParserError::InvalidValueType(expr_type, Type::Array(Box::new(Type::Any))))
                     }
                     let statements = self.read_loop_body()?;
-
                     Statement::ForEach(variable, expr, statements)
                 },
                 Token::While => { // Example: while i < 10 {}

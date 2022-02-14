@@ -12,7 +12,8 @@ pub enum Expression {
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
-    Path(Box<Expression>, Box<Expression>)
+    Path(Box<Expression>, Box<Expression>), // struct.value
+    IsNot(Box<Expression>) // !expr (where expr is a bool)
 }
 
 #[derive(Debug)]

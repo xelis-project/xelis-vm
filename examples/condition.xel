@@ -3,7 +3,7 @@ func bool_test(): bool {
 }
 
 entry main() {
-    if !bool_test() {
+    if (!bool_test()) && true { // TODO fix order
         return 1
     }
 
