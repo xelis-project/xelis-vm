@@ -16,7 +16,6 @@ pub struct Program {
 struct Context {
     variables: Vec<HashMap<String, Type>>,
     return_type: Option<Type>,
-    has_if: bool,
     is_in_loop: bool,
     current_type: Option<Type>, // used by path walkthrough
 }
@@ -26,7 +25,6 @@ impl Context {
         Self {
             variables: vec![HashMap::new()], // first is for constants
             return_type: None,
-            has_if: false,
             is_in_loop: false,
             current_type: None
         }
@@ -117,7 +115,6 @@ impl Context {
     pub fn reset(&mut self) {
         self.variables.drain(1..self.variables.len());
         self.return_type = None;
-        self.has_if = false;
     }
 }
 
@@ -146,10 +143,12 @@ pub enum ParserError {
     FunctionNotFound(String, usize),
     FunctionNoReturnType(String),
     NoReturnFound,
+    ReturnAlreadyInElse,
     EmptyValue,
     InvalidArrayCall,
     NotImplemented,
     InvalidOperation,
+    DeadCodeNotAllowed,
     OperatorNotFound(Token),
     InvalidCondition(Expression, Type),
     InvalidOperationNotSameType(Type, Type),
@@ -632,6 +631,7 @@ impl Parser {
 
     fn read_statements(&mut self) -> Result<Vec<Statement>, ParserError> {
         let mut statements: Vec<Statement> = vec![];
+        let mut has_if = false;
         while *self.see() != Token::BraceClose {
             let statement: Statement = match self.see() {
                 Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
@@ -690,7 +690,7 @@ impl Parser {
                 },
                 Token::Else => {
                     let token = self.expect_token(Token::Else)?;
-                    if !self.context.has_if {
+                    if !has_if {
                         return Err(ParserError::NoIfBeforeElse(token))
                     }
 
@@ -730,7 +730,7 @@ impl Parser {
                     };
 
                     if *self.see() != Token::BraceClose { // we can't have anything after a return
-                        return Err(ParserError::UnexpectedToken(self.next()));
+                        return Err(ParserError::DeadCodeNotAllowed);
                     }
 
                     Statement::Return(opt)
@@ -742,7 +742,7 @@ impl Parser {
                     }
 
                     if *self.see() != Token::BraceClose { // we can't have anything after a continue
-                        return Err(ParserError::UnexpectedToken(self.next()));
+                        return Err(ParserError::DeadCodeNotAllowed);
                     }
 
                     Statement::Continue
@@ -754,7 +754,7 @@ impl Parser {
                     }
 
                     if *self.see() != Token::BraceClose { // we can't have anything after a break
-                        return Err(ParserError::UnexpectedToken(self.next()));
+                        return Err(ParserError::DeadCodeNotAllowed);
                     }
 
                     Statement::Break
@@ -764,10 +764,10 @@ impl Parser {
 
             match &statement {
                 Statement::If(_, _) | Statement::ElseIf(_, _) => {
-                    self.context.has_if = true;
+                    has_if = true;
                 },
                 _ => {
-                    self.context.has_if = false;
+                    has_if = false;
                 }
             };
 
@@ -802,28 +802,42 @@ impl Parser {
         Ok(parameters)
     }
 
-    fn ends_with_return(&self, statements: &Vec<Statement>) -> bool {
+    fn ends_with_return(&self, statements: &Vec<Statement>) -> Result<bool, ParserError> {
         let mut ok = false;
+        let mut last_is_else = false;
         let mut i = 0;
         let size = statements.len();
         for statement in statements {
             match statement {
                 Statement::If(_, statements) => {
                     if i + 1 < size { // verify that there is not a if alone
-                        ok = self.ends_with_return(statements);
+                        ok = self.ends_with_return(statements)?;
                     }
+                    last_is_else = false;
                 }
                 Statement::ElseIf(_, statements) => {
                     if ok {
-                        ok = self.ends_with_return(statements);
+                        ok = self.ends_with_return(statements)?;
                     }
+                    last_is_else = false;
                 }
                 Statement::Else(statements) => {
                     if ok {
-                        ok = self.ends_with_return(statements);
+                        ok = self.ends_with_return(statements)?;
+                        if ok {
+                            last_is_else = true;
+                            
+                            if i + 1 < size { // if we have all case that returns something, then we don't allow dead code.
+                                return Err(ParserError::DeadCodeNotAllowed) 
+                            }
+                        }
                     }
                 }
                 Statement::Return(_) => {
+                    if last_is_else { // this return would be useless because if & else have a return, so we don't accept this one.
+                        return Err(ParserError::ReturnAlreadyInElse)
+                    }
+
                     ok = true;
                 },
                 _ => {}
@@ -831,7 +845,7 @@ impl Parser {
             i += 1;
         }
 
-        ok
+        Ok(ok)
     }
 
     /**
@@ -904,7 +918,7 @@ impl Parser {
         self.functions.push(function); // push function before reading statements to allow recursive calls
 
         let statements = self.read_body()?;
-        if self.context.return_type.is_some() && !self.ends_with_return(&statements) {
+        if self.context.return_type.is_some() && !self.ends_with_return(&statements)? {
             return Err(ParserError::NoReturnFound)
         }
 
