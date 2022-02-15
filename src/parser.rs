@@ -148,6 +148,7 @@ pub enum ParserError {
     InvalidArrayCall,
     NotImplemented,
     InvalidOperation,
+    InvalidTernaryNoPreviousExpression,
     DeadCodeNotAllowed,
     OperatorNotFound(Token),
     InvalidCondition(Expression, Type),
@@ -245,11 +246,13 @@ impl Parser {
         Ok(_type)
     }
 
+    // this function don't verify, but only returns the type of an expression
+    // all tests should be done when constructing an expression, not here
     fn get_type_from_expression(&mut self, expression: &Expression) -> Result<Type, ParserError> {
         let _type: Type = match expression {
             Expression::ArrayConstructor(ref values) => match values.get(0) {
                 Some(v) => Type::Array(Box::new(self.get_type_from_expression(v)?)),
-                None => return Err(ParserError::EmptyArrayConstructor) // TODO Real error
+                None => return Err(ParserError::EmptyArrayConstructor) // cannot determine type from empty array
             },
             Expression::Variable(ref var_name) => {
                 let _type = self.context.get_type_of_variable(var_name)?.clone();
@@ -323,7 +326,8 @@ impl Parser {
                     }
                 }
             },
-            Expression::IsNot(_) => Type::Boolean
+            Expression::IsNot(_) => Type::Boolean,
+            Expression::Ternary(_, expr, _) => self.get_type_from_expression(expr)?
         };
 
         Ok(_type)
@@ -489,14 +493,35 @@ impl Parser {
                         None => return Err(ParserError::UnexpectedToken(Token::Dot))
                     }
                 },
-                Token::IsNot => {
+                Token::IsNot => { // it's an operator, but not declared as
                     let expr = self.read_expression()?;
                     let expr_type = self.get_type_from_expression(&expr)?;
                     if expr_type != Type::Boolean {
                         return Err(ParserError::InvalidValueType(expr_type, Type::Boolean))
                     }
-                    required_operator = !required_operator;
+
                     Expression::IsNot(Box::new(expr))
+                },
+                Token::OperatorTernary => match last_expression { // condition ? expr : expr
+                    Some(expr) => {
+                        if self.get_type_from_expression(&expr)? != Type::Boolean {
+                            return Err(ParserError::InvalidCondition(expr, Type::Boolean))
+                        }
+
+                        let valid_expr = self.read_expression()?;
+                        let first_type = self.get_type_from_expression(&valid_expr)?;
+                        self.expect_token(Token::Colon)?;
+                        let else_expr = self.read_expression()?;
+                        let else_type = self.get_type_from_expression(&else_expr)?;
+                        
+                        if first_type != else_type { // both expr should have the SAME type.
+                            return Err(ParserError::InvalidValueType(else_type, first_type))
+                        }
+                        required_operator = !required_operator;
+
+                        Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
+                    },
+                    None => return Err(ParserError::InvalidTernaryNoPreviousExpression)
                 },
                 token => {
                     if !token.is_operator() {

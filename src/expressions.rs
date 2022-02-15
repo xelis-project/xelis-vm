@@ -13,7 +13,8 @@ pub enum Expression {
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
     Path(Box<Expression>, Box<Expression>), // struct.value
-    IsNot(Box<Expression>) // !expr (where expr is a bool)
+    IsNot(Box<Expression>), // !expr (where expr is a bool)
+    Ternary(Box<Expression>, Box<Expression>, Box<Expression>) // bool expr, if true expr, else expr
 }
 
 #[derive(Debug)]

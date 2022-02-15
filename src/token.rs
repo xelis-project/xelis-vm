@@ -59,6 +59,8 @@ pub enum Token {
     OperatorBitwiseLeft,
     OperatorBitwiseRight,
 
+    OperatorTernary,
+
     Import, 
     As
 }
@@ -118,6 +120,8 @@ impl Token {
             "<<" => OperatorBitwiseLeft,
             ">>" => OperatorBitwiseRight,
 
+            "?" => OperatorTernary,
+
             "null" => Null,
             "true" => True,
             "false" => False,
@@ -159,7 +163,8 @@ impl Token {
             | OperatorBitwiseRight
             | OperatorAssign
             | BracketOpen
-            | Dot => true,
+            | Dot
+            | OperatorTernary => true,
             _ => false,
         }
     }
