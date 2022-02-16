@@ -77,6 +77,10 @@ impl CustomFunction {
     pub fn get_statements(&self) -> &Vec<Statement> {
         &self.statements
     }
+
+    pub fn get_parameters(&self) -> &Vec<Parameter> {
+        &self.parameters
+    }
 }
 
 #[derive(Debug)]

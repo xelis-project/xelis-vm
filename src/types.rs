@@ -18,42 +18,42 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn to_byte(&self) -> Result<&u8, InterpreterError> {
+    pub fn as_byte(&self) -> Result<&u8, InterpreterError> {
         match self {
             Value::Byte(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Byte))
         }
     }
 
-    pub fn to_short(&self) -> Result<&u16, InterpreterError> {
+    pub fn as_short(&self) -> Result<&u16, InterpreterError> {
         match self {
             Value::Short(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Short))
         }
     }
 
-    pub fn to_int(&self) -> Result<&u64, InterpreterError> {
+    pub fn as_int(&self) -> Result<&u64, InterpreterError> {
         match self {
             Value::Int(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Int))
         }
     }
 
-    pub fn to_long(&self) -> Result<&u128, InterpreterError> {
+    pub fn as_long(&self) -> Result<&u128, InterpreterError> {
         match self {
             Value::Long(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Long))
         }
     }
 
-    pub fn to_string(&self) -> Result<&String, InterpreterError> {
+    pub fn as_string(&self) -> Result<&String, InterpreterError> {
         match self {
             Value::String(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::String))
         }
     }
 
-    pub fn to_bool(&self) -> Result<&bool, InterpreterError> {
+    pub fn as_bool(&self) -> Result<&bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Boolean))
@@ -61,14 +61,71 @@ impl Value {
     }
 
     // TODO struct
-    pub fn to_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn to_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
+    pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
+        match self {
+            Value::Array(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+        }
+    }
+
+    pub fn to_byte(self) -> Result<u8, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Byte))
+        }
+    }
+
+    pub fn to_short(self) -> Result<u16, InterpreterError> {
+        match self {
+            Value::Short(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Short))
+        }
+    }
+
+    pub fn to_int(self) -> Result<u64, InterpreterError> {
+        match self {
+            Value::Int(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Int))
+        }
+    }
+
+    pub fn to_long(self) -> Result<u128, InterpreterError> {
+        match self {
+            Value::Long(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Long))
+        }
+    }
+
+    pub fn to_string(self) -> Result<String, InterpreterError> {
+        match self {
+            Value::String(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::String))
+        }
+    }
+
+    pub fn to_bool(self) -> Result<bool, InterpreterError> {
+        match self {
+            Value::Boolean(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Boolean))
+        }
+    }
+
+    // TODO struct
+    pub fn to_map(self) -> Result<HashMap<String, Value>, InterpreterError> {
+        match self {
+            Value::Struct(_, fields) => Ok(fields),
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
+        }
+    }
+
+    pub fn to_vec(self) -> Result<Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))

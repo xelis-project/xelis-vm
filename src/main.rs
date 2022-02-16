@@ -24,11 +24,13 @@ fn main() {
             match Parser::new(result, Environment::default()).parse() {
                 Ok(result) => {
                     println!("Parser: {:?}", result);
-                    let interpreter = Interpreter::new(result);
-                    match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
-                        Ok(value) => println!("Exit code: {}", value),
-                        Err(e) => println!("Error: {:?}", e)
-                    }
+                    match Interpreter::new(result) {
+                        Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
+                            Ok(value) => println!("Exit code: {}", value),
+                            Err(e) => println!("Error: {:?}", e)
+                        },
+                        Err(e) => println!("Interpreter error: {:?}", e)
+                    };
                 } 
                 Err(e) => println!("Parser error: {:?}", e)
             };
