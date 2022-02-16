@@ -58,11 +58,11 @@ impl Context {
         }
     }
 
-    pub fn create_scope(&mut self) {
+    pub fn push_scope(&mut self) {
         self.variables.push(HashMap::new());
     }
 
-    pub fn remove_last_scope(&mut self) -> Result<(), InterpreterError> {
+    pub fn pop_scope(&mut self) -> Result<(), InterpreterError> {
         let size = self.variables.len();
         if size == 0 {
             return Err(InterpreterError::NoScopeFound)
@@ -138,7 +138,7 @@ impl Interpreter {
         };
 
         // Setup constants scope
-        interpreter.constants.create_scope();
+        interpreter.constants.push_scope();
         while interpreter.program.constants.len() > 0 { // consume constants without "borrow partial move" error
             let constant = interpreter.program.constants.remove(0); // TODO prevent shifting all values
             let mut clone = interpreter.constants.clone();
@@ -489,14 +489,14 @@ impl Interpreter {
                 },
                 Statement::If(condition, statements) => {
                     if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
-                        context.create_scope();
+                        context.push_scope();
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                                 return Ok(Some(v))
                             },
                             None => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                             }
                         };
                     } else {
@@ -505,14 +505,14 @@ impl Interpreter {
                 },
                 Statement::ElseIf(condition, statements) => if accept_else {
                     if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
-                        context.create_scope();
+                        context.push_scope();
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                                 return Ok(Some(v))
                             },
                             None => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                             }
                         };
                     } else {
@@ -520,19 +520,19 @@ impl Interpreter {
                     }
                 },
                 Statement::Else(statements) => if accept_else {
-                    context.create_scope();
+                    context.push_scope();
                     match self.execute_statements(&statements, context)? {
                         Some(v) => {
-                            context.remove_last_scope()?;
+                            context.pop_scope()?;
                             return Ok(Some(v))
                         },
                         None => {
-                            context.remove_last_scope()?;
+                            context.pop_scope()?;
                         }
                     };
                 }
                 Statement::For(var, condition, increment, statements) => {
-                    context.create_scope();
+                    context.push_scope();
                     let variable = Variable {
                         value: self.execute_expression_and_expect_value(&var.value, context)?,
                         value_type: var.value_type.clone()
@@ -549,18 +549,18 @@ impl Interpreter {
 
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                                 return Ok(Some(v))
                             },
                             None => {}
                         };
                     }
-                    context.remove_last_scope()?;
+                    context.pop_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
                     let values = self.execute_expression_and_expect_value(expr, context)?.to_vec()?;
                     if values.len() != 0 {
-                        context.create_scope();
+                        context.push_scope();
                         let value_type = self.get_type_from_value(&values[0])?;
                         let variable = Variable {
                             value: Value::Null,
@@ -572,27 +572,27 @@ impl Interpreter {
                             context.set_variable_value(var, val, &self.program.structures)?;
                             match self.execute_statements(&statements, context)? {
                                 Some(v) => {
-                                    context.remove_last_scope()?;
+                                    context.pop_scope()?;
                                     return Ok(Some(v))
                                 },
                                 None => {}
                             };
                         }
-                        context.remove_last_scope()?;
+                        context.pop_scope()?;
                     }
                 },
                 Statement::While(condition, statements) => {
-                    context.create_scope();
+                    context.push_scope();
                     while self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
-                                context.remove_last_scope()?;
+                                context.pop_scope()?;
                                 return Ok(Some(v))
                             },
                             None => {}
                         };
                     }
-                    context.remove_last_scope()?;
+                    context.pop_scope()?;
                 },
                 Statement::Return(opt) => {
                     return Ok(match opt {
@@ -601,14 +601,14 @@ impl Interpreter {
                     })
                 },
                 Statement::Scope(statements) => {
-                    context.create_scope();
+                    context.push_scope();
                     match self.execute_statements(&statements, context)? {
                         Some(v) => {
-                            context.remove_last_scope()?;
+                            context.pop_scope()?;
                             return Ok(Some(v))
                         },
                         None => {
-                            context.remove_last_scope()?;
+                            context.pop_scope()?;
                         }
                     };
                 },
@@ -635,7 +635,7 @@ impl Interpreter {
             },
             FunctionType::Custom(ref f) => {
                 let mut context = Context::new();
-                context.create_scope();
+                context.push_scope();
                 for param in f.get_parameters() {
                     let variable = Variable {
                         value: values.remove(0),
@@ -645,7 +645,7 @@ impl Interpreter {
                     context.register_variable(param.get_name().clone(), variable)?;
                 }
                 let result = self.execute_statements(f.get_statements(), &mut context);
-                context.remove_last_scope()?;
+                context.pop_scope()?;
 
                 result
             }
