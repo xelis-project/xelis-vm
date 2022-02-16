@@ -1,5 +1,5 @@
 use crate::functions::{FunctionType};
-use crate::expressions::{Statement, Expression};
+use crate::expressions::{Statement, Expression, Operator};
 use crate::parser::Program;
 use crate::types::*;
 use std::cell::RefCell;
@@ -12,18 +12,20 @@ pub enum InterpreterError {
     TypeNotFound(Value),
     FunctionEntry(bool, bool), // expected, got
     NotImplemented,
+    NoExitCode,
     ExpectedValue,
     InvalidNativeFunctionCall,
     NoInstanceType,
-    NoTypeFound,
     ExpectedValueType(Type),
+    InvalidType(Type),
     OutOfBounds(usize, usize),
     InvalidStructValue(Value),
     InvalidValue(Value, Type), // got value, but expected type
     VariableNotFound(String),
     VariableAlreadyExists(String),
     NoScopeFound,
-    ExpectedAssignOperator
+    ExpectedAssignOperator,
+    OperationNotNumberType
 }
 
 #[derive(Clone)]
@@ -151,15 +153,72 @@ impl Interpreter {
         Ok(interpreter)
     }
 
+    fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
+        Ok(match value_type {
+            Type::Null => left.is_null() && right.is_null(),
+            Type::Any => return Err(InterpreterError::InvalidType(value_type.clone())),
+            Type::Byte => *left.as_byte()? == *right.as_byte()?,
+            Type::Short => *left.as_short()? == *right.as_short()?,
+            Type::Int => *left.as_int()? == *right.as_int()?,
+            Type::Long => *left.as_long()? == *right.as_long()?,
+            Type::Boolean => *left.as_bool()? == *right.as_bool()?,
+            Type::String => *left.as_string()? == *right.as_string()?,
+            Type::Struct(structure) => {
+                let left_map = left.as_map()?;
+                let right_map = right.as_map()?;
+
+                if left_map.len() == right_map.len() {
+                    let mut equal = true;
+                    for (k, v) in left_map {
+                        if !match right_map.get(k) {
+                            Some(r_v) => {
+                                let field_type = match structure.fields.get(k) {
+                                    Some(field) => field,
+                                    None => return Err(InterpreterError::InvalidStructValue(v.clone()))
+                                };
+                                self.is_same_value(field_type, v, r_v)?
+                            },
+                            None => false
+                        } {
+                            equal = false;
+                            break;
+                        }
+                    }
+                    equal
+                } else {
+                    false
+                }
+            },
+            Type::Array(sub_type) => {
+                let left_vec = left.as_vec()?;
+                let right_vec = right.as_vec()?;
+                if left_vec.len() == right_vec.len() {
+                    let mut equal = true;
+                    for i in 0..left_vec.len() - 1 {
+                        if !self.is_same_value(sub_type, &left_vec[i], &right_vec[i])? {
+                            equal = false;
+                            break;
+                        }
+                    }
+                    equal
+                } else {
+                    false
+                }
+            }
+        })
+    }
+
+    fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
+        match Type::from_value(value, &self.program.structures) {
+            Some(v) => Ok(v),
+            None => Err(InterpreterError::TypeNotFound(value.clone()))
+        }
+    }
+
     fn get_types_from_values(&self, values: &Vec<Value>) -> Result<Vec<Type>, InterpreterError> {
         let mut types: Vec<Type> = Vec::new();
         for value in values {
-            match Type::from_value(value, &self.program.structures) {
-                Some(v) => {
-                    types.push(v);
-                }
-                None => return Err(InterpreterError::TypeNotFound(value.clone()))
-            };
+            types.push(self.get_type_from_value(&value)?);
         }
 
         Ok(types)
@@ -198,10 +257,7 @@ impl Interpreter {
             Expression::FunctionCall(name, parameters) => {
                 let mut values: Vec<Value> = Vec::new();
                 for param in parameters {
-                    match self.execute_expression(param, context)? {
-                        Some(v) => values.push(v),
-                        None => return Err(InterpreterError::ExpectedValue)
-                    }
+                    values.push(self.execute_expression_and_expect_value(param, context)?);
                 }
 
                 let func = self.get_function(name, None, &self.get_types_from_values(&values)?)?;
@@ -244,9 +300,9 @@ impl Interpreter {
             Expression::SubExpression(expr) => self.execute_expression(expr, context),
             Expression::Ternary(condition, left, right) => {
                 if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
-                    self.execute_expression(&left, context)
+                    Ok(Some(self.execute_expression_and_expect_value(&left, context)?))
                 } else {
-                    self.execute_expression(&right, context)
+                    Ok(Some(self.execute_expression_and_expect_value(&right, context)?))
                 }
             }
             Expression::Value(v) => Ok(Some(v.clone())),
@@ -256,15 +312,137 @@ impl Interpreter {
                     Err(_) => Ok(Some(self.constants.get_variable(var)?.value.clone()))
                 }
             }
-            Expression::Operator(op, expr_left, expr_right) => {
-                // TODO
-                Ok(None)
-            },
             Expression::Path(expr_left, expr_right) => {
                 let left = self.execute_expression_and_expect_value(&expr_left, context)?;
                 let right = self.execute_expression_and_expect_value(&expr_right, context)?;
-                // TODO
+
                 Ok(None)
+            },
+            Expression::Operator(op, expr_left, expr_right) => {
+                let left = self.execute_expression_and_expect_value(&expr_left, context)?;
+                let right = self.execute_expression_and_expect_value(&expr_right, context)?;
+                let left_type = self.get_type_from_value(&left)?;
+                let right_type = self.get_type_from_value(&right)?;
+                if !left.is_number() || !right.is_number() || right_type != left_type {
+                    match op {
+                        Operator::Minus
+                        | Operator::Divide
+                        | Operator::Multiply
+                        | Operator::Modulo
+                        | Operator::BitwiseLeft
+                        | Operator::BitwiseRight
+                        | Operator::GreaterOrEqual
+                        | Operator::GreaterThan
+                        | Operator::LessOrEqual
+                        | Operator::LessThan => {
+                            return Err(InterpreterError::OperationNotNumberType)
+                        }
+                        _ => {}
+                    }
+                }
+
+                match op {
+                    Operator::Equals => {
+                        if left_type == right_type {
+                            Ok(Some(Value::Boolean(self.is_same_value(&left_type, &left, &right)?)))
+                        } else {
+                            Ok(Some(Value::Boolean(false)))
+                        }
+                    }
+                    Operator::NotEquals => {
+                        if left_type == right_type {
+                            Ok(Some(Value::Boolean(!self.is_same_value(&left_type, &left, &right)?)))
+                        } else {
+                            Ok(Some(Value::Boolean(true)))
+                        }
+                    }
+                    Operator::And => Ok(Some(Value::Boolean(left.to_bool()? && right.to_bool()?))),
+                    Operator::Or => Ok(Some(Value::Boolean(left.to_bool()? || right.to_bool()?))),
+                    Operator::Plus => {
+                        if left_type == Type::String || right_type == Type::String {
+                            return Ok(Some(Value::String(format!("{}{}", left, right))))
+                        } else {
+                            Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(left.to_byte()? + right.to_byte()?),
+                                Type::Short => Value::Short(left.to_short()? + right.to_short()?),
+                                Type::Int => Value::Int(left.to_int()? + right.to_int()?),
+                                Type::Long => Value::Long(left.to_long()? + right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            }))
+                        }
+                    },
+                    Operator::Minus => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? - right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? - right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? - right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? - right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::Divide => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? / right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? / right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? / right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? / right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::Multiply => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? * right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? * right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? * right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? * right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::Modulo => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? % right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? % right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? % right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? % right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::BitwiseLeft => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? << right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? << right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? << right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? << right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::BitwiseRight => Ok(Some(match left_type {
+                        Type::Byte => Value::Byte(left.to_byte()? >> right.to_byte()?),
+                        Type::Short => Value::Short(left.to_short()? >> right.to_short()?),
+                        Type::Int => Value::Int(left.to_int()? >> right.to_int()?),
+                        Type::Long => Value::Long(left.to_long()? >> right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::GreaterOrEqual => Ok(Some(match left_type {
+                        Type::Byte => Value::Boolean(left.to_byte()? >= right.to_byte()?),
+                        Type::Short => Value::Boolean(left.to_short()? >= right.to_short()?),
+                        Type::Int => Value::Boolean(left.to_int()? >= right.to_int()?),
+                        Type::Long => Value::Boolean(left.to_long()? >= right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::GreaterThan => Ok(Some(match left_type {
+                        Type::Byte => Value::Boolean(left.to_byte()? > right.to_byte()?),
+                        Type::Short => Value::Boolean(left.to_short()? > right.to_short()?),
+                        Type::Int => Value::Boolean(left.to_int()? > right.to_int()?),
+                        Type::Long => Value::Boolean(left.to_long()? > right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::LessOrEqual => Ok(Some(match left_type {
+                        Type::Byte => Value::Boolean(left.to_byte()? <= right.to_byte()?),
+                        Type::Short => Value::Boolean(left.to_short()? <= right.to_short()?),
+                        Type::Int => Value::Boolean(left.to_int()? <= right.to_int()?),
+                        Type::Long => Value::Boolean(left.to_long()? <= right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    Operator::LessThan => Ok(Some(match left_type {
+                        Type::Byte => Value::Boolean(left.to_byte()? < right.to_byte()?),
+                        Type::Short => Value::Boolean(left.to_short()? < right.to_short()?),
+                        Type::Int => Value::Boolean(left.to_int()? < right.to_int()?),
+                        Type::Long => Value::Boolean(left.to_long()? < right.to_long()?),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })),
+                    _ => return Err(InterpreterError::NotImplemented)
+                }
             }
         }
     }
@@ -357,12 +535,7 @@ impl Interpreter {
                     let values = self.execute_expression_and_expect_value(expr, context)?.to_vec()?;
                     if values.len() != 0 {
                         context.create_scope();
-                        let value_type = match Type::from_value(&values[0], &self.program.structures) {
-                            Some(v) => {
-                                v
-                            },
-                            None => return Err(InterpreterError::NoTypeFound)
-                        };
+                        let value_type = self.get_type_from_value(&values[0])?;
                         let variable = Variable {
                             value: Value::Null,
                             value_type
@@ -459,7 +632,9 @@ impl Interpreter {
             return Err(InterpreterError::FunctionEntry(true, false))
         }
 
-        self.execute_function(func, None, parameters)?;
-        Ok(0)
+        match self.execute_function(func, None, parameters)? {
+            Some(val) => Ok(val.to_int()?),
+            None => return Err(InterpreterError::NoExitCode)
+        }
     }
 }

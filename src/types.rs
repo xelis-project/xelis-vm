@@ -18,6 +18,14 @@ pub enum Value {
 }
 
 impl Value {
+
+    pub fn is_null(&self) -> bool {
+        match &self {
+            Value::Null => true,
+            _ => false
+        }
+    }
+
     pub fn as_byte(&self) -> Result<&u8, InterpreterError> {
         match self {
             Value::Byte(n) => Ok(n),
@@ -129,6 +137,13 @@ impl Value {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+        }
+    }
+
+    pub fn is_number(&self) -> bool {
+        match self {
+            Value::Byte(_) | Value::Short(_) | Value::Int(_) | Value::Long(_) => true,
+            _ => false
         }
     }
 }
