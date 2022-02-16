@@ -119,4 +119,36 @@ impl Operator {
         };
         Some(value)
     }
+
+    pub fn is_assignation(&self) -> bool {
+        use Operator::*;
+        match &self {
+            Assign
+            | AssignPlus
+            | AssignMinus
+            | AssignDivide
+            | AssignMultiply => true,
+            _ => false
+        }
+    }
+
+    pub fn is_number_operator(&self) -> bool {
+        match &self {
+            Operator::AssignPlus
+            | Operator::AssignMinus
+            | Operator::AssignDivide
+            | Operator::AssignMultiply
+            | Operator::Minus
+            | Operator::Divide
+            | Operator::Multiply
+            | Operator::Modulo
+            | Operator::BitwiseLeft
+            | Operator::BitwiseRight
+            | Operator::GreaterOrEqual
+            | Operator::GreaterThan
+            | Operator::LessOrEqual
+            | Operator::LessThan => true,
+            _ => false
+        }
+    }
 }
