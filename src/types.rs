@@ -83,6 +83,13 @@ impl Value {
         }
     }
 
+    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<Value>, InterpreterError> {
+        match self {
+            Value::Array(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+        }
+    }
+
     pub fn to_byte(self) -> Result<u8, InterpreterError> {
         match self {
             Value::Byte(n) => Ok(n),

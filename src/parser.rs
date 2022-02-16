@@ -31,7 +31,7 @@ impl Context {
     }
 
     pub fn set_current_type(&mut self, current_type: Type) -> Result<(), ParserError> {
-        //self.remove_current_type(); // prevent any bug
+        self.remove_current_type(); // prevent any bug
 
         match &current_type {
             Type::Struct(ref s) => {

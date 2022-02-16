@@ -16,6 +16,7 @@ pub enum InterpreterError {
     ExpectedValue,
     InvalidNativeFunctionCall,
     NoInstanceType,
+    ExpectedPath,
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -28,15 +29,13 @@ pub enum InterpreterError {
     OperationNotNumberType
 }
 
-#[derive(Clone)]
 struct Variable {
     value: Value,
     value_type: Type
 }
 
-#[derive(Clone)]
 struct Context {
-    variables: Vec<HashMap<String, Variable>>,
+    variables: Vec<HashMap<String, Variable>>
 }
 
 impl Context {
@@ -141,8 +140,8 @@ impl Interpreter {
         interpreter.constants.push_scope();
         while interpreter.program.constants.len() > 0 { // consume constants without "borrow partial move" error
             let constant = interpreter.program.constants.remove(0); // TODO prevent shifting all values
-            let mut clone = interpreter.constants.clone();
-            let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut clone)?;
+            // let mut clone = interpreter.constants.clone(); TODO
+            let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut Context::new())?;
             let variable = Variable {
                 value,
                 value_type: constant.value_type
@@ -243,8 +242,30 @@ impl Interpreter {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_variable_from_path(&self, path: &Expression, context: &mut Context) -> Result<&mut Variable, InterpreterError> {
-        Err(InterpreterError::NotImplemented)
+    fn get_from_path<'a>(&self, path: &Expression, context: &'a mut Context) -> Result<(&'a mut Value, &'a Type), InterpreterError> {
+        match path {
+            Expression::ArrayCall(expr, expr_index) => {
+                let index = self.execute_expression_and_expect_value(expr_index, context)?.to_int()? as usize;
+                let (array, array_type) = self.get_from_path(expr, context)?;
+                let values: &mut Vec<Value> = array.as_mut_vec()?;
+                let size = values.len();
+                match values.get_mut(index as usize) {
+                    Some(v) => Ok((v, array_type.get_array_type())),
+                    None => return Err(InterpreterError::OutOfBounds(size, index))
+                }
+            }
+            Expression::Path(left, right) => {
+                let (left_value, left_type) = self.get_from_path(left, context)?;
+                // TODO set left_value as instance ?
+                self.execute_expression(right, context)?;
+                panic!("")
+            },
+            Expression::Variable(name) => {
+                let var = context.get_mut_variable(name)?;
+                Ok((&mut var.value, &var.value_type))
+            }
+            _ => Err(InterpreterError::ExpectedPath)
+        }
     }
 
     fn execute_expression_and_expect_value(&self, expr: &Expression, context: &mut Context) -> Result<Value, InterpreterError> {
@@ -317,51 +338,51 @@ impl Interpreter {
             }
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
-                    let variable = self.get_variable_from_path(expr_left, context)?;
                     let value = self.execute_expression_and_expect_value(expr_right, context)?;
+                    let (path_value, path_type) = self.get_from_path(expr_left, context)?;
                     let value_type = self.get_type_from_value(&value)?;
 
-                    if (!variable.value.is_number() || !value.is_number() || variable.value_type != value_type) && op.is_number_operator() {
+                    if (!path_value.is_number() || !value.is_number() || *path_type != value_type) && op.is_number_operator() {
                         return Err(InterpreterError::OperationNotNumberType)
                     }
 
                     match op {
                         Operator::Assign => {
-                            variable.value = value;
+                            *path_value = value;
                         },
                         Operator::AssignPlus => {
-                            variable.value = match variable.value_type {
-                                Type::Byte => Value::Byte(variable.value.as_byte()? + value.to_byte()?),
-                                Type::Short => Value::Short(variable.value.as_short()? + value.to_short()?),
-                                Type::Int => Value::Int(variable.value.as_int()? + value.to_int()?),
-                                Type::Long => Value::Long(variable.value.as_long()? + value.to_long()?),
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? + value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? + value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? + value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? + value.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMinus => {
-                            variable.value = match variable.value_type {
-                                Type::Byte => Value::Byte(variable.value.as_byte()? - value.to_byte()?),
-                                Type::Short => Value::Short(variable.value.as_short()? - value.to_short()?),
-                                Type::Int => Value::Int(variable.value.as_int()? - value.to_int()?),
-                                Type::Long => Value::Long(variable.value.as_long()? - value.to_long()?),
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? - value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? - value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? - value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? - value.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignDivide => {
-                            variable.value = match variable.value_type {
-                                Type::Byte => Value::Byte(variable.value.as_byte()? / value.to_byte()?),
-                                Type::Short => Value::Short(variable.value.as_short()? / value.to_short()?),
-                                Type::Int => Value::Int(variable.value.as_int()? / value.to_int()?),
-                                Type::Long => Value::Long(variable.value.as_long()? / value.to_long()?),
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? / value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? / value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? / value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? / value.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMultiply => {
-                            variable.value = match variable.value_type {
-                                Type::Byte => Value::Byte(variable.value.as_byte()? * value.to_byte()?),
-                                Type::Short => Value::Short(variable.value.as_short()? * value.to_short()?),
-                                Type::Int => Value::Int(variable.value.as_int()? * value.to_int()?),
-                                Type::Long => Value::Long(variable.value.as_long()? * value.to_long()?),
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? * value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? * value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? * value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? * value.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         }, 
@@ -469,7 +490,11 @@ impl Interpreter {
                     }
                 }
             },
-            path => Ok(Some(self.get_variable_from_path(path, context)?.value.clone()))
+            Expression::Path(left, right) => {
+                let (left_value, left_type) = self.get_from_path(left, context)?;
+                // TODO
+                self.execute_expression(right, context)
+            }
         }
     }
 
