@@ -12,6 +12,7 @@ pub enum InterpreterError {
     FunctionNotFound(String, Vec<Type>),
     TypeNotFound(Value),
     FunctionEntry(bool, bool), // expected, got
+    LimitReached,
     NotImplemented,
     NoExitCode,
     ExpectedValue,
@@ -35,16 +36,14 @@ struct Variable {
     value_type: Type
 }
 
-struct Context<'a> {
+struct Context {
     variables: Vec<HashMap<String, Variable>>,
-    instance: Option<&'a mut Value>
 }
 
-impl<'a> Context<'a> {
+impl Context {
     pub fn new() -> Self {
         Self {
-            variables: Vec::new(),
-            instance: None
+            variables: Vec::new()
         }
     }
 
@@ -123,46 +122,58 @@ impl<'a> Context<'a> {
 
         Ok(())
     }
-
-    pub fn get_instance(&self) -> &Option<&'a mut Value> {
-        &self.instance
-    }
-
-    pub fn set_instance(&mut self, instance: Option<&'a mut Value>) {
-        self.instance = instance;
-    }
 }
 
 pub struct Interpreter<'a> {
     program: &'a Program,
-    constants: Context<'a>,
-    count_expr: RefCell<usize>,
+    max_expr: u64,
+    count_expr: RefCell<u64>,
+    constants: Option<Context>,
     env: &'a Environment
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, InterpreterError> {
+    pub fn new(program: &'a Program, max_expr: u64, env: &'a Environment) -> Result<Self, InterpreterError> {
         let mut interpreter = Self {
             program,
-            constants: Context::new(),
+            max_expr,
             count_expr: RefCell::new(0),
+            constants: None,
             env
         };
 
-        // Setup constants scope
-        interpreter.constants.push_scope();
-        while interpreter.program.constants.len() > 0 { // consume constants without "borrow partial move" error
-            let constant = &interpreter.program.constants[0]; // TODO prevent shifting all values
-            // let mut clone = interpreter.constants.clone(); TODO
-            let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut Context::new())?;
-            let variable = Variable {
-                value,
-                value_type: constant.value_type.clone()
-            };
-            interpreter.constants.register_variable(constant.name.clone(), variable)?;
+        // register constants
+        if interpreter.program.constants.len() > 0 {
+            let mut context = Context::new();
+            context.push_scope();
+            for constant in &interpreter.program.constants {
+                let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut context)?;
+                let variable = Variable {
+                    value,
+                    value_type: constant.value_type.clone()
+                };
+                context.register_variable(constant.name.clone(), variable)?;
+            }
+            interpreter.constants = Some(context);
         }
 
         Ok(interpreter)
+    }
+
+    fn get_constant_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
+        match &self.constants {
+            Some(constants) => constants.get_variable(name),
+            None => Err(InterpreterError::VariableNotFound(name.clone()))
+        }
+    }
+
+    fn increment_expr(&self) -> Result<(), InterpreterError> {
+        *self.count_expr.borrow_mut() += 1;
+        if self.max_expr != 0 && *self.count_expr.borrow() >= self.max_expr {
+            return Err(InterpreterError::LimitReached)
+        }
+
+        Ok(())
     }
 
     fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
@@ -304,7 +315,7 @@ impl<'a> Interpreter<'a> {
     }
 
     fn execute_expression(&self, expr: &Expression, context: &mut Context) -> Result<Option<Value>, InterpreterError> {
-        *self.count_expr.borrow_mut() += 1;
+        self.increment_expr()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
                 let mut values: Vec<Value> = Vec::new();
@@ -325,7 +336,6 @@ impl<'a> Interpreter<'a> {
                 Ok(Some(Value::Array(values)))
             },
             Expression::StructConstructor(name, expr_fields) => {
-                //self.get_structure(name)?;
                 let mut fields = HashMap::new();
                 for (name, expr) in expr_fields {
                     fields.insert(name.clone(), self.execute_expression_and_expect_value(&expr, context)?);
@@ -357,9 +367,9 @@ impl<'a> Interpreter<'a> {
             Expression::Variable(var) => {
                 match context.get_variable(var) {
                     Ok(v) => Ok(Some(v.value.clone())),
-                    Err(_) => Ok(Some(self.constants.get_variable(var)?.value.clone()))
+                    Err(_) => Ok(Some(self.get_constant_variable(var)?.value.clone()))
                 }
-            }
+            },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let value = self.execute_expression_and_expect_value(expr_right, context)?;
@@ -525,7 +535,7 @@ impl<'a> Interpreter<'a> {
     fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context) -> Result<Option<Value>, InterpreterError> {
         let mut accept_else = false;
         for statement in statements {
-            *self.count_expr.borrow_mut() += 1;
+            self.increment_expr()?;
             match statement {
                 Statement::Break => break,
                 Statement::Continue => break,
@@ -710,5 +720,9 @@ impl<'a> Interpreter<'a> {
             Some(val) => Ok(val.to_int()?),
             None => return Err(InterpreterError::NoExitCode)
         }
+    }
+
+    pub fn get_count_expr(&self) -> u64 {
+        *self.count_expr.borrow()
     }
 }

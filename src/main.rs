@@ -25,14 +25,14 @@ fn main() {
             match Parser::new(result, &environment).parse() {
                 Ok(result) => {
                     println!("Parser: {:?}", result);
-                    match Interpreter::new(&result, &environment) {
+                    match Interpreter::new(&result, 0, &environment) {
                         Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
-                            Ok(value) => println!("Exit code: {}", value),
+                            Ok(value) => println!("Exit code: {} | Expressions executed: {}", value, interpreter.get_count_expr()),
                             Err(e) => println!("Error: {:?}", e)
                         },
                         Err(e) => println!("Interpreter error: {:?}", e)
                     };
-                } 
+                }
                 Err(e) => println!("Parser error: {:?}", e)
             };
         }
