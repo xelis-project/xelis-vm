@@ -1,30 +1,30 @@
 use crate::types::{Type, Value, Struct};
-use crate::functions::NativeFunction;
+use crate::functions::{FunctionType, NativeFunction};
+use std::collections::HashMap;
 
 pub struct Environment {
-    functions: Vec<NativeFunction>,
-    structures: Vec<Struct>
+    functions: Vec<FunctionType>,
+    structures: HashMap<String, Struct>
 }
 
 impl Environment {
-    pub fn new(functions: Vec<NativeFunction>, structures: Vec<Struct>) -> Self {
+    pub fn new() -> Self {
         Self {
-            functions,
-            structures
+            functions: Vec::new(),
+            structures: HashMap::new()
         }
     }
 
     pub fn default() -> Self {
-        let mut functions = Vec::new();
-        let /*mut*/ structures = Vec::new();
-        
-        functions.push(NativeFunction::new("println".to_owned(), None, vec![Type::Any], println, None));
+        let mut env = Self::new();
+
+        env.register_native_function(NativeFunction::new("println".to_owned(), None, vec![Type::Any], println, None));
 
         // Array
-        functions.push(NativeFunction::new("len".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], len, Some(Type::Int)));
-        functions.push(NativeFunction::new("push".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, None));
-        functions.push(NativeFunction::new("remove".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], remove, Some(Type::Any)));
-        functions.push(NativeFunction::new("slice".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, None));
+        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], len, Some(Type::Int)));
+        env.register_native_function(NativeFunction::new("push".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, None));
+        env.register_native_function(NativeFunction::new("remove".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], remove, Some(Type::Any)));
+        env.register_native_function(NativeFunction::new("slice".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, None));
 
         // String TODO
         /*functions.push(NativeFunction::new("len".to_owned(), Some(Type::String), vec![], len, Some(Type::Int)));
@@ -46,11 +46,24 @@ impl Environment {
         functions.push(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int, Type::Int], println, Some(Type::String)));
         functions.push(NativeFunction::new("format".to_owned(), Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, Some(Type::String)));
         */
-        Self::new(functions, structures)
+
+        env
     }
 
-    pub fn consume(self) -> (Vec<NativeFunction>, Vec<Struct>) {
-        (self.functions, self.structures)
+    pub fn register_native_function(&mut self, function: NativeFunction) {
+        self.functions.push(FunctionType::Native(function));
+    }
+
+    pub fn register_structure(&mut self, structure: Struct) -> Option<Struct> {
+        self.structures.insert(structure.name.clone(), structure)
+    }
+
+    pub fn get_functions(&self) -> &Vec<FunctionType> {
+        &self.functions
+    }
+
+    pub fn get_structure(&self, name: &String) -> Option<&Struct> {
+        self.structures.get(name)
     }
 }
 

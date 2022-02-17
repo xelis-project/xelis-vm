@@ -1,9 +1,10 @@
-use crate::functions::{FunctionType};
 use crate::expressions::{Statement, Expression, Operator};
+use crate::functions::{FunctionType};
+use crate::environment::Environment;
 use crate::parser::Program;
 use crate::types::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::cell::RefCell;
 
 #[derive(Debug)]
 pub enum InterpreterError {
@@ -34,14 +35,16 @@ struct Variable {
     value_type: Type
 }
 
-struct Context {
-    variables: Vec<HashMap<String, Variable>>
+struct Context<'a> {
+    variables: Vec<HashMap<String, Variable>>,
+    instance: Option<&'a mut Value>
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
-            variables: Vec::new()
+            variables: Vec::new(),
+            instance: None
         }
     }
 
@@ -120,33 +123,43 @@ impl Context {
 
         Ok(())
     }
+
+    pub fn get_instance(&self) -> &Option<&'a mut Value> {
+        &self.instance
+    }
+
+    pub fn set_instance(&mut self, instance: Option<&'a mut Value>) {
+        self.instance = instance;
+    }
 }
 
-pub struct Interpreter {
-    program: Program,
-    constants: Context,
-    count_expr: RefCell<usize>
+pub struct Interpreter<'a> {
+    program: &'a Program,
+    constants: Context<'a>,
+    count_expr: RefCell<usize>,
+    env: &'a Environment
 }
 
-impl Interpreter {
-    pub fn new(program: Program) -> Result<Self, InterpreterError> {
+impl<'a> Interpreter<'a> {
+    pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, InterpreterError> {
         let mut interpreter = Self {
             program,
             constants: Context::new(),
-            count_expr: RefCell::new(0)
+            count_expr: RefCell::new(0),
+            env
         };
 
         // Setup constants scope
         interpreter.constants.push_scope();
         while interpreter.program.constants.len() > 0 { // consume constants without "borrow partial move" error
-            let constant = interpreter.program.constants.remove(0); // TODO prevent shifting all values
+            let constant = &interpreter.program.constants[0]; // TODO prevent shifting all values
             // let mut clone = interpreter.constants.clone(); TODO
             let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut Context::new())?;
             let variable = Variable {
                 value,
-                value_type: constant.value_type
+                value_type: constant.value_type.clone()
             };
-            interpreter.constants.register_variable(constant.name, variable)?;
+            interpreter.constants.register_variable(constant.name.clone(), variable)?;
         }
 
         Ok(interpreter)
@@ -208,7 +221,7 @@ impl Interpreter {
     }
 
     fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
-        match Type::from_value(value, &self.program.structures) {
+        match Type::from_value(value, &self.program.structures) { // FIXME!
             Some(v) => Ok(v),
             None => Err(InterpreterError::TypeNotFound(value.clone()))
         }
@@ -228,21 +241,37 @@ impl Interpreter {
     }
 
     fn get_function(&self, name: &String, for_type: Option<Type>, parameters: &Vec<Type>) -> Result<&FunctionType, InterpreterError> {
-        'funcs: for f in &self.program.functions {
+        let mut functions: Vec<&FunctionType> = self.program.functions.iter().map(|v| v).collect(); // merge two in one
+        for f in self.env.get_functions() {
+            functions.push(f);
+        }
+
+        'funcs: for f in &functions {
             if *f.get_name() == *name && for_type == *f.for_type() && f.get_parameters_count() == parameters.len() {
                 let f_types = f.get_parameters_types();
                 for i in 0..f_types.len() {
-                    if *f_types[i] != parameters[i] {
+                    if *f_types[i] != Type::Any && *f_types[i] != parameters[i] {
                         continue 'funcs;
                     }
                 }
                 return Ok(f)
             }
         }
+
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path<'a>(&self, path: &Expression, context: &'a mut Context) -> Result<(&'a mut Value, &'a Type), InterpreterError> {
+    fn get_structure(&self, name: &String) -> Result<&Struct, InterpreterError> {
+        match self.program.structures.get(name) {
+            Some(v) => Ok(v),
+            None => match self.env.get_structure(name) {
+                Some(v) => Ok(v),
+                None => return Err(InterpreterError::StructureNotFound(name.clone()))
+            }
+        }
+    }
+
+    fn get_from_path(&self, path: &Expression, context: &'a mut Context) -> Result<(&'a mut Value, &'a Type), InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(expr_index, context)?.to_int()? as usize;
@@ -256,9 +285,8 @@ impl Interpreter {
             }
             Expression::Path(left, right) => {
                 let (left_value, left_type) = self.get_from_path(left, context)?;
-                // TODO set left_value as instance ?
-                self.execute_expression(right, context)?;
-                panic!("")
+                //context.set_instance(Some(left_value));
+                self.get_from_path(right, context)
             },
             Expression::Variable(name) => {
                 let var = context.get_mut_variable(name)?;
@@ -297,16 +325,12 @@ impl Interpreter {
                 Ok(Some(Value::Array(values)))
             },
             Expression::StructConstructor(name, expr_fields) => {
-                match self.program.structures.get(name) {
-                    Some(_) => { // TODO check validity ?
-                        let mut fields = HashMap::new();
-                        for (name, expr) in expr_fields {
-                            fields.insert(name.clone(), self.execute_expression_and_expect_value(&expr, context)?);
-                        }
-                        Ok(Some(Value::Struct(name.clone(), fields)))
-                    },
-                    None => Err(InterpreterError::StructureNotFound(name.clone()))
+                //self.get_structure(name)?;
+                let mut fields = HashMap::new();
+                for (name, expr) in expr_fields {
+                    fields.insert(name.clone(), self.execute_expression_and_expect_value(&expr, context)?);
                 }
+                Ok(Some(Value::Struct(name.clone(), fields)))
             },
             Expression::ArrayCall(expr, expr_index) => {
                 let values = self.execute_expression_and_expect_value(&expr, context)?.to_vec()?;
@@ -655,8 +679,7 @@ impl Interpreter {
     fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
         match func {
             FunctionType::Native(ref f) => {
-                Err(InterpreterError::NotImplemented)
-                //f.call_function(current_value: &mut Value, parameters: Vec<Value>)
+                f.call_function(None, values)
             },
             FunctionType::Custom(ref f) => {
                 let mut context = Context::new();

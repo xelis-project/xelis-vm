@@ -68,7 +68,6 @@ impl Value {
         }
     }
 
-    // TODO struct
     pub fn as_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
@@ -132,7 +131,6 @@ impl Value {
         }
     }
 
-    // TODO struct
     pub fn to_map(self) -> Result<HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
@@ -235,8 +233,7 @@ impl Type {
                 Some(v) => Type::Array(Box::new(Type::from_value(v, structures)?)),
                 None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
             },
-            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone()),
-            _ => return None
+            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone())
         };
 
         Some(_type)

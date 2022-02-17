@@ -6,7 +6,7 @@ func factorial(n: long): long {
 }
 
 entry main() {
-    let a: long = 144L
+    let a: long = 20L
     println(factorial(a))
 
     return 0

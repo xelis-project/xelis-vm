@@ -21,10 +21,11 @@ fn main() {
     match Lexer::new(code.chars().collect()).get() {
         Ok(result) => {
             //println!("{:?}", result);
-            match Parser::new(result, Environment::default()).parse() {
+            let environment = Environment::default();
+            match Parser::new(result, &environment).parse() {
                 Ok(result) => {
                     println!("Parser: {:?}", result);
-                    match Interpreter::new(result) {
+                    match Interpreter::new(&result, &environment) {
                         Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
                             Ok(value) => println!("Exit code: {}", value),
                             Err(e) => println!("Error: {:?}", e)

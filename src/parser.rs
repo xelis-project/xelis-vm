@@ -118,12 +118,13 @@ impl Context {
     }
 }
 
-pub struct Parser {
+pub struct Parser<'a> {
     constants: Vec<DeclarationStatement>,
     tokens: Vec<Token>,
     functions: Vec<FunctionType>,
     structures: HashMap<String, Struct>,
-    context: Context
+    context: Context,
+    env: &'a Environment
 }
 
 #[derive(Debug)]
@@ -160,26 +161,15 @@ pub enum ParserError {
     EmptyArrayConstructor
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>, env: Environment) -> Self {
-        // first, we add the environment
-        let mut functions = Vec::new();
-        let mut structures = HashMap::new();
-        let (env_funcs, env_structures) = env.consume();
-        for func in env_funcs {
-            functions.push(FunctionType::Native(func));
-        }
-
-        for structure in env_structures {
-            structures.insert(structure.name.clone(), structure);
-        }
-
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<Token>, env: &'a Environment) -> Self {
         Parser {
             constants: Vec::new(),
             tokens,
             context: Context::new(),
-            functions,
-            structures
+            functions: Vec::new(),
+            structures: HashMap::new(),
+            env
         }
     }
 
@@ -968,7 +958,12 @@ impl Parser {
 
     // get a function exist based on signature (name + params)
     fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
-        'funcs: for f in &self.functions {
+        let mut functions: Vec<&FunctionType> = self.functions.iter().map(|v| v).collect(); // merge two in one
+        for f in self.env.get_functions() {
+            functions.push(f);
+        }
+
+        'funcs: for f in functions {
             if *f.get_name() == *name && f.get_parameters_count() == params.len() {
                 let types = f.get_parameters_types();
                 let same_type: bool = 
@@ -1006,7 +1001,10 @@ impl Parser {
     fn get_structure(&self, name: &String) -> Result<&Struct, ParserError> {
         match self.structures.get(name) {
             Some(v) => Ok(v),
-            None => return Err(ParserError::StructureNotFound(name.clone()))
+            None => match self.env.get_structure(name) {
+                Some(v) => Ok(v),
+                None => return Err(ParserError::StructureNotFound(name.clone()))
+            }
         }
     }
 
