@@ -95,7 +95,7 @@ impl Context {
         Err(InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn set_variable_value(&mut self, name: &String, value: Value, structures: &HashMap<String, Struct>) -> Result<(), InterpreterError> {
+    pub fn set_variable_value(&mut self, name: &String, value: Value, structures: &RefMap<String, Struct>) -> Result<(), InterpreterError> {
         let var = self.get_mut_variable(name)?;
         match Type::from_value(&value, structures) {
             Some(t) => {
@@ -129,7 +129,8 @@ pub struct Interpreter<'a> {
     max_expr: u64,
     count_expr: RefCell<u64>,
     constants: Option<Context>,
-    env: &'a Environment
+    env: &'a Environment,
+    ref_structures: RefMap<'a, String, Struct>
 }
 
 impl<'a> Interpreter<'a> {
@@ -139,8 +140,11 @@ impl<'a> Interpreter<'a> {
             max_expr,
             count_expr: RefCell::new(0),
             constants: None,
-            env
+            env,
+            ref_structures: RefMap::new()
         };
+
+        interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
 
         // register constants
         if interpreter.program.constants.len() > 0 {
@@ -232,7 +236,7 @@ impl<'a> Interpreter<'a> {
     }
 
     fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
-        match Type::from_value(value, &self.program.structures) { // FIXME!
+        match Type::from_value(value, &self.ref_structures) {
             Some(v) => Ok(v),
             None => Err(InterpreterError::TypeNotFound(value.clone()))
         }
@@ -270,16 +274,6 @@ impl<'a> Interpreter<'a> {
         }
 
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
-    }
-
-    fn get_structure(&self, name: &String) -> Result<&Struct, InterpreterError> {
-        match self.program.structures.get(name) {
-            Some(v) => Ok(v),
-            None => match self.env.get_structure(name) {
-                Some(v) => Ok(v),
-                None => return Err(InterpreterError::StructureNotFound(name.clone()))
-            }
-        }
     }
 
     fn get_from_path(&self, path: &Expression, context: &'a mut Context) -> Result<(&'a mut Value, &'a Type), InterpreterError> {
@@ -628,7 +622,7 @@ impl<'a> Interpreter<'a> {
 
                         context.register_variable(var.clone(), variable)?;
                         for val in values {
-                            context.set_variable_value(var, val, &self.program.structures)?;
+                            context.set_variable_value(var, val, &self.ref_structures)?;
                             match self.execute_statements(&statements, context)? {
                                 Some(v) => {
                                     context.pop_scope()?;
@@ -689,7 +683,7 @@ impl<'a> Interpreter<'a> {
     fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
         match func {
             FunctionType::Native(ref f) => {
-                f.call_function(None, values)
+                f.call_function(type_instance, values)
             },
             FunctionType::Custom(ref f) => {
                 let mut context = Context::new();
@@ -699,7 +693,6 @@ impl<'a> Interpreter<'a> {
                         value: values.remove(0),
                         value_type: param.get_type().clone()
                     };
-
                     context.register_variable(param.get_name().clone(), variable)?;
                 }
                 let result = self.execute_statements(f.get_statements(), &mut context);

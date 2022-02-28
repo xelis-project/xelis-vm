@@ -1,5 +1,7 @@
 use crate::interpreter::InterpreterError;
 use std::collections::HashMap;
+use std::collections::hash_map::RandomState;
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -181,6 +183,46 @@ pub struct Struct {
     pub fields: HashMap<String, Type> // order doesn't matter in fields, so use a HashMap for future
 }
 
+pub struct RefMap<'a, K, V = RandomState> {
+    maps: Vec<&'a HashMap<K, V>>
+}
+
+// link multiple maps in one struct for read-only
+impl<'a, K, V> RefMap<'a, K, V> {
+    pub fn new() -> Self {
+        RefMap {
+            maps: vec![]
+        }
+    }
+
+    pub fn from_vec(maps: Vec<&'a HashMap<K, V>>) -> Self {
+        RefMap {
+            maps
+        }
+    }
+
+    pub fn get(&self, key: &K) -> Option<&V>
+    where K: Hash + Eq {
+        for map in &self.maps {
+            match map.get(key) {
+                Some(v) => return Some(v),
+                None => {}
+            }
+        }
+        None
+    }
+
+    pub fn link_maps(&mut self, maps: Vec<&'a HashMap<K, V>>) {
+        for map in maps {
+            self.link_map(map);
+        }
+    }
+
+    pub fn link_map(&mut self, map: &'a HashMap<K, V>) {
+        self.maps.push(map);
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
     Null,
@@ -220,7 +262,7 @@ impl Type {
         Some(value)
     }
 
-    pub fn from_value(value: &Value, structures: &HashMap<String, Struct>) -> Option<Self> {
+    pub fn from_value(value: &Value, structures: &RefMap<String, Struct>) -> Option<Self> {
         let _type = match value {
             Value::Null => Type::Null,
             Value::Byte(_) => Type::Byte,
@@ -233,7 +275,7 @@ impl Type {
                 Some(v) => Type::Array(Box::new(Type::from_value(v, structures)?)),
                 None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
             },
-            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone())
+            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone()) // TODO ref
         };
 
         Some(_type)

@@ -1,6 +1,6 @@
 use crate::expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter};
 use crate::functions::{CustomFunction, FunctionType};
-use crate::types::{Value, Type, Struct};
+use crate::types::{Value, Type, Struct, RefMap};
 use crate::environment::Environment;
 use crate::token::Token;
 use std::collections::HashMap;
@@ -169,7 +169,7 @@ impl<'a> Parser<'a> {
             context: Context::new(),
             functions: Vec::new(),
             structures: HashMap::new(),
-            env
+            env,
         }
     }
 
@@ -265,7 +265,7 @@ impl<'a> Parser<'a> {
                     None => return Err(ParserError::FunctionNoReturnType(name.clone()))
                 }
             },
-            Expression::Value(ref val) => match Type::from_value(val, &self.structures) { // we have to clone everything due to this
+            Expression::Value(ref val) => match Type::from_value(val, &RefMap::from_vec(vec![&self.structures, self.env.get_structures()])) { // we have to clone everything due to this
                 Some(v) => v,
                 None => return Err(ParserError::EmptyValue)
             },

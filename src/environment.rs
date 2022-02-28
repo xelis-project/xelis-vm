@@ -65,6 +65,10 @@ impl Environment {
     pub fn get_structure(&self, name: &String) -> Option<&Struct> {
         self.structures.get(name)
     }
+
+    pub fn get_structures(&self) -> &HashMap<String, Struct> {
+        &self.structures
+    }
 }
 
 // native functions
