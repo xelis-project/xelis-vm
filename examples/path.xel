@@ -1,0 +1,9 @@
+struct Message {
+    value: string
+}
+
+entry main() {
+    let message: Message = Message { value: "Hello World!" }
+    println(message.value)
+    return 0
+}
