@@ -421,28 +421,35 @@ impl<'a> Parser<'a> {
                                 let mut fields = HashMap::new();
                                 for _ in 0..len {
                                     let field_name = self.next_identifier()?;
-                                    if fields.contains_key(&field_name) || !self.get_structure(&id)?.fields.contains_key(&field_name) {
-                                        return Err(ParserError::InvalidStructField(field_name))
-                                    }
-
-                                    match self.next() {
+                                    let field_value = match self.next() {
                                         Token::Comma => {
                                             if self.context.has_variable(&field_name) {
-                                                fields.insert(field_name.clone(), Expression::Variable(field_name));
+                                                Expression::Variable(field_name.clone())
                                             } else {
                                                 return Err(ParserError::UnexpectedVariable(field_name)) 
                                             }
                                         }
                                         Token::Colon => {
-                                            fields.insert(field_name, self.read_expression()?);
+                                            let value = self.read_expression()?;
                                             if *self.see() == Token::Comma {
                                                 self.next();
                                             }
+                                            value
                                         }
                                         token => {
                                             return Err(ParserError::UnexpectedToken(token))
                                         }
                                     };
+
+                                    let field_type = self.get_type_from_expression(&field_value)?;
+                                    let expected_field_type = match self.get_structure(&id)?.fields.get(&field_name) {
+                                        Some(v) => v,
+                                        None => return Err(ParserError::InvalidStructField(field_name.clone()))
+                                    };
+                                    if *expected_field_type != field_type {
+                                        return Err(ParserError::InvalidValueType(field_type, expected_field_type.clone()))
+                                    }
+                                    fields.insert(field_name, field_value);
                                 }
                                 self.expect_token(Token::BraceClose)?;
                                 Expression::StructConstructor(name, fields)
