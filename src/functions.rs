@@ -81,6 +81,10 @@ impl CustomFunction {
     pub fn get_parameters(&self) -> &Vec<Parameter> {
         &self.parameters
     }
+
+    pub fn get_instance_name(&self) -> &Option<String> {
+        &self.instance_name
+    }
 }
 
 #[derive(Debug)]

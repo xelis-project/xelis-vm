@@ -2,8 +2,12 @@ struct Message {
     value: string
 }
 
+func (m Message) to_string(): string {
+    return m.value
+}
+
 entry main() {
     let message: Message = Message { value: "Hello World!" }
-    println(message.value)
+    println(message.to_string())
     return 0
 }

@@ -77,6 +77,13 @@ impl Value {
         }
     }
 
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<String, Value>, InterpreterError> {
+        match self {
+            Value::Struct(_, fields) => Ok(fields),
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
+        }
+    }
+
     pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
@@ -317,6 +324,13 @@ impl Type {
         match &self {
             Type::Byte | Type::Short | Type::Int | Type::Long => true,
             _ => false
+        }
+    }
+
+    pub fn as_struct(&self) -> Result<&Struct, InterpreterError> {
+        match self {
+            Type::Struct(s) => Ok(s),
+            _ => Err(InterpreterError::ExpectedStructType)
         }
     }
 }
