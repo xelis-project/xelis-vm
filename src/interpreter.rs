@@ -33,27 +33,42 @@ pub enum InterpreterError {
     OperationNotNumberType
 }
 
+type Scope = HashMap<String, Variable>;
+
 struct Variable {
-    value: Value,
+    value: RefCell<Value>,
     value_type: Type
 }
 
+impl Variable {
+    pub fn new(value: Value, value_type: Type) -> Self {
+        Self {
+            value: RefCell::new(value),
+            value_type
+        }
+    }
+
+    pub fn get_value(&self) -> &RefCell<Value> {
+        &self.value
+    }
+
+    pub fn get_type(&self) -> &Type {
+        &self.value_type
+    }
+}
+
 struct Context {
-    variables: Vec<HashMap<String, Variable>>,
-    instance_type: Option<Type>,
-    instance: Option<Value>
+    variables: Vec<Scope>,
 }
 
 impl Context {
     pub fn new() -> Self {
         Self {
-            variables: Vec::new(),
-            instance_type: None,
-            instance: None
+            variables: Vec::new()
         }
     }
 
-    fn get_last_scope(&mut self) -> Result<&mut HashMap<String, Variable>, InterpreterError> {
+    fn get_last_scope(&mut self) -> Result<&mut Scope, InterpreterError> {
         let size = self.variables.len();
         if size == 0 {
             return Err(InterpreterError::NoScopeFound)
@@ -105,14 +120,15 @@ impl Context {
         let var = self.get_mut_variable(name)?;
         match Type::from_value(&value, structures) {
             Some(t) => {
-                if var.value_type != t {
-                    return Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
+                if *var.get_type() != t {
+                    Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
+                } else {
+                    *var.get_value().borrow_mut() = value;
+                    Ok(())
                 }
             },
-            None => return Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
+            None => Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
         }
-        var.value = value;
-        Ok(())
     }
 
     pub fn has_variable(&self, name: &String) -> bool {
@@ -158,10 +174,7 @@ impl<'a> Interpreter<'a> {
             context.push_scope();
             for constant in &interpreter.program.constants {
                 let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut context)?;
-                let variable = Variable {
-                    value,
-                    value_type: constant.value_type.clone()
-                };
+                let variable = Variable::new(value, constant.value_type.clone());
                 context.register_variable(constant.name.clone(), variable)?;
             }
             interpreter.constants = Some(context);
@@ -282,7 +295,7 @@ impl<'a> Interpreter<'a> {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path(&self, path: &Expression, context: &'a mut Context) -> Result<(&'a mut Value, &'a Type), InterpreterError> {
+    fn get_from_path(&self, path: &Expression, context: &mut Context) -> Result<(&mut Value, &Type), InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(expr_index, context)?.to_int()? as usize;
@@ -296,30 +309,23 @@ impl<'a> Interpreter<'a> {
             }
             Expression::Path(left, right) => {
                 let (left_value, left_type) = self.get_from_path(left, context)?;
-                let cloned_value: Value = left_value.clone();
-                context.instance_type = Some(left_type.clone());
-                context.instance = Some(cloned_value);
                 let res = self.get_from_path(right, context);
                 res
             },
             Expression::Variable(name) => {
-                if context.instance.is_some() { // TODO remove this if
-                    if let Some(value) = context.instance.as_mut() {
-                        match value.as_mut_map()?.get_mut(name) {
-                            Some(v) => {
-                                let v_type: &Type = match &context.instance_type {
-                                    Some(t) => match t.as_struct()?.fields.get(name) {
-                                        Some(v_type) => v_type,
-                                        None => return Err(InterpreterError::VariableNotFound(name.clone()))
-                                    },
+                if let Some(value) = context.instance.as_mut() {
+                    match value.as_mut_map()?.get_mut(name) {
+                        Some(v) => {
+                            let v_type: &Type = match &context.instance_type {
+                                Some(t) => match t.as_struct()?.fields.get(name) {
+                                    Some(v_type) => v_type,
                                     None => return Err(InterpreterError::VariableNotFound(name.clone()))
-                                };
-                                Ok((v, v_type))
-                            },
-                            None => Err(InterpreterError::VariableNotFound(name.clone()))
-                        }
-                    } else { // Impossible
-                        return Err(InterpreterError::VariableNotFound(name.clone()))
+                                },
+                                None => return Err(InterpreterError::VariableNotFound(name.clone()))
+                            };
+                            Ok((v, v_type))
+                        },
+                        None => Err(InterpreterError::VariableNotFound(name.clone()))
                     }
                 } else {
                     let var = context.get_mut_variable(name)?;
@@ -346,8 +352,8 @@ impl<'a> Interpreter<'a> {
                     values.push(self.execute_expression_and_expect_value(param, context)?);
                 }
 
-                let func = self.get_function(name, context.instance_type.take(), &self.get_types_from_values(&values)?)?;
-                self.execute_function(&func, context.instance.as_mut(), values)
+                let func = self.get_function(name, None, &self.get_types_from_values(&values)?)?;
+                self.execute_function(&func, None, values)
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = vec![];
@@ -566,10 +572,7 @@ impl<'a> Interpreter<'a> {
                 Statement::Break => break,
                 Statement::Continue => break,
                 Statement::Variable(var) => {
-                    let variable = Variable {
-                        value: self.execute_expression_and_expect_value(&var.value, context)?,
-                        value_type: var.value_type.clone()
-                    };
+                    let variable = Variable::new(self.execute_expression_and_expect_value(&var.value, context)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                 },
                 Statement::If(condition, statements) => {
@@ -618,10 +621,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Statement::For(var, condition, increment, statements) => {
                     context.push_scope();
-                    let variable = Variable {
-                        value: self.execute_expression_and_expect_value(&var.value, context)?,
-                        value_type: var.value_type.clone()
-                    };
+                    let variable = Variable::new(self.execute_expression_and_expect_value(&var.value, context)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                     loop {
                         if !self.execute_expression_and_expect_value(condition, context)?.to_bool()? {
@@ -647,11 +647,7 @@ impl<'a> Interpreter<'a> {
                     if values.len() != 0 {
                         context.push_scope();
                         let value_type = self.get_type_from_value(&values[0])?;
-                        let variable = Variable {
-                            value: Value::Null,
-                            value_type
-                        };
-
+                        let variable = Variable::new(Value::Null, value_type);
                         context.register_variable(var.clone(), variable)?;
                         for val in values {
                             context.set_variable_value(var, val, &self.ref_structures)?;
@@ -727,10 +723,7 @@ impl<'a> Interpreter<'a> {
                 match &f.get_instance_name() {
                     Some(name) => match type_instance {
                         Some(instance) => {
-                            let var = Variable {
-                                value: instance.clone(),
-                                value_type: func.for_type().clone().unwrap()
-                            };
+                            let var = Variable::new(instance.clone(), func.for_type().clone().unwrap());
                             context.register_variable(name.clone(), var)?;
                         },
                         None => return Err(InterpreterError::UnexpectedInstanceType)
@@ -739,10 +732,7 @@ impl<'a> Interpreter<'a> {
                 };
 
                 for param in f.get_parameters() {
-                    let variable = Variable {
-                        value: values.remove(0),
-                        value_type: param.get_type().clone()
-                    };
+                    let variable = Variable::new(values.remove(0), param.get_type().clone());
                     context.register_variable(param.get_name().clone(), variable)?;
                 }
                 let result = self.execute_statements(f.get_statements(), &mut context);
