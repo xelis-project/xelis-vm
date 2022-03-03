@@ -62,7 +62,8 @@ impl Context {
     }
 
     pub fn get_type_of_variable(&self, key: &String) -> Result<&Type, ParserError> {
-        for vars in &self.variables {
+        let vec: Vec<&HashMap<String, Type>> = self.variables.iter().rev().collect();
+        for vars in vec {
             if let Some(_type) = vars.get(key) {
                 return Ok(_type)
             }
@@ -72,10 +73,8 @@ impl Context {
     }
 
     pub fn has_variable(&self, key: &String) -> bool {
-        for vars in &self.variables {
-            if vars.contains_key(key) {
-                return true
-            }
+        if self.get_type_of_variable(key).is_ok() {
+            return true
         }
 
         match &self.current_type {
@@ -90,6 +89,10 @@ impl Context {
     pub fn register_variable(&mut self, key: String, var_type: Type) -> Result<(), ParserError> {
         if self.has_variable(&key) {
             return Err(ParserError::VariableNameAlreadyUsed(key))
+        }
+
+        if !self.has_scope() {
+            return Err(ParserError::NoScopeFound)
         }
 
         let last = self.variables.len() - 1;
@@ -143,6 +146,7 @@ pub enum ParserError {
     StructureNotFound(String),
     FunctionNotFound(String, usize),
     FunctionNoReturnType(String),
+    NoScopeFound,
     NoReturnFound,
     ReturnAlreadyInElse,
     EmptyValue,
@@ -526,9 +530,9 @@ impl<'a> Parser<'a> {
                     }
                     match last_expression {
                         Some(e) => {
-                            self.context.remove_current_type();
                             required_operator = !required_operator;
                             let left_type = self.get_type_from_expression(&e)?;
+                            self.context.remove_current_type();
                             let expr = self.read_expression()?;
                             let right_type = self.get_type_from_expression(&expr)?;
 

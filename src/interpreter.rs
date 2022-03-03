@@ -177,7 +177,7 @@ impl<'a> Interpreter<'a> {
             let mut context = Context::new();
             context.push_scope();
             for constant in &interpreter.program.constants {
-                let value = interpreter.execute_expression_and_expect_value(&constant.value, &mut context)?;
+                let value = interpreter.execute_expression_and_expect_value(None, &constant.value, &mut context)?;
                 let variable = Variable::new(value, constant.value_type.clone());
                 context.register_variable(constant.name.clone(), variable)?;
             }
@@ -299,10 +299,10 @@ impl<'a> Interpreter<'a> {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path<'b>(&self, on_value: Option<&'b mut Value>, path: &Expression, context: &'b mut Context) -> Result<&'b mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, on_value: Option<&'b mut Value>, path: &Expression, context: &mut Context) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(expr_index, context)?.to_int()? as usize;
+                let index = self.execute_expression_and_expect_value(None, expr_index, context)?.to_int()? as usize;
                 let array = self.get_from_path(on_value, expr, context)?;
                 let values: &mut Vec<Value> = array.as_mut_vec()?;
                 let size = values.len();
@@ -313,8 +313,7 @@ impl<'a> Interpreter<'a> {
             }
             Expression::Path(left, right) => {
                 let left_value = self.get_from_path(on_value, left, context)?;
-                let res = self.get_from_path(Some(left_value), right, context); // error[E0499]: cannot borrow `*context` as mutable more than once at a time
-                res
+                self.get_from_path(Some(left_value), right, context) // error[E0499]: cannot borrow `*context` as mutable more than once at a time
             },
             Expression::Variable(name) => match on_value {
                 Some(v) => match v.as_mut_map()?.get_mut(name) {
@@ -324,15 +323,17 @@ impl<'a> Interpreter<'a> {
                     None => Err(InterpreterError::VariableNotFound(name.clone()))
                 },
                 None => {
-                    Ok(context.get_mut_variable(name)?.get_mut_value())
+                    Err(InterpreterError::VariableNotFound(name.clone()))
+                    //panic!("{:?}", name)
+                    //Ok(&'b mut context.get_mut_variable(name)?.get_mut_value())
                 }
             }
             _ => Err(InterpreterError::ExpectedPath)
         }
     }
 
-    fn execute_expression_and_expect_value(&self, expr: &Expression, context: &mut Context) -> Result<Value, InterpreterError> {
-        match self.execute_expression(None, expr, context)? {
+    fn execute_expression_and_expect_value(&self, on_value: Option<&mut Value>, expr: &Expression, context: &mut Context) -> Result<Value, InterpreterError> {
+        match self.execute_expression(on_value, expr, context)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
         }
@@ -344,7 +345,7 @@ impl<'a> Interpreter<'a> {
             Expression::FunctionCall(name, parameters) => {
                 let mut values: Vec<Value> = Vec::new();
                 for param in parameters {
-                    values.push(self.execute_expression_and_expect_value(param, context)?);
+                    values.push(self.execute_expression_and_expect_value(None, param, context)?);
                 }
 
                 match on_value {
@@ -361,7 +362,7 @@ impl<'a> Interpreter<'a> {
             Expression::ArrayConstructor(expressions) => {
                 let mut values = vec![];
                 for expr in expressions {
-                    let value = self.execute_expression_and_expect_value(&expr, context)?;
+                    let value = self.execute_expression_and_expect_value(None, &expr, context)?;
                     values.push(value);
                 }
 
@@ -370,13 +371,13 @@ impl<'a> Interpreter<'a> {
             Expression::StructConstructor(name, expr_fields) => {
                 let mut fields = HashMap::new();
                 for (name, expr) in expr_fields {
-                    fields.insert(name.clone(), self.execute_expression_and_expect_value(&expr, context)?);
+                    fields.insert(name.clone(), self.execute_expression_and_expect_value(None, &expr, context)?);
                 }
                 Ok(Some(Value::Struct(name.clone(), fields)))
             },
             Expression::ArrayCall(expr, expr_index) => {
-                let values = self.execute_expression_and_expect_value(&expr, context)?.to_vec()?;
-                let index = self.execute_expression_and_expect_value(&expr_index, context)?.to_int()? as usize;
+                let values = self.execute_expression_and_expect_value(on_value, &expr, context)?.to_vec()?;
+                let index = self.execute_expression_and_expect_value(None, &expr_index, context)?.to_int()? as usize;
 
                 Ok(match values.get(index) {
                     Some(v) => Some(v.clone()),
@@ -384,15 +385,15 @@ impl<'a> Interpreter<'a> {
                 })
             },
             Expression::IsNot(expr) => {
-                let val = self.execute_expression_and_expect_value(&expr, context)?.to_bool()?;
+                let val = self.execute_expression_and_expect_value(None, &expr, context)?.to_bool()?;
                 Ok(Some(Value::Boolean(!val)))
             }
             Expression::SubExpression(expr) => self.execute_expression(None, expr, context),
             Expression::Ternary(condition, left, right) => {
-                if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
-                    Ok(Some(self.execute_expression_and_expect_value(&left, context)?))
+                if self.execute_expression_and_expect_value(None, &condition, context)?.to_bool()? {
+                    Ok(Some(self.execute_expression_and_expect_value(None, &left, context)?))
                 } else {
-                    Ok(Some(self.execute_expression_and_expect_value(&right, context)?))
+                    Ok(Some(self.execute_expression_and_expect_value(None, &right, context)?))
                 }
             }
             Expression::Value(v) => Ok(Some(v.clone())),
@@ -402,8 +403,8 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
-                    let value = self.execute_expression_and_expect_value(expr_right, context)?;
-                    let path_value = self.get_from_path(on_value, expr_left, context)?;
+                    let value = self.execute_expression_and_expect_value(None, expr_right, context)?;
+                    let path_value = self.get_from_path(None, expr_left, context)?; // TODO verify
                     let path_type = self.get_type_from_value(&path_value)?;
                     let value_type = self.get_type_from_value(&value)?;
 
@@ -455,8 +456,8 @@ impl<'a> Interpreter<'a> {
                     };
                     Ok(None)
                 } else {
-                    let left = self.execute_expression_and_expect_value(&expr_left, context)?;
-                    let right = self.execute_expression_and_expect_value(&expr_right, context)?;
+                    let left = self.execute_expression_and_expect_value(None, &expr_left, context)?;
+                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
                     let left_type = self.get_type_from_value(&left)?;
                     let right_type = self.get_type_from_value(&right)?;
                     if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
@@ -555,7 +556,22 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             },
-            e => { // Path
+            Expression::Path(left, right) if on_value.is_none() => { // Path
+                if let Expression::Variable(var_name) = left.as_ref() {
+                    let var = context.get_mut_variable(var_name)?;
+                    let mut instance_value = var.get_value().clone(); // TODO
+                    let value: Option<Value> = if let Expression::FunctionCall(_, _) = right.as_ref() {
+                        self.execute_expression(Some(&mut instance_value), right, context)?
+                    } else {
+                        Some(self.get_from_path(Some(&mut instance_value), right, context)?.clone())
+                    };
+                    Ok(value)
+                } else {
+                    let mut left_value = self.execute_expression_and_expect_value(on_value, left, context)?;
+                    self.execute_expression(Some(&mut left_value), right, context)
+                }
+            },
+            e => {
                 let left_value = self.get_from_path(on_value, e, context)?;
                 Ok(Some(left_value.clone()))
             }
@@ -570,11 +586,11 @@ impl<'a> Interpreter<'a> {
                 Statement::Break => break,
                 Statement::Continue => break,
                 Statement::Variable(var) => {
-                    let variable = Variable::new(self.execute_expression_and_expect_value(&var.value, context)?, var.value_type.clone());
+                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, context)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                 },
                 Statement::If(condition, statements) => {
-                    if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
+                    if self.execute_expression_and_expect_value(None, &condition, context)?.to_bool()? {
                         context.push_scope();
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
@@ -590,7 +606,7 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 Statement::ElseIf(condition, statements) => if accept_else {
-                    if self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
+                    if self.execute_expression_and_expect_value(None, &condition, context)?.to_bool()? {
                         context.push_scope();
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
@@ -619,10 +635,10 @@ impl<'a> Interpreter<'a> {
                 }
                 Statement::For(var, condition, increment, statements) => {
                     context.push_scope();
-                    let variable = Variable::new(self.execute_expression_and_expect_value(&var.value, context)?, var.value_type.clone());
+                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, context)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                     loop {
-                        if !self.execute_expression_and_expect_value(condition, context)?.to_bool()? {
+                        if !self.execute_expression_and_expect_value(None, condition, context)?.to_bool()? {
                             break;
                         }
 
@@ -641,7 +657,7 @@ impl<'a> Interpreter<'a> {
                     context.pop_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
-                    let values = self.execute_expression_and_expect_value(expr, context)?.to_vec()?;
+                    let values = self.execute_expression_and_expect_value(None, expr, context)?.to_vec()?;
                     if values.len() != 0 {
                         context.push_scope();
                         let value_type = self.get_type_from_value(&values[0])?;
@@ -662,7 +678,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::While(condition, statements) => {
                     context.push_scope();
-                    while self.execute_expression_and_expect_value(&condition, context)?.to_bool()? {
+                    while self.execute_expression_and_expect_value(None, &condition, context)?.to_bool()? {
                         match self.execute_statements(&statements, context)? {
                             Some(v) => {
                                 context.pop_scope()?;
@@ -675,7 +691,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Return(opt) => {
                     return Ok(match opt {
-                        Some(v) => Some(self.execute_expression_and_expect_value(&v, context)?),
+                        Some(v) => Some(self.execute_expression_and_expect_value(None, &v, context)?),
                         None => None
                     })
                 },
