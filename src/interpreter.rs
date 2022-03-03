@@ -299,7 +299,7 @@ impl<'a> Interpreter<'a> {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path(&self, on_value: Option<&mut Value>, path: &Expression, context: &mut Context) -> Result<&mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, on_value: Option<&'b mut Value>, path: &Expression, context: &'b mut Context) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(expr_index, context)?.to_int()? as usize;
@@ -313,7 +313,7 @@ impl<'a> Interpreter<'a> {
             }
             Expression::Path(left, right) => {
                 let left_value = self.get_from_path(on_value, left, context)?;
-                let res = self.get_from_path(Some(left_value), right, context);
+                let res = self.get_from_path(Some(left_value), right, context); // error[E0499]: cannot borrow `*context` as mutable more than once at a time
                 res
             },
             Expression::Variable(name) => match on_value {
