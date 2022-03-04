@@ -33,36 +33,8 @@ pub enum InterpreterError {
     OperationNotNumberType
 }
 
-type Scope = HashMap<String, Variable>;
-
-struct Variable {
-    value: Value,
-    value_type: Type
-}
-
-impl Variable {
-    pub fn new(value: Value, value_type: Type) -> Self {
-        Self {
-            value: value,
-            value_type
-        }
-    }
-
-    pub fn get_value(&self) -> &Value {
-        &self.value
-    }
-
-    pub fn get_mut_value(&mut self) -> &mut Value {
-        &mut self.value
-    }
-
-    pub fn get_type(&self) -> &Type {
-        &self.value_type
-    }
-}
-
 struct Context {
-    variables: Vec<Scope>,
+    variables: Vec<Scope>
 }
 
 impl Context {
@@ -127,13 +99,13 @@ impl Context {
         match Type::from_value(&value, structures) {
             Some(t) => {
                 if *var.get_type() != t {
-                    Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
+                    Err(InterpreterError::ExpectedValueType(var.get_type().clone()))
                 } else {
                     *var.get_mut_value() = value;
                     Ok(())
                 }
             },
-            None => Err(InterpreterError::ExpectedValueType(var.value_type.clone()))
+            None => Err(InterpreterError::ExpectedValueType(var.get_type().clone()))
         }
     }
 
@@ -226,9 +198,9 @@ impl<'a> Interpreter<'a> {
                             Some(r_v) => {
                                 let field_type = match structure.fields.get(k) {
                                     Some(field) => field,
-                                    None => return Err(InterpreterError::InvalidStructValue(v.clone()))
+                                    None => return Err(InterpreterError::InvalidStructValue(v.get_value().clone()))
                                 };
-                                self.is_same_value(field_type, v, r_v)?
+                                self.is_same_value(field_type, v.get_value(), r_v.get_value())?
                             },
                             None => false
                         } {
@@ -301,11 +273,11 @@ impl<'a> Interpreter<'a> {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path<'b>(&self, on_value: Option<impl FnOnce(&'b mut Context) -> &'b mut Value>, path: &Expression, context: &'b mut Context) -> Result<&'b mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, path: &Expression, context: &'b mut Context) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(None, expr_index, context)?.to_int()? as usize;
-                let array = self.get_from_path(on_value, expr, context)?;
+                let array = self.get_from_path(expr, context)?;
                 let values: &mut Vec<Value> = array.as_mut_vec()?;
                 let size = values.len();
                 match values.get_mut(index as usize) {
@@ -314,18 +286,10 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Path(left, right) => {
-                let left_value = |context| self.get_from_path(on_value, left, context).unwrap();
-                self.get_from_path(Some(left_value), right, context)
+                let left_value = self.get_from_path(left, context)?;
+                self.get_from_path(right, context)
             },
             Expression::Variable(name) => {
-                if let Some(v) = on_value {
-                    return match (v)(context).as_mut_map()?.get_mut(name) {
-                        Some(value) => {
-                            Ok(value)
-                        },
-                        None => Err(InterpreterError::VariableNotFound(name.clone()))
-                    }
-                }
                 Ok(context.get_mut_variable(name)?.get_mut_value())
             }
             _ => Err(InterpreterError::ExpectedPath)
@@ -369,9 +333,12 @@ impl<'a> Interpreter<'a> {
                 Ok(Some(Value::Array(values)))
             },
             Expression::StructConstructor(name, expr_fields) => {
-                let mut fields = HashMap::new();
+                let mut fields: Scope = HashMap::new();
                 for (name, expr) in expr_fields {
-                    fields.insert(name.clone(), self.execute_expression_and_expect_value(None, &expr, context)?);
+                    let value = self.execute_expression_and_expect_value(None, &expr, context)?;
+                    let value_type = self.get_type_from_value(&value)?; // TODO check from struct type
+                    let variable = Variable::new(value, value_type);
+                    fields.insert(name.clone(), variable);
                 }
                 Ok(Some(Value::Struct(name.clone(), fields)))
             },
@@ -557,17 +524,15 @@ impl<'a> Interpreter<'a> {
                 }
             },
             e => {
-                let left_value = match on_value {
-                    Some(v) => self.get_from_path(Some(|_| v), e, context)?.clone(),
-                    None => self.get_from_path(Interpreter::none(&|_| unreachable!()), e, context)?.clone()
-                };
-                Ok(Some(left_value))
+                if let Some(instance) = on_value {
+                    context.push_scope(); // TODO
+                    instance.as_mut_map()?;
+                    context.pop_scope()?;
+                }
+
+                Ok(Some(self.get_from_path(e, context)?.clone()))
             }
         }
-    }
-
-    fn none<T>(_value: T) -> Option<T> {
-        None
     }
 
     fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context) -> Result<Option<Value>, InterpreterError> {

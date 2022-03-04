@@ -15,7 +15,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(String, HashMap<String, Value>),
+    Struct(String, Scope),
     Array(Vec<Value>)
 }
 
@@ -70,14 +70,14 @@ impl Value {
         }
     }
 
-    pub fn as_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&Scope, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<String, Value>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut Scope, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -140,7 +140,7 @@ impl Value {
         }
     }
 
-    pub fn to_map(self) -> Result<HashMap<String, Value>, InterpreterError> {
+    pub fn to_map(self) -> Result<Scope, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -173,7 +173,7 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
-                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v.get_value())).collect();
                 write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
@@ -332,5 +332,34 @@ impl Type {
             Type::Struct(s) => Ok(s),
             _ => Err(InterpreterError::ExpectedStructType)
         }
+    }
+}
+
+pub type Scope = HashMap<String, Variable>;
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    value: Value,
+    value_type: Type
+}
+
+impl Variable {
+    pub fn new(value: Value, value_type: Type) -> Self {
+        Self {
+            value: value,
+            value_type
+        }
+    }
+
+    pub fn get_value(&self) -> &Value {
+        &self.value
+    }
+
+    pub fn get_mut_value(&mut self) -> &mut Value {
+        &mut self.value
+    }
+
+    pub fn get_type(&self) -> &Type {
+        &self.value_type
     }
 }
