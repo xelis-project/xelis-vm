@@ -33,7 +33,7 @@ pub enum Statement {
     Variable(DeclarationStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     Equals, // ==
     NotEquals, // !=

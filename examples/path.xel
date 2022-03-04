@@ -1,13 +1,23 @@
-struct Message {
+struct Value {
     value: string
 }
 
+func (v Value) my_value(): string {
+    return v.value
+}
+
+struct Message {
+    value: Value
+}
+
 func (m Message) to_string(): string {
-    return m.value
+    return m.value.value
 }
 
 entry main() {
-    let message: Message = Message { value: "Hello World!" }
+    let message: Message = Message { value: Value { value: "Hello World!" } }
     println(message.to_string())
+    message.value.value += " from path"
+    println(message.value.my_value())
     return 0
 }

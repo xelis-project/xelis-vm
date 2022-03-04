@@ -17,7 +17,7 @@ func (r Rectangle) area(): int {
 
 entry main() {
     let rectangle: Rectangle = Rectangle { height: Value { value: 10 }, width: Value { value: 20 } }
-    rectangle.area()
+    println("Area: " + rectangle.area())
 
     return 0
 }

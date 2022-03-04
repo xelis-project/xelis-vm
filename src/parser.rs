@@ -984,7 +984,6 @@ impl<'a> Parser<'a> {
 
         'funcs: for f in functions {
             if *f.get_name() == *name && f.get_parameters_count() == params.len() {
-                let types = f.get_parameters_types();
                 let same_type: bool = 
                 if let Some(type_a) = for_type {
                     if let Some(type_b) = f.for_type() {
@@ -997,6 +996,7 @@ impl<'a> Parser<'a> {
                 };
 
                 if same_type {
+                    let types = f.get_parameters_types();
                     for i in 0..params.len() {
                         let _type = types[i];
                         if *params[i] != *_type && *_type != Type::Any {

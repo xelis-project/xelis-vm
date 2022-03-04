@@ -1,7 +1,9 @@
 use crate::interpreter::InterpreterError;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
+use std::cell::RefCell;
 use std::hash::Hash;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -16,7 +18,7 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Struct(String, Scope),
-    Array(Vec<Value>)
+    Array(Vec<RefValue>)
 }
 
 impl Value {
@@ -84,14 +86,14 @@ impl Value {
         }
     }
 
-    pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
+    pub fn as_vec(&self) -> Result<&Vec<RefValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
         }
     }
 
-    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<Value>, InterpreterError> {
+    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<RefValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -147,7 +149,7 @@ impl Value {
         }
     }
 
-    pub fn to_vec(self) -> Result<Vec<Value>, InterpreterError> {
+    pub fn to_vec(self) -> Result<Vec<RefValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -173,11 +175,11 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
-                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v.get_value())).collect();
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v.get_value().borrow())).collect();
                 write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
                 write!(f, "[{}]", s.join(", "))
             },
         }
@@ -279,7 +281,7 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
             Value::Array(values) => match values.get(0) {
-                Some(v) => Type::Array(Box::new(Type::from_value(v, structures)?)),
+                Some(v) => Type::Array(Box::new(Type::from_value(&v.borrow(), structures)?)),
                 None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
             },
             Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone()) // TODO ref
@@ -336,27 +338,28 @@ impl Type {
 }
 
 pub type Scope = HashMap<String, Variable>;
+pub type RefValue = Rc<RefCell<Value>>;
 
 #[derive(Debug, Clone)]
 pub struct Variable {
-    value: Value,
+    value: RefValue,
     value_type: Type
 }
 
 impl Variable {
     pub fn new(value: Value, value_type: Type) -> Self {
         Self {
-            value: value,
+            value: Rc::new(RefCell::new(value)),
             value_type
         }
     }
 
-    pub fn get_value(&self) -> &Value {
+    pub fn get_value(&self) -> &RefValue {
         &self.value
     }
 
-    pub fn get_mut_value(&mut self) -> &mut Value {
-        &mut self.value
+    pub fn set_value(&mut self, value: RefValue) {
+        self.value = value;
     }
 
     pub fn get_type(&self) -> &Type {

@@ -1,6 +1,8 @@
 use crate::types::{Type, Value, Struct};
 use crate::functions::{FunctionType, NativeFunction};
 use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Environment {
     functions: Vec<FunctionType>,
@@ -83,7 +85,7 @@ fn len(zelf: &mut Value, _: Vec<Value>) -> Option<Value> {
 fn push(zelf: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
     let param = parameters.remove(0);
     if let Value::Array(ref mut values) = zelf {
-        values.push(param)
+        values.push(Rc::new(RefCell::new(param)));
     }
 
     None
@@ -93,7 +95,7 @@ fn remove(zelf: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
     let param = parameters.remove(0);
     if let Value::Array(ref mut values) = zelf {
         if let Value::Int(index) = param {
-            return Some(values.remove(index as usize))
+            return Some(values.remove(index as usize).borrow().clone())
         }
     }
 
