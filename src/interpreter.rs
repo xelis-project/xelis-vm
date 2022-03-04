@@ -99,7 +99,8 @@ impl Context {
     }
 
     pub fn get_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
-        for vars in &self.variables {
+        let vec: Vec<&Scope> = self.variables.iter().rev().collect();
+        for vars in vec {
             match vars.get(name) {
                 Some(ref var) => return Ok(var),
                 None => {}
@@ -110,7 +111,8 @@ impl Context {
     }
 
     pub fn get_mut_variable(&mut self, name: &String) -> Result<&mut Variable, InterpreterError> {
-        for vars in &mut self.variables {
+        let vec: Vec<&mut Scope> = self.variables.iter_mut().rev().collect();
+        for vars in vec {
             match vars.get_mut(name) {
                 Some(var) => return Ok(var),
                 None => {}
@@ -299,7 +301,7 @@ impl<'a> Interpreter<'a> {
         return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
     }
 
-    fn get_from_path<'b>(&self, on_value: Option<&'b mut Value>, path: &Expression, context: &mut Context) -> Result<&'b mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, on_value: Option<impl FnOnce(&'b mut Context) -> &'b mut Value>, path: &Expression, context: &'b mut Context) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(None, expr_index, context)?.to_int()? as usize;
@@ -312,21 +314,19 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Path(left, right) => {
-                let left_value = self.get_from_path(on_value, left, context)?;
-                self.get_from_path(Some(left_value), right, context) // error[E0499]: cannot borrow `*context` as mutable more than once at a time
+                let left_value = |context| self.get_from_path(on_value, left, context).unwrap();
+                self.get_from_path(Some(left_value), right, context)
             },
-            Expression::Variable(name) => match on_value {
-                Some(v) => match v.as_mut_map()?.get_mut(name) {
-                    Some(value) => {
-                        Ok(value)
-                    },
-                    None => Err(InterpreterError::VariableNotFound(name.clone()))
-                },
-                None => {
-                    Err(InterpreterError::VariableNotFound(name.clone()))
-                    //panic!("{:?}", name)
-                    //Ok(&'b mut context.get_mut_variable(name)?.get_mut_value())
+            Expression::Variable(name) => {
+                if let Some(v) = on_value {
+                    return match (v)(context).as_mut_map()?.get_mut(name) {
+                        Some(value) => {
+                            Ok(value)
+                        },
+                        None => Err(InterpreterError::VariableNotFound(name.clone()))
+                    }
                 }
+                Ok(context.get_mut_variable(name)?.get_mut_value())
             }
             _ => Err(InterpreterError::ExpectedPath)
         }
@@ -404,7 +404,7 @@ impl<'a> Interpreter<'a> {
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let value = self.execute_expression_and_expect_value(None, expr_right, context)?;
-                    let path_value = self.get_from_path(None, expr_left, context)?; // TODO verify
+                    let path_value: &mut Value = on_value.unwrap(); // TODO verify
                     let path_type = self.get_type_from_value(&path_value)?;
                     let value_type = self.get_type_from_value(&value)?;
 
@@ -556,26 +556,18 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             },
-            Expression::Path(left, right) if on_value.is_none() => { // Path
-                if let Expression::Variable(var_name) = left.as_ref() {
-                    let var = context.get_mut_variable(var_name)?;
-                    let mut instance_value = var.get_value().clone(); // TODO
-                    let value: Option<Value> = if let Expression::FunctionCall(_, _) = right.as_ref() {
-                        self.execute_expression(Some(&mut instance_value), right, context)?
-                    } else {
-                        Some(self.get_from_path(Some(&mut instance_value), right, context)?.clone())
-                    };
-                    Ok(value)
-                } else {
-                    let mut left_value = self.execute_expression_and_expect_value(on_value, left, context)?;
-                    self.execute_expression(Some(&mut left_value), right, context)
-                }
-            },
             e => {
-                let left_value = self.get_from_path(on_value, e, context)?;
-                Ok(Some(left_value.clone()))
+                let left_value = match on_value {
+                    Some(v) => self.get_from_path(Some(|_| v), e, context)?.clone(),
+                    None => self.get_from_path(Interpreter::none(&|_| unreachable!()), e, context)?.clone()
+                };
+                Ok(Some(left_value))
             }
         }
+    }
+
+    fn none<T>(_value: T) -> Option<T> {
+        None
     }
 
     fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context) -> Result<Option<Value>, InterpreterError> {

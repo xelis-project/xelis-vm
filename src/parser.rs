@@ -328,9 +328,17 @@ impl<'a> Parser<'a> {
     }
 
     fn read_expression(&mut self) -> Result<Expression, ParserError> {
+        self.read_expr(true)
+    }
+
+    fn read_expr(&mut self, accept_operator: bool) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
-        while !self.see().should_stop() && (required_operator == self.see().is_operator() || (*self.see() == Token::BracketOpen && last_expression.is_none())) {
+        while !self.see().should_stop() && ((required_operator == self.see().is_operator()) || (*self.see() == Token::BracketOpen && last_expression.is_none())) {
+            if !accept_operator && required_operator {
+                break
+            }
+
             let expr: Expression = match self.next() {
                 Token::BracketOpen => {
                     match last_expression {
@@ -486,7 +494,7 @@ impl<'a> Parser<'a> {
                         Some(value) => {
                             let _type = self.get_type_from_expression(&value)?;
                             self.context.set_current_type(_type)?;
-                            let right_expr = self.read_expression()?;
+                            let right_expr = self.read_expr(false)?;
                             self.context.remove_current_type();
                             required_operator = !required_operator; // because we read operator DOT + right expression
                             Expression::Path(Box::new(value), Box::new(right_expr))
