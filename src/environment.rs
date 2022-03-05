@@ -1,5 +1,6 @@
-use crate::types::{Type, Value, Struct};
-use crate::functions::{FunctionType, NativeFunction};
+use crate::functions::{FunctionType, NativeFunction, FnInstance, FnReturnType};
+use crate::types::{Type, Value, RefValue, Struct};
+use crate::interpreter::InterpreterError;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,17 +21,17 @@ impl Environment {
     pub fn default() -> Self {
         let mut env = Self::new();
 
-        env.register_native_function(NativeFunction::new("println".to_owned(), None, vec![Type::Any], println, None));
+        env.register_native_function(NativeFunction::new("println".to_owned(), None, vec![Type::Any], println, 1, None));
 
         // Array
-        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], len, Some(Type::Int)));
-        env.register_native_function(NativeFunction::new("push".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, None));
-        env.register_native_function(NativeFunction::new("remove".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], remove, Some(Type::Any)));
-        env.register_native_function(NativeFunction::new("slice".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, None));
+        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::Int)));
+        env.register_native_function(NativeFunction::new("push".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, 1, None));
+        env.register_native_function(NativeFunction::new("remove".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], remove, 1, Some(Type::Any)));
+        env.register_native_function(NativeFunction::new("slice".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::Any)))));
 
         // String TODO
-        /*functions.push(NativeFunction::new("len".to_owned(), Some(Type::String), vec![], len, Some(Type::Int)));
-        functions.push(NativeFunction::new("trim".to_owned(), Some(Type::String), vec![], println, Some(Type::String)));
+        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::String), vec![], len, 1, Some(Type::Int)));
+        /*functions.push(NativeFunction::new("trim".to_owned(), Some(Type::String), vec![], println, Some(Type::String)));
         functions.push(NativeFunction::new("contains".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Boolean)));
         functions.push(NativeFunction::new("contains_ignore_case".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Boolean)));
         functions.push(NativeFunction::new("index_of".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Int)));
@@ -74,44 +75,51 @@ impl Environment {
 }
 
 // native functions
-fn len(zelf: &mut Value, _: Vec<Value>) -> Option<Value> {
-    if let Value::Array(values) = zelf {
-        return Some(Value::Int(values.len() as u64))
-    }
-
-    None
+fn len(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    let len = match zelf? {
+        Value::Array(values) => values.len(),
+        Value::String(s) => s.len(),
+        v => return Err(InterpreterError::InvalidValue(v.clone(), Type::String))
+    };
+    Ok(Some(Value::Int(len as u64)))
 }
 
-fn push(zelf: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+fn push(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let param = parameters.remove(0);
-    if let Value::Array(ref mut values) = zelf {
-        values.push(Rc::new(RefCell::new(param)));
+    zelf?.as_mut_vec()?.push(Rc::new(RefCell::new(param)));
+    Ok(None)
+}
+
+fn remove(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let index = parameters.remove(0).to_int()? as usize;
+    Ok(Some(zelf?.as_mut_vec()?.remove(index).borrow().clone()))
+}
+
+fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let start = parameters.remove(0).to_int()?;
+    let end = parameters.remove(0).to_int()?;
+
+    let vec: &Vec<RefValue> = zelf?.as_vec()?;
+    let len_u64 = vec.len() as u64;
+    if start >= len_u64 || end >= len_u64 || start >= end {
+        return Err(InterpreterError::InvalidRange(start, end))
     }
 
-    None
-}
-
-fn remove(zelf: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
-    let param = parameters.remove(0);
-    if let Value::Array(ref mut values) = zelf {
-        if let Value::Int(index) = param {
-            return Some(values.remove(index as usize).borrow().clone())
-        }
+    let mut slice: Vec<RefValue> = Vec::new();
+    for i in start..end {
+        let value = match vec.get(i as usize) {
+            Some(v) => v.clone(), // due to RefValue, slice are connected.
+            None => return Err(InterpreterError::NoValueFoundAtIndex(i))
+        };
+        slice.push(value);
     }
 
-    None
+    Ok(Some(Value::Array(slice)))
 }
 
-fn slice(zelf: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
-    let start = parameters.remove(0);
-    let end = parameters.remove(1);
-
-    None
-}
-
-fn println(_: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+fn println(_: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let param = parameters.remove(0);
     println!("{}", param);
 
-    None
+    Ok(None)
 }

@@ -22,9 +22,12 @@ pub enum InterpreterError {
     ExpectedPath,
     UnexpectedInstanceType,
     ExpectedStructType,
+    NativeFunctionExpectedInstance,
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
+    InvalidRange(u64, u64),
+    NoValueFoundAtIndex(u64),
     InvalidStructValue(Value),
     InvalidValue(Value, Type), // got value, but expected type
     VariableNotFound(String),
@@ -233,7 +236,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
+    pub fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
         match Type::from_value(value, &self.ref_structures) {
             Some(v) => Ok(v),
             None => Err(InterpreterError::TypeNotFound(value.clone()))
@@ -714,7 +717,7 @@ impl<'a> Interpreter<'a> {
 
         match func {
             FunctionType::Native(ref f) => {
-                f.call_function(type_instance, values)
+                f.call_function(&self, type_instance, values)
             },
             FunctionType::Custom(ref f) => {
                 let mut context = Context::new();
@@ -756,5 +759,9 @@ impl<'a> Interpreter<'a> {
 
     pub fn get_count_expr(&self) -> u64 {
         *self.count_expr.borrow()
+    }
+
+    pub fn add_count_expr(&self, n: u64) {
+        *self.count_expr.borrow_mut() += n;
     }
 }

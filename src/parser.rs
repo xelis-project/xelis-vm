@@ -636,7 +636,7 @@ impl<'a> Parser<'a> {
                     _ => return Err(e)
                 }
             };
-            if expr_type != value_type {
+            if !expr_type.is_compatible_with(&value_type) {
                 return Err(ParserError::InvalidValueType(expr_type, value_type))
             }
 

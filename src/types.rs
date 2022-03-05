@@ -302,7 +302,10 @@ impl Type {
             Type::Any => true,
             Type::Array(sub_type) => match sub_type.as_ref() {
                 Type::Any => self.is_array(),
-                o => *o == *self
+                o => match self {
+                    Type::Array(sub_type) => *o == *sub_type.as_ref() || *sub_type.as_ref() == Type::Any,
+                    _ => false
+                }
             },
             o => *o == *self 
         }

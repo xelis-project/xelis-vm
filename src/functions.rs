@@ -1,36 +1,54 @@
 use crate::expressions::{Statement, Parameter};
-use crate::interpreter::InterpreterError;
+use crate::interpreter::{Interpreter, InterpreterError};
 use crate::types::{Type, Value};
-// first parameter is the current value that represent (if the function has no 'for_type' value is Null)
+
+// first parameter is the current value / instance
 // second is the list of all parameters for this function call
-// pub type OnCallFn = fn(Option<&mut Value>, Vec<Value>) -> Result<Option<Value>, InterpreterError>;
-pub type OnCallFn = fn(&mut Value, Vec<Value>) -> Option<Value>;
+pub type FnReturnType = Result<Option<Value>, InterpreterError>;
+pub type FnInstance<'a> = Result<&'a mut Value, InterpreterError>;
+pub type OnCallFn = fn(FnInstance, Vec<Value>) -> FnReturnType;
 
 pub struct NativeFunction {
     name: String,
-    for_type: Option<Type>,
+    for_type: Option<Type>, // function on type
     parameters: Vec<Type>,
     on_call: OnCallFn,
-    return_type: Option<Type>
+    cost: u64, // cost for each call
+    return_type: Option<Type> // expected type of the returned value
 }
 
 impl NativeFunction {
-    pub fn new(name: String, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, return_type: Option<Type>) -> Self {
+    pub fn new(name: String, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
             name,
             for_type,
             parameters,
             on_call,
+            cost,
             return_type
         }
     }
 
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, interpreter: &Interpreter, instance_value: Option<&mut Value>, parameters: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(InterpreterError::InvalidNativeFunctionCall)
         }
 
-        Ok((self.on_call)(instance_value.unwrap_or(&mut Value::Null), parameters))
+        interpreter.add_count_expr(self.cost);
+        let instance = match instance_value {
+            Some(v) => Ok(v),
+            None => Err(InterpreterError::NativeFunctionExpectedInstance)
+        };
+        let res: Option<Value> = (self.on_call)(instance, parameters)?;
+
+        if let (Some(v), Some(ret_type)) = (&res, &self.return_type) {
+            let value_type = interpreter.get_type_from_value(v)?;
+            if !value_type.is_compatible_with(ret_type) {
+                return Err(InterpreterError::InvalidType(value_type))
+            }
+        }
+
+        Ok(res)
     }
 }
 
@@ -136,7 +154,7 @@ impl FunctionType {
         }
     }
 }
-
+/*
 pub struct NativeFunctionCallManager {
     instance_type: Option<Value>,
     values: Vec<Value>,
@@ -176,4 +194,4 @@ impl NativeFunctionCallManager {
     pub fn get_parameter(&mut self) -> Result<Value, InterpreterError> {
         self.get_parameter_at(0)
     }
-}
+}*/

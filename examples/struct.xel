@@ -12,7 +12,7 @@ struct Rectangle {
 }
 
 func (r Rectangle) area(): int {
-    return (r.height.to_int()) * r.width.to_int()
+    return r.height.to_int() * r.width.to_int()
 }
 
 entry main() {

@@ -16,5 +16,14 @@ entry main() {
     let value: int = array[size - 1]
     println(value)
 
+    // slices are connected
+    let slice: int[] = array.slice(0, 2)
+    println(array)
+    println(slice)
+
+    slice[0] = 69
+    println(array)
+    println(slice)
+
     return 0
 }
