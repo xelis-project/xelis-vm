@@ -885,13 +885,13 @@ impl<'a> Parser<'a> {
     /**
      * Examples:
      * - entry foo() { ... }
-     * - function foo() { ... }
-     * - function foo(): int { ... }
-     * - function foo(a: int, b: int) { ... }
-     * - function (f Foo) bar() { ... }
+     * - func foo() { ... }
+     * - func foo(): int { ... }
+     * - func foo(a: int, b: int) { ... }
+     * - func (f Foo) bar() { ... }
      * Rules:
      * - Signature is based on function name, and parameters
-     * - Entry function are "public callable" function and must return a int value
+     * - Entry function is a "public callable" function and must return a int value
      */
     fn read_function(&mut self, entry: bool) -> Result<(), ParserError> {
         self.context.reset();
