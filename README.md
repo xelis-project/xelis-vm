@@ -1,13 +1,13 @@
 # XELIS VM
-Xelis (anagram of Slixe) is an interpreted language developed in Rust. It supports constants, functions, while/foreach loops, arrays and structures. The syntax is strongly inspired by Rust and Golang.
+Xelis is an interpreted language developed in Rust. It supports constants, functions, while/foreach loops, arrays and structures. The syntax is strongly inspired by Rust and Golang.
 
 All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
 
 The different primitive types are:
-- `byte` (u8)
-- `short` (u16)
-- `int` (u64)
-- `long` (u128)
+- `byte` (unsigned 8-bytes integer)
+- `short` (unsigned 16-bytes integer)
+- `int` (unsigned 64-bytes integer)
+- `long` (unsigned 128-bytes integer)
 - `bool`
 - `string`
 - `struct`
@@ -58,6 +58,7 @@ A structure can contain other structures.
 - The name must be unique.
 - Name should start with a uppercase letter.
 - Only letters are allowed in name.
+- The last field does not need a comma.
 
 #### Examples
 ```rust
@@ -77,3 +78,23 @@ struct MyStruct {
 ```rust
 let score: int = is_winner() ? 20 : 0
 ```
+
+### Array
+
+#### Rules
+#### Examples
+
+### If
+
+#### Rules
+#### Examples
+
+### Else
+
+#### Rules
+#### Examples
+
+### Else if
+
+#### Rules
+#### Examples
