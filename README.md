@@ -71,8 +71,18 @@ struct MyStruct {
 ### Ternary
  
 #### Rules
-- A Boolean condition is required.
+- A `bool` condition is required.
 - The two values that can be returned must be of the same type.
+
+#### Examples
+```rust
+let score: int = is_winner() ? 20 : 0
+```
+
+### Negate operator
+ 
+#### Rules
+- A `bool` condition is required after it.
 
 #### Examples
 ```rust
@@ -82,19 +92,55 @@ let score: int = is_winner() ? 20 : 0
 ### Array
 
 #### Rules
+- All values must be of the same specified type.
+
 #### Examples
+```rust
+let  array: int[] = [10, 20, 30, 40]
+...
+let dim: int[][] = [[34, 17], [8, 14], [0, 69]]
+```
 
 ### If
 
 #### Rules
-#### Examples
+- Have a `bool` condition.
 
+#### Examples
+```rust
+if condition {
+	...
+}
+
+if (i > 20 && i != 25) || i == 0 {
+	...
+}
+```
 ### Else
 
 #### Rules
+- It must be preceded by an `if` condition.
+
 #### Examples
+```rust
+else {
+	...
+}
+```
 
 ### Else if
 
 #### Rules
+- It must be preceded by an `if` or an `else if` condition.
+- Have a boolean condition.
+
 #### Examples
+```rust
+else if condition {
+	...
+}
+
+else if my_struct != null {
+	...
+}
+```
