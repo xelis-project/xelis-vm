@@ -96,7 +96,7 @@ let negative: bool = !condition
 
 #### Examples
 ```rust
-let  array: int[] = [10, 20, 30, 40]
+let array: int[] = [10, 20, 30, 40]
 ...
 let dim: int[][] = [[34, 17], [8, 14], [0, 69]]
 ```
@@ -141,6 +141,107 @@ else if condition {
 }
 
 else if my_struct != null {
+	...
+}
+```
+
+### While
+
+#### Rules
+- Have a boolean condition.
+
+#### Examples
+```rust
+while condition {
+	...
+}
+```
+
+### Foreach
+
+#### Rules
+- Have the name of a variable.
+- Have an array to go through
+
+#### Examples
+```csharp
+foreach val in values {
+	...
+}
+```
+
+### For
+
+#### Rules
+- Have the name of a variable.
+- Have an array to iterate on.
+
+#### Examples
+```rust
+for i: int = 0; i < 10; i += 1 {
+	...
+}
+```
+
+### Break
+
+#### Rules
+- Must be in a loop (`foreach`, `for`, `while`).
+
+#### Examples
+```rust
+while condition {
+	if i % 10 == 0 {
+		break;
+	}
+	...
+}
+```
+
+### Continue
+
+#### Rules
+- Must be in a loop (`foreach`, `for`, `while`).
+
+#### Examples
+```rust
+while condition {
+	if i % 10 == 0 {
+		continue;
+	}
+	...
+}
+```
+
+### Return
+
+#### Rules
+- Must not have any code after.
+- If the function returns a value, the return must return a value.
+
+#### Examples
+```go
+func foo(): string {
+	return "Hello World!"
+}
+
+func bar() {
+	if condition {
+		return
+	}
+	foo()
+}
+```
+
+### Scope
+Allows you to isolate a part of the code / variables created.
+
+#### Rules
+- No specific rules.
+
+#### Examples
+```go
+{
 	...
 }
 ```

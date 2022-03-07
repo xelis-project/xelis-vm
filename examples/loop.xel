@@ -1,0 +1,22 @@
+entry main() {
+    for i: int = 0; i < 10; i += 1 {
+        println(i)
+    }
+
+    let array: int[] = [11, 12, 13, 14, 15]
+    foreach a in array {
+        println(a)
+    }
+
+    let i: int = 20
+    while i > 0 {
+        i -= 1
+        if i == 17 {
+            continue
+        }
+
+        println(i)
+    }
+
+    return 0
+}

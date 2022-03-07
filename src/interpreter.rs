@@ -9,7 +9,6 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub enum InterpreterError {
-    StructureNotFound(String),
     FunctionNotFound(String, Vec<Type>),
     TypeNotFound(Value),
     FunctionEntry(bool, bool), // expected, got
@@ -18,7 +17,6 @@ pub enum InterpreterError {
     NoExitCode,
     ExpectedValue,
     InvalidNativeFunctionCall,
-    NoInstanceType,
     ExpectedPath,
     UnexpectedInstanceType,
     ExpectedStructType,
@@ -38,13 +36,17 @@ pub enum InterpreterError {
 }
 
 struct Context {
-    variables: Vec<Scope>
+    variables: Vec<Scope>,
+    loop_break: bool,
+    loop_continue: bool
 }
 
 impl Context {
     pub fn new() -> Self {
         Self {
-            variables: Vec::new()
+            variables: Vec::new(),
+            loop_break: false,
+            loop_continue: false
         }
     }
 
@@ -570,9 +572,19 @@ impl<'a> Interpreter<'a> {
         let mut accept_else = false;
         for statement in statements {
             self.increment_expr()?;
+            if context.loop_break || context.loop_continue {
+                break;
+            }
+
             match statement {
-                Statement::Break => break,
-                Statement::Continue => break,
+                Statement::Break => {
+                    context.loop_break = true;
+                    //break; break is not needed as Parser prevent any code after it
+                },
+                Statement::Continue => {
+                    context.loop_continue = true;
+                    //break; // same here
+                },
                 Statement::Variable(var) => {
                     let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, context)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
@@ -641,6 +653,15 @@ impl<'a> Interpreter<'a> {
                             },
                             None => {}
                         };
+
+                        if context.loop_break {
+                            context.loop_break = false;
+                            break;
+                        }
+
+                        if context.loop_continue {
+                            context.loop_continue = false;
+                        }
                     }
                     context.pop_scope()?;
                 },
@@ -660,6 +681,15 @@ impl<'a> Interpreter<'a> {
                                 },
                                 None => {}
                             };
+
+                            if context.loop_break {
+                                context.loop_break = false;
+                                break;
+                            }
+
+                            if context.loop_continue {
+                                context.loop_continue = false;
+                            }
                         }
                         context.pop_scope()?;
                     }
@@ -674,6 +704,15 @@ impl<'a> Interpreter<'a> {
                             },
                             None => {}
                         };
+
+                        if context.loop_break {
+                            context.loop_break = false;
+                            break;
+                        }
+
+                        if context.loop_continue {
+                            context.loop_continue = false;
+                        }
                     }
                     context.pop_scope()?;
                 },

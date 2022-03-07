@@ -155,6 +155,7 @@ pub enum ParserError {
     InvalidOperation,
     InvalidTernaryNoPreviousExpression,
     DeadCodeNotAllowed,
+    InvalidForExpression(Expression),
     OperatorNotFound(Token),
     InvalidCondition(Expression, Type),
     InvalidOperationNotSameType(Type, Type),
@@ -670,7 +671,7 @@ impl<'a> Parser<'a> {
             let statement: Statement = match self.see() {
                 Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
                     self.expect_token(Token::For)?;
-                    self.expect_token(Token::Let)?;
+                    self.context.create_new_scope();
                     let var = self.read_variable()?;
                     let condition = self.read_expression()?;
                     let condition_type = self.get_type_from_expression(&condition)?;
@@ -679,24 +680,35 @@ impl<'a> Parser<'a> {
                     }
 
                     let increment = self.read_expression()?;
+                    match &increment { // allow only assignations on this expr
+                        Expression::Operator(op, _, _) if op.is_assignation() => {},
+                        _ => {
+                            return Err(ParserError::InvalidForExpression(increment))
+                        }
+                    }
                     let statements = self.read_loop_body()?;
+                    self.context.remove_last_scope();
 
                     Statement::For(var, condition, increment, statements)
                 }
                 Token::ForEach => { // Example: foreach a in array {}
                     self.expect_token(Token::ForEach)?;
+                    
+                    self.context.create_new_scope();
                     let variable: String = match self.next() {
                         Token::Identifier(v) => v,
                         token => return Err(ParserError::UnexpectedToken(token))
                     };
-
                     self.expect_token(Token::In)?;
                     let expr = self.read_expression()?;
                     let expr_type = self.get_type_from_expression(&expr)?;
                     if !expr_type.is_array() { // verify that we can iter on it
                         return Err(ParserError::InvalidValueType(expr_type, Type::Array(Box::new(Type::Any))))
                     }
+                    self.context.register_variable(variable.clone(), expr_type.get_array_type().clone())?;
                     let statements = self.read_loop_body()?;
+                    self.context.remove_last_scope();
+
                     Statement::ForEach(variable, expr, statements)
                 },
                 Token::While => { // Example: while i < 10 {}
