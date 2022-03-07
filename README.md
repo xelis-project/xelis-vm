@@ -86,7 +86,7 @@ let score: int = is_winner() ? 20 : 0
 
 #### Examples
 ```rust
-let score: int = is_winner() ? 20 : 0
+let negative: bool = !condition
 ```
 
 ### Array
