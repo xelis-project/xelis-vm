@@ -5,7 +5,8 @@ use std::str::FromStr;
 pub enum LexerError { // left is line, right is column
     EndOfFile,
     ParseToNumber(usize, usize),
-    NoTokenFound(usize, usize)
+    NoTokenFound(usize, usize),
+    ExpectedChar
 }
 
 pub struct Lexer {
@@ -18,8 +19,8 @@ impl Lexer {
     pub fn new(chars: Vec<char>) -> Self {
         Lexer {
             chars,
-            line: 0,
-            column: 0
+            line: 1,
+            column: 1
         }
     }
 
@@ -88,7 +89,10 @@ impl Lexer {
         Ok(values.into_iter().collect())
     }
 
-    fn parse_number<F: FromStr>(&self, chars: Vec<char>) -> Result<F, LexerError> {
+    fn parse_number<F: FromStr>(&self, mut chars: Vec<char>, remove_last: bool) -> Result<F, LexerError> {
+        if remove_last {
+            chars.pop();
+        }
         let s: String = chars.into_iter().collect();
         match s.parse::<F>() {
             Ok(v) => Ok(v),
@@ -108,7 +112,7 @@ impl Lexer {
             } else if c.is_numeric() { // read a number value
                 let mut chars = vec![c];
                 while match self.chars.get(0) {
-                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L',
+                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L' || *v == 'S' || *v == 'B',
                     None => return Err(LexerError::EndOfFile)
                 } {
                     let c = self.next_char();
@@ -118,13 +122,17 @@ impl Lexer {
                     }
                 }
 
-                let token: Token = if *chars.last().unwrap() == 'L' { // we can use the unwrap here because we have at least one value inside
-                    chars.pop();
-                    Token::Long(self.parse_number(chars)?)
-                } else {
-                    Token::Number(self.parse_number(chars)?)
+                let token: Token = match chars.last() {
+                    Some(last) => match last {
+                        'L' => Token::Long(self.parse_number(chars, true)?),
+                        'S' => Token::Short(self.parse_number(chars, true)?),
+                        'B' => Token::Byte(self.parse_number(chars, true)?),
+                        _ => Token::Int(self.parse_number(chars, false)?)
+                    },
+                    None => {
+                        return Err(LexerError::ExpectedChar)
+                    }
                 };
-
                 tokens.push(token);
             } else if c == '"' || c == '\'' { // read a string value
                 let value = self.read_until(|v| -> bool {

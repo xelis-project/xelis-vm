@@ -476,7 +476,7 @@ impl<'a> Interpreter<'a> {
                         Operator::Or => Ok(Some(Value::Boolean(left.to_bool()? || right.to_bool()?))),
                         Operator::Plus => {
                             if left_type == Type::String || right_type == Type::String {
-                                return Ok(Some(Value::String(format!("{}{}", left, right))))
+                                Ok(Some(Value::String(format!("{}{}", left, right))))
                             } else {
                                 Ok(Some(match left_type {
                                     Type::Byte => Value::Byte(left.to_byte()? + right.to_byte()?),

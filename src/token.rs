@@ -1,7 +1,9 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     Identifier(String),
-    Number(u64), // all numbers except long
+    Byte(u8),
+    Short(u16),
+    Int(u64),
     Long(u128),
     ValString(String),
 

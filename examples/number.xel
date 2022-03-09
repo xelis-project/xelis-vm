@@ -1,0 +1,9 @@
+func add(a: byte, b: byte): byte {
+    return a + b
+}
+
+entry main() {
+    let b: byte = 255B
+    println(add(5B, b))
+    return 0
+}

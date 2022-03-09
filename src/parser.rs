@@ -472,7 +472,13 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::Number(value) => { // TODO byte, short
+                Token::Byte(value) => {
+                    Expression::Value(Value::Byte(value))
+                },
+                Token::Short(value) => {
+                    Expression::Value(Value::Short(value))
+                },
+                Token::Int(value) => {
                     Expression::Value(Value::Int(value))
                 },
                 Token::Long(value) => {

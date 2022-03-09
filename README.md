@@ -174,7 +174,8 @@ foreach val in values {
 
 #### Rules
 - Have the name of a variable.
-- Have an array to iterate on.
+- Have a boolean condition.
+- Have an assign operator.
 
 #### Examples
 ```rust
@@ -240,7 +241,7 @@ Allows you to isolate a part of the code / variables created.
 - No specific rules.
 
 #### Examples
-```go
+```rust
 {
 	...
 }

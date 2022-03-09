@@ -12,19 +12,26 @@ use crate::parser::Parser;
 use crate::environment::Environment;
 use crate::interpreter::Interpreter;
 
-use std::fs;
+use std::{fs, env};
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let file = match args.get(1) {
+        Some(v) => v,
+        None => {
+            panic!("Error, expected a file path as argument.");
+        }
+    };
+
     let code: String =
-    fs::read_to_string("examples/loop.xel").expect("Something went wrong reading the file");
+    fs::read_to_string(file).expect("Something went wrong reading the file");
 
     match Lexer::new(code.chars().collect()).get() {
         Ok(result) => {
-            //println!("{:?}", result);
             let environment = Environment::default();
             match Parser::new(result, &environment).parse() {
                 Ok(result) => {
-                    println!("Parser: {:?}", result);
+                    println!("Parser:\n{:?}\n", result);
                     match Interpreter::new(&result, 0, &environment) {
                         Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
                             Ok(value) => println!("Exit code: {} | Expressions executed: {}", value, interpreter.get_count_expr()),
