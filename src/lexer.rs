@@ -112,12 +112,12 @@ impl Lexer {
             } else if c.is_numeric() { // read a number value
                 let mut chars = vec![c];
                 while match self.chars.get(0) {
-                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L' || *v == 'S' || *v == 'B',
+                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L' || *v == 'S' || *v == 'b',
                     None => return Err(LexerError::EndOfFile)
                 } {
                     let c = self.next_char();
                     chars.push(c);
-                    if c == 'L' {
+                    if c == 'L' || c == 'S' || c == 'b' {
                         break;
                     }
                 }
@@ -126,7 +126,7 @@ impl Lexer {
                     Some(last) => match last {
                         'L' => Token::Long(self.parse_number(chars, true)?),
                         'S' => Token::Short(self.parse_number(chars, true)?),
-                        'B' => Token::Byte(self.parse_number(chars, true)?),
+                        'b' => Token::Byte(self.parse_number(chars, true)?),
                         _ => Token::Int(self.parse_number(chars, false)?)
                     },
                     None => {

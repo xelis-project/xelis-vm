@@ -7,6 +7,40 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+macro_rules! exec {
+    ($func: ident, $a: expr, $b: expr) => {{
+        let (v, overflow) = $a.$func($b);
+        if overflow {
+            return Err(InterpreterError::OverflowOccured)
+        }
+        v
+    }};
+}
+
+macro_rules! add {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_add, $a, $b)
+    }};
+}
+
+macro_rules! sub {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_sub, $a, $b)
+    }};
+}
+
+macro_rules! mul {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_mul, $a, $b)
+    }};
+}
+
+macro_rules! div {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_div, $a, $b)
+    }};
+}
+
 #[derive(Debug)]
 pub enum InterpreterError {
     FunctionNotFound(String, Vec<Type>),
@@ -21,6 +55,7 @@ pub enum InterpreterError {
     UnexpectedInstanceType,
     ExpectedStructType,
     NativeFunctionExpectedInstance,
+    OverflowOccured,
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -422,38 +457,38 @@ impl<'a> Interpreter<'a> {
                         },
                         Operator::AssignPlus => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? + value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? + value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? + value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? + value.to_long()?),
+                                Type::Byte => Value::Byte(add!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(add!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(add!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(add!(path_value.as_long()?,  value.to_long()?)),
                                 Type::String => Value::String(format!("{}{}", path_value.as_string()?, value.to_string()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMinus => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? - value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? - value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? - value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? - value.to_long()?),
+                                Type::Byte => Value::Byte(sub!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(sub!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(sub!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(sub!(path_value.as_long()?, value.to_long()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignDivide => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? / value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? / value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? / value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? / value.to_long()?),
+                                Type::Byte => Value::Byte(div!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(div!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(div!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(div!(path_value.as_long()?, value.to_long()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMultiply => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? * value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? * value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? * value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? * value.to_long()?),
+                                Type::Byte => Value::Byte(mul!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(mul!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(mul!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(mul!(path_value.as_long()?, value.to_long()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         }, 
@@ -479,33 +514,33 @@ impl<'a> Interpreter<'a> {
                                 Ok(Some(Value::String(format!("{}{}", left, right))))
                             } else {
                                 Ok(Some(match left_type {
-                                    Type::Byte => Value::Byte(left.to_byte()? + right.to_byte()?),
-                                    Type::Short => Value::Short(left.to_short()? + right.to_short()?),
-                                    Type::Int => Value::Int(left.to_int()? + right.to_int()?),
-                                    Type::Long => Value::Long(left.to_long()? + right.to_long()?),
+                                    Type::Byte => Value::Byte(add!(left.to_byte()?, right.to_byte()?)),
+                                    Type::Short => Value::Short(add!(left.to_short()?, right.to_short()?)),
+                                    Type::Int => Value::Int(add!(left.to_int()?, right.to_int()?)),
+                                    Type::Long => Value::Long(add!(left.to_long()?, right.to_long()?)),
                                     _ => return Err(InterpreterError::OperationNotNumberType)
                                 }))
                             }
                         },
                         Operator::Minus => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? - right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? - right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? - right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? - right.to_long()?),
+                            Type::Byte => Value::Byte(sub!(left.to_byte()?, right.to_byte()?)),
+                            Type::Short => Value::Short(sub!(left.to_short()?, right.to_short()?)),
+                            Type::Int => Value::Int(sub!(left.to_int()?, right.to_int()?)),
+                            Type::Long => Value::Long(sub!(left.to_long()?, right.to_long()?)),
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::Divide => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? / right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? / right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? / right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? / right.to_long()?),
+                            Type::Byte => Value::Byte(div!(left.to_byte()?, right.to_byte()?)),
+                            Type::Short => Value::Short(div!(left.to_short()?, right.to_short()?)),
+                            Type::Int => Value::Int(div!(left.to_int()?, right.to_int()?)),
+                            Type::Long => Value::Long(div!(left.to_long()?, right.to_long()?)),
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::Multiply => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? * right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? * right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? * right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? * right.to_long()?),
+                            Type::Byte => Value::Byte(mul!(left.to_byte()?, right.to_byte()?)),
+                            Type::Short => Value::Short(mul!(left.to_short()?, right.to_short()?)),
+                            Type::Int => Value::Int(mul!(left.to_int()?, right.to_int()?)),
+                            Type::Long => Value::Long(mul!(left.to_long()?, right.to_long()?)),
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::Modulo => Ok(Some(match left_type {
