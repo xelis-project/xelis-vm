@@ -6,6 +6,7 @@ use crate::types::*;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::convert::TryInto;
 
 macro_rules! exec {
     ($func: ident, $a: expr, $b: expr) => {{
@@ -41,6 +42,27 @@ macro_rules! div {
     }};
 }
 
+macro_rules! convert {
+    ($a: expr) => {{
+        match $a.try_into() {
+            Ok(v) => v,
+            Err(_) => return Err(InterpreterError::CastNumberError)
+        }
+    }};
+}
+
+macro_rules! shl {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_shl, $a, convert!($b))
+    }};
+}
+
+macro_rules! shr {
+    ($a: expr, $b: expr) => {{
+        exec!(overflowing_shr, $a, convert!($b))
+    }};
+}
+
 #[derive(Debug)]
 pub enum InterpreterError {
     FunctionNotFound(String, Vec<Type>),
@@ -67,7 +89,8 @@ pub enum InterpreterError {
     VariableAlreadyExists(String),
     NoScopeFound,
     ExpectedAssignOperator,
-    OperationNotNumberType
+    OperationNotNumberType,
+    CastNumberError
 }
 
 struct Context {
@@ -551,17 +574,17 @@ impl<'a> Interpreter<'a> {
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::BitwiseLeft => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? << right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? << right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? << right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? << right.to_long()?),
+                            Type::Byte => Value::Byte(shl!(left.to_byte()?, right.to_byte()?)),
+                            Type::Short => Value::Short(shl!(left.to_short()?, right.to_short()?)),
+                            Type::Int => Value::Int(shl!(left.to_int()?, right.to_int()?)),
+                            Type::Long => Value::Long(shl!(left.to_long()?, right.to_long()?)),
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::BitwiseRight => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? >> right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? >> right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? >> right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? >> right.to_long()?),
+                            Type::Byte => Value::Byte(shr!(left.to_byte()?, right.to_byte()?)),
+                            Type::Short => Value::Short(shr!(left.to_short()?, right.to_short()?)),
+                            Type::Int => Value::Int(shr!(left.to_int()?, right.to_int()?)),
+                            Type::Long => Value::Long(shr!(left.to_long()?, right.to_long()?)),
                             _ => return Err(InterpreterError::OperationNotNumberType)
                         })),
                         Operator::GreaterOrEqual => Ok(Some(match left_type {

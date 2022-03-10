@@ -7,7 +7,7 @@ entry main() {
     let b: byte = true ? 250 : 10
     println(add(a, b))
 
-    let res: byte = b << 10
+    let res: byte = b << 1
     println(res)
     return 0
 }
