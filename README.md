@@ -17,6 +17,23 @@ File extension is `.xel`
 ## Documentation
 the semicolon is not mandatory, but can be added if desired without any difference in the code.
 
+### Numbers
+An error will be returned by the interpreter if an overflow is detected without causing a panic.
+
+#### Rules
+- The value must be greater than or equal to `0`.
+- You can put `_` (underscore) for a better readability.
+- You must specify the type of the value (`b` for `byte`, `S` for `short`, `L` for `long`)
+- If no type is specified on the value, then `int` will be the default.
+
+#### Examples
+```rust
+let my_byte: byte = 10b
+let my_short: short = 70S
+let my_int: int = 25655
+let my_long: long = 100_000_000L
+```
+
 ### Variable
 for constant variable, it must be declared outside a function, with `const` keyword.
 
