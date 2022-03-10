@@ -3,10 +3,11 @@ func add(a: byte, b: byte): byte {
 }
 
 entry main() {
-    let b: byte = 250b
-    println(add(5b, b))
+    let a: byte = 5
+    let b: byte = true ? 250 : 10
+    println(add(a, b))
 
-    let res: byte = b << 10b
+    let res: byte = b << 10
     println(res)
     return 0
 }

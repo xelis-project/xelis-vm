@@ -28,8 +28,8 @@ An error will be returned by the interpreter if an overflow is detected without 
 
 #### Examples
 ```rust
-let my_byte: byte = 10b
-let my_short: short = 70S
+let my_byte: byte = 10
+let my_short: short = 70
 let my_int: int = 25655
 let my_long: long = 100_000_000L
 ```

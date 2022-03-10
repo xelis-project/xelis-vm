@@ -109,15 +109,15 @@ impl Lexer {
             }
             else if c == '\n' || c == ' ' || c == ';' {
                 // we just skip these characters
-            } else if c.is_numeric() { // read a number value
+            } else if c.is_digit(10) { // read a number value
                 let mut chars = vec![c];
                 while match self.chars.get(0) {
-                    Some(v) => v.is_numeric() || *v == '_' || *v == 'L' || *v == 'S' || *v == 'b',
+                    Some(v) => v.is_digit(10) || *v == '_' || *v == 'L',
                     None => return Err(LexerError::EndOfFile)
                 } {
                     let c = self.next_char();
                     chars.push(c);
-                    if c == 'L' || c == 'S' || c == 'b' {
+                    if c == 'L' {
                         break;
                     }
                 }
@@ -125,9 +125,7 @@ impl Lexer {
                 let token: Token = match chars.last() {
                     Some(last) => match last {
                         'L' => Token::Long(self.parse_number(chars, true)?),
-                        'S' => Token::Short(self.parse_number(chars, true)?),
-                        'b' => Token::Byte(self.parse_number(chars, true)?),
-                        _ => Token::Int(self.parse_number(chars, false)?)
+                        _ => Token::Number(self.parse_number(chars, false)?)
                     },
                     None => {
                         return Err(LexerError::ExpectedChar)

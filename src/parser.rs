@@ -4,6 +4,16 @@ use crate::types::{Value, Type, Struct, RefMap};
 use crate::environment::Environment;
 use crate::token::Token;
 use std::collections::HashMap;
+use std::convert::TryInto;
+
+macro_rules! convert {
+    ($a: expr) => {{
+        match $a.try_into() {
+            Ok(v) => v,
+            Err(_) => return Err(ParserError::InvalidNumberValueForType)
+        }
+    }};
+}
 
 #[derive(Debug)]
 pub struct Program {
@@ -163,7 +173,9 @@ pub enum ParserError {
     InvalidTypeInArray(Type, Type),
     InvalidValueType(Type, Type),
     InvalidFunctionType(Type),
-    EmptyArrayConstructor
+    EmptyArrayConstructor,
+    ExpectedNumberType,
+    InvalidNumberValueForType
 }
 
 impl<'a> Parser<'a> {
@@ -329,10 +341,10 @@ impl<'a> Parser<'a> {
     }
 
     fn read_expression(&mut self) -> Result<Expression, ParserError> {
-        self.read_expr(true)
+        self.read_expr(true, None)
     }
 
-    fn read_expr(&mut self, accept_operator: bool) -> Result<Expression, ParserError> {
+    fn read_expr(&mut self, accept_operator: bool, number_type: Option<&Type>) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while !self.see().should_stop() && ((required_operator == self.see().is_operator()) || (*self.see() == Token::BracketOpen && last_expression.is_none())) {
@@ -412,8 +424,9 @@ impl<'a> Parser<'a> {
                                 _types.push(t);
                             }
 
+                            let func = self.get_function(self.context.get_current_type(), &id, &_types)?;
                             // Function call cannot call entry function
-                            if self.get_function(self.context.get_current_type(), &id, &_types)?.is_entry() {
+                            if func.is_entry() {
                                 return Err(ParserError::FunctionNotFound(id, parameters.len()))
                             }
 
@@ -472,15 +485,14 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::Byte(value) => {
-                    Expression::Value(Value::Byte(value))
-                },
-                Token::Short(value) => {
-                    Expression::Value(Value::Short(value))
-                },
-                Token::Int(value) => {
-                    Expression::Value(Value::Int(value))
-                },
+                Token::Number(value) => Expression::Value(match number_type {
+                    Some(t) => match t {
+                        Type::Byte => Value::Byte(convert!(value)),
+                        Type::Short => Value::Short(convert!(value)),
+                        _ => return Err(ParserError::ExpectedNumberType)
+                    },
+                    None => Value::Int(value)
+                }),
                 Token::Long(value) => {
                     Expression::Value(Value::Long(value))
                 },
@@ -501,7 +513,7 @@ impl<'a> Parser<'a> {
                         Some(value) => {
                             let _type = self.get_type_from_expression(&value)?;
                             self.context.set_current_type(_type)?;
-                            let right_expr = self.read_expr(false)?;
+                            let right_expr = self.read_expr(false, None)?;
                             self.context.remove_current_type();
                             required_operator = !required_operator; // because we read operator DOT + right expression
                             Expression::Path(Box::new(value), Box::new(right_expr))
@@ -524,17 +536,16 @@ impl<'a> Parser<'a> {
                             return Err(ParserError::InvalidCondition(expr, Type::Boolean))
                         }
 
-                        let valid_expr = self.read_expression()?;
+                        let valid_expr = self.read_expr(true, number_type)?;
                         let first_type = self.get_type_from_expression(&valid_expr)?;
                         self.expect_token(Token::Colon)?;
-                        let else_expr = self.read_expression()?;
+                        let else_expr = self.read_expr(true, number_type)?;
                         let else_type = self.get_type_from_expression(&else_expr)?;
                         
                         if first_type != else_type { // both expr should have the SAME type.
                             return Err(ParserError::InvalidValueType(else_type, first_type))
                         }
                         required_operator = !required_operator;
-
                         Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
                     },
                     None => return Err(ParserError::InvalidTernaryNoPreviousExpression)
@@ -548,7 +559,7 @@ impl<'a> Parser<'a> {
                             required_operator = !required_operator;
                             let left_type = self.get_type_from_expression(&e)?;
                             self.context.remove_current_type();
-                            let expr = self.read_expression()?;
+                            let expr = self.read_expr(true, Some(&left_type))?;
                             let right_type = self.get_type_from_expression(&expr)?;
 
                             let op: Operator = match Operator::value_of(&token) {
@@ -635,7 +646,7 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if *self.see() == Token::OperatorAssign {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expression()?;
+            let expr = self.read_expr(true, Some(&value_type))?;
             let expr_type = match self.get_type_from_expression(&expr) {
                 Ok(_type) => _type,
                 Err(e) => match e { // support empty array declaration
