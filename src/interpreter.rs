@@ -90,7 +90,8 @@ pub enum InterpreterError {
     NoScopeFound,
     ExpectedAssignOperator,
     OperationNotNumberType,
-    CastNumberError
+    CastNumberError,
+    RecursiveLimitReached
 }
 
 struct Context {
@@ -191,18 +192,22 @@ impl Context {
 pub struct Interpreter<'a> {
     program: &'a Program,
     max_expr: u64,
+    max_recursive: u16,
     count_expr: RefCell<u64>,
+    recursive: RefCell<u16>,
     constants: Option<Context>,
     env: &'a Environment,
     ref_structures: RefMap<'a, String, Struct>
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(program: &'a Program, max_expr: u64, env: &'a Environment) -> Result<Self, InterpreterError> {
+    pub fn new(program: &'a Program, max_expr: u64, max_recursive: u16, env: &'a Environment) -> Result<Self, InterpreterError> {
         let mut interpreter = Self {
             program,
             max_expr,
+            max_recursive,
             count_expr: RefCell::new(0),
+            recursive: RefCell::new(0),
             constants: None,
             env,
             ref_structures: RefMap::new()
@@ -398,7 +403,12 @@ impl<'a> Interpreter<'a> {
                     values.push(self.execute_expression_and_expect_value(None, param, context)?);
                 }
 
-                match on_value {
+                *self.recursive.borrow_mut() += 1;
+                if *self.recursive.borrow() >= self.max_recursive {
+                    return Err(InterpreterError::RecursiveLimitReached)
+                }
+
+                let res = match on_value {
                     Some(v) => {
                         let func = self.get_function(name, Some(&self.get_type_from_value(&v.borrow())?), &self.get_types_from_values(&values)?)?;
                         self.execute_function(&func, Some(&mut v.borrow_mut()), values)
@@ -407,7 +417,9 @@ impl<'a> Interpreter<'a> {
                         let func = self.get_function(name, None, &self.get_types_from_values(&values)?)?;
                         self.execute_function(&func, None, values)
                     }
-                }
+                };
+                *self.recursive.borrow_mut() -= 1;
+                res
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = vec![];
