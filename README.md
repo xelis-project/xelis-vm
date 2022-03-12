@@ -17,13 +17,14 @@ File extension is `.xel`
 ## Documentation
 the semicolon is not mandatory, but can be added if desired without any difference in the code.
 
+Recursive functions are allowed, but limited to a configurable depth.
+
 ### Numbers
 An error will be returned by the interpreter if an overflow is detected without causing a panic.
 
 #### Rules
 - The value must be greater than or equal to `0`.
 - You can put `_` (underscore) for a better readability.
-- You must specify the type of the value (`b` for `byte`, `S` for `short`, `L` for `long`)
 - If no type is specified on the value, then `int` will be the default.
 
 #### Examples
