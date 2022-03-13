@@ -9,5 +9,7 @@ entry main() {
 
     let res: byte = b << 1
     println(res)
+
+    let divide: int = 10 / 0
     return 0
 }

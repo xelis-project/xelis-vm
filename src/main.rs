@@ -30,7 +30,7 @@ fn main() {
             match Parser::new(result, &environment).parse() {
                 Ok(result) => {
                     println!("Parser:\n{:?}\n", result);
-                    match Interpreter::new(&result, 0, 1000, &environment) {
+                    match Interpreter::new(&result, 50000, 1000, &environment) {
                         Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
                             Ok(value) => println!("Exit code: {} | Expressions executed: {}", value, interpreter.get_count_expr()),
                             Err(e) => println!("Error: {:?}", e)

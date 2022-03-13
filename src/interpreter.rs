@@ -38,7 +38,12 @@ macro_rules! mul {
 
 macro_rules! div {
     ($a: expr, $b: expr) => {{
-        exec!(overflowing_div, $a, $b)
+        let v = $b;
+        if v == 0 {
+            return Err(InterpreterError::DivByZero)
+        }
+
+        exec!(overflowing_div, $a, v)
     }};
 }
 
@@ -78,6 +83,7 @@ pub enum InterpreterError {
     ExpectedStructType,
     NativeFunctionExpectedInstance,
     OverflowOccured,
+    DivByZero,
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),

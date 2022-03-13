@@ -18,5 +18,9 @@ entry main() {
         println(i)
     }
 
+    while true {
+        
+    }
+
     return 0
 }
