@@ -84,6 +84,7 @@ pub enum InterpreterError {
     NativeFunctionExpectedInstance,
     OverflowOccured,
     DivByZero,
+    StructureNotFound(String),
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -271,9 +272,12 @@ impl<'a> Interpreter<'a> {
                     for (k, v) in left_map {
                         if !match right_map.get(k) {
                             Some(r_v) => {
-                                let field_type = match structure.fields.get(k) {
-                                    Some(field) => field,
-                                    None => return Err(InterpreterError::InvalidStructValue(v.get_value().borrow().clone()))
+                                let field_type = match self.ref_structures.get(structure) {
+                                    Some(structure) => match structure.fields.get(k) {
+                                        Some(field) => field,
+                                        None => return Err(InterpreterError::InvalidStructValue(v.get_value().borrow().clone()))
+                                    },
+                                    None => return Err(InterpreterError::StructureNotFound(structure.clone()))
                                 };
                                 self.is_same_value(field_type, &v.get_value().borrow(), &r_v.get_value().borrow())?
                             },

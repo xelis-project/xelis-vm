@@ -245,7 +245,7 @@ pub enum Type {
 
     String,
     Boolean,
-    Struct(Struct),
+    Struct(String),
     Array(Box<Type>)
 }
 
@@ -261,7 +261,7 @@ impl Type {
             _ => {
                 let structure = structures.get(s)?;
                 if structure.name == *s {
-                    Type::Struct(structure.clone())
+                    Type::Struct(s.clone())
                 } else {
                     return None
                 }
@@ -284,7 +284,10 @@ impl Type {
                 Some(v) => Type::Array(Box::new(Type::from_value(&v.borrow(), structures)?)),
                 None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
             },
-            Value::Struct(name, _) => Type::Struct(structures.get(name)?.clone()) // TODO ref
+            Value::Struct(name, _) => match structures.get(name) {
+                Some(_) => Type::Struct(name.clone()),
+                None => return None
+            }
         };
 
         Some(_type)
@@ -329,13 +332,6 @@ impl Type {
         match &self {
             Type::Byte | Type::Short | Type::Int | Type::Long => true,
             _ => false
-        }
-    }
-
-    pub fn as_struct(&self) -> Result<&Struct, InterpreterError> {
-        match self {
-            Type::Struct(s) => Ok(s),
-            _ => Err(InterpreterError::ExpectedStructType)
         }
     }
 }
