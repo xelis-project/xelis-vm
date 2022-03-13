@@ -489,6 +489,8 @@ impl<'a> Parser<'a> {
                     Some(t) => match t {
                         Type::Byte => Value::Byte(convert!(value)),
                         Type::Short => Value::Short(convert!(value)),
+                        Type::Int => Value::Int(value),
+                        Type::Long => Value::Long(convert!(value)),
                         _ => return Err(ParserError::ExpectedNumberType)
                     },
                     None => Value::Int(value)
