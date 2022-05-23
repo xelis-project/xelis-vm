@@ -80,6 +80,7 @@ pub enum InterpreterError {
     InvalidNativeFunctionCall,
     ExpectedPath,
     UnexpectedInstanceType,
+    UnexpectedOperator,
     ExpectedStructType,
     NativeFunctionExpectedInstance,
     OverflowOccured,
@@ -544,7 +545,7 @@ impl<'a> Interpreter<'a> {
                     let left = self.execute_expression_and_expect_value(None, &expr_left, context)?;
                     let left_type = self.get_type_from_value(&left)?;
 
-                    if !op.is_number_operator() {
+                    if op.is_and_or_or() {
                         match op {
                             Operator::And => Ok(Some(Value::Boolean({
                                 let left = left.to_bool()?;
@@ -564,7 +565,7 @@ impl<'a> Interpreter<'a> {
                                     true
                                 }
                             }))),
-                            _ => panic!("")
+                            _ => return Err(InterpreterError::UnexpectedOperator)
                         }
                     } else {
                         let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
@@ -659,7 +660,7 @@ impl<'a> Interpreter<'a> {
                                 Type::Long => Value::Boolean(left.to_long()? < right.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
-                            _ => return Err(InterpreterError::NotImplemented)
+                            _ => return Err(InterpreterError::UnexpectedOperator)
                         }
                     }
                 }

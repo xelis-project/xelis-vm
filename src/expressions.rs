@@ -151,4 +151,11 @@ impl Operator {
             _ => false
         }
     }
+
+    pub fn is_and_or_or(&self) -> bool {
+        match &self {
+            Operator::And | Operator::Or => true,
+            _ => false
+        }
+    }
 }
