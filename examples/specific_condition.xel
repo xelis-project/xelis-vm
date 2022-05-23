@@ -1,0 +1,25 @@
+func no_call(): bool {
+    println("Should not be called!")
+    return true
+}
+
+func should_be_called(): bool {
+    println("Should be called!")
+    return false
+}
+
+entry main() {
+    if (false && no_call()) {
+        return 1
+    }
+
+    if false || should_be_called() {
+        return 1
+    }
+
+    if true || !no_call() {
+        return 0
+    }
+
+    return 0
+}

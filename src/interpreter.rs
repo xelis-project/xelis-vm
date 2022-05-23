@@ -542,102 +542,125 @@ impl<'a> Interpreter<'a> {
                     Ok(None)
                 } else {
                     let left = self.execute_expression_and_expect_value(None, &expr_left, context)?;
-                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
                     let left_type = self.get_type_from_value(&left)?;
-                    let right_type = self.get_type_from_value(&right)?;
-                    if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
-                        return Err(InterpreterError::OperationNotNumberType)
-                    }
-    
-                    match op {
-                        Operator::Equals => Ok(Some(Value::Boolean(left_type == right_type && self.is_same_value(&left_type, &left, &right)?))),
-                        Operator::NotEquals => Ok(Some(Value::Boolean(left_type != right_type || !self.is_same_value(&left_type, &left, &right)?))),
-                        Operator::And => Ok(Some(Value::Boolean(left.to_bool()? && right.to_bool()?))),
-                        Operator::Or => Ok(Some(Value::Boolean(left.to_bool()? || right.to_bool()?))),
-                        Operator::Plus => {
-                            if left_type == Type::String || right_type == Type::String {
-                                Ok(Some(Value::String(format!("{}{}", left, right))))
-                            } else {
-                                Ok(Some(match left_type {
-                                    Type::Byte => Value::Byte(add!(left.to_byte()?, right.to_byte()?)),
-                                    Type::Short => Value::Short(add!(left.to_short()?, right.to_short()?)),
-                                    Type::Int => Value::Int(add!(left.to_int()?, right.to_int()?)),
-                                    Type::Long => Value::Long(add!(left.to_long()?, right.to_long()?)),
-                                    _ => return Err(InterpreterError::OperationNotNumberType)
-                                }))
-                            }
-                        },
-                        Operator::Minus => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(sub!(left.to_byte()?, right.to_byte()?)),
-                            Type::Short => Value::Short(sub!(left.to_short()?, right.to_short()?)),
-                            Type::Int => Value::Int(sub!(left.to_int()?, right.to_int()?)),
-                            Type::Long => Value::Long(sub!(left.to_long()?, right.to_long()?)),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::Divide => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(div!(left.to_byte()?, right.to_byte()?)),
-                            Type::Short => Value::Short(div!(left.to_short()?, right.to_short()?)),
-                            Type::Int => Value::Int(div!(left.to_int()?, right.to_int()?)),
-                            Type::Long => Value::Long(div!(left.to_long()?, right.to_long()?)),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::Multiply => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(mul!(left.to_byte()?, right.to_byte()?)),
-                            Type::Short => Value::Short(mul!(left.to_short()?, right.to_short()?)),
-                            Type::Int => Value::Int(mul!(left.to_int()?, right.to_int()?)),
-                            Type::Long => Value::Long(mul!(left.to_long()?, right.to_long()?)),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::Modulo => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(left.to_byte()? % right.to_byte()?),
-                            Type::Short => Value::Short(left.to_short()? % right.to_short()?),
-                            Type::Int => Value::Int(left.to_int()? % right.to_int()?),
-                            Type::Long => Value::Long(left.to_long()? % right.to_long()?),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::BitwiseLeft => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(shl!(left.to_byte()?, right.to_byte()?)),
-                            Type::Short => Value::Short(shl!(left.to_short()?, right.to_short()?)),
-                            Type::Int => Value::Int(shl!(left.to_int()?, right.to_int()?)),
-                            Type::Long => Value::Long(shl!(left.to_long()?, right.to_long()?)),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::BitwiseRight => Ok(Some(match left_type {
-                            Type::Byte => Value::Byte(shr!(left.to_byte()?, right.to_byte()?)),
-                            Type::Short => Value::Short(shr!(left.to_short()?, right.to_short()?)),
-                            Type::Int => Value::Int(shr!(left.to_int()?, right.to_int()?)),
-                            Type::Long => Value::Long(shr!(left.to_long()?, right.to_long()?)),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::GreaterOrEqual => Ok(Some(match left_type {
-                            Type::Byte => Value::Boolean(left.to_byte()? >= right.to_byte()?),
-                            Type::Short => Value::Boolean(left.to_short()? >= right.to_short()?),
-                            Type::Int => Value::Boolean(left.to_int()? >= right.to_int()?),
-                            Type::Long => Value::Boolean(left.to_long()? >= right.to_long()?),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::GreaterThan => Ok(Some(match left_type {
-                            Type::Byte => Value::Boolean(left.to_byte()? > right.to_byte()?),
-                            Type::Short => Value::Boolean(left.to_short()? > right.to_short()?),
-                            Type::Int => Value::Boolean(left.to_int()? > right.to_int()?),
-                            Type::Long => Value::Boolean(left.to_long()? > right.to_long()?),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::LessOrEqual => Ok(Some(match left_type {
-                            Type::Byte => Value::Boolean(left.to_byte()? <= right.to_byte()?),
-                            Type::Short => Value::Boolean(left.to_short()? <= right.to_short()?),
-                            Type::Int => Value::Boolean(left.to_int()? <= right.to_int()?),
-                            Type::Long => Value::Boolean(left.to_long()? <= right.to_long()?),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        Operator::LessThan => Ok(Some(match left_type {
-                            Type::Byte => Value::Boolean(left.to_byte()? < right.to_byte()?),
-                            Type::Short => Value::Boolean(left.to_short()? < right.to_short()?),
-                            Type::Int => Value::Boolean(left.to_int()? < right.to_int()?),
-                            Type::Long => Value::Boolean(left.to_long()? < right.to_long()?),
-                            _ => return Err(InterpreterError::OperationNotNumberType)
-                        })),
-                        _ => return Err(InterpreterError::NotImplemented)
+
+                    if !op.is_number_operator() {
+                        match op {
+                            Operator::And => Ok(Some(Value::Boolean({
+                                let left = left.to_bool()?;
+                                if !left {
+                                    false
+                                } else {
+                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
+                                    right.to_bool()?
+                                }
+                            }))),
+                            Operator::Or => Ok(Some(Value::Boolean({
+                                let left = left.to_bool()?;
+                                if !left {
+                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
+                                    right.to_bool()?
+                                } else {
+                                    true
+                                }
+                            }))),
+                            _ => panic!("")
+                        }
+                    } else {
+                        let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
+                        let right_type = self.get_type_from_value(&right)?;
+                        if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
+                            return Err(InterpreterError::OperationNotNumberType)
+                        }
+        
+                        match op {
+                            Operator::Equals => Ok(Some(Value::Boolean(left_type == right_type && self.is_same_value(&left_type, &left, &right)?))),
+                            Operator::NotEquals => Ok(Some(Value::Boolean(left_type != right_type || !self.is_same_value(&left_type, &left, &right)?))),
+                            Operator::Plus => {
+                                if left_type == Type::String || right_type == Type::String {
+                                    Ok(Some(Value::String(format!("{}{}", left, right))))
+                                } else {
+                                    Ok(Some(match left_type {
+                                        Type::Byte => Value::Byte(add!(left.to_byte()?, right.to_byte()?)),
+                                        Type::Short => Value::Short(add!(left.to_short()?, right.to_short()?)),
+                                        Type::Int => Value::Int(add!(left.to_int()?, right.to_int()?)),
+                                        Type::Long => Value::Long(add!(left.to_long()?, right.to_long()?)),
+                                        _ => return Err(InterpreterError::OperationNotNumberType)
+                                    }))
+                                }
+                            },
+                            Operator::Minus => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(sub!(left.to_byte()?, right.to_byte()?)),
+                                Type::Short => Value::Short(sub!(left.to_short()?, right.to_short()?)),
+                                Type::Int => Value::Int(sub!(left.to_int()?, right.to_int()?)),
+                                Type::Long => Value::Long(sub!(left.to_long()?, right.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::Divide => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(div!(left.to_byte()?, right.to_byte()?)),
+                                Type::Short => Value::Short(div!(left.to_short()?, right.to_short()?)),
+                                Type::Int => Value::Int(div!(left.to_int()?, right.to_int()?)),
+                                Type::Long => Value::Long(div!(left.to_long()?, right.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::Multiply => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(mul!(left.to_byte()?, right.to_byte()?)),
+                                Type::Short => Value::Short(mul!(left.to_short()?, right.to_short()?)),
+                                Type::Int => Value::Int(mul!(left.to_int()?, right.to_int()?)),
+                                Type::Long => Value::Long(mul!(left.to_long()?, right.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::Modulo => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(left.to_byte()? % right.to_byte()?),
+                                Type::Short => Value::Short(left.to_short()? % right.to_short()?),
+                                Type::Int => Value::Int(left.to_int()? % right.to_int()?),
+                                Type::Long => Value::Long(left.to_long()? % right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::BitwiseLeft => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(shl!(left.to_byte()?, right.to_byte()?)),
+                                Type::Short => Value::Short(shl!(left.to_short()?, right.to_short()?)),
+                                Type::Int => Value::Int(shl!(left.to_int()?, right.to_int()?)),
+                                Type::Long => Value::Long(shl!(left.to_long()?, right.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::BitwiseRight => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(shr!(left.to_byte()?, right.to_byte()?)),
+                                Type::Short => Value::Short(shr!(left.to_short()?, right.to_short()?)),
+                                Type::Int => Value::Int(shr!(left.to_int()?, right.to_int()?)),
+                                Type::Long => Value::Long(shr!(left.to_long()?, right.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::GreaterOrEqual => Ok(Some(match left_type {
+                                Type::Byte => Value::Boolean(left.to_byte()? >= right.to_byte()?),
+                                Type::Short => Value::Boolean(left.to_short()? >= right.to_short()?),
+                                Type::Int => Value::Boolean(left.to_int()? >= right.to_int()?),
+                                Type::Long => Value::Boolean(left.to_long()? >= right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::GreaterThan => Ok(Some(match left_type {
+                                Type::Byte => Value::Boolean(left.to_byte()? > right.to_byte()?),
+                                Type::Short => Value::Boolean(left.to_short()? > right.to_short()?),
+                                Type::Int => Value::Boolean(left.to_int()? > right.to_int()?),
+                                Type::Long => Value::Boolean(left.to_long()? > right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::LessOrEqual => Ok(Some(match left_type {
+                                Type::Byte => Value::Boolean(left.to_byte()? <= right.to_byte()?),
+                                Type::Short => Value::Boolean(left.to_short()? <= right.to_short()?),
+                                Type::Int => Value::Boolean(left.to_int()? <= right.to_int()?),
+                                Type::Long => Value::Boolean(left.to_long()? <= right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::LessThan => Ok(Some(match left_type {
+                                Type::Byte => Value::Boolean(left.to_byte()? < right.to_byte()?),
+                                Type::Short => Value::Boolean(left.to_short()? < right.to_short()?),
+                                Type::Int => Value::Boolean(left.to_int()? < right.to_int()?),
+                                Type::Long => Value::Boolean(left.to_long()? < right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            _ => return Err(InterpreterError::NotImplemented)
+                        }
                     }
                 }
             },
