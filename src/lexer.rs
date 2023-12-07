@@ -101,7 +101,7 @@ impl Lexer {
     }
 
     pub fn get(mut self) -> Result<Vec<Token>, LexerError> {
-        let mut tokens: Vec<Token> = vec![];
+        let mut tokens: Vec<Token> = Vec::new();
         while self.chars.len() > 0 {
             let c = self.next_char();
             if c == '/' && *self.see() == '/' { // it's only a comment, no need to parse it

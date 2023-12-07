@@ -1,6 +1,6 @@
 use crate::expressions::{Statement, Expression, Operator};
-use crate::functions::{FunctionType};
 use crate::environment::Environment;
+use crate::functions::FunctionType;
 use crate::parser::Program;
 use crate::types::*;
 use std::collections::HashMap;
@@ -86,6 +86,7 @@ pub enum InterpreterError {
     OverflowOccured,
     DivByZero,
     StructureNotFound(String),
+    StructureFieldNotFound(String, String),
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -118,12 +119,7 @@ impl Context {
     }
 
     fn get_last_scope(&mut self) -> Result<&mut Scope, InterpreterError> {
-        let size = self.variables.len();
-        if size == 0 {
-            return Err(InterpreterError::NoScopeFound)
-        }
-
-        match self.variables.get_mut(size - 1) {
+        match self.variables.last_mut() {
             Some(scope) => Ok(scope),
             None => Err(InterpreterError::NoScopeFound)
         }
@@ -143,28 +139,27 @@ impl Context {
         Ok(())
     }
 
-    pub fn get_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
-        let vec: Vec<&Scope> = self.variables.iter().rev().collect();
-        for vars in vec {
-            match vars.get(name) {
-                Some(ref var) => return Ok(var),
-                None => {}
-            };
+    pub fn remove_scope(&mut self) -> Result<Scope, InterpreterError> {
+        let size = self.variables.len();
+        if size == 0 {
+            return Err(InterpreterError::NoScopeFound)
         }
 
-        Err(InterpreterError::VariableNotFound(name.clone()))
+        Ok(self.variables.remove(size - 1))
+    }
+
+    pub fn get_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
+        self.variables.iter().rev()
+            .find(|v| v.contains_key(name))
+            .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
+            .get(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
     pub fn get_mut_variable(&mut self, name: &String) -> Result<&mut Variable, InterpreterError> {
-        let vec: Vec<&mut Scope> = self.variables.iter_mut().rev().collect();
-        for vars in vec {
-            match vars.get_mut(name) {
-                Some(var) => return Ok(var),
-                None => {}
-            };
-        }
-
-        Err(InterpreterError::VariableNotFound(name.clone()))
+        self.variables.iter_mut().rev()
+            .find(|v| v.contains_key(name))
+            .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
+            .get_mut(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
     pub fn set_variable_value(&mut self, name: &String, value: RefValue, structures: &RefMap<String, Struct>) -> Result<(), InterpreterError> {
@@ -197,14 +192,18 @@ impl Context {
     }
 }
 
+struct State {
+    count_expr: u64,
+    recursive: u16
+}
+
 pub struct Interpreter<'a> {
     program: &'a Program,
     max_expr: u64,
     max_recursive: u16,
-    count_expr: RefCell<u64>,
-    recursive: RefCell<u16>,
-    constants: Option<Context>,
+    state: RefCell<State>,
     env: &'a Environment,
+    constants: Scope,
     ref_structures: RefMap<'a, String, Struct>
 }
 
@@ -214,9 +213,11 @@ impl<'a> Interpreter<'a> {
             program,
             max_expr,
             max_recursive,
-            count_expr: RefCell::new(0),
-            recursive: RefCell::new(0),
-            constants: None,
+            state: RefCell::new(State {
+                count_expr: 0,
+                recursive: 0
+            }),
+            constants: Scope::new(),
             env,
             ref_structures: RefMap::new()
         };
@@ -224,7 +225,7 @@ impl<'a> Interpreter<'a> {
         interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
 
         // register constants
-        if interpreter.program.constants.len() > 0 {
+        if !interpreter.program.constants.is_empty() {
             let mut context = Context::new();
             context.push_scope();
             for constant in &interpreter.program.constants {
@@ -232,22 +233,17 @@ impl<'a> Interpreter<'a> {
                 let variable = Variable::new(value, constant.value_type.clone());
                 context.register_variable(constant.name.clone(), variable)?;
             }
-            interpreter.constants = Some(context);
+            interpreter.constants = context.remove_scope()?;
         }
 
         Ok(interpreter)
     }
 
-    fn get_constant_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
-        match &self.constants {
-            Some(constants) => constants.get_variable(name),
-            None => Err(InterpreterError::VariableNotFound(name.clone()))
-        }
-    }
-
     fn increment_expr(&self) -> Result<(), InterpreterError> {
-        *self.count_expr.borrow_mut() += 1;
-        if self.max_expr != 0 && *self.count_expr.borrow() >= self.max_expr {
+        let mut state = self.state.borrow_mut();
+        state.count_expr += 1;
+
+        if self.max_expr != 0 && state.count_expr >= self.max_expr {
             return Err(InterpreterError::LimitReached)
         }
 
@@ -298,7 +294,7 @@ impl<'a> Interpreter<'a> {
                 let right_vec = right.as_vec()?;
                 if left_vec.len() == right_vec.len() {
                     let mut equal = true;
-                    for i in 0..left_vec.len() - 1 {
+                    for i in 0..left_vec.len() {
                         if !self.is_same_value(sub_type, &left_vec[i].borrow(), &right_vec[i].borrow())? {
                             equal = false;
                             break;
@@ -333,15 +329,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn get_function(&self, name: &String, for_type: Option<&Type>, parameters: &Vec<Type>) -> Result<&FunctionType, InterpreterError> {
-        let mut functions: Vec<&FunctionType> = self.program.functions.iter().map(|v| v).collect(); // merge two in one
-        for f in self.env.get_functions() {
-            functions.push(f);
-        }
-
-        'funcs: for f in &functions {
+        'funcs: for f in self.program.functions.iter().chain(self.env.get_functions()) {
             if *f.get_name() == *name && f.get_parameters_count() == parameters.len() {
-                let same_type: bool = 
-                if let Some(type_a) = for_type {
+                let same_type: bool = if let Some(type_a) = for_type {
                     if let Some(type_b) = f.for_type() {
                         type_a.is_compatible_with(type_b)
                     } else {
@@ -414,22 +404,24 @@ impl<'a> Interpreter<'a> {
                     values.push(self.execute_expression_and_expect_value(None, param, context)?);
                 }
 
-                *self.recursive.borrow_mut() += 1;
-                if *self.recursive.borrow() >= self.max_recursive {
+                let mut state = self.state.borrow_mut();
+                state.recursive += 1;
+                if state.recursive >= self.max_recursive {
                     return Err(InterpreterError::RecursiveLimitReached)
                 }
 
                 let res = match on_value {
                     Some(v) => {
-                        let func = self.get_function(name, Some(&self.get_type_from_value(&v.borrow())?), &self.get_types_from_values(&values)?)?;
-                        self.execute_function(&func, Some(&mut v.borrow_mut()), values)
+                        let mut v = v.borrow_mut();
+                        let func = self.get_function(name, Some(&self.get_type_from_value(&v)?), &self.get_types_from_values(&values)?)?;
+                        self.execute_function(&func, Some(&mut v), values)
                     },
                     None => {
                         let func = self.get_function(name, None, &self.get_types_from_values(&values)?)?;
                         self.execute_function(&func, None, values)
                     }
                 };
-                *self.recursive.borrow_mut() -= 1;
+                state.recursive -= 1;
                 res
             },
             Expression::ArrayConstructor(expressions) => {
@@ -441,15 +433,22 @@ impl<'a> Interpreter<'a> {
 
                 Ok(Some(Value::Array(values)))
             },
-            Expression::StructConstructor(name, expr_fields) => {
+            Expression::StructConstructor(struct_name, expr_fields) => {
+                let s = self.ref_structures.get(struct_name).ok_or_else(|| InterpreterError::StructureNotFound(struct_name.clone()))?;
                 let mut fields: Scope = HashMap::new();
                 for (name, expr) in expr_fields {
                     let value = self.execute_expression_and_expect_value(None, &expr, context)?;
-                    let value_type = self.get_type_from_value(&value)?; // TODO check from struct type
+                    let value_type = self.get_type_from_value(&value)?;
+
+                    let expected_type = s.fields.get(name).ok_or_else(|| InterpreterError::StructureFieldNotFound(struct_name.clone(), name.clone()))?;
+                    if *expected_type != value_type {
+                        return Err(InterpreterError::InvalidType(value_type))
+                    }
+
                     let variable = Variable::new(value, value_type);
                     fields.insert(name.clone(), variable);
                 }
-                Ok(Some(Value::Struct(name.clone(), fields)))
+                Ok(Some(Value::Struct(struct_name.clone(), fields)))
             },
             Expression::ArrayCall(expr, expr_index) => {
                 let values = self.execute_expression_and_expect_value(on_value, &expr, context)?.to_vec()?;
@@ -482,21 +481,25 @@ impl<'a> Interpreter<'a> {
                 },
                 None => match context.get_variable(var) {
                     Ok(v) => Ok(Some(v.get_value().borrow().clone())),
-                    Err(_) => Ok(Some(self.get_constant_variable(var)?.get_value().borrow().clone()))
+                    Err(_) => Ok(Some(
+                        self.constants.get(var)
+                        .ok_or_else(|| InterpreterError::VariableNotFound(var.clone()))?
+                        .get_value().borrow().clone()
+                    ))
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let value = self.execute_expression_and_expect_value(None, expr_right, context)?;
                     let path_value = self.get_from_path(None, expr_left, context)?;
-                    let path_type = self.get_type_from_value(&path_value.borrow())?;
+                    let mut path_value = path_value.borrow_mut();
+                    let path_type = self.get_type_from_value(&path_value)?;
                     let value_type = self.get_type_from_value(&value)?;
 
-                    if (!path_value.borrow().is_number() || !value.is_number() || path_type != value_type) && op.is_number_operator() && !(*op == Operator::AssignPlus && path_type == Type::String) {
+                    if (!path_value.is_number() || !value.is_number() || path_type != value_type) && op.is_number_operator() && !(*op == Operator::AssignPlus && path_type == Type::String) {
                         return Err(InterpreterError::OperationNotNumberType)
                     }
 
-                    let mut path_value = path_value.borrow_mut();
                     match op {
                         Operator::Assign => {
                             *path_value = value;
@@ -901,10 +904,11 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn get_count_expr(&self) -> u64 {
-        *self.count_expr.borrow()
+        self.state.borrow().count_expr
     }
 
     pub fn add_count_expr(&self, n: u64) {
-        *self.count_expr.borrow_mut() += n;
+        let mut state = self.state.borrow_mut();
+        state.count_expr += n;
     }
 }

@@ -72,8 +72,7 @@ impl Context {
     }
 
     pub fn get_type_of_variable(&self, key: &String) -> Result<&Type, ParserError> {
-        let vec: Vec<&HashMap<String, Type>> = self.variables.iter().rev().collect();
-        for vars in vec {
+        for vars in self.variables.iter().rev() {
             if let Some(_type) = vars.get(key) {
                 return Ok(_type)
             }
@@ -91,12 +90,9 @@ impl Context {
             return Err(ParserError::VariableNameAlreadyUsed(key))
         }
 
-        if !self.has_scope() {
-            return Err(ParserError::NoScopeFound)
-        }
-
-        let last = self.variables.len() - 1;
-        self.variables[last].insert(key, var_type);
+        self.variables.last_mut()
+            .ok_or(ParserError::NoScopeFound)?
+            .insert(key, var_type);
 
         Ok(())
     }
@@ -112,12 +108,7 @@ impl Context {
     }
 
     pub fn has_scope(&self) -> bool {
-        self.variables.len() > 0
-    }
-
-    pub fn reset(&mut self) {
-        self.variables.drain(1..self.variables.len());
-        self.return_type = None;
+        !self.variables.is_empty()
     }
 }
 
@@ -978,8 +969,7 @@ impl<'a> Parser<'a> {
 
         context.remove_last_scope();
 
-        let last = self.functions.len() - 1;
-        match self.functions.get_mut(last) {
+        match self.functions.last_mut() {
             Some(function) => {
                 if let FunctionType::Custom(f) = function {
                     f.set_statements(statements);

@@ -8,7 +8,6 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub enum Value {
     Null,
-
     // number types
     Byte(u8),
     Short(u16),
@@ -22,7 +21,6 @@ pub enum Value {
 }
 
 impl Value {
-
     pub fn is_null(&self) -> bool {
         match &self {
             Value::Null => true,

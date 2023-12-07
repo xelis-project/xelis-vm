@@ -38,21 +38,19 @@ impl Environment {
         env.register_native_function(NativeFunction::new("to_lowercase".to_owned(), Some(Type::String), vec![], to_lowercase, 1, Some(Type::String)));
         env.register_native_function(NativeFunction::new("to_bytes".to_owned(), Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::Byte)))));
 
-        /*
-        functions.push(NativeFunction::new("index_of".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Int)));
-        functions.push(NativeFunction::new("last_index_of".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Int)));
-        functions.push(NativeFunction::new("replace".to_owned(), Some(Type::String), vec![Type::String, Type::String], println, Some(Type::String)));
-        functions.push(NativeFunction::new("starts_with".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Boolean)));
-        functions.push(NativeFunction::new("ends_with".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Boolean)));
-        functions.push(NativeFunction::new("split".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Array(Box::new(Type::String)))));
-        functions.push(NativeFunction::new("char_at".to_owned(), Some(Type::String), vec![Type::Int], println, Some(Type::String)));
+        env.register_native_function(NativeFunction::new("index_of".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Int)));
+        env.register_native_function(NativeFunction::new("last_index_of".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Int)));
+        env.register_native_function(NativeFunction::new("replace".to_owned(), Some(Type::String), vec![Type::String, Type::String], println, 3, Some(Type::String)));
+        env.register_native_function(NativeFunction::new("starts_with".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean)));
+        env.register_native_function(NativeFunction::new("ends_with".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean)));
+        env.register_native_function(NativeFunction::new("split".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Array(Box::new(Type::String)))));
+        env.register_native_function(NativeFunction::new("char_at".to_owned(), Some(Type::String), vec![Type::Int], println, 1, Some(Type::String)));
 
-        functions.push(NativeFunction::new("is_empty".to_owned(), Some(Type::String), vec![], println, Some(Type::Boolean)));
-        functions.push(NativeFunction::new("matches".to_owned(), Some(Type::String), vec![Type::String], println, Some(Type::Boolean)));
-        functions.push(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int], println, Some(Type::String)));
-        functions.push(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int, Type::Int], println, Some(Type::String)));
-        functions.push(NativeFunction::new("format".to_owned(), Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, Some(Type::String)));
-        */
+        env.register_native_function(NativeFunction::new("is_empty".to_owned(), Some(Type::String), vec![], println, 1, Some(Type::Boolean)));
+        env.register_native_function(NativeFunction::new("matches".to_owned(), Some(Type::String), vec![Type::String], println, 25, Some(Type::Boolean)));
+        env.register_native_function(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int], println, 3, Some(Type::String)));
+        env.register_native_function(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int, Type::Int], println, 3, Some(Type::String)));
+        env.register_native_function(NativeFunction::new("format".to_owned(), Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, 5, Some(Type::String)));
 
         env
     }

@@ -1,16 +1,7 @@
-mod parser;
-mod lexer;
-mod token;
-mod types;
-mod environment;
-mod functions;
-mod expressions;
-mod interpreter;
-
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::environment::Environment;
-use crate::interpreter::Interpreter;
+use xelis_vm::Lexer;
+use xelis_vm::Parser;
+use xelis_vm::Environment;
+use xelis_vm::Interpreter;
 use std::{fs, env};
 
 fn main() {
@@ -22,8 +13,7 @@ fn main() {
         }
     };
 
-    let code: String =
-    fs::read_to_string(file).expect("Something went wrong reading the file");
+    let code = fs::read_to_string(file).expect("Something went wrong reading the file");
     match Lexer::new(code.chars().collect()).get() {
         Ok(result) => {
             let environment = Environment::default();
