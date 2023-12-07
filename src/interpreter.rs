@@ -404,10 +404,12 @@ impl<'a> Interpreter<'a> {
                     values.push(self.execute_expression_and_expect_value(None, param, context)?);
                 }
 
-                let mut state = self.state.borrow_mut();
-                state.recursive += 1;
-                if state.recursive >= self.max_recursive {
-                    return Err(InterpreterError::RecursiveLimitReached)
+                {
+                    let mut state = self.state.borrow_mut();
+                    state.recursive += 1;
+                    if state.recursive >= self.max_recursive {
+                        return Err(InterpreterError::RecursiveLimitReached)
+                    }
                 }
 
                 let res = match on_value {
@@ -421,7 +423,11 @@ impl<'a> Interpreter<'a> {
                         self.execute_function(&func, None, values)
                     }
                 };
-                state.recursive -= 1;
+
+                {
+                    let mut state = self.state.borrow_mut();
+                    state.recursive -= 1;
+                }
                 res
             },
             Expression::ArrayConstructor(expressions) => {
@@ -686,11 +692,9 @@ impl<'a> Interpreter<'a> {
             match statement {
                 Statement::Break => {
                     context.loop_break = true;
-                    //break; break is not needed as Parser prevent any code after it
                 },
                 Statement::Continue => {
                     context.loop_continue = true;
-                    //break; // same here
                 },
                 Statement::Variable(var) => {
                     let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, context)?, var.value_type.clone());
