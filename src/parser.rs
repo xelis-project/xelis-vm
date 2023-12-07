@@ -122,6 +122,7 @@ pub struct Parser<'a> {
 
 #[derive(Debug)]
 pub enum ParserError {
+    VariableTooLong(String),
     ExpectedIdentifierToken(Token),
     UnexpectedToken(Token),
     InvalidToken(Token, Token),
@@ -177,9 +178,14 @@ impl<'a> Parser<'a> {
         &self.tokens[0]
     }
 
+    // Limited to 32 characters
     fn next_identifier(&mut self) -> Result<String, ParserError> {
         match self.next() {
-            Token::Identifier(id) => Ok(id),
+            Token::Identifier(id) => if id.len() <= 32 {
+                Ok(id)
+            } else {
+                Err(ParserError::VariableTooLong(id))
+            },
             token => Err(ParserError::ExpectedIdentifierToken(token))
         }
     }
