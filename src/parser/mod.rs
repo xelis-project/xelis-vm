@@ -508,8 +508,8 @@ impl<'a> Parser<'a> {
      * Example: let hello: string = "hello";
      * Rules:
      * - Every variable must be declared with 'let' keyword
-     * - Variable name must alphanumeric characters
-     * - Must provide value type
+     * - Variable name must be alphanumeric characters
+     * - Must provide a value type
      * - If no value is set, Null is set by default
      */
     fn read_variable(&mut self, context: &mut Context) -> Result<DeclarationStatement, ParserError> {
@@ -715,27 +715,26 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
+    // Read the parameters for a function
     fn read_parameters(&mut self) -> Result<Vec<Parameter>, ParserError> {
-        let mut parameters: Vec<Parameter> = vec![];
-        loop {
-            if self.next_is_identifier() {
-                let name = self.next_identifier()?;
-                self.expect_token(Token::Colon)?;
-                let value_type = self.read_type()?;
-                
-                if parameters.len() > 0 && parameters.iter().any(|p| *p.get_name() == name) { // verify that we have unique names here
-                    return Err(ParserError::VariableNameAlreadyUsed(name))
-                }
-                parameters.push(Parameter::new(name, value_type));
+        let mut parameters: Vec<Parameter> = Vec::new();
+        while self.next_is_identifier() {
+            let name = self.next_identifier()?;
+            self.expect_token(Token::Colon)?;
+            let value_type = self.read_type()?;
 
-                if *self.peek()? != Token::Comma {
-                    break;
-                }
-    
-                self.expect_token(Token::Comma)?;
-            } else {
+            // verify that we have unique names here
+            if parameters.iter().any(|p| *p.get_name() == name) {
+                return Err(ParserError::VariableNameAlreadyUsed(name))
+            }
+
+            parameters.push(Parameter::new(name, value_type));
+
+            if *self.peek()? != Token::Comma {
                 break;
             }
+
+            self.expect_token(Token::Comma)?;
         }
 
         Ok(parameters)
@@ -744,9 +743,8 @@ impl<'a> Parser<'a> {
     fn ends_with_return(&self, statements: &Vec<Statement>) -> Result<bool, ParserError> {
         let mut ok = false;
         let mut last_is_else = false;
-        let mut i = 0;
         let size = statements.len();
-        for statement in statements {
+        for (i, statement) in statements.into_iter().enumerate() {
             match statement {
                 Statement::If(_, statements) => {
                     if i + 1 < size { // verify that there is not a if alone
@@ -781,7 +779,6 @@ impl<'a> Parser<'a> {
                 },
                 _ => {}
             }
-            i += 1;
         }
 
         Ok(ok)
