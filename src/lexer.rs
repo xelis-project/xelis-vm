@@ -35,7 +35,7 @@ impl Lexer {
         let c = self.chars.pop_front().ok_or(LexerError::ExpectedChar(self.line, self.column))?;
         if c == '\n' {
             self.line += 1;
-            self.column = 0;
+            self.column = 1;
         } else {
             self.column += 1;
         }
