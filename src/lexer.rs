@@ -166,3 +166,41 @@ impl Lexer {
         Ok(tokens)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_lexer_assign() {
+        use super::*;
+        let code = "let a = 10;".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens, vec![
+            Token::Let,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorAssign,
+            Token::Number(10)
+        ]);
+    }
+
+    #[test]
+    fn test_lexer_function() {
+        use super::*;
+        let code = "func main() { return 10; }".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 8);
+        assert_eq!(tokens, vec![
+            Token::Function,
+            Token::Identifier("main".to_owned()),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Number(10),
+            Token::BraceClose
+        ]);
+    }
+}
