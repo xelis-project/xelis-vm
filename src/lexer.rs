@@ -115,30 +115,30 @@ impl Lexer {
                 // read a number value
                 c if c.is_digit(10) => {
                     let mut chars = vec![c];
-                    while {
+                    let mut is_long = false;
+                    loop {
                         let v = self.peek()?;
-                        v.is_digit(10) || *v == '_' || *v == 'L'
-                    } {
-                        let c = self.next_char()?;
-                        chars.push(c);
-
-                        if c == 'L' {
+                        // Support base 10 and base 16
+                        if v.is_digit(10) || v.is_digit(16) {
+                            chars.push(self.next_char()?);
+                        } else if *v == '_' {
+                            // Skip the underscore
+                            self.next_char()?;
+                        } else {
+                            if *v == 'L' {
+                                self.next_char()?;
+                                is_long = true;
+                            }
                             break;
                         }
                     }
 
-                    let token: Token = match chars.last() {
-                        Some(last) => match last {
-                            'L' => {
-                                chars.pop();
-                                Token::Long(self.parse_number(chars.into_iter().collect())?)
-                            },
-                            _ => Token::Number(self.parse_number(chars.into_iter().collect())?)
-                        },
-                        None => {
-                            return Err(LexerError::ExpectedChar(self.line, self.column))
-                        }
+                    let token = if is_long {
+                        Token::Long(self.parse_number(chars.into_iter().collect())?)
+                    } else {
+                        Token::Number(self.parse_number(chars.into_iter().collect())?)
                     };
+
                     tokens.push(token);
                 },
                 c if c.is_alphabetic() => {
@@ -201,6 +201,18 @@ mod tests {
             Token::Return,
             Token::Number(10),
             Token::BraceClose
+        ]);
+    }
+
+    #[test]
+    fn test_lexer_long_with_underscore() {
+        use super::*;
+        let code = "10_000L".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens, vec![
+            Token::Long(10_000)
         ]);
     }
 }
