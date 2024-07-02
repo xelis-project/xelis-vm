@@ -9,7 +9,8 @@ mod functions;
 
 pub use crate::{
     environment::Environment,
-    functions::{FnInstance, FnReturnType},
+    token::Token,
+    functions::{FnInstance, CustomFunction, FnReturnType},
     interpreter::{Interpreter, InterpreterError},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError}

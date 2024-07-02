@@ -90,7 +90,7 @@ impl Lexer {
     }
 
     // Parse the code into a list of tokens
-    pub fn get(mut self) -> Result<Vec<Token>, LexerError> {
+    pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
         let mut tokens: Vec<Token> = Vec::new();
         while self.chars.len() > 0 {
             let c = self.next_char()?;
@@ -163,7 +163,8 @@ impl Lexer {
                 }
             };
         }
-        Ok(tokens)
+
+        Ok(tokens.into())
     }
 }
 
