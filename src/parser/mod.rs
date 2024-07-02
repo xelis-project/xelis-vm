@@ -1,10 +1,21 @@
-use crate::expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter};
-use crate::functions::{CustomFunction, FunctionType};
-use crate::types::{Value, Type, Struct, RefMap};
-use crate::environment::Environment;
-use crate::token::Token;
-use std::collections::HashMap;
-use std::convert::TryInto;
+mod scope;
+mod context;
+mod error;
+
+pub use self::error::ParserError;
+use self::context::Context;
+
+use crate::{
+    expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter},
+    functions::{CustomFunction, FunctionType},
+    types::{Value, Type, Struct, RefMap},
+    Environment,
+    Token
+};
+use std::{
+    collections::{HashMap, VecDeque},
+    convert::TryInto
+};
 
 macro_rules! convert {
     ($a: expr) => {{
@@ -22,145 +33,18 @@ pub struct Program {
     pub functions: Vec<FunctionType>
 }
 
-#[derive(Clone)]
-struct Context {
-    variables: Vec<HashMap<String, Type>>,
-    return_type: Option<Type>,
-    is_in_loop: bool,
-    current_type: Option<Type>, // used by path walkthrough
-}
-
-impl Context {
-    pub fn new() -> Self {
-        Self {
-            variables: vec![HashMap::new()], // first is for constants
-            return_type: None,
-            is_in_loop: false,
-            current_type: None
-        }
-    }
-
-    pub fn set_current_type(&mut self, current_type: Type, parser: &Parser) -> Result<(), ParserError> {
-        self.remove_current_type(); // prevent any bug
-
-        match &current_type {
-            Type::Struct(ref s) => {
-                self.create_new_scope();
-                for (name, _type) in &parser.get_structure(s)?.fields {
-                    self.register_variable(name.clone(), _type.clone())?;
-                }
-            }
-            _ => {}
-        }
-        self.current_type = Some(current_type);
-        Ok(())
-    }
-
-    pub fn remove_current_type(&mut self) {
-        if let Some(t) = self.current_type.take() {
-            match t {
-                Type::Struct(_) => {
-                    self.remove_last_scope();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    pub fn get_current_type(&self) -> &Option<Type> {
-        &self.current_type
-    }
-
-    pub fn get_type_of_variable(&self, key: &String) -> Result<&Type, ParserError> {
-        for vars in self.variables.iter().rev() {
-            if let Some(_type) = vars.get(key) {
-                return Ok(_type)
-            }
-        }
-
-        Err(ParserError::UnexpectedVariable(key.clone()))
-    }
-
-    pub fn has_variable(&self, key: &String) -> bool {
-        self.get_type_of_variable(key).is_ok()
-    }
-
-    pub fn register_variable(&mut self, key: String, var_type: Type) -> Result<(), ParserError> {
-        if self.has_variable(&key) {
-            return Err(ParserError::VariableNameAlreadyUsed(key))
-        }
-
-        self.variables.last_mut()
-            .ok_or(ParserError::NoScopeFound)?
-            .insert(key, var_type);
-
-        Ok(())
-    }
-
-    pub fn create_new_scope(&mut self) {
-        self.variables.push(HashMap::new());
-    }
-
-    pub fn remove_last_scope(&mut self) {
-        if self.has_scope() {
-            self.variables.remove(self.variables.len() - 1);
-        }
-    }
-
-    pub fn has_scope(&self) -> bool {
-        !self.variables.is_empty()
-    }
-}
+type VariableId = String;
 
 pub struct Parser<'a> {
     constants: Vec<DeclarationStatement>,
-    tokens: Vec<Token>,
+    tokens: VecDeque<Token>,
     functions: Vec<FunctionType>,
     structures: HashMap<String, Struct>,
     env: &'a Environment
 }
 
-#[derive(Debug)]
-pub enum ParserError {
-    VariableTooLong(String),
-    ExpectedIdentifierToken(Token),
-    UnexpectedToken(Token),
-    InvalidToken(Token, Token),
-    TypeNotFound(String),
-    NoIfBeforeElse(Token),
-    StructNameAlreadyUsed(String),
-    VariableNameAlreadyUsed(String),
-    FunctionSignatureAlreadyExist(String),
-    UnexpectedVariable(String),
-    InvalidStructField(String),
-    InvalidStructureName(String),
-    StructureNotFound(String),
-    FunctionNotFound(String, usize),
-    FunctionNoReturnType(String),
-    NoScopeFound,
-    NoReturnFound,
-    ReturnAlreadyInElse,
-    EmptyValue,
-    InvalidArrayCall,
-    NotImplemented,
-    InvalidOperation,
-    InvalidTernaryNoPreviousExpression,
-    DeadCodeNotAllowed,
-    InvalidForExpression(Expression),
-    OperatorNotFound(Token),
-    InvalidCondition(Expression, Type),
-    InvalidOperationNotSameType(Type, Type),
-    InvalidArrayCallIndexType(Type),
-    InvalidTypeInArray(Type, Type),
-    InvalidValueType(Type, Type),
-    InvalidFunctionType(Type),
-    EmptyArrayConstructor,
-    ExpectedNumberType,
-    InvalidNumberValueForType
-}
-
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, env: &'a Environment) -> Self {
+    pub fn new(tokens: VecDeque<Token>, env: &'a Environment) -> Self {
         Parser {
             constants: Vec::new(),
             tokens,
@@ -170,17 +54,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn next(&mut self) -> Token {
-        self.tokens.remove(0)
+    // Consume the next token
+    fn next(&mut self) -> Result<Token, ParserError> {
+        self.tokens.pop_front().ok_or(ParserError::ExpectedToken)
     }
 
-    fn see(&self) -> &Token {
-        &self.tokens[0]
+    // Peek the next token without consuming it
+    fn peek(&self) -> Result<&Token, ParserError> {
+        self.tokens.front().ok_or(ParserError::ExpectedToken)
     }
 
     // Limited to 32 characters
     fn next_identifier(&mut self) -> Result<String, ParserError> {
-        match self.next() {
+        match self.next()? {
             Token::Identifier(id) => if id.len() <= 32 {
                 Ok(id)
             } else {
@@ -190,15 +76,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Check if the next token is an identifier
     fn next_is_identifier(&self) -> bool {
-        match &self.tokens[0] {
+        self.peek().ok().filter(|t| match t {
             Token::Identifier(_) => true,
             _ => false
-        }
+        }).is_some()
     }
 
+    // Require a specific token
     fn expect_token(&mut self, expected: Token) -> Result<Token, ParserError> {
-        let token = self.next();
+        let token = self.next()?;
         if token != expected {
             return Err(ParserError::InvalidToken(token, expected)) 
         }
@@ -224,9 +112,9 @@ impl<'a> Parser<'a> {
             None => return Err(ParserError::TypeNotFound(type_name))
         };
 
-        match self.see() {
+        match self.peek()? {
             Token::BracketOpen => {
-                while *self.see() == Token::BracketOpen { // support multi dimensional arrays
+                while *self.peek()? == Token::BracketOpen { // support multi dimensional arrays
                     self.expect_token(Token::BracketOpen)?;
                     self.expect_token(Token::BracketClose)?;
                     _type = Type::Array(Box::new(_type));
@@ -333,12 +221,12 @@ impl<'a> Parser<'a> {
     fn read_expr(&mut self, accept_operator: bool, number_type: Option<&Type>, context: &mut Context) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
-        while !self.see().should_stop() && ((required_operator == self.see().is_operator()) || (*self.see() == Token::BracketOpen && last_expression.is_none())) {
+        while !self.peek()?.should_stop() && ((required_operator == self.peek()?.is_operator()) || (*self.peek()? == Token::BracketOpen && last_expression.is_none())) {
             if !accept_operator && required_operator {
                 break
             }
 
-            let expr: Expression = match self.next() {
+            let expr: Expression = match self.next()? {
                 Token::BracketOpen => {
                     match last_expression {
                         Some(v) => {
@@ -359,7 +247,7 @@ impl<'a> Parser<'a> {
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = vec![];
                             let mut array_type: Option<Type> = None;
-                            while *self.see() != Token::BracketClose {
+                            while *self.peek()? != Token::BracketClose {
                                 let expr = self.read_expression(context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
@@ -374,7 +262,7 @@ impl<'a> Parser<'a> {
                                 };
                                 expressions.push(expr);
 
-                                if *self.see() == Token::Comma {
+                                if *self.peek()? == Token::Comma {
                                     self.expect_token(Token::Comma)?;
                                 }
                             }
@@ -390,17 +278,17 @@ impl<'a> Parser<'a> {
                     Expression::SubExpression(Box::new(expr))
                 },
                 Token::Identifier(id) => {
-                    match self.see() {
+                    match self.peek()? {
                         Token::ParenthesisOpen => {
-                            self.next(); // we remove the token from the list
+                            self.next()?; // we remove the token from the list
                             let mut parameters: Vec<Expression> = vec![];
                             let mut types: Vec<Type> = vec![];
-                            while *self.see() != Token::ParenthesisClose { // read parameters for function call
+                            while *self.peek()? != Token::ParenthesisClose { // read parameters for function call
                                 let expr = self.read_expression(context)?;
                                 types.push(self.get_type_from_expression(&expr, context)?);
                                 parameters.push(expr);
 
-                                if *self.see() == Token::Comma {
+                                if *self.peek()? == Token::Comma {
                                     self.expect_token(Token::Comma)?;
                                 }
                             }
@@ -433,7 +321,7 @@ impl<'a> Parser<'a> {
                                 let mut fields = HashMap::new();
                                 for _ in 0..len {
                                     let field_name = self.next_identifier()?;
-                                    let field_value = match self.next() {
+                                    let field_value = match self.next()? {
                                         Token::Comma => {
                                             if context.has_variable(&field_name) {
                                                 Expression::Variable(field_name.clone())
@@ -443,8 +331,8 @@ impl<'a> Parser<'a> {
                                         }
                                         Token::Colon => {
                                             let value = self.read_expression(context)?;
-                                            if *self.see() == Token::Comma {
-                                                self.next();
+                                            if *self.peek()? == Token::Comma {
+                                                self.next()?;
                                             }
                                             value
                                         }
@@ -632,7 +520,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
-        let value: Expression = if *self.see() == Token::OperatorAssign {
+        let value: Expression = if *self.peek()? == Token::OperatorAssign {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(true, Some(&value_type), context)?;
             let expr_type = match self.get_type_from_expression(&expr, context) {
@@ -672,8 +560,8 @@ impl<'a> Parser<'a> {
     fn read_statements(&mut self, context: &mut Context) -> Result<Vec<Statement>, ParserError> {
         let mut statements: Vec<Statement> = vec![];
         let mut has_if = false;
-        while *self.see() != Token::BraceClose {
-            let statement: Statement = match self.see() {
+        while *self.peek()? != Token::BraceClose {
+            let statement: Statement = match self.peek()? {
                 Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
                     self.expect_token(Token::For)?;
                     context.create_new_scope();
@@ -700,7 +588,7 @@ impl<'a> Parser<'a> {
                     self.expect_token(Token::ForEach)?;
                     
                     context.create_new_scope();
-                    let variable: String = match self.next() {
+                    let variable: String = match self.next()? {
                         Token::Identifier(v) => v,
                         token => return Err(ParserError::UnexpectedToken(token))
                     };
@@ -745,7 +633,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::NoIfBeforeElse(token))
                     }
 
-                    if *self.see() == Token::If {
+                    if *self.peek()? == Token::If {
                         self.expect_token(Token::If)?;
                         let condition = self.read_expression(context)?;
                         let condition_type = self.get_type_from_expression(&condition, context)?;
@@ -780,7 +668,7 @@ impl<'a> Parser<'a> {
                         None
                     };
 
-                    if *self.see() != Token::BraceClose { // we can't have anything after a return
+                    if *self.peek()? != Token::BraceClose { // we can't have anything after a return
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -792,7 +680,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::UnexpectedToken(token));
                     }
 
-                    if *self.see() != Token::BraceClose { // we can't have anything after a continue
+                    if *self.peek()? != Token::BraceClose { // we can't have anything after a continue
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -804,7 +692,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::UnexpectedToken(token));
                     }
 
-                    if *self.see() != Token::BraceClose { // we can't have anything after a break
+                    if *self.peek()? != Token::BraceClose { // we can't have anything after a break
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -840,7 +728,7 @@ impl<'a> Parser<'a> {
                 }
                 parameters.push(Parameter::new(name, value_type));
 
-                if *self.see() != Token::Comma {
+                if *self.peek()? != Token::Comma {
                     break;
                 }
     
@@ -910,11 +798,11 @@ impl<'a> Parser<'a> {
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a int value
      */
-    fn read_function(&mut self, entry: bool, constants: &Context) -> Result<(), ParserError> {
-        let mut context: Context = constants.clone();
+    fn read_function(&mut self, entry: bool, context: &Context) -> Result<(), ParserError> {
+        let mut context: Context = context.clone();
         context.create_new_scope();
-        let (instance_name, for_type) = if *self.see() == Token::ParenthesisOpen {
-            self.next();
+        let (instance_name, for_type) = if *self.peek()? == Token::ParenthesisOpen {
+            self.next()?;
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
             if !for_type.is_struct() { // TODO only types that are declared by the same program
@@ -936,8 +824,8 @@ impl<'a> Parser<'a> {
 
         let return_type: Option<Type> = if entry { // all entries must return a int value
             Some(Type::Int)
-        } else if *self.see() == Token::Colon { // read returned type
-            self.next();
+        } else if *self.peek()? == Token::Colon { // read returned type
+            self.next()?;
             Some(self.read_type()?)
         } else {
             None
@@ -1083,7 +971,7 @@ impl<'a> Parser<'a> {
         // parse all tokens
         let mut context: Context = Context::new();
         while self.tokens.len() > 0 {
-            match self.next() {
+            match self.next()? {
                 Token::Import => {}, // TODO
                 Token::Const => {
                     let var = self.read_variable(&mut context)?;
