@@ -253,7 +253,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
-                                let expr = self.read_expression(context)?;
+                                let expr = self.read_expr(false, number_type.map(|t| t.get_array_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(&expr, context)?;
@@ -513,6 +513,9 @@ impl<'a> Parser<'a> {
         let value: Expression = if *self.peek()? == Token::OperatorAssign {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(true, Some(&value_type), context)?;
+
+        println!("Variable: {} of type: {:?}, expr: {:?}", name, value_type, expr);
+
             let expr_type = match self.get_type_from_expression(&expr, context) {
                 Ok(_type) => _type,
                 Err(e) => match e { // support empty array declaration
