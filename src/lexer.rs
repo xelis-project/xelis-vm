@@ -17,7 +17,7 @@ pub struct Lexer {
 
 impl Lexer {
     // create a new lexer
-    pub fn new(chars: Vec<char>) -> Self {
+    pub fn new<S: Into<VecDeque<char>>>(chars: S) -> Self {
         Lexer {
             chars: chars.into(),
             line: 1,
@@ -27,12 +27,12 @@ impl Lexer {
 
     // peek the next character
     fn peek(&self) -> Result<&char, LexerError> {
-        self.chars.front().ok_or(LexerError::ExpectedChar(self.line, self.column))
+        self.chars.front().ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
     }
 
     // consume the next character
     fn next_char(&mut self) -> Result<char, LexerError> {
-        let c = self.chars.pop_front().ok_or(LexerError::ExpectedChar(self.line, self.column))?;
+        let c = self.chars.pop_front().ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))?;
         if c == '\n' {
             self.line += 1;
             self.column = 1;
@@ -44,11 +44,7 @@ impl Lexer {
 
     // get the next token
     fn next_token(&self, c: char) -> Option<Token> {
-        if let Some(peek) = self.peek().ok() {
-            Token::value_of(&vec![c, *peek].into_iter().collect())
-        } else {
-            None
-        }
+        self.peek().ok().map(|v| Token::value_of(&vec![c, *v].into_iter().collect())).flatten()
     }
 
     // read characters while the delimiter is true
@@ -57,11 +53,18 @@ impl Lexer {
         F: Fn(&char) -> bool,
     {
         let mut values = vec![c];
-        while delimiter(self.peek()?) {
-            values.push(self.next_char()?);
+        loop {
+            let value = self.next_char()?;
+            if !delimiter(&value) {
+                // push the last character back
+                self.chars.push_front(value);
+                break;
+            } else {
+                values.push(value);
+            }
         }
 
-        Ok(values.into_iter().collect())
+        Ok(String::from_iter(values))
     }
 
     // this will consume characters until the delimiter returns true
@@ -69,7 +72,7 @@ impl Lexer {
     where 
         F: Fn(&char) -> bool,
     {
-        let mut values = vec![];
+        let mut values = Vec::new();
         loop {
             let c = self.next_char()?;
             if delimiter(&c) {
@@ -78,7 +81,28 @@ impl Lexer {
             values.push(c);
         }
 
-        Ok(values.into_iter().collect())
+        Ok(String::from_iter(values))
+    }
+
+    // this will read the whole string until the end character
+    // it supports escaped characters
+    fn read_string(&mut self, end: char) -> Result<String, LexerError> {
+        let mut values = Vec::new();
+        let mut escape = false;
+        loop {
+            let c = self.next_char()?;
+            if c == end && !escape {
+                break;
+            }
+            else if c == '\\' && !escape {
+                escape = true;
+            } else {
+                escape = false;
+                values.push(c);
+            }
+        }
+
+        Ok(String::from_iter(values))
     }
 
     // parse a number from a string
@@ -92,76 +116,81 @@ impl Lexer {
     // Parse the code into a list of tokens
     pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
         let mut tokens: Vec<Token> = Vec::new();
-        while self.chars.len() > 0 {
+        while !self.chars.is_empty() {
             let c = self.next_char()?;
 
-            match c {
+            let token = match c {
+                // skipped characters
+                '\n' | ' ' | ';' => {
+                    // we just skip these characters
+                    continue;
+                },
+                // read a string value
+                // It supports escaped characters
+                '"' | '\'' => {
+                    let value = self.read_string(c)?;
+                    Token::ValString(value)
+                },
                 // it's only a comment, no need to parse it
                 '/' if *self.peek()? == '/' => {
                     // TODO support multi line comments
                     self.read_until(|c| *c == '\n')?;
-                },
-                // skipped characters
-                '\n' | ' ' | ';' => {
-                    // we just skip these characters
-                },
-                // read a string value
-                '"' | '\'' => {
-                    let value = self.read_until(|v| -> bool {
-                        *v == c
-                    })?;
-                    tokens.push(Token::ValString(value));
+                    continue;
                 },
                 // read a number value
                 c if c.is_digit(10) => {
                     let mut chars = vec![c];
                     let mut is_long = false;
                     loop {
-                        let v = self.peek()?;
+                        let v = self.next_char()?;
                         // Support base 10 and base 16
                         if v.is_digit(10) || v.is_digit(16) {
-                            chars.push(self.next_char()?);
-                        } else if *v == '_' {
+                            chars.push(v);
+                        } else if v == '_' {
                             // Skip the underscore
-                            self.next_char()?;
                         } else {
-                            if *v == 'L' {
-                                self.next_char()?;
+                            if v == 'L' {
                                 is_long = true;
+                            } else {
+                                self.chars.push_front(v);
                             }
+
                             break;
                         }
                     }
 
-                    let token = if is_long {
-                        Token::Long(self.parse_number(chars.into_iter().collect())?)
+                    let v = String::from_iter(chars);
+                    if is_long {
+                        Token::Long(self.parse_number(v)?)
                     } else {
-                        Token::Number(self.parse_number(chars.into_iter().collect())?)
-                    };
-
-                    tokens.push(token);
+                        Token::Number(self.parse_number(v)?)
+                    }
                 },
                 c if c.is_alphabetic() => {
                     let value = self.read_while(c, |v| -> bool {
                         v.is_alphanumeric() || *v == '_'
                     })?;
+
                     if let Some(token) = Token::value_of(&value) {
-                        tokens.push(token);
+                        token
                     } else {
-                        tokens.push(Token::Identifier(value));
+                        Token::Identifier(value)
                     }
                 },
                 c => {
                     if let Some(v) = self.next_token(c) {
                         self.next_char()?;
-                        tokens.push(v);
+                        v
                     } else if let Some(v) = Token::value_of(&c.to_string()) {
-                        tokens.push(v);
+                        v
                     } else {
                         return Err(LexerError::NoTokenFound(self.line, self.column))
                     }
                 }
             };
+
+            // push the token to the list
+            tokens.push(token);
         }
 
         Ok(tokens.into())
@@ -174,7 +203,7 @@ mod tests {
     #[test]
     fn test_lexer_assign() {
         use super::*;
-        let code = "let a = 10;".chars().collect();
+        let code: Vec<char> = "let a = 10;".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens.len(), 4);
@@ -189,7 +218,7 @@ mod tests {
     #[test]
     fn test_lexer_function() {
         use super::*;
-        let code = "func main() { return 10; }".chars().collect();
+        let code: Vec<char> = "func main() { return 10; }".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens.len(), 8);
@@ -208,12 +237,37 @@ mod tests {
     #[test]
     fn test_lexer_long_with_underscore() {
         use super::*;
-        let code = "10_000L".chars().collect();
+        let code: Vec<char> = "10_000L".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens, vec![
             Token::Long(10_000)
+        ]);
+    }
+
+    #[test]
+    fn test_lexer_inner_string() {
+        use super::*;
+        let code: Vec<char> = "'Hello, World!'".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens, vec![
+            Token::ValString("Hello, World!".to_owned())
+        ]);
+    }
+
+    #[test]
+    fn test_lexer_inner_escaped_string() {
+        use super::*;
+        let code: Vec<char> = "'Hello, \\'World\\'!'".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        println!("{:?}", tokens);
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens, vec![
+            Token::ValString("Hello, 'World'!".to_owned())
         ]);
     }
 }
