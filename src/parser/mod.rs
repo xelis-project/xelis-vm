@@ -239,7 +239,8 @@ impl<'a> Parser<'a> {
                                 return Err(ParserError::InvalidArrayCall)
                             }
 
-                            let index = self.read_expression(context)?;
+                            // Index must be of type Int
+                            let index = self.read_expr(true, Some(&Type::Int), context)?;
                             let index_type = self.get_type_from_expression(&index, context)?;
                             if index_type != Type::Int {
                                 return Err(ParserError::InvalidArrayCallIndexType(index_type))
@@ -312,14 +313,16 @@ impl<'a> Parser<'a> {
                                 Expression::Variable(id)
                             } else if self.structures.contains_key(&id) {
                                 self.expect_token(Token::BraceOpen)?;
-                                let (name, len) = {
+                                // TODO no clone here
+                                // This is done due to borrowing struct
+                                let (name, types) = {
                                     let structure = self.get_structure(&id)?;
                                     let name = structure.name.clone();
-                                    let len = structure.fields.len();
-                                    (name, len)
+                                    (name, structure.fields.iter().map(|(_, v)| v.clone()).collect::<Vec<_>>())
                                 };
+
                                 let mut fields = HashMap::new();
-                                for _ in 0..len {
+                                for t in types {
                                     let field_name = self.next_identifier()?;
                                     let field_value = match self.next()? {
                                         Token::Comma => {
@@ -330,7 +333,7 @@ impl<'a> Parser<'a> {
                                             }
                                         }
                                         Token::Colon => {
-                                            let value = self.read_expression(context)?;
+                                            let value = self.read_expr(true, Some(&t), context)?;
                                             if *self.peek()? == Token::Comma {
                                                 self.next()?;
                                             }
@@ -342,13 +345,10 @@ impl<'a> Parser<'a> {
                                     };
 
                                     let field_type = self.get_type_from_expression(&field_value, context)?;
-                                    let expected_field_type = match self.get_structure(&id)?.fields.get(&field_name) {
-                                        Some(v) => v,
-                                        None => return Err(ParserError::InvalidStructField(field_name.clone()))
-                                    };
-                                    if *expected_field_type != field_type {
-                                        return Err(ParserError::InvalidValueType(field_type, expected_field_type.clone()))
+                                    if t != field_type {
+                                        return Err(ParserError::InvalidValueType(field_type, t))
                                     }
+
                                     fields.insert(field_name, field_value);
                                 }
                                 self.expect_token(Token::BraceClose)?;
