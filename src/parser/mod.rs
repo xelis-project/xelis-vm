@@ -514,8 +514,6 @@ impl<'a> Parser<'a> {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(true, Some(&value_type), context)?;
 
-        println!("Variable: {} of type: {:?}, expr: {:?}", name, value_type, expr);
-
             let expr_type = match self.get_type_from_expression(&expr, context) {
                 Ok(_type) => _type,
                 Err(e) => match e { // support empty array declaration
