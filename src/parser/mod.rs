@@ -645,13 +645,11 @@ impl<'a> Parser<'a> {
                 }
                 Token::Return => {
                     self.expect_token(Token::Return)?;
-                    let opt: Option<Expression> = if return_type.is_some() {
-                        let expr = self.read_expression(context)?;
+                    let opt: Option<Expression> = if let Some(return_type) = return_type {
+                        let expr = self.read_expr(true, Some(return_type), context)?;
                         let expr_type = self.get_type_from_expression(&expr, context)?;
-                        if let Some(return_type) = return_type {
-                            if expr_type != *return_type {
-                                return Err(ParserError::InvalidValueType(expr_type, return_type.clone()))
-                            }
+                        if expr_type != *return_type {
+                            return Err(ParserError::InvalidValueType(expr_type, return_type.clone()))
                         }
                         Some(expr)
                     } else {
