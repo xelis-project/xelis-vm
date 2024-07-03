@@ -105,6 +105,22 @@ impl Lexer {
         Ok(String::from_iter(values))
     }
 
+    // read a multi-line comment
+    // expected format is /* ... */
+    fn read_multi_line_comment(&mut self) -> Result<String, LexerError> {
+        let mut values = Vec::new();
+        loop {
+            let c = self.next_char()?;
+            if c == '*' && *self.peek()? == '/' {
+                self.next_char()?;
+                break;
+            }
+            values.push(c);
+        }
+
+        Ok(String::from_iter(values))
+    }
+
     // parse a number from a string
     fn parse_number<F: FromStr>(&self, value: String) -> Result<F, LexerError> {
         match value.parse::<F>() {
@@ -131,10 +147,17 @@ impl Lexer {
                     let value = self.read_string(c)?;
                     Token::ValString(value)
                 },
-                // it's only a comment, no need to parse it
-                '/' if *self.peek()? == '/' => {
-                    // TODO support multi line comments
-                    self.read_until(|c| *c == '\n')?;
+                // it's only a comment, skip until its end
+                '/' if {
+                    let v = self.peek()?;
+                    *v == '/' || *v == '*'
+                } => {
+                    let v = self.next_char()?;
+                    if v == '/' {
+                        self.read_until(|c| *c == '\n')?;
+                    } else {
+                        self.read_multi_line_comment()?;
+                    }
                     continue;
                 },
                 // read a number value
@@ -199,10 +222,10 @@ impl Lexer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
-    fn test_lexer_assign() {
-        use super::*;
+    fn test_assign() {
         let code: Vec<char> = "let a = 10;".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
@@ -216,8 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lexer_function() {
-        use super::*;
+    fn test_function() {
         let code: Vec<char> = "func main() { return 10; }".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
@@ -235,8 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lexer_long_with_underscore() {
-        use super::*;
+    fn test_long_with_underscore() {
         let code: Vec<char> = "10_000L".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
@@ -247,20 +268,18 @@ mod tests {
     }
 
     #[test]
-    fn test_lexer_inner_string() {
-        use super::*;
-        let code: Vec<char> = "'Hello, World!'".chars().collect();
+    fn test_inner_string() {
+        let code: Vec<char> = "\"'Hello, World!'\"".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens, vec![
-            Token::ValString("Hello, World!".to_owned())
+            Token::ValString("'Hello, World!'".to_owned())
         ]);
     }
 
     #[test]
-    fn test_lexer_inner_escaped_string() {
-        use super::*;
+    fn test_inner_escaped_string() {
         let code: Vec<char> = "'Hello, \\'World\\'!'".chars().collect();
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
@@ -268,6 +287,34 @@ mod tests {
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens, vec![
             Token::ValString("Hello, 'World'!".to_owned())
+        ]);
+    }
+
+    #[test]
+    fn test_comment() {
+        let code: Vec<char> = "// This is a comment\nlet a = 10;".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens, vec![
+            Token::Let,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorAssign,
+            Token::Number(10)
+        ]);
+    }
+
+    #[test]
+    fn test_multi_line_comment() {
+        let code: Vec<char> = "/* This is a comment\n * with multiple lines */\nlet a = 10;".chars().collect();
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens, vec![
+            Token::Let,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorAssign,
+            Token::Number(10)
         ]);
     }
 }
