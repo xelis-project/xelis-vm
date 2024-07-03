@@ -252,7 +252,6 @@ impl<'a> Interpreter<'a> {
 
     fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
         Ok(match value_type {
-            Type::Null => left.is_null() && right.is_null(),
             Type::Any => return Err(InterpreterError::InvalidType(value_type.clone())),
             Type::Byte => *left.as_byte()? == *right.as_byte()?,
             Type::Short => *left.as_short()? == *right.as_short()?,
