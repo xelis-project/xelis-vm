@@ -253,7 +253,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
-                                let expr = self.read_expr(false, number_type.map(|t| t.get_array_type()), context)?;
+                                let expr = self.read_expr(true, number_type.map(|t| t.get_array_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(&expr, context)?;
