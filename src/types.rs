@@ -232,7 +232,6 @@ impl<'a, K, V> RefMap<'a, K, V> {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type {
-    Null,
     Any,
     //T, // TODO T must be same as for type
 
@@ -271,17 +270,14 @@ impl Type {
 
     pub fn from_value(value: &Value, structures: &RefMap<String, Struct>) -> Option<Self> {
         let _type = match value {
-            Value::Null => Type::Null,
+            Value::Null => return None,
             Value::Byte(_) => Type::Byte,
             Value::Short(_) => Type::Short,
             Value::Int(_) => Type::Int,
             Value::Long(_) => Type::Long,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
-            Value::Array(values) => match values.get(0) {
-                Some(v) => Type::Array(Box::new(Type::from_value(&v.borrow(), structures)?)),
-                None => Type::Array(Box::new(Type::Null)) // we can't determine precisely the type
-            },
+            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.borrow(), structures)?)),
             Value::Struct(name, _) => match structures.get(name) {
                 Some(_) => Type::Struct(name.clone()),
                 None => return None

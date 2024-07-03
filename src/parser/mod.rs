@@ -13,6 +13,7 @@ use crate::{
     Token
 };
 use std::{
+    borrow::Cow,
     collections::{HashMap, VecDeque},
     convert::TryInto
 };
@@ -112,16 +113,12 @@ impl<'a> Parser<'a> {
             None => return Err(ParserError::TypeNotFound(type_name))
         };
 
-        match self.peek()? {
-            Token::BracketOpen => {
-                while *self.peek()? == Token::BracketOpen { // support multi dimensional arrays
-                    self.expect_token(Token::BracketOpen)?;
-                    self.expect_token(Token::BracketClose)?;
-                    _type = Type::Array(Box::new(_type));
-                }
-            },
-            _ => {}
-        };
+        // support multi dimensional arrays
+        while *self.peek()? == Token::BracketOpen {
+            self.expect_token(Token::BracketOpen)?;
+            self.expect_token(Token::BracketClose)?;
+            _type = Type::Array(Box::new(_type));
+        }
 
         Ok(_type)
     }
@@ -130,25 +127,17 @@ impl<'a> Parser<'a> {
     // all tests should be done when constructing an expression, not here
     fn get_type_from_expression(&mut self, expression: &Expression, context: &mut Context) -> Result<Type, ParserError> {
         let _type: Type = match expression {
-            Expression::ArrayConstructor(ref values) => match values.get(0) {
+            Expression::ArrayConstructor(ref values) => match values.first() {
                 Some(v) => Type::Array(Box::new(self.get_type_from_expression(v, context)?)),
                 None => return Err(ParserError::EmptyArrayConstructor) // cannot determine type from empty array
             },
-            Expression::Variable(ref var_name) => {
-                let _type = context.get_type_of_variable(var_name)?.clone();
-                _type
-            },
+            Expression::Variable(ref var_name) => context.get_type_of_variable(var_name)?.clone(),
             Expression::FunctionCall(name, parameters) => {
-                let types: Vec<Type> = parameters.into_iter()
-                    .map(|param| self.get_type_from_expression(param, context))
-                    .collect::<Result<Vec<Type>, ParserError>>()?;
+                let types: Vec<Cow<'_, Type>> = parameters.into_iter()
+                    .map(|param| self.get_type_from_expression(param, context).map(Cow::Owned))
+                    .collect::<Result<_, ParserError>>()?;
 
-                let mut _types: Vec<&Type> = Vec::with_capacity(types.len());
-                for t in &types {
-                    _types.push(t);
-                }
-
-                let func = self.get_function(context.get_current_type(), name, &_types)?;
+                let func = self.get_function(context.get_current_type(), name, types.as_slice())?;
                 match &func.return_type() {
                     Some(ref v) => v.clone(),
                     None => return Err(ParserError::FunctionNoReturnType(name.clone()))
@@ -179,32 +168,44 @@ impl<'a> Parser<'a> {
                 context.remove_current_type();
                 _type
             },
-            Expression::Operator(op, left, right) => { // TODO verify all operations
-                match op {
-                    Operator::Or
-                    | Operator::Equals
-                    | Operator::NotEquals
-                    | Operator::GreaterOrEqual
-                    | Operator::GreaterThan
-                    | Operator::LessOrEqual
-                    | Operator::LessThan
-                    | Operator::And => Type::Boolean,
-                    Operator::Assign
-                    | Operator::AssignPlus
-                    | Operator::AssignMinus
-                    | Operator::AssignDivide
-                    | Operator::AssignMultiply => Type::Null, // Assignation doesn't returns anything
-                    _ => {
-                        let left_type = self.get_type_from_expression(left, context)?;
-                        let right_type = self.get_type_from_expression(right, context)?;
-        
-                        if left_type == Type::String || right_type == Type::String {
-                            Type::String
-                        } else {
-                            left_type
-                        }
+            // Compatibility checks are done when constructing the expression
+            Expression::Operator(op, left, right) => match op {
+                Operator::Or
+                | Operator::Equals
+                | Operator::NotEquals
+                | Operator::GreaterOrEqual
+                | Operator::GreaterThan
+                | Operator::LessOrEqual
+                | Operator::LessThan
+                | Operator::And => Type::Boolean,
+                Operator::Assign
+                | Operator::AssignPlus
+                | Operator::AssignMinus
+                | Operator::AssignDivide
+                | Operator::AssignMultiply => return Err(ParserError::AssignReturnNothing),
+                Operator::Plus | Operator::Minus => {
+                    let left_type = self.get_type_from_expression(left, context)?;
+                    let right_type = self.get_type_from_expression(right, context)?;
+
+                    if left_type == Type::String || right_type == Type::String {
+                        Type::String
+                    } else {
+                        left_type
                     }
-                }
+                },
+                Operator::Multiply
+                | Operator::Divide
+                | Operator::BitwiseLeft
+                | Operator::BitwiseRight
+                | Operator::Modulo => {
+                    let left_type = self.get_type_from_expression(left, context)?;
+                    let right_type = self.get_type_from_expression(right, context)?;
+
+                    if !left_type.is_number() || !right_type.is_number() || left_type != right_type {
+                        return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
+                    }
+                    left_type
+                },
             },
             Expression::IsNot(_) => Type::Boolean,
             Expression::Ternary(_, expr, _) => self.get_type_from_expression(expr, context)?
@@ -285,11 +286,11 @@ impl<'a> Parser<'a> {
                     match self.peek()? {
                         Token::ParenthesisOpen => {
                             self.expect_token(Token::ParenthesisOpen)?; // we remove the token from the list
-                            let mut parameters: Vec<Expression> = vec![];
-                            let mut types: Vec<Type> = vec![];
+                            let mut parameters: Vec<Expression> = Vec::new();
+                            let mut types: Vec<Cow<'_, Type>> = Vec::new();
                             while *self.peek()? != Token::ParenthesisClose { // read parameters for function call
                                 let expr = self.read_expression(context)?;
-                                types.push(self.get_type_from_expression(&expr, context)?);
+                                types.push(Cow::Owned(self.get_type_from_expression(&expr, context)?));
                                 parameters.push(expr);
 
                                 if *self.peek()? == Token::Comma {
@@ -297,12 +298,7 @@ impl<'a> Parser<'a> {
                                 }
                             }
 
-                            let mut _types: Vec<&Type> = vec![];
-                            for t in &types {
-                                _types.push(t);
-                            }
-
-                            let func = self.get_function(context.get_current_type(), &id, &_types)?;
+                            let func = self.get_function(context.get_current_type(), &id, types.as_slice())?;
                             // Function call cannot call entry function
                             if func.is_entry() {
                                 return Err(ParserError::FunctionNotFound(id, parameters.len()))
@@ -834,9 +830,14 @@ impl<'a> Parser<'a> {
             None
         };
 
+        let types: Vec<Cow<'_, Type>> = parameters.iter().map(|p| Cow::Borrowed(p.get_type())).collect();
+        if self.has_function(&for_type, &name, &types) {
+            return Err(ParserError::FunctionSignatureAlreadyExist(name)) 
+        }
+
         let has_return_type = return_type.is_some();
 
-        for param in &parameters {
+        for param in parameters.iter() {
             context.register_variable(param.get_name().clone(), param.get_type().clone())?;
         }
 
@@ -850,11 +851,6 @@ impl<'a> Parser<'a> {
             entry,
             return_type.clone()
         ));
-
-        let params: Vec<&Type> = function.get_parameters_types();
-        if self.has_function(&function.for_type(), function.get_name(), &params) {
-           return Err(ParserError::FunctionSignatureAlreadyExist(function.get_name().clone())) 
-        }
 
         // push function before reading statements to allow recursive calls
         self.functions.push(function);
@@ -881,12 +877,12 @@ impl<'a> Parser<'a> {
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> bool {
+    fn has_function(&self, for_type: &Option<Type>, name: &String, params: &[Cow<'_, Type>]) -> bool {
         self.get_function(for_type, name, params).is_ok()
     }
 
     // get a function exist based on signature (name + params)
-    fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
+    fn get_function(&self, for_type: &Option<Type>, name: &String, params: &[Cow<'_, Type>]) -> Result<&FunctionType, ParserError> {
         // merge both iterators in one
         let functions = self.functions.iter().map(|v| v).chain(self.env.get_functions());
 
@@ -905,7 +901,7 @@ impl<'a> Parser<'a> {
                 if same_type {
                     let types = f.get_parameters_types();
                     for (param, param_type) in params.into_iter().zip(types.into_iter()) {
-                        if **param != *param_type && *param_type != Type::Any {
+                        if *param.as_ref() != *param_type && *param_type != Type::Any {
                             continue 'funcs;
                         }
                     }

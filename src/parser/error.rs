@@ -2,6 +2,7 @@ use crate::{expressions::Expression, types::Type, Token};
 
 #[derive(Debug)]
 pub enum ParserError {
+    AssignReturnNothing,
     EntryFunctionCannotHaveForType,
     ExpectedToken,
     VariableTooLong(String),
