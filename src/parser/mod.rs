@@ -85,12 +85,12 @@ impl<'a> Parser<'a> {
     }
 
     // Require a specific token
-    fn expect_token(&mut self, expected: Token) -> Result<Token, ParserError> {
+    fn expect_token(&mut self, expected: Token) -> Result<(), ParserError> {
         let token = self.next()?;
         if token != expected {
             return Err(ParserError::InvalidToken(token, expected)) 
         }
-        Ok(token)
+        Ok(())
     }
 
     /**
@@ -218,10 +218,15 @@ impl<'a> Parser<'a> {
         self.read_expr(true, None, context)
     }
 
+    // Read an expression with the possibility to accept operators
+    // number_type is used to force the type of a number
     fn read_expr(&mut self, accept_operator: bool, number_type: Option<&Type>, context: &mut Context) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
-        while !self.peek()?.should_stop() && ((required_operator == self.peek()?.is_operator()) || (*self.peek()? == Token::BracketOpen && last_expression.is_none())) {
+        while {
+            let peek = self.peek()?;
+            !peek.should_stop() && ((required_operator == peek.is_operator()) || (*peek == Token::BracketOpen && last_expression.is_none()))
+        } {
             if !accept_operator && required_operator {
                 break
             }
@@ -245,7 +250,7 @@ impl<'a> Parser<'a> {
                             Expression::ArrayCall(Box::new(v), Box::new(index))
                         },
                         None => { // require at least one value in a array constructor
-                            let mut expressions: Vec<Expression> = vec![];
+                            let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
                                 let expr = self.read_expression(context)?;
@@ -280,7 +285,7 @@ impl<'a> Parser<'a> {
                 Token::Identifier(id) => {
                     match self.peek()? {
                         Token::ParenthesisOpen => {
-                            self.next()?; // we remove the token from the list
+                            self.expect_token(Token::ParenthesisOpen)?; // we remove the token from the list
                             let mut parameters: Vec<Expression> = vec![];
                             let mut types: Vec<Type> = vec![];
                             while *self.peek()? != Token::ParenthesisClose { // read parameters for function call
@@ -369,21 +374,11 @@ impl<'a> Parser<'a> {
                     },
                     None => Value::Int(value)
                 }),
-                Token::Long(value) => {
-                    Expression::Value(Value::Long(value))
-                },
-                Token::ValString(value) => {
-                    Expression::Value(Value::String(value))
-                },
-                Token::True => {
-                    Expression::Value(Value::Boolean(true))
-                },
-                Token::False => {
-                    Expression::Value(Value::Boolean(false))
-                },
-                Token::Null => {
-                    Expression::Value(Value::Null)
-                },
+                Token::Long(value) => Expression::Value(Value::Long(value)),
+                Token::ValString(value) => Expression::Value(Value::String(value)),
+                Token::True => Expression::Value(Value::Boolean(true)),
+                Token::False => Expression::Value(Value::Boolean(false)),
+                Token::Null => Expression::Value(Value::Null),
                 Token::Dot => {
                     match last_expression {
                         Some(value) => {
@@ -628,9 +623,9 @@ impl<'a> Parser<'a> {
                     Statement::If(condition, self.read_body(context)?)
                 },
                 Token::Else => {
-                    let token = self.expect_token(Token::Else)?;
+                    self.expect_token(Token::Else)?;
                     if !has_if {
-                        return Err(ParserError::NoIfBeforeElse(token))
+                        return Err(ParserError::NoIfBeforeElse)
                     }
 
                     if *self.peek()? == Token::If {
@@ -663,7 +658,6 @@ impl<'a> Parser<'a> {
                             }
                         }
                         Some(expr)
-
                     } else {
                         None
                     };
@@ -675,9 +669,9 @@ impl<'a> Parser<'a> {
                     Statement::Return(opt)
                 }
                 Token::Continue => {
-                    let token = self.expect_token(Token::Continue)?;
+                    self.expect_token(Token::Continue)?;
                     if !context.is_in_loop {
-                        return Err(ParserError::UnexpectedToken(token));
+                        return Err(ParserError::UnexpectedToken(Token::Continue));
                     }
 
                     if *self.peek()? != Token::BraceClose { // we can't have anything after a continue
@@ -687,9 +681,9 @@ impl<'a> Parser<'a> {
                     Statement::Continue
                 },
                 Token::Break => {
-                    let token = self.expect_token(Token::Break)?;
+                    self.expect_token(Token::Break)?;
                     if !context.is_in_loop {
-                        return Err(ParserError::UnexpectedToken(token));
+                        return Err(ParserError::UnexpectedToken(Token::Break));
                     }
 
                     if *self.peek()? != Token::BraceClose { // we can't have anything after a break
@@ -740,6 +734,7 @@ impl<'a> Parser<'a> {
         Ok(parameters)
     }
 
+    // Verify that the last statement is a return
     fn ends_with_return(&self, statements: &Vec<Statement>) -> Result<bool, ParserError> {
         let mut ok = false;
         let mut last_is_else = false;
@@ -795,14 +790,20 @@ impl<'a> Parser<'a> {
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a int value
      */
-    fn read_function(&mut self, entry: bool, context: &Context) -> Result<(), ParserError> {
-        let mut context: Context = context.clone();
+    fn read_function(&mut self, entry: bool, context: &mut Context) -> Result<(), ParserError> {
         context.create_new_scope();
         let (instance_name, for_type) = if *self.peek()? == Token::ParenthesisOpen {
             self.next()?;
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
-            if !for_type.is_struct() { // TODO only types that are declared by the same program
+
+            // verify that the type is a struct
+            if let Type::Struct(struct_name) = &for_type {
+                // only types that are declared by the same program
+                if !self.structures.contains_key(struct_name) {
+                    return Err(ParserError::StructureNotFound(struct_name.clone()))
+                }
+            } else {
                 return Err(ParserError::InvalidFunctionType(for_type))
             }
 
@@ -819,7 +820,13 @@ impl<'a> Parser<'a> {
         let parameters = self.read_parameters()?;
         self.expect_token(Token::ParenthesisClose)?;
 
-        let return_type: Option<Type> = if entry { // all entries must return a int value
+        // all entries must return a int value without being specified
+        let return_type: Option<Type> = if entry {
+            // an entrypoint cannot be a method
+            if for_type.is_some() {
+                return Err(ParserError::EntryFunctionCannotHaveForType)
+            }
+
             Some(Type::Int)
         } else if *self.peek()? == Token::Colon { // read returned type
             self.next()?;
@@ -836,7 +843,7 @@ impl<'a> Parser<'a> {
             context.register_variable(param.get_name().clone(), param.get_type().clone())?;
         }
 
-        let statements = vec![];
+        let statements = Vec::new();
         let function = FunctionType::Custom(CustomFunction::new(
             name,
             for_type,
@@ -853,7 +860,7 @@ impl<'a> Parser<'a> {
         }
         self.functions.push(function); // push function before reading statements to allow recursive calls
 
-        let statements = self.read_body(&mut context)?;
+        let statements = self.read_body(context)?;
         if context.return_type.is_some() && !self.ends_with_return(&statements)? {
             return Err(ParserError::NoReturnFound)
         }
@@ -872,21 +879,19 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    // check if a function with the same signature exists
     fn has_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> bool {
         self.get_function(for_type, name, params).is_ok()
     }
 
     // get a function exist based on signature (name + params)
     fn get_function(&self, for_type: &Option<Type>, name: &String, params: &Vec<&Type>) -> Result<&FunctionType, ParserError> {
-        let mut functions: Vec<&FunctionType> = self.functions.iter().map(|v| v).collect(); // merge two in one
-        for f in self.env.get_functions() {
-            functions.push(f);
-        }
+        // merge both iterators in one
+        let functions = self.functions.iter().map(|v| v).chain(self.env.get_functions());
 
         'funcs: for f in functions {
             if *f.get_name() == *name && f.get_parameters_count() == params.len() {
-                let same_type: bool = 
-                if let Some(type_a) = for_type {
+                let same_type: bool = if let Some(type_a) = for_type {
                     if let Some(type_b) = f.for_type() {
                         type_a.is_compatible_with(type_b)
                     } else {
@@ -898,14 +903,8 @@ impl<'a> Parser<'a> {
 
                 if same_type {
                     let types = f.get_parameters_types();
-                    for i in 0..params.len() {
-                        let _type = types[i];
-                        if *params[i] != *_type && *_type != Type::Any {
-                            /*if let Some(for_type) = f.for_type() {
-                                if _type == Type::T && for_type == params[i] {
-                                    continue;
-                                }
-                            }*/
+                    for (param, param_type) in params.into_iter().zip(types.into_iter()) {
+                        if **param != *param_type && *param_type != Type::Any {
                             continue 'funcs;
                         }
                     }
@@ -918,6 +917,7 @@ impl<'a> Parser<'a> {
         Err(ParserError::FunctionNotFound(name.clone(), params.len()))
     }
 
+    // get a structure by name
     fn get_structure(&self, name: &String) -> Result<&Struct, ParserError> {
         match self.structures.get(name) {
             Some(v) => Ok(v),
@@ -931,19 +931,20 @@ impl<'a> Parser<'a> {
     /**
      * Example: Message { message_id: int, message: string }
      * Rules:
-     * - Structure name should start with a uppercase letter
-     * - only letters in name
+     * - Structure name should start with a uppercase character
+     * - only alphanumeric chars in name
      */
     fn read_struct(&mut self) -> Result<Struct, ParserError> {
         let name = self.next_identifier()?;
-        if !name.chars().all(char::is_alphabetic) {
+        let mut chars = name.chars();
+        if !chars.all(|c| c.is_ascii_alphanumeric()) {
             return Err(ParserError::InvalidStructureName(name))
         }
 
-        match name.chars().nth(0) { // check if the first letter is in uppercase
+        // check if the first letter is in uppercase
+        match name.chars().nth(0) {
             Some(v) => {
-                let chars: Vec<char> =  v.to_uppercase().collect();
-                if chars.len() == 0 || chars[0] != v {
+                if !v.is_ascii_alphabetic() || !v.is_uppercase() {
                     return Err(ParserError::InvalidStructureName(name))
                 }
             },
@@ -964,22 +965,18 @@ impl<'a> Parser<'a> {
         })
     }
 
+    // Parse the tokens and return a Program
     pub fn parse(mut self) -> Result<Program, ParserError> {
-        // parse all tokens
         let mut context: Context = Context::new();
-        while self.tokens.len() > 0 {
+        while !self.tokens.is_empty() {
             match self.next()? {
-                Token::Import => {}, // TODO
+                Token::Import => return Err(ParserError::NotImplemented), // TODO
                 Token::Const => {
                     let var = self.read_variable(&mut context)?;
                     self.constants.push(var);
                 },
-                Token::Function => {
-                    self.read_function(false, &context)?;
-                },
-                Token::Entry => {
-                    self.read_function(true, &context)?;
-                },
+                Token::Function => self.read_function(false, &mut context)?,
+                Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => {
                     let new_struct = self.read_struct()?;
                     if self.structures.contains_key(&new_struct.name) {

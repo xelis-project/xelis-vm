@@ -2,13 +2,14 @@ use crate::{expressions::Expression, types::Type, Token};
 
 #[derive(Debug)]
 pub enum ParserError {
+    EntryFunctionCannotHaveForType,
     ExpectedToken,
     VariableTooLong(String),
     ExpectedIdentifierToken(Token),
     UnexpectedToken(Token),
     InvalidToken(Token, Token),
     TypeNotFound(String),
-    NoIfBeforeElse(Token),
+    NoIfBeforeElse,
     StructNameAlreadyUsed(String),
     VariableNameAlreadyUsed(String),
     FunctionSignatureAlreadyExist(String),
