@@ -139,12 +139,11 @@ impl<'a> Parser<'a> {
                 _type
             },
             Expression::FunctionCall(name, parameters) => {
-                let mut types: Vec<Type> = vec![];
-                for param in parameters {
-                    types.push(self.get_type_from_expression(param, context)?);
-                }
+                let types: Vec<Type> = parameters.into_iter()
+                    .map(|param| self.get_type_from_expression(param, context))
+                    .collect::<Result<Vec<Type>, ParserError>>()?;
 
-                let mut _types: Vec<&Type> = vec![];
+                let mut _types: Vec<&Type> = Vec::with_capacity(types.len());
                 for t in &types {
                     _types.push(t);
                 }
@@ -490,12 +489,12 @@ impl<'a> Parser<'a> {
      *     ...
      * }
      */
-    fn read_body(&mut self, context: &mut Context) -> Result<Vec<Statement>, ParserError> {
-        context.create_new_scope();
+    fn read_body(&mut self, context: &mut Context, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError> {
+        context.begin_scope();
         self.expect_token(Token::BraceOpen)?;
-        let statements = self.read_statements(context)?;
+        let statements = self.read_statements(context, return_type)?;
         self.expect_token(Token::BraceClose)?;
-        context.remove_last_scope();
+        context.end_scope();
         Ok(statements)
     }
 
@@ -543,23 +542,23 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn read_loop_body(&mut self, context: &mut Context) -> Result<Vec<Statement>, ParserError> {
-        let old_value = context.is_in_loop; // support loop in loop
-        context.is_in_loop = true;
-        let statements = self.read_body(context)?;
-        context.is_in_loop = old_value;
+    fn read_loop_body(&mut self, context: &mut Context, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError> {
+        let old_value = context.is_in_a_loop(); // support loop in loop
+        context.set_in_a_loop(true);
+        let statements = self.read_body(context, return_type)?;
+        context.set_in_a_loop(old_value);
 
         Ok(statements)
     }
 
-    fn read_statements(&mut self, context: &mut Context) -> Result<Vec<Statement>, ParserError> {
-        let mut statements: Vec<Statement> = vec![];
+    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError> {
+        let mut statements: Vec<Statement> = Vec::new();
         let mut has_if = false;
         while *self.peek()? != Token::BraceClose {
             let statement: Statement = match self.peek()? {
                 Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
                     self.expect_token(Token::For)?;
-                    context.create_new_scope();
+                    context.begin_scope();
                     let var = self.read_variable(context)?;
                     let condition = self.read_expression(context)?;
                     let condition_type = self.get_type_from_expression(&condition, context)?;
@@ -574,15 +573,15 @@ impl<'a> Parser<'a> {
                             return Err(ParserError::InvalidForExpression(increment))
                         }
                     }
-                    let statements = self.read_loop_body(context)?;
-                    context.remove_last_scope();
+                    let statements = self.read_loop_body(context, return_type)?;
+                    context.end_scope();
 
                     Statement::For(var, condition, increment, statements)
                 }
                 Token::ForEach => { // Example: foreach a in array {}
                     self.expect_token(Token::ForEach)?;
                     
-                    context.create_new_scope();
+                    context.begin_scope();
                     let variable: String = match self.next()? {
                         Token::Identifier(v) => v,
                         token => return Err(ParserError::UnexpectedToken(token))
@@ -594,8 +593,8 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidValueType(expr_type, Type::Array(Box::new(Type::Any))))
                     }
                     context.register_variable(variable.clone(), expr_type.get_array_type().clone())?;
-                    let statements = self.read_loop_body(context)?;
-                    context.remove_last_scope();
+                    let statements = self.read_loop_body(context, return_type)?;
+                    context.end_scope();
 
                     Statement::ForEach(variable, expr, statements)
                 },
@@ -608,7 +607,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidCondition(condition, condition_type))
                     }
 
-                    let statements = self.read_loop_body(context)?;
+                    let statements = self.read_loop_body(context, return_type)?;
 
                     Statement::While(condition, statements)
                 },
@@ -620,7 +619,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidCondition(condition, condition_type))
                     }
 
-                    Statement::If(condition, self.read_body(context)?)
+                    Statement::If(condition, self.read_body(context, return_type)?)
                 },
                 Token::Else => {
                     self.expect_token(Token::Else)?;
@@ -635,13 +634,13 @@ impl<'a> Parser<'a> {
                         if  condition_type != Type::Boolean {
                             return Err(ParserError::InvalidCondition(condition, condition_type))
                         }
-                        Statement::ElseIf(condition, self.read_body(context)?)
+                        Statement::ElseIf(condition, self.read_body(context, return_type)?)
                     } else {
-                        Statement::Else(self.read_body(context)?)
+                        Statement::Else(self.read_body(context, return_type)?)
                     }
                 },
                 Token::BraceOpen => {
-                    Statement::Scope(self.read_body(context)?)
+                    Statement::Scope(self.read_body(context, return_type)?)
                 },
                 Token::Let => {
                     self.expect_token(Token::Let)?;
@@ -649,10 +648,10 @@ impl<'a> Parser<'a> {
                 }
                 Token::Return => {
                     self.expect_token(Token::Return)?;
-                    let opt: Option<Expression> = if context.return_type.is_some() {
+                    let opt: Option<Expression> = if return_type.is_some() {
                         let expr = self.read_expression(context)?;
                         let expr_type = self.get_type_from_expression(&expr, context)?;
-                        if let Some(return_type) = &context.return_type {
+                        if let Some(return_type) = return_type {
                             if expr_type != *return_type {
                                 return Err(ParserError::InvalidValueType(expr_type, return_type.clone()))
                             }
@@ -670,7 +669,7 @@ impl<'a> Parser<'a> {
                 }
                 Token::Continue => {
                     self.expect_token(Token::Continue)?;
-                    if !context.is_in_loop {
+                    if !context.is_in_a_loop() {
                         return Err(ParserError::UnexpectedToken(Token::Continue));
                     }
 
@@ -682,7 +681,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::Break => {
                     self.expect_token(Token::Break)?;
-                    if !context.is_in_loop {
+                    if !context.is_in_a_loop() {
                         return Err(ParserError::UnexpectedToken(Token::Break));
                     }
 
@@ -791,7 +790,7 @@ impl<'a> Parser<'a> {
      * - Entry function is a "public callable" function and must return a int value
      */
     fn read_function(&mut self, entry: bool, context: &mut Context) -> Result<(), ParserError> {
-        context.create_new_scope();
+        context.begin_scope();
         let (instance_name, for_type) = if *self.peek()? == Token::ParenthesisOpen {
             self.next()?;
             let instance_name = self.next_identifier()?;
@@ -835,9 +834,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        if let Some(v) = &return_type {
-            context.return_type = Some(v.clone());
-        }
+        let has_return_type = return_type.is_some();
 
         for param in &parameters {
             context.register_variable(param.get_name().clone(), param.get_type().clone())?;
@@ -851,21 +848,25 @@ impl<'a> Parser<'a> {
             parameters,
             statements,
             entry,
-            return_type
+            return_type.clone()
         ));
 
         let params: Vec<&Type> = function.get_parameters_types();
         if self.has_function(&function.for_type(), function.get_name(), &params) {
            return Err(ParserError::FunctionSignatureAlreadyExist(function.get_name().clone())) 
         }
-        self.functions.push(function); // push function before reading statements to allow recursive calls
 
-        let statements = self.read_body(context)?;
-        if context.return_type.is_some() && !self.ends_with_return(&statements)? {
+        // push function before reading statements to allow recursive calls
+        self.functions.push(function);
+
+        let statements = self.read_body(context, &return_type)?;
+
+        // verify that the function ends with a return
+        if has_return_type && !self.ends_with_return(&statements)? {
             return Err(ParserError::NoReturnFound)
         }
 
-        context.remove_last_scope();
+        context.end_scope();
 
         match self.functions.last_mut() {
             Some(function) => {
