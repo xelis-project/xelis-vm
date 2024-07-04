@@ -15,9 +15,8 @@ fn main() {
     };
 
     let code = fs::read_to_string(file).expect("Something went wrong reading the file");
-    let chars: Vec<char> = code.chars().collect();
     let mut start = Instant::now();
-    match Lexer::new(chars).get() {
+    match Lexer::new(code.as_str()).get() {
         Ok(result) => {
             println!("Lexer: {} microseconds\n", start.elapsed().as_micros());
             start = Instant::now();

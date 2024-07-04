@@ -66,9 +66,9 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn value_of(s: &String) -> Option<Token> {
+    pub fn value_of(s: &str) -> Option<Token> {
         use Token::*;
-        Some(match s.as_str() {
+        Some(match s {
             "{" => BraceOpen,
             "}" => BraceClose,
             "[" => BracketOpen,
