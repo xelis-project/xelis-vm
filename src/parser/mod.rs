@@ -800,7 +800,7 @@ impl<'a> Parser<'a> {
      */
     fn read_function(&mut self, entry: bool, context: &mut Context) -> Result<(), ParserError> {
         context.begin_scope();
-        let (instance_name, for_type) = if *self.peek()? == Token::ParenthesisOpen {
+        let (instance_name, for_type) = if !entry && *self.peek()? == Token::ParenthesisOpen {
             self.next()?;
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
