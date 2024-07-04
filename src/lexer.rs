@@ -1,5 +1,5 @@
 use crate::token::Token;
-use std::{collections::VecDeque, str::FromStr};
+use std::collections::VecDeque;
 
 #[derive(Debug)]
 pub enum LexerError { // left is line, right is column
@@ -121,14 +121,6 @@ impl Lexer {
         Ok(String::from_iter(values))
     }
 
-    // parse a number from a string
-    fn parse_number<F: FromStr>(&self, value: String) -> Result<F, LexerError> {
-        match value.parse::<F>() {
-            Ok(v) => Ok(v),
-            Err(_) => Err(LexerError::ParseToNumber(self.line, self.column))
-        }
-    }
-
     // Parse the code into a list of tokens
     pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
         let mut tokens: Vec<Token> = Vec::new();
@@ -162,8 +154,18 @@ impl Lexer {
                 },
                 // read a number value
                 c if c.is_digit(10) => {
-                    let mut chars = vec![c];
                     let mut is_long = false;
+                    let mut chars = Vec::new();
+
+                    // Support hexadecimal numbers
+                    let is_hex = c == '0' && *self.peek()? == 'x';
+                    if is_hex {
+                        // Skip the x
+                        self.next_char()?;
+                    } else {
+                        chars.push(c);
+                    }
+
                     loop {
                         let v = self.next_char()?;
                         // Support base 10 and base 16
@@ -175,6 +177,7 @@ impl Lexer {
                             if v == 'L' {
                                 is_long = true;
                             } else {
+                                // push the character back
                                 self.chars.push_front(v);
                             }
 
@@ -182,11 +185,12 @@ impl Lexer {
                         }
                     }
 
+                    let radix = if is_hex { 16 } else { 10 };
                     let v = String::from_iter(chars);
                     if is_long {
-                        Token::Long(self.parse_number(v)?)
+                        Token::Long(u128::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
                     } else {
-                        Token::Number(self.parse_number(v)?)
+                        Token::Number(u64::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
                     }
                 },
                 c if c.is_alphabetic() => {
