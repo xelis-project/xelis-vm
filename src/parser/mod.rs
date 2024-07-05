@@ -113,10 +113,10 @@ impl<'a> Parser<'a> {
      * - T[] (where T is any above Type)
      */
     fn read_type(&mut self) -> Result<Type, ParserError> {
-        let type_name = self.next_identifier()?;
-        let mut _type = match Type::from_string(&type_name, &self.structures) {
+        let token = self.next()?;
+        let mut _type = match Type::from_token(token, &self.structures) {
             Some(v) => v,
-            None => return Err(ParserError::TypeNotFound(type_name))
+            None => return Err(ParserError::TypeNotFound)
         };
 
         // support multi dimensional arrays
@@ -373,7 +373,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::Number(value) => Expression::Value(match number_type {
+                Token::IntValue(value) => Expression::Value(match number_type {
                     Some(t) => match t {
                         Type::Byte => Value::Byte(convert!(value)),
                         Type::Short => Value::Short(convert!(value)),
@@ -383,7 +383,7 @@ impl<'a> Parser<'a> {
                     },
                     None => Value::Int(value)
                 }),
-                Token::Long(value) => Expression::Value(Value::Long(value)),
+                Token::LongValue(value) => Expression::Value(Value::Long(value)),
                 Token::ValString(value) => Expression::Value(Value::String(value)),
                 Token::True => Expression::Value(Value::Boolean(true)),
                 Token::False => Expression::Value(Value::Boolean(false)),

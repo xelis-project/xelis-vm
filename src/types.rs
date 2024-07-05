@@ -1,4 +1,5 @@
 use crate::interpreter::InterpreterError;
+use crate::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
 use std::cell::RefCell;
@@ -247,22 +248,23 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_string(s: &String, structures: &HashMap<String, Struct>) -> Option<Self> {
-        let value: Self = match s.as_str() {
-            "byte" => Type::Byte,
-            "short" => Type::Short,
-            "int" => Type::Int,
-            "long" => Type::Long,
-            "bool" => Type::Boolean,
-            "string" => Type::String,
-            _ => {
-                let structure = structures.get(s)?;
-                if structure.name == *s {
-                    Type::Struct(s.clone())
+    pub fn from_token(s: Token, structures: &HashMap<String, Struct>) -> Option<Self> {
+        let value: Self = match s {
+            Token::Byte => Type::Byte,
+            Token::Short => Type::Short,
+            Token::Int => Type::Int,
+            Token::Long => Type::Long,
+            Token::Boolean => Type::Boolean,
+            Token::String => Type::String,
+            Token::Identifier(s) => {
+                let structure = structures.get(&s)?;
+                if structure.name == s {
+                    Type::Struct(s)
                 } else {
                     return None
                 }
             }
+            _ => return None
         };
 
         Some(value)

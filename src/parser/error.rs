@@ -9,7 +9,7 @@ pub enum ParserError {
     ExpectedIdentifierToken(Token),
     UnexpectedToken(Token),
     InvalidToken(Token, Token),
-    TypeNotFound(String),
+    TypeNotFound,
     NoIfBeforeElse,
     StructNameAlreadyUsed(String),
     VariableNameAlreadyUsed(String),
