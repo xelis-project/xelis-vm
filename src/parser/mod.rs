@@ -459,8 +459,7 @@ impl<'a> Parser<'a> {
                                     Some(op) => op,
                                     None => return Err(ParserError::OperatorNotFound(token))
                                 };
-    
-                                context.remove_current_type();
+
                                 let expr = self.read_expr(true, Some(&left_type), context)?;
                                 let right_type = self.get_type_from_expression(&expr, context)?;
     
