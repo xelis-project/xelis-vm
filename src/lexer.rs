@@ -10,11 +10,17 @@ pub enum LexerError { // left is line, right is column
 }
 
 pub struct Lexer<'a> {
+    // input code
     input: &'a str,
+    // characters in the input
+    // used to build tokens
     chars: VecDeque<char>,
-    // Position
+    // current position index in the input
+    // this is used to get slices from it
     pos: usize,
+    // current line number we are reading
     line: usize,
+    // current column number we are reading
     column: usize
 }
 
@@ -32,27 +38,33 @@ impl<'a> Lexer<'a> {
 
     // peek the next character
     fn peek(&self) -> Result<char, LexerError> {
-        self.chars.front().copied().ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
-    }
-
-    // check if there is a next character
-    fn has_next(&self) -> bool {
-        !self.chars.is_empty()
+        self.chars.front()
+            .copied()
+            .ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
     }
 
     // consume the next character
-    fn next_char(&mut self) -> Result<char, LexerError> {
-        let c = self.chars.pop_front().ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))?;
-        self.pos += 1;
-        if c == '\n' {
-            self.line += 1;
-            self.column = 1;
-        } else {
-            self.column += 1;
-        }
-        Ok(c)
+    fn advance(&mut self) -> Result<char, LexerError> {
+        self.next_char()
+            .ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
     }
 
+    // get the next character
+    fn next_char(&mut self) -> Option<char> {
+        match self.chars.pop_front() {
+            Some(c) => {
+                self.pos += 1;
+                if c == '\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
+                }
+                Some(c)
+            },
+            None => None
+        }
+    }
     // get a str slice of the input
     // this is done to prevent copying the string
     fn get_slice(&self, start: usize, end: usize) -> Result<&'a str, LexerError> {
@@ -84,7 +96,7 @@ impl<'a> Lexer<'a> {
     {
         let init_pos = self.pos - 1;
         loop {
-            let value = self.next_char()?;
+            let value = self.advance()?;
             if !delimiter(&value) {
                 // push the last character back
                 self.push_back(value);
@@ -101,7 +113,7 @@ impl<'a> Lexer<'a> {
         F: Fn(&char) -> bool,
     {
         loop {
-            let c = self.next_char()?;
+            let c = self.advance()?;
             if delimiter(&c) {
                 break;
             }
@@ -118,7 +130,7 @@ impl<'a> Lexer<'a> {
         let mut transformed_string: Option<String> = None;
 
         loop {
-            let c = self.next_char()?;
+            let c = self.advance()?;
             if c == end && !escape {
                 if let Some(value) = transformed_string.as_mut() {
                     value.push_str(self.get_slice(init_pos, self.pos - 1)?);
@@ -157,7 +169,7 @@ impl<'a> Lexer<'a> {
 
         let mut init_pos = if is_hex {
             // Skip the x
-            self.next_char()?;
+            self.advance()?;
             self.pos
         } else {
             self.pos - 1
@@ -165,8 +177,7 @@ impl<'a> Lexer<'a> {
 
         let mut offset = 0;
         let mut transformed_string: Option<String> = None;
-        while self.has_next() {
-            let v = self.next_char()?;
+        while let Some(v) = self.next_char() {
             // Skip the underscore
             if v == '_' {
                 let slice = self.get_slice(init_pos, self.pos - 1)?;
@@ -199,9 +210,9 @@ impl<'a> Lexer<'a> {
 
         let radix = if is_hex { 16 } else { 10 };
         Ok(if is_long {
-            Token::Long(u128::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
+            Token::LongValue(u128::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
         } else {
-            Token::Number(u64::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
+            Token::IntValue(u64::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
         })
     }
 
@@ -209,9 +220,9 @@ impl<'a> Lexer<'a> {
     // expected format is /* ... */
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
-            let c = self.next_char()?;
+            let c = self.advance()?;
             if c == '*' && self.peek()? == '/' {
-                self.next_char()?;
+                self.advance()?;
                 break;
             }
         }
@@ -222,8 +233,7 @@ impl<'a> Lexer<'a> {
     // Parse the code into a list of tokens
     pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
         let mut tokens: Vec<Token> = Vec::new();
-        while self.has_next() {
-            let c = self.next_char()?;
+        while let Some(c) = self.next_char() {
             let token = match c {
                 // skipped characters
                 '\n' | ' ' | ';' => {
@@ -241,7 +251,7 @@ impl<'a> Lexer<'a> {
                     let v = self.peek()?;
                     v == '/' || v == '*'
                 } => {
-                    let v = self.next_char()?;
+                    let v = self.advance()?;
                     if v == '/' {
                         self.skip_until(|c| *c == '\n')?;
                     } else {
@@ -253,19 +263,15 @@ impl<'a> Lexer<'a> {
                 c if c.is_digit(10) => self.read_number(c)?,
                 c if c.is_alphabetic() => {
                     let value = self.read_while(|v| -> bool {
-                        v.is_alphanumeric() || *v == '_'
+                        *v == '_' || v.is_ascii_alphanumeric()
                     })?;
 
-                    if let Some(token) = Token::value_of(&value) {
-                        token
-                    } else {
-                        Token::Identifier(value.into())
-                    }
+                    Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.into()))
                 },
                 _ => {
                     // We must check token with the next character because of operations with assignations
                     if let Some(token) = self.next_token(1) {
-                        self.next_char()?;
+                        self.advance()?;
                         token
                     } else if let Some(token) = self.next_token(0) {
                         token
@@ -296,7 +302,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a".to_owned()),
             Token::OperatorAssign,
-            Token::Number(10)
+            Token::IntValue(10)
         ]);
     }
 
@@ -312,7 +318,7 @@ mod tests {
             Token::ParenthesisClose,
             Token::BraceOpen,
             Token::Return,
-            Token::Number(10),
+            Token::IntValue(10),
             Token::BraceClose
         ]);
     }
@@ -323,7 +329,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Long(10_000)
+            Token::LongValue(10_000)
         ]);
     }
 
@@ -366,7 +372,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a".to_owned()),
             Token::OperatorAssign,
-            Token::Number(10)
+            Token::IntValue(10)
         ]);
     }
 
@@ -379,7 +385,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a".to_owned()),
             Token::OperatorAssign,
-            Token::Number(10)
+            Token::IntValue(10)
         ]);
     }
 
@@ -392,10 +398,10 @@ mod tests {
             Token::Let,
             Token::Identifier("a".to_owned()),
             Token::OperatorAssign,
-            Token::Number(10),
+            Token::IntValue(10),
             Token::Identifier("a".to_owned()),
             Token::OperatorPlusAssign,
-            Token::Number(20)
+            Token::IntValue(20)
         ]);
     }
 
@@ -405,7 +411,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Number(10)
+            Token::IntValue(10)
         ]);
     }
 
@@ -415,7 +421,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Number(10_000)
+            Token::IntValue(10_000)
         ]);
     }
 
@@ -425,7 +431,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Number(16)
+            Token::IntValue(16)
         ]);
     }
 
@@ -435,7 +441,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Long(10)
+            Token::LongValue(10)
         ]);
     }
 
@@ -445,7 +451,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Long(10_000)
+            Token::LongValue(10_000)
         ]);
     }
 }

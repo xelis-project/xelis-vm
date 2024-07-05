@@ -1,13 +1,22 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
+    // Variable / function names
     Identifier(String),
-    Number(u64),
-    Long(u128),
+    // Values
+    IntValue(u64),
+    LongValue(u128),
     ValString(String),
-
     Null,
     True,
     False,
+
+    // Types supported
+    Byte,
+    Short,
+    Int,
+    Long,
+    Boolean,
+    String,
 
     BraceOpen,
     BraceClose,
@@ -61,7 +70,7 @@ pub enum Token {
 
     OperatorTernary,
 
-    Import, 
+    Import,
     As
 }
 
@@ -73,24 +82,6 @@ impl Token {
             "}" => BraceClose,
             "[" => BracketOpen,
             "]" => BracketClose,
-
-            "const" => Const,
-            "let" => Let,
-            "entry" => Entry,
-            "func" => Function,
-            "." => Dot,
-            "," => Comma,
-            ":" => Colon,
-            "return" => Return,
-            "if" => If,
-            "else" => Else,
-            "for" => For,
-            "foreach" => ForEach,
-            "while" => While,
-            "break" => Break,
-            "continue" => Continue,
-            "in" => In,
-            "!" => IsNot,
 
             "(" => ParenthesisOpen,
             ")" => ParenthesisClose,
@@ -122,12 +113,41 @@ impl Token {
 
             "?" => OperatorTernary,
 
+            "." => Dot,
+            "," => Comma,
+            ":" => Colon,
+
+            "byte" => Byte,
+            "short" => Short,
+            "int" => Int,
+            "long" => Long,
+            "bool" => Boolean,
+            "string" => String,
+            
+            "let" => Let,
+
+            "const" => Const,
+            "entry" => Entry,
+            "func" => Function,
+
+            "return" => Return,
+            "if" => If,
+            "else" => Else,
+            "for" => For,
+            "foreach" => ForEach,
+            "while" => While,
+            "break" => Break,
+            "continue" => Continue,
+            "in" => In,
+            "!" => IsNot,
+
             "null" => Null,
             "true" => True,
             "false" => False,
 
             "import" => Import,
             "as" => As,
+
             _ => return None,
         })
     }
