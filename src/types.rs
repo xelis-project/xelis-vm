@@ -372,15 +372,19 @@ impl Type {
     pub fn is_castable_to(&self, other: &Type) -> bool {
         match self {
             Type::Byte => match other {
-                Type::Short | Type::Int | Type::Long => true,
+                Type::Short | Type::Int | Type::Long | Type::String => true,
                 _ => false
             },
             Type::Short => match other {
-                Type::Int | Type::Long => true,
+                Type::Byte | Type::Int | Type::Long | Type::String => true,
                 _ => false
             },
             Type::Int => match other {
-                Type::Long => true,
+                Type::Byte | Type::Short | Type::Long | Type::String => true,
+                _ => false
+            },
+            Type::Long => match other {
+                Type::Byte | Type::Short | Type::Int | Type::String => true,
                 _ => false
             },
             _ => false
