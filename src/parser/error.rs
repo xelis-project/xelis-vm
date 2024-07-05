@@ -33,6 +33,7 @@ pub enum ParserError {
     OperatorNotFound(Token),
     InvalidCondition(Expression, Type),
     InvalidOperationNotSameType(Type, Type),
+    CastError(Type, Type),
     InvalidArrayCallIndexType(Type),
     InvalidTypeInArray(Type, Type),
     InvalidValueType(Type, Type),

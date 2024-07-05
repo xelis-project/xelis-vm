@@ -100,7 +100,8 @@ pub enum InterpreterError {
     ExpectedAssignOperator,
     OperationNotNumberType,
     CastNumberError,
-    RecursiveLimitReached
+    RecursiveLimitReached,
+    InvalidCastType(Type),
 }
 
 struct Context {
@@ -676,6 +677,17 @@ impl<'a> Interpreter<'a> {
             Expression::Path(left, right) => {
                 let value = self.get_from_path(on_value, left, context)?;
                 self.execute_expression(Some(value), right, context)
+            },
+            Expression::Cast(expr, cast_type) => {
+                let value = self.execute_expression_and_expect_value(on_value, expr, context)?;
+                match cast_type {
+                    Type::Byte => Ok(Some(Value::Byte(value.cast_to_byte()?))),
+                    Type::Short => Ok(Some(Value::Short(value.cast_to_short()?))),
+                    Type::Int => Ok(Some(Value::Int(value.cast_to_int()?))),
+                    Type::Long => Ok(Some(Value::Long(value.cast_to_long()?))),
+                    Type::String => Ok(Some(Value::String(value.cast_to_string()?))),
+                    _ => Err(InterpreterError::InvalidType(cast_type.clone()))
+                }
             }
         }
     }

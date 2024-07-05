@@ -155,10 +155,68 @@ impl Value {
         }
     }
 
+    // Check if the value is a number
     pub fn is_number(&self) -> bool {
         match self {
             Value::Byte(_) | Value::Short(_) | Value::Int(_) | Value::Long(_) => true,
             _ => false
+        }
+    }
+
+    // Cast value to string
+    pub fn cast_to_string(self) -> Result<String, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n.to_string()),
+            Value::Short(n) => Ok(n.to_string()),
+            Value::Int(n) => Ok(n.to_string()),
+            Value::Long(n) => Ok(n.to_string()),
+            Value::String(s) => Ok(s),
+            Value::Boolean(b) => Ok(b.to_string()),
+            _ => Err(InterpreterError::InvalidCastType(Type::String))
+        }
+    }
+
+    // Cast value to byte
+    pub fn cast_to_byte(self) -> Result<u8, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n),
+            Value::Short(n) => Ok(n as u8),
+            Value::Int(n) => Ok(n as u8),
+            Value::Long(n) => Ok(n as u8),
+            _ => Err(InterpreterError::InvalidCastType(Type::Byte))
+        }
+    }
+
+    // Cast value to short
+    pub fn cast_to_short(self) -> Result<u16, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n as u16),
+            Value::Short(n) => Ok(n),
+            Value::Int(n) => Ok(n as u16),
+            Value::Long(n) => Ok(n as u16),
+            _ => Err(InterpreterError::InvalidCastType(Type::Short))
+        }
+    }
+
+    // Cast value to int
+    pub fn cast_to_int(self) -> Result<u64, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n as u64),
+            Value::Short(n) => Ok(n as u64),
+            Value::Int(n) => Ok(n),
+            Value::Long(n) => Ok(n as u64),
+            _ => Err(InterpreterError::InvalidCastType(Type::Int))
+        }
+    }
+
+    // Cast value to long
+    pub fn cast_to_long(self) -> Result<u128, InterpreterError> {
+        match self {
+            Value::Byte(n) => Ok(n as u128),
+            Value::Short(n) => Ok(n as u128),
+            Value::Int(n) => Ok(n as u128),
+            Value::Long(n) => Ok(n),
+            _ => Err(InterpreterError::InvalidCastType(Type::Long))
         }
     }
 }
@@ -307,6 +365,25 @@ impl Type {
                 }
             },
             o => *o == *self 
+        }
+    }
+
+    // check if the type can be casted to another type
+    pub fn is_castable_to(&self, other: &Type) -> bool {
+        match self {
+            Type::Byte => match other {
+                Type::Short | Type::Int | Type::Long => true,
+                _ => false
+            },
+            Type::Short => match other {
+                Type::Int | Type::Long => true,
+                _ => false
+            },
+            Type::Int => match other {
+                Type::Long => true,
+                _ => false
+            },
+            _ => false
         }
     }
 

@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     // Variable / function names
     Identifier(String),
@@ -184,7 +184,8 @@ impl Token {
             | OperatorAssign
             | BracketOpen
             | Dot
-            | OperatorTernary => true,
+            | OperatorTernary
+            | As => true,
             _ => false,
         }
     }
