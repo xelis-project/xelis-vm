@@ -62,8 +62,13 @@ impl<'a> Parser<'a> {
     }
 
     // Consume the next token
-    fn next(&mut self) -> Result<Token, ParserError> {
+    fn advance(&mut self) -> Result<Token, ParserError> {
         self.tokens.pop_front().ok_or(ParserError::ExpectedToken)
+    }
+
+    // Consume the next token without error
+    fn next(&mut self) -> Option<Token> {
+        self.tokens.pop_front()
     }
 
     // Peek the next token without consuming it
@@ -73,7 +78,7 @@ impl<'a> Parser<'a> {
 
     // Limited to 32 characters
     fn next_identifier(&mut self) -> Result<String, ParserError> {
-        match self.next()? {
+        match self.advance()? {
             Token::Identifier(id) => if id.len() <= 32 {
                 Ok(id)
             } else {
@@ -93,7 +98,7 @@ impl<'a> Parser<'a> {
 
     // Require a specific token
     fn expect_token(&mut self, expected: Token) -> Result<(), ParserError> {
-        let token = self.next()?;
+        let token = self.advance()?;
         if token != expected {
             return Err(ParserError::InvalidToken(token, expected)) 
         }
@@ -113,7 +118,7 @@ impl<'a> Parser<'a> {
      * - T[] (where T is any above Type)
      */
     fn read_type(&mut self) -> Result<Type, ParserError> {
-        let token = self.next()?;
+        let token = self.advance()?;
         let mut _type = match Type::from_token(token, &self.structures) {
             Some(v) => v,
             None => return Err(ParserError::TypeNotFound)
@@ -121,7 +126,7 @@ impl<'a> Parser<'a> {
 
         // support multi dimensional arrays
         loop {
-            let token = self.next()?;
+            let token = self.advance()?;
             if token != Token::BracketOpen {
                 // Push back
                 // This allow us to economize one read per iteration on array type
@@ -245,7 +250,7 @@ impl<'a> Parser<'a> {
                 break
             }
 
-            let expr: Expression = match self.next()? {
+            let expr: Expression = match self.advance()? {
                 Token::BracketOpen => {
                     match last_expression {
                         Some(v) => {
@@ -338,7 +343,7 @@ impl<'a> Parser<'a> {
                                 let mut fields = HashMap::new();
                                 for t in types {
                                     let field_name = self.next_identifier()?;
-                                    let field_value = match self.next()? {
+                                    let field_value = match self.advance()? {
                                         Token::Comma => {
                                             if context.has_variable(&field_name) {
                                                 Expression::Variable(field_name.clone())
@@ -349,7 +354,7 @@ impl<'a> Parser<'a> {
                                         Token::Colon => {
                                             let value = self.read_expr(true, Some(&t), context)?;
                                             if *self.peek()? == Token::Comma {
-                                                self.next()?;
+                                                self.advance()?;
                                             }
                                             value
                                         }
@@ -571,7 +576,7 @@ impl<'a> Parser<'a> {
         let mut statements: Vec<Statement> = Vec::new();
         let mut has_if = false;
         loop {
-            let token = self.next()?;
+            let token = self.advance()?;
             let statement: Statement = match token {
                 Token::BraceClose => break,
                 Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
@@ -596,7 +601,7 @@ impl<'a> Parser<'a> {
                 }
                 Token::ForEach => { // Example: foreach a in array {}
                     context.begin_scope();
-                    let variable: String = match self.next()? {
+                    let variable: String = match self.advance()? {
                         Token::Identifier(v) => v,
                         token => return Err(ParserError::UnexpectedToken(token))
                     };
@@ -800,8 +805,9 @@ impl<'a> Parser<'a> {
      */
     fn read_function(&mut self, entry: bool, context: &mut Context) -> Result<(), ParserError> {
         context.begin_scope();
-        let (instance_name, for_type) = if !entry && *self.peek()? == Token::ParenthesisOpen {
-            self.next()?;
+
+        let token = self.advance()?;
+        let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
 
@@ -818,12 +824,14 @@ impl<'a> Parser<'a> {
             context.register_variable(instance_name.clone(), for_type.clone())?;
             self.expect_token(Token::ParenthesisClose)?;
 
-            (Some(instance_name), Some(for_type))
+            (Some(instance_name), Some(for_type), self.next_identifier()?)
         } else {
-            (None, None)
+            let Token::Identifier(name) = token else {
+                return Err(ParserError::ExpectedIdentifierToken(token))
+            };
+            (None, None, name)
         };
 
-        let name = self.next_identifier()?;
         self.expect_token(Token::ParenthesisOpen)?;
         let parameters = self.read_parameters()?;
         self.expect_token(Token::ParenthesisClose)?;
@@ -837,7 +845,7 @@ impl<'a> Parser<'a> {
 
             Some(Type::Int)
         } else if *self.peek()? == Token::Colon { // read returned type
-            self.next()?;
+            self.advance()?;
             Some(self.read_type()?)
         } else {
             None
@@ -978,8 +986,8 @@ impl<'a> Parser<'a> {
     // Parse the tokens and return a Program
     pub fn parse(mut self) -> Result<Program, ParserError> {
         let mut context: Context = Context::new();
-        while !self.tokens.is_empty() {
-            match self.next()? {
+        while let Some(token) = self.next() {
+            match token {
                 Token::Import => return Err(ParserError::NotImplemented), // TODO
                 Token::Const => {
                     let var = self.read_variable(&mut context)?;
