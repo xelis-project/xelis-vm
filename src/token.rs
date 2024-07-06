@@ -5,7 +5,7 @@ pub enum Token {
     // Values
     IntValue(u64),
     LongValue(u128),
-    ValString(String),
+    StringValue(String),
     Null,
     True,
     False,

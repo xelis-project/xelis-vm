@@ -244,7 +244,7 @@ impl<'a> Lexer<'a> {
                 // It supports escaped characters
                 '"' | '\'' => {
                     let value = self.read_string(c)?;
-                    Token::ValString(value.into_owned())
+                    Token::StringValue(value.into_owned())
                 },
                 // it's only a comment, skip until its end
                 '/' if {
@@ -339,7 +339,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::ValString("Hello, World!".to_owned())
+            Token::StringValue("Hello, World!".to_owned())
         ]);
     }
 
@@ -349,7 +349,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::ValString("'Hello, World!'".to_owned())
+            Token::StringValue("'Hello, World!'".to_owned())
         ]);
     }
 
@@ -359,7 +359,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::ValString("Hello, 'World!".to_owned())
+            Token::StringValue("Hello, 'World!".to_owned())
         ]);
     }
 

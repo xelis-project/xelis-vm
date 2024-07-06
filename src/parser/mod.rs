@@ -442,7 +442,7 @@ impl<'a> Parser<'a> {
                     None => Value::Int(value)
                 }),
                 Token::LongValue(value) => Expression::Value(Value::Long(value)),
-                Token::ValString(value) => Expression::Value(Value::String(value)),
+                Token::StringValue(value) => Expression::Value(Value::String(value)),
                 Token::True => Expression::Value(Value::Boolean(true)),
                 Token::False => Expression::Value(Value::Boolean(false)),
                 Token::Null => Expression::Value(Value::Null),
