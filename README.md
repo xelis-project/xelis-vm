@@ -1,5 +1,7 @@
 # XELIS VM
-Xelis is an interpreted language developed in Rust. It supports constants, functions, while/foreach loops, arrays and structures. The syntax is strongly inspired by Rust and Golang.
+XVM is a virtual machine with its own interpreted language for the XELIS network developed in Rust.
+It supports constants, functions, while/foreach loops, arrays and structures.
+The syntax is strongly inspired by Rust and Golang.
 
 All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
 
@@ -26,12 +28,12 @@ Custom structs are also available.
 ### Numbers
 An error will be returned by the interpreter if an overflow is detected without causing a panic.
 
-#### Rules
+**Rules**
 - The value must be greater than or equal to `0`.
 - You can put `_` (underscore) for a better readability.
 - If no type is specified on the value, then `int` will be the default.
 
-#### Examples
+**Examples**
 ```rust
 let my_byte: byte = 10
 let my_short: short = 70
@@ -42,13 +44,13 @@ let my_long: long = 100_000_000L
 ### Variable
 for constant variable, it must be declared outside a function, with `const` keyword.
 
-#### Rules
+**Rules**
 - Every variable must be declared with `let` or `const` keyword.
 - Variable name must alphanumeric characters.
 - Must provide value type.
 - If no value is set, `null` is set by default.
 
-#### Examples
+**Examples**
 ```rust
 const hello: string = "hello"
 ...
@@ -58,10 +60,10 @@ let world: string = "world"
 ### Casting
 Values of built-in types can be casted into other built-in types easily using the keyword `as`.
 
-#### Rules
+**Rules**
 - Both value types must be a built-in type.
 
-#### Examples
+**Examples**
 ```rust
 let id: long = 1337
 let b: byte = id as byte
@@ -71,13 +73,13 @@ let id_str: string = id as string
 ### Function
 `entry` function is a "public callable" function and must return a `int` value.
 
-#### Rules
+**Rules**
 - Must starts with `func` or `entry` keyword.
 - Signature is based on function name and parameters.
 - For type functions, the type must not be primitive.
 - Recursive functions are allowed.
 
-#### Examples
+**Examples**
 ```go
 entry foo() { ... }
 func foo() { ... }
@@ -89,13 +91,13 @@ func (f Foo) bar() { ... }
 ### Structure
 A structure can contain other structures.
 
-#### Rules
+**Rules**
 - The name must be unique.
 - Name should start with a uppercase letter.
 - Only letters are allowed in name.
 - The last field does not need a comma.
 
-#### Examples
+**Examples**
 ```rust
 struct MyStruct {
     message: string,
@@ -105,31 +107,31 @@ struct MyStruct {
 
 ### Ternary
  
-#### Rules
+**Rules**
 - A `bool` condition is required.
 - The two values that can be returned must be of the same type.
 
-#### Examples
+**Examples**
 ```rust
 let score: int = is_winner() ? 20 : 0
 ```
 
 ### Negate operator
  
-#### Rules
+**Rules**
 - A `bool` condition is required after it.
 
-#### Examples
+**Examples**
 ```rust
 let negative: bool = !condition
 ```
 
 ### Array
 
-#### Rules
+**Rules**
 - All values must be of the same specified type.
 
-#### Examples
+**Examples**
 ```rust
 let array: int[] = [10, 20, 30, 40]
 ...
@@ -138,10 +140,10 @@ let dim: int[][] = [[34, 17], [8, 14], [0, 69]]
 
 ### If
 
-#### Rules
+**Rules**
 - Have a `bool` condition.
 
-#### Examples
+**Examples**
 ```rust
 if condition {
 	...
@@ -153,10 +155,10 @@ if (i > 20 && i != 25) || i == 0 {
 ```
 ### Else
 
-#### Rules
+**Rules**
 - It must be preceded by an `if` condition.
 
-#### Examples
+**Examples**
 ```rust
 else {
 	...
@@ -165,11 +167,11 @@ else {
 
 ### Else if
 
-#### Rules
+**Rules**
 - It must be preceded by an `if` or an `else if` condition.
 - Have a boolean condition.
 
-#### Examples
+**Examples**
 ```rust
 else if condition {
 	...
@@ -182,10 +184,10 @@ else if my_struct != null {
 
 ### While
 
-#### Rules
+**Rules**
 - Have a boolean condition.
 
-#### Examples
+**Examples**
 ```rust
 while condition {
 	...
@@ -194,11 +196,11 @@ while condition {
 
 ### Foreach
 
-#### Rules
+**Rules**
 - Have the name of a variable.
 - Have an array to go through
 
-#### Examples
+**Examples**
 ```csharp
 foreach val in values {
 	...
@@ -207,12 +209,12 @@ foreach val in values {
 
 ### For
 
-#### Rules
+**Rules**
 - Have the name of a variable.
 - Have a boolean condition.
 - Have an assign operator.
 
-#### Examples
+**Examples**
 ```rust
 for i: int = 0; i < 10; i += 1 {
 	...
@@ -221,10 +223,10 @@ for i: int = 0; i < 10; i += 1 {
 
 ### Break
 
-#### Rules
+**Rules**
 - Must be in a loop (`foreach`, `for`, `while`).
 
-#### Examples
+**Examples**
 ```rust
 while condition {
 	if i % 10 == 0 {
@@ -236,10 +238,10 @@ while condition {
 
 ### Continue
 
-#### Rules
+**Rules**
 - Must be in a loop (`foreach`, `for`, `while`).
 
-#### Examples
+**Examples**
 ```rust
 while condition {
 	if i % 10 == 0 {
@@ -251,11 +253,11 @@ while condition {
 
 ### Return
 
-#### Rules
+**Rules**
 - Must not have any code after.
 - If the function returns a value, the return must return a value.
 
-#### Examples
+**Examples**
 ```go
 func foo(): string {
 	return "Hello World!"
@@ -272,10 +274,10 @@ func bar() {
 ### Scope
 Allows you to isolate a part of the code / variables created.
 
-#### Rules
+**Rules**
 - No specific rules.
 
-#### Examples
+**Examples**
 ```rust
 {
 	...
