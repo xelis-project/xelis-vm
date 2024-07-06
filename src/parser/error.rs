@@ -15,6 +15,7 @@ pub enum ParserError {
     VariableNameAlreadyUsed(String),
     FunctionSignatureAlreadyExist(String),
     UnexpectedVariable(String),
+    UnexpectedType(Type),
     InvalidStructField(String),
     InvalidStructureName(String),
     StructureNotFound(String),

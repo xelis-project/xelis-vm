@@ -144,19 +144,40 @@ impl<'a> Parser<'a> {
 
     // this function don't verify, but only returns the type of an expression
     // all tests should be done when constructing an expression, not here
-    fn get_type_from_expression(&mut self, expression: &Expression, context: &mut Context) -> Result<Type, ParserError> {
+    fn get_type_from_expression(&self, on_type: Option<&Type>, expression: &Expression, context: &Context) -> Result<Type, ParserError> {
         let _type: Type = match expression {
             Expression::ArrayConstructor(ref values) => match values.first() {
-                Some(v) => Type::Array(Box::new(self.get_type_from_expression(v, context)?)),
+                Some(v) => Type::Array(Box::new(self.get_type_from_expression(on_type, v, context)?)),
                 None => return Err(ParserError::EmptyArrayConstructor) // cannot determine type from empty array
             },
-            Expression::Variable(ref var_name) => context.get_type_of_variable(var_name)?.clone(),
+            Expression::Variable(ref var_name) => match on_type {
+                Some(t) => {
+                    if let Type::Struct(struct_name) = t {
+                        let structure = self.get_structure(struct_name)?;
+                        if structure.fields.contains_key(var_name) {
+                            structure.fields.get(var_name).unwrap().clone()
+                        } else {
+                            return Err(ParserError::UnexpectedVariable(var_name.clone()))
+                        }
+                    } else {
+                        return Err(ParserError::UnexpectedVariable(var_name.clone()))
+                    }
+                },
+                None => {
+                    if context.has_variable(var_name) {
+                        context.get_type_of_variable(var_name)?.clone()
+                    } else {
+                        return Err(ParserError::UnexpectedVariable(var_name.clone()))
+                    }
+                }
+            
+            },
             Expression::FunctionCall(name, parameters) => {
                 let types: Vec<Cow<'_, Type>> = parameters.into_iter()
-                    .map(|param| self.get_type_from_expression(param, context).map(Cow::Owned))
+                    .map(|param| self.get_type_from_expression(on_type, param, context).map(Cow::Owned))
                     .collect::<Result<_, ParserError>>()?;
 
-                let func = self.get_function(context.get_current_type(), name, types.as_slice())?;
+                let func = self.get_function(on_type, name, types.as_slice())?;
                 match &func.return_type() {
                     Some(ref v) => v.clone(),
                     None => return Err(ParserError::FunctionNoReturnType(name.clone()))
@@ -167,12 +188,12 @@ impl<'a> Parser<'a> {
                 None => return Err(ParserError::EmptyValue)
             },
             Expression::ArrayCall(path, _) => {
-                match self.get_type_from_expression(path, context)? {
+                match self.get_type_from_expression(on_type, path, context)? {
                     Type::Array(_type) => *_type,
                     _ => return Err(ParserError::InvalidArrayCall)
                 }
             },
-            Expression::SubExpression(expr) => self.get_type_from_expression(expr, context)?,
+            Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
             Expression::StructConstructor(name, _) => {
                 if !self.get_structure(name).is_ok() {
                     return Err(ParserError::StructureNotFound(name.clone()))
@@ -181,11 +202,8 @@ impl<'a> Parser<'a> {
                 Type::Struct(name.clone())
             }
             Expression::Path(left, right) => {
-                let var_type = self.get_type_from_expression(left, context)?;
-                context.set_current_type(var_type, self)?;
-                let _type = self.get_type_from_expression(right, context)?;
-                context.remove_current_type();
-                _type
+                let var_type = self.get_type_from_expression(on_type, left, context)?;
+                self.get_type_from_expression(Some(&var_type), right, context)?
             },
             // Compatibility checks are done when constructing the expression
             Expression::Operator(op, left, right) => match op {
@@ -203,8 +221,8 @@ impl<'a> Parser<'a> {
                 | Operator::AssignDivide
                 | Operator::AssignMultiply => return Err(ParserError::AssignReturnNothing),
                 Operator::Plus | Operator::Minus => {
-                    let left_type = self.get_type_from_expression(left, context)?;
-                    let right_type = self.get_type_from_expression(right, context)?;
+                    let left_type = self.get_type_from_expression(on_type, left, context)?;
+                    let right_type = self.get_type_from_expression(on_type, right, context)?;
 
                     if left_type == Type::String || right_type == Type::String {
                         Type::String
@@ -217,8 +235,8 @@ impl<'a> Parser<'a> {
                 | Operator::BitwiseLeft
                 | Operator::BitwiseRight
                 | Operator::Modulo => {
-                    let left_type = self.get_type_from_expression(left, context)?;
-                    let right_type = self.get_type_from_expression(right, context)?;
+                    let left_type = self.get_type_from_expression(on_type, left, context)?;
+                    let right_type = self.get_type_from_expression(on_type, right, context)?;
 
                     if !left_type.is_number() || !right_type.is_number() || left_type != right_type {
                         return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
@@ -227,20 +245,98 @@ impl<'a> Parser<'a> {
                 },
             },
             Expression::IsNot(_) => Type::Boolean,
-            Expression::Ternary(_, expr, _) => self.get_type_from_expression(expr, context)?,
+            Expression::Ternary(_, expr, _) => self.get_type_from_expression(on_type, expr, context)?,
             Expression::Cast(_, _type) => _type.clone()
         };
 
         Ok(_type)
     }
 
+    // Read a function call with the following syntax:
+    // function_name(param1, param2, ...)
+    fn read_function_call(&mut self, on_type: Option<&Type>, id: String, context: &mut Context) -> Result<Expression, ParserError> {
+        // we remove the token from the list
+        self.expect_token(Token::ParenthesisOpen)?;
+        let mut parameters: Vec<Expression> = Vec::new();
+        let mut types: Vec<Cow<'_, Type>> = Vec::new();
+
+        // read parameters for function call
+        while *self.peek()? != Token::ParenthesisClose {
+            let expr = self.read_expression(context)?;
+            types.push(Cow::Owned(self.get_type_from_expression(on_type, &expr, context)?));
+            parameters.push(expr);
+
+            if *self.peek()? == Token::Comma {
+                self.expect_token(Token::Comma)?;
+            }
+        }
+
+        let func = self.get_function(on_type, &id, types.as_slice())?;
+        // Function call cannot call entry function
+        if func.is_entry() {
+            return Err(ParserError::FunctionNotFound(id, parameters.len()))
+        }
+
+        self.expect_token(Token::ParenthesisClose)?;
+        Ok(Expression::FunctionCall(id, parameters))
+    }
+
+    // Read a struct constructor with the following syntax:
+    // struct_name { field_name: value1, field2: value2 }
+    // If we have a field that has the same name as a variable we can pass it as following:
+    // Example: struct_name { field_name, field2: value2 }
+    fn read_struct_constructor(&mut self, on_type: Option<&Type>, id: String, context: &mut Context) -> Result<Expression, ParserError> {
+        self.expect_token(Token::BraceOpen)?;
+        // TODO no clone here
+        // This is done due to borrowing struct
+        let (name, types) = {
+            let structure = self.get_structure(&id)?;
+            let name = structure.name.clone();
+            (name, structure.fields.iter().map(|(_, v)| v.clone()).collect::<Vec<_>>())
+        };
+
+        let mut fields = HashMap::new();
+        for t in types {
+            let field_name = self.next_identifier()?;
+            let field_value = match self.advance()? {
+                Token::Comma => {
+                    if context.has_variable(&field_name) {
+                        Expression::Variable(field_name.clone())
+                    } else {
+                        return Err(ParserError::UnexpectedVariable(field_name)) 
+                    }
+                }
+                Token::Colon => {
+                    let value = self.read_expr(on_type, true, Some(&t), context)?;
+                    if *self.peek()? == Token::Comma {
+                        self.advance()?;
+                    }
+                    value
+                }
+                token => {
+                    return Err(ParserError::UnexpectedToken(token))
+                }
+            };
+
+            let field_type = self.get_type_from_expression(on_type, &field_value, context)?;
+            if t != field_type {
+                return Err(ParserError::InvalidValueType(field_type, t))
+            }
+
+            fields.insert(field_name, field_value);
+        }
+        self.expect_token(Token::BraceClose)?;
+        Ok(Expression::StructConstructor(name, fields))
+    }
+
+    // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context) -> Result<Expression, ParserError> {
-        self.read_expr(true, None, context)
+        self.read_expr(None, true, None, context)
     }
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
-    fn read_expr(&mut self, accept_operator: bool, number_type: Option<&Type>, context: &mut Context) -> Result<Expression, ParserError> {
+    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, number_type: Option<&Type>, context: &mut Context) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while {
@@ -248,20 +344,20 @@ impl<'a> Parser<'a> {
             !peek.should_stop() && ((required_operator == peek.is_operator()) || (*peek == Token::BracketOpen && last_expression.is_none()))
         } {
             if !accept_operator && required_operator {
-                break
+                break;
             }
 
             let expr: Expression = match self.advance()? {
                 Token::BracketOpen => {
                     match last_expression {
                         Some(v) => {
-                            if !self.get_type_from_expression(&v, context)?.is_array() {
+                            if !self.get_type_from_expression(on_type, &v, context)?.is_array() {
                                 return Err(ParserError::InvalidArrayCall)
                             }
 
                             // Index must be of type Int
-                            let index = self.read_expr(true, Some(&Type::Int), context)?;
-                            let index_type = self.get_type_from_expression(&index, context)?;
+                            let index = self.read_expr(on_type, true, Some(&Type::Int), context)?;
+                            let index_type = self.get_type_from_expression(on_type, &index, context)?;
                             if index_type != Type::Int {
                                 return Err(ParserError::InvalidArrayCallIndexType(index_type))
                             }
@@ -274,16 +370,16 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
-                                let expr = self.read_expr(true, number_type.map(|t| t.get_array_type()), context)?;
+                                let expr = self.read_expr(on_type, true, number_type.map(|t| t.get_array_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
-                                        let _type = self.get_type_from_expression(&expr, context)?;
+                                        let _type = self.get_type_from_expression(on_type, &expr, context)?;
                                         if _type != *t {
                                             return Err(ParserError::InvalidTypeInArray(_type, t.clone()))
                                         }
                                     },
                                     None => { // first value rules the type of array
-                                        array_type = Some(self.get_type_from_expression(&expr, context)?);
+                                        array_type = Some(self.get_type_from_expression(on_type, &expr, context)?);
                                     }
                                 };
                                 expressions.push(expr);
@@ -305,76 +401,32 @@ impl<'a> Parser<'a> {
                 },
                 Token::Identifier(id) => {
                     match self.peek()? {
-                        Token::ParenthesisOpen => {
-                            self.expect_token(Token::ParenthesisOpen)?; // we remove the token from the list
-                            let mut parameters: Vec<Expression> = Vec::new();
-                            let mut types: Vec<Cow<'_, Type>> = Vec::new();
-                            while *self.peek()? != Token::ParenthesisClose { // read parameters for function call
-                                let expr = self.read_expression(context)?;
-                                types.push(Cow::Owned(self.get_type_from_expression(&expr, context)?));
-                                parameters.push(expr);
-
-                                if *self.peek()? == Token::Comma {
-                                    self.expect_token(Token::Comma)?;
-                                }
-                            }
-
-                            let func = self.get_function(context.get_current_type(), &id, types.as_slice())?;
-                            // Function call cannot call entry function
-                            if func.is_entry() {
-                                return Err(ParserError::FunctionNotFound(id, parameters.len()))
-                            }
-
-                            self.expect_token(Token::ParenthesisClose)?;
-                            Expression::FunctionCall(id, parameters)
-                        },
+                        // function call
+                        Token::ParenthesisOpen => self.read_function_call(on_type, id, context)?,
                         _ => {
-                            if context.has_variable(&id) {
-                                Expression::Variable(id)
-                            } else if self.structures.contains_key(&id) {
-                                self.expect_token(Token::BraceOpen)?;
-                                // TODO no clone here
-                                // This is done due to borrowing struct
-                                let (name, types) = {
-                                    let structure = self.get_structure(&id)?;
-                                    let name = structure.name.clone();
-                                    (name, structure.fields.iter().map(|(_, v)| v.clone()).collect::<Vec<_>>())
-                                };
-
-                                let mut fields = HashMap::new();
-                                for t in types {
-                                    let field_name = self.next_identifier()?;
-                                    let field_value = match self.advance()? {
-                                        Token::Comma => {
-                                            if context.has_variable(&field_name) {
-                                                Expression::Variable(field_name.clone())
-                                            } else {
-                                                return Err(ParserError::UnexpectedVariable(field_name)) 
-                                            }
+                            match on_type {
+                                // mostly an access to a struct field
+                                Some(t) => {
+                                    if let Type::Struct(struct_name) = t {
+                                        let structure = self.get_structure(struct_name)?;
+                                        if structure.fields.contains_key(&id) {
+                                            Expression::Variable(id)
+                                        } else {
+                                            return Err(ParserError::UnexpectedVariable(id))
                                         }
-                                        Token::Colon => {
-                                            let value = self.read_expr(true, Some(&t), context)?;
-                                            if *self.peek()? == Token::Comma {
-                                                self.advance()?;
-                                            }
-                                            value
-                                        }
-                                        token => {
-                                            return Err(ParserError::UnexpectedToken(token))
-                                        }
-                                    };
-
-                                    let field_type = self.get_type_from_expression(&field_value, context)?;
-                                    if t != field_type {
-                                        return Err(ParserError::InvalidValueType(field_type, t))
+                                    } else {
+                                        return Err(ParserError::UnexpectedType(t.clone()))
                                     }
-
-                                    fields.insert(field_name, field_value);
+                                },
+                                None => {
+                                    if context.has_variable(&id) {
+                                        Expression::Variable(id)
+                                    } else if self.structures.contains_key(&id) {
+                                        self.read_struct_constructor(on_type, id, context)?
+                                    } else {
+                                        return Err(ParserError::UnexpectedVariable(id))
+                                    }
                                 }
-                                self.expect_token(Token::BraceClose)?;
-                                Expression::StructConstructor(name, fields)
-                            } else {
-                                return Err(ParserError::UnexpectedVariable(id))
                             }
                         }
                     }
@@ -397,11 +449,10 @@ impl<'a> Parser<'a> {
                 Token::Dot => {
                     match last_expression {
                         Some(value) => {
-                            let _type = self.get_type_from_expression(&value, context)?;
-                            context.set_current_type(_type, self)?;
-                            let right_expr = self.read_expr(false, None, context)?;
-                            context.remove_current_type();
-                            required_operator = !required_operator; // because we read operator DOT + right expression
+                            let _type = self.get_type_from_expression(on_type, &value, context)?;
+                            let right_expr = self.read_expr(Some(&_type), false, None, context)?;
+                            // because we read operator DOT + right expression
+                            required_operator = !required_operator;
                             Expression::Path(Box::new(value), Box::new(right_expr))
                         },
                         None => return Err(ParserError::UnexpectedToken(Token::Dot))
@@ -409,7 +460,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::IsNot => { // it's an operator, but not declared as
                     let expr = self.read_expression(context)?;
-                    let expr_type = self.get_type_from_expression(&expr, context)?;
+                    let expr_type = self.get_type_from_expression(on_type, &expr, context)?;
                     if expr_type != Type::Boolean {
                         return Err(ParserError::InvalidValueType(expr_type, Type::Boolean))
                     }
@@ -418,15 +469,15 @@ impl<'a> Parser<'a> {
                 },
                 Token::OperatorTernary => match last_expression { // condition ? expr : expr
                     Some(expr) => {
-                        if self.get_type_from_expression(&expr, context)? != Type::Boolean {
+                        if self.get_type_from_expression(on_type, &expr, context)? != Type::Boolean {
                             return Err(ParserError::InvalidCondition(expr, Type::Boolean))
                         }
 
-                        let valid_expr = self.read_expr(true, number_type, context)?;
-                        let first_type = self.get_type_from_expression(&valid_expr, context)?;
+                        let valid_expr = self.read_expr(on_type, true, number_type, context)?;
+                        let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?;
                         self.expect_token(Token::Colon)?;
-                        let else_expr = self.read_expr(true, number_type, context)?;
-                        let else_type = self.get_type_from_expression(&else_expr, context)?;
+                        let else_expr = self.read_expr(on_type, true, number_type, context)?;
+                        let else_type = self.get_type_from_expression(on_type, &else_expr, context)?;
                         
                         if first_type != else_type { // both expr should have the SAME type.
                             return Err(ParserError::InvalidValueType(else_type, first_type))
@@ -445,7 +496,7 @@ impl<'a> Parser<'a> {
                         Some(previous_expr) => {
                             required_operator = !required_operator;
 
-                            let left_type = self.get_type_from_expression(&previous_expr, context)?;
+                            let left_type = self.get_type_from_expression(on_type, &previous_expr, context)?;
                             if token == Token::As {
                                 let right_type = self.read_type()?;
                                 if !left_type.is_castable_to(&right_type) {
@@ -460,8 +511,8 @@ impl<'a> Parser<'a> {
                                     None => return Err(ParserError::OperatorNotFound(token))
                                 };
 
-                                let expr = self.read_expr(true, Some(&left_type), context)?;
-                                let right_type = self.get_type_from_expression(&expr, context)?;
+                                let expr = self.read_expr(on_type, true, Some(&left_type), context)?;
+                                let right_type = self.get_type_from_expression(on_type, &expr, context)?;
     
                                 match &op {
                                     Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
@@ -542,9 +593,9 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if *self.peek()? == Token::OperatorAssign {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(true, Some(&value_type), context)?;
+            let expr = self.read_expr(None, true, Some(&value_type), context)?;
 
-            let expr_type = match self.get_type_from_expression(&expr, context) {
+            let expr_type = match self.get_type_from_expression(None, &expr, context) {
                 Ok(_type) => _type,
                 Err(e) => match e { // support empty array declaration
                     ParserError::EmptyArrayConstructor if value_type.is_array() => value_type.clone(),
@@ -596,7 +647,7 @@ impl<'a> Parser<'a> {
                     context.begin_scope();
                     let var = self.read_variable(context)?;
                     let condition = self.read_expression(context)?;
-                    let condition_type = self.get_type_from_expression(&condition, context)?;
+                    let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  condition_type != Type::Boolean {
                         return Err(ParserError::InvalidCondition(condition, condition_type))
                     }
@@ -620,7 +671,7 @@ impl<'a> Parser<'a> {
                     };
                     self.expect_token(Token::In)?;
                     let expr = self.read_expression(context)?;
-                    let expr_type = self.get_type_from_expression(&expr, context)?;
+                    let expr_type = self.get_type_from_expression(None, &expr, context)?;
                     if !expr_type.is_array() { // verify that we can iter on it
                         return Err(ParserError::InvalidValueType(expr_type, Type::Array(Box::new(Type::Any))))
                     }
@@ -632,7 +683,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::While => { // Example: while i < 10 {}
                     let condition = self.read_expression(context)?;
-                    let condition_type = self.get_type_from_expression(&condition, context)?;
+                    let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  condition_type != Type::Boolean {
                         return Err(ParserError::InvalidCondition(condition, condition_type))
                     }
@@ -643,7 +694,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::If => {
                     let condition = self.read_expression(context)?;
-                    let condition_type = self.get_type_from_expression(&condition, context)?;
+                    let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  condition_type != Type::Boolean {
                         return Err(ParserError::InvalidCondition(condition, condition_type))
                     }
@@ -658,7 +709,7 @@ impl<'a> Parser<'a> {
                     if *self.peek()? == Token::If {
                         self.expect_token(Token::If)?;
                         let condition = self.read_expression(context)?;
-                        let condition_type = self.get_type_from_expression(&condition, context)?;
+                        let condition_type = self.get_type_from_expression(None, &condition, context)?;
                         if  condition_type != Type::Boolean {
                             return Err(ParserError::InvalidCondition(condition, condition_type))
                         }
@@ -671,8 +722,8 @@ impl<'a> Parser<'a> {
                 Token::Let => Statement::Variable(self.read_variable(context)?),
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
-                        let expr = self.read_expr(true, Some(return_type), context)?;
-                        let expr_type = self.get_type_from_expression(&expr, context)?;
+                        let expr = self.read_expr(None, true, Some(return_type), context)?;
+                        let expr_type = self.get_type_from_expression(None, &expr, context)?;
                         if expr_type != *return_type {
                             return Err(ParserError::InvalidValueType(expr_type, return_type.clone()))
                         }
@@ -865,7 +916,7 @@ impl<'a> Parser<'a> {
         };
 
         let types: Vec<Cow<'_, Type>> = parameters.iter().map(|p| Cow::Borrowed(p.get_type())).collect();
-        if self.has_function(&for_type, &name, &types) {
+        if self.has_function(for_type.as_ref(), &name, &types) {
             return Err(ParserError::FunctionSignatureAlreadyExist(name)) 
         }
 
@@ -911,12 +962,12 @@ impl<'a> Parser<'a> {
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, for_type: &Option<Type>, name: &String, params: &[Cow<'_, Type>]) -> bool {
+    fn has_function(&self, for_type: Option<&Type>, name: &String, params: &[Cow<'_, Type>]) -> bool {
         self.get_function(for_type, name, params).is_ok()
     }
 
     // get a function exist based on signature (name + params)
-    fn get_function(&self, for_type: &Option<Type>, name: &String, params: &[Cow<'_, Type>]) -> Result<&FunctionType, ParserError> {
+    fn get_function(&self, for_type: Option<&Type>, name: &String, params: &[Cow<'_, Type>]) -> Result<&FunctionType, ParserError> {
         // merge both iterators in one
         let functions = self.functions.iter().map(|v| v).chain(self.env.get_functions());
 
@@ -929,7 +980,12 @@ impl<'a> Parser<'a> {
                         false
                     }
                 } else {
-                    *for_type == *f.for_type()
+                    let f_type = f.for_type();
+                    if let (Some(left), Some(right)) = (for_type, f_type) {
+                        left == right
+                    } else {
+                        for_type.is_none() && f_type.is_none()
+                    }
                 };
 
                 if same_type {
