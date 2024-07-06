@@ -15,9 +15,13 @@ The different primitive types are:
 File extension is `.xel`
 
 ## Documentation
-the semicolon is not mandatory, but can be added if desired without any difference in the code.
+the semicolon is **optional**, thus can be added if desired without any difference in the code.
 
 Recursive functions are allowed, but limited to a configurable depth.
+
+A environment system is completely customizable to set your own native functions.
+This helps to manage exactly what a program can interact with.
+Custom structs are also available.
 
 ### Numbers
 An error will be returned by the interpreter if an overflow is detected without causing a panic.
@@ -49,6 +53,19 @@ for constant variable, it must be declared outside a function, with `const` keyw
 const hello: string = "hello"
 ...
 let world: string = "world"
+```
+
+### Casting
+Values of built-in types can be casted into other built-in types easily using the keyword `as`.
+
+#### Rules
+- Both value types must be a built-in type.
+
+#### Examples
+```rust
+let id: long = 1337
+let b: byte = id as byte
+let id_str: string = id as string 
 ```
 
 ### Function
