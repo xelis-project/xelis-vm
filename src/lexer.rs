@@ -471,4 +471,57 @@ mod tests {
             Token::LongValue(10_000)
         ]);
     }
+
+    #[test]
+    fn test_number_long_with_hex() {
+        let code = "0x10L";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::LongValue(16)
+        ]);
+    }
+
+    #[test]
+    fn test_function_with_args() {
+        let code = "func sum(a: int, b: int): int { return a + b; }";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Function,
+            Token::Identifier("sum".to_owned()),
+            Token::ParenthesisOpen,
+            Token::Identifier("a".to_owned()),
+            Token::Colon,
+            Token::Int,
+            Token::Comma,
+            Token::Identifier("b".to_owned()),
+            Token::Colon,
+            Token::Int,
+            Token::ParenthesisClose,
+            Token::Colon,
+            Token::Int,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorPlus,
+            Token::Identifier("b".to_owned()),
+            Token::BraceClose
+        ]);
+    }
+
+    #[test]
+    fn test_function_call() {
+        let code = "sum(10, 20)";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("sum".to_owned()),
+            Token::ParenthesisOpen,
+            Token::IntValue(10),
+            Token::Comma,
+            Token::IntValue(20),
+            Token::ParenthesisClose
+        ]);
+    }
 }
