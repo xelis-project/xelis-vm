@@ -547,6 +547,60 @@ impl<'a> Interpreter<'a> {
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         }, 
+                        Operator::AssignModulo => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? % value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? % value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? % value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? % value.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
+                        Operator::AssignBitwiseXor => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? ^ value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? ^ value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? ^ value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? ^ value.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
+                        Operator::AssignBitwiseAnd => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? & value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? & value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? & value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? & value.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
+                        Operator::AssignBitwiseOr => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(path_value.as_byte()? | value.to_byte()?),
+                                Type::Short => Value::Short(path_value.as_short()? | value.to_short()?),
+                                Type::Int => Value::Int(path_value.as_int()? | value.to_int()?),
+                                Type::Long => Value::Long(path_value.as_long()? | value.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
+                        Operator::AssignBitwiseLeft => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(shl!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(shl!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(shl!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(shl!(path_value.as_long()?, value.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
+                        Operator::AssignBitwiseRight => {
+                            *path_value = match path_type {
+                                Type::Byte => Value::Byte(shr!(path_value.as_byte()?, value.to_byte()?)),
+                                Type::Short => Value::Short(shr!(path_value.as_short()?, value.to_short()?)),
+                                Type::Int => Value::Int(shr!(path_value.as_int()?, value.to_int()?)),
+                                Type::Long => Value::Long(shr!(path_value.as_long()?, value.to_long()?)),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            };
+                        },
                         _ => return Err(InterpreterError::NotImplemented) 
                     };
                     Ok(None)
@@ -625,6 +679,27 @@ impl<'a> Interpreter<'a> {
                                 Type::Short => Value::Short(left.to_short()? % right.to_short()?),
                                 Type::Int => Value::Int(left.to_int()? % right.to_int()?),
                                 Type::Long => Value::Long(left.to_long()? % right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::BitwiseXor => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(left.to_byte()? ^ right.to_byte()?),
+                                Type::Short => Value::Short(left.to_short()? ^ right.to_short()?),
+                                Type::Int => Value::Int(left.to_int()? ^ right.to_int()?),
+                                Type::Long => Value::Long(left.to_long()? ^ right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::BitwiseAnd => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(left.to_byte()? & right.to_byte()?),
+                                Type::Short => Value::Short(left.to_short()? & right.to_short()?),
+                                Type::Int => Value::Int(left.to_int()? & right.to_int()?),
+                                Type::Long => Value::Long(left.to_long()? & right.to_long()?),
+                                _ => return Err(InterpreterError::OperationNotNumberType)
+                            })),
+                            Operator::BitwiseOr => Ok(Some(match left_type {
+                                Type::Byte => Value::Byte(left.to_byte()? | right.to_byte()?),
+                                Type::Short => Value::Short(left.to_short()? | right.to_short()?),
+                                Type::Int => Value::Int(left.to_int()? | right.to_int()?),
+                                Type::Long => Value::Long(left.to_long()? | right.to_long()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseLeft => Ok(Some(match left_type {

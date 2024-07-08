@@ -49,13 +49,24 @@ pub enum Operator {
     Multiply, // *
     Divide, // /
     Modulo, // %
+
+    BitwiseXor, // ^
+    BitwiseAnd, // &
+    BitwiseOr, // |
     BitwiseLeft, // <<
     BitwiseRight, // >>
+
     Assign, // =
     AssignPlus, // +=
     AssignMinus, // -=
     AssignDivide, // /=
     AssignMultiply, // *=
+    AssignModulo, // %=
+    AssignBitwiseXor, // ^=
+    AssignBitwiseAnd, // &=
+    AssignBitwiseOr, // |=
+    AssignBitwiseLeft, // <<=
+    AssignBitwiseRight, // >>=
 }
 
 #[derive(Debug)]
@@ -109,13 +120,25 @@ impl Operator {
             Token::OperatorMultiply => Multiply,
             Token::OperatorDivide => Divide,
             Token::OperatorModulo => Modulo,
+
+            Token::OperatorBitwiseXor => BitwiseXor,
+            Token::OperatorBitwiseAnd => BitwiseAnd,
+            Token::OperatorBitwiseOr => BitwiseOr,
             Token::OperatorBitwiseLeft => BitwiseLeft,
             Token::OperatorBitwiseRight => BitwiseRight,
+
             Token::OperatorAssign => Assign,
             Token::OperatorPlusAssign => AssignPlus,
             Token::OperatorMinusAssign => AssignMinus,
             Token::OperatorDivideAssign => AssignDivide,
             Token::OperatorMultiplyAssign => AssignMultiply,
+            Token::OperatorModuloAssign => AssignModulo,
+            Token::OperatorBitwiseXorAssign => AssignBitwiseXor,
+            Token::OperatorBitwiseAndAssign => AssignBitwiseAnd,
+            Token::OperatorBitwiseOrAssign => AssignBitwiseOr,
+            Token::OperatorBitwiseLeftAssign => AssignBitwiseLeft,
+            Token::OperatorBitwiseRightAssign => AssignBitwiseRight,
+
             _ => return None,
         };
         Some(value)
@@ -143,6 +166,9 @@ impl Operator {
             | Operator::Divide
             | Operator::Multiply
             | Operator::Modulo
+            | Operator::BitwiseXor
+            | Operator::BitwiseAnd
+            | Operator::BitwiseOr
             | Operator::BitwiseLeft
             | Operator::BitwiseRight
             | Operator::GreaterOrEqual

@@ -207,6 +207,7 @@ impl<'a> Parser<'a> {
             },
             // Compatibility checks are done when constructing the expression
             Expression::Operator(op, left, right) => match op {
+                // Condition operators
                 Operator::Or
                 | Operator::Equals
                 | Operator::NotEquals
@@ -215,11 +216,19 @@ impl<'a> Parser<'a> {
                 | Operator::LessOrEqual
                 | Operator::LessThan
                 | Operator::And => Type::Boolean,
+                // Assign operators
                 Operator::Assign
                 | Operator::AssignPlus
                 | Operator::AssignMinus
                 | Operator::AssignDivide
-                | Operator::AssignMultiply => return Err(ParserError::AssignReturnNothing),
+                | Operator::AssignMultiply
+                | Operator::AssignModulo
+                | Operator::AssignBitwiseAnd
+                | Operator::AssignBitwiseXor
+                | Operator::AssignBitwiseOr
+                | Operator::AssignBitwiseLeft
+                | Operator::AssignBitwiseRight => return Err(ParserError::AssignReturnNothing),
+                // String compatible operators
                 Operator::Plus | Operator::Minus => {
                     let left_type = self.get_type_from_expression(on_type, left, context)?;
                     let right_type = self.get_type_from_expression(on_type, right, context)?;
@@ -230,8 +239,12 @@ impl<'a> Parser<'a> {
                         left_type
                     }
                 },
+                // Number only operators
                 Operator::Multiply
                 | Operator::Divide
+                | Operator::BitwiseXor
+                | Operator::BitwiseAnd
+                | Operator::BitwiseOr
                 | Operator::BitwiseLeft
                 | Operator::BitwiseRight
                 | Operator::Modulo => {
@@ -242,7 +255,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidOperationNotSameType(left_type, right_type))
                     }
                     left_type
-                },
+                }
             },
             Expression::IsNot(_) => Type::Boolean,
             Expression::Ternary(_, expr, _) => self.get_type_from_expression(on_type, expr, context)?,

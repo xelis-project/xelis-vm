@@ -60,13 +60,23 @@ pub enum Token {
     OperatorMultiply,
     OperatorDivide,
     OperatorModulo,
+    OperatorBitwiseXor,
+    OperatorBitwiseOr,
+    OperatorBitwiseAnd,
+    OperatorBitwiseLeft,
+    OperatorBitwiseRight,
 
     OperatorPlusAssign,
     OperatorMinusAssign,
     OperatorMultiplyAssign,
     OperatorDivideAssign,
-    OperatorBitwiseLeft,
-    OperatorBitwiseRight,
+    OperatorModuloAssign,
+
+    OperatorBitwiseXorAssign,
+    OperatorBitwiseOrAssign,
+    OperatorBitwiseAndAssign,
+    OperatorBitwiseLeftAssign,
+    OperatorBitwiseRightAssign,
 
     OperatorTernary,
 
@@ -102,14 +112,23 @@ impl Token {
             "*" => OperatorMultiply,
             "/" => OperatorDivide,
             "%" => OperatorModulo,
+            "^" => OperatorBitwiseXor,
+            "&" => OperatorBitwiseAnd,
+            "|" => OperatorBitwiseOr,
+            "<<" => OperatorBitwiseLeft,
+            ">>" => OperatorBitwiseRight,
 
             "+=" => OperatorPlusAssign,
             "-=" => OperatorMinusAssign,
             "*=" => OperatorMultiplyAssign,
             "/=" => OperatorDivideAssign,
+            "%=" => OperatorModuloAssign,
 
-            "<<" => OperatorBitwiseLeft,
-            ">>" => OperatorBitwiseRight,
+            "^=" => OperatorBitwiseXorAssign,
+            "<<=" => OperatorBitwiseLeftAssign,
+            ">>=" => OperatorBitwiseRightAssign,
+            "&=" => OperatorBitwiseAndAssign,
+            "|=" => OperatorBitwiseOrAssign,
 
             "?" => OperatorTernary,
 
@@ -175,12 +194,21 @@ impl Token {
             | OperatorMultiply
             | OperatorDivide
             | OperatorModulo
+            | OperatorBitwiseXor
+            | OperatorBitwiseOr
+            | OperatorBitwiseLeft
+            | OperatorBitwiseRight
+            | OperatorBitwiseAnd
             | OperatorPlusAssign
             | OperatorMinusAssign
             | OperatorMultiplyAssign
             | OperatorDivideAssign
-            | OperatorBitwiseLeft
-            | OperatorBitwiseRight
+            | OperatorModuloAssign
+            | OperatorBitwiseXorAssign
+            | OperatorBitwiseOrAssign
+            | OperatorBitwiseAndAssign
+            | OperatorBitwiseLeftAssign
+            | OperatorBitwiseRightAssign
             | OperatorAssign
             | BracketOpen
             | Dot
