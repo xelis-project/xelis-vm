@@ -83,9 +83,9 @@ impl<'a> Lexer<'a> {
         self.chars.push_front(c);
     }
 
-    // get the next token
-    fn next_token(&self, diff: usize) -> Option<Token> {
-        let slice = self.input.get(self.pos - 1..self.pos + diff)?;
+    // try to parse a slice of string as a token using n+1 characters
+    fn try_token_with(&self, n: usize) -> Option<Token> {
+        let slice = self.input.get(self.pos - 1..self.pos + n)?;
         Token::value_of(slice)
     }
 
@@ -230,9 +230,8 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    // Parse the code into a list of tokens
-    pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
-        let mut tokens: Vec<Token> = Vec::new();
+    // retrieve the next token available
+    fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
         while let Some(c) = self.next_char() {
             let token = match c {
                 // skipped characters
@@ -270,10 +269,10 @@ impl<'a> Lexer<'a> {
                 },
                 _ => {
                     // We must check token with the next character because of operations with assignations
-                    if let Some(token) = self.next_token(1) {
+                    if let Some(token) = self.try_token_with(1) {
                         self.advance()?;
                         token
-                    } else if let Some(token) = self.next_token(0) {
+                    } else if let Some(token) = self.try_token_with(0) {
                         token
                     } else {
                         return Err(LexerError::NoTokenFound(self.line, self.column));
@@ -281,11 +280,29 @@ impl<'a> Lexer<'a> {
                 }
             };
 
-            // push the token to the list
-            tokens.push(token);
+            return Ok(Some(token));
         }
 
-        Ok(tokens.into())
+        Ok(None)
+    }
+
+    // Parse the code into a list of tokens
+    pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
+        let mut tokens = VecDeque::new();
+        while let Some(token) = self.next_token()? {
+            // push the token to the list
+            tokens.push_back(token);
+        }
+
+        Ok(tokens)
+    }
+}
+
+impl Iterator for Lexer<'_> {
+    type Item = Result<Token, LexerError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token().transpose()
     }
 }
 
