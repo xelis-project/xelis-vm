@@ -1,6 +1,10 @@
-use crate::expressions::{Statement, Parameter};
-use crate::interpreter::{Interpreter, InterpreterError};
-use crate::types::{Type, Value};
+use std::collections::VecDeque;
+
+use crate::{
+    expressions::{Statement, Parameter},
+    interpreter::{InterpreterError, State},
+    types::{Type, Value}
+};
 
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
@@ -29,24 +33,25 @@ impl NativeFunction {
         }
     }
 
-    pub fn call_function(&self, interpreter: &Interpreter, instance_value: Option<&mut Value>, parameters: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(InterpreterError::InvalidNativeFunctionCall)
         }
 
-        interpreter.add_count_expr(self.cost);
+        state.increase_expressions_executed_by(self.cost)?;
+
         let instance = match instance_value {
             Some(v) => Ok(v),
             None => Err(InterpreterError::NativeFunctionExpectedInstance)
         };
-        let res: Option<Value> = (self.on_call)(instance, parameters)?;
+        let res: Option<Value> = (self.on_call)(instance, parameters.into())?;
 
-        if let (Some(v), Some(ret_type)) = (&res, &self.return_type) {
-            let value_type = interpreter.get_type_from_value(v)?;
-            if !value_type.is_compatible_with(ret_type) {
-                return Err(InterpreterError::InvalidType(value_type))
-            }
-        }
+        // if let (Some(v), Some(ret_type)) = (&res, &self.return_type) {
+        //     let value_type = interpreter.get_type_from_value(v)?;
+        //     if !value_type.is_compatible_with(ret_type) {
+        //         return Err(InterpreterError::InvalidType(value_type))
+        //     }
+        // }
 
         Ok(res)
     }
@@ -65,7 +70,7 @@ impl std::fmt::Debug for NativeFunction {
 }
 
 #[derive(Debug)]
-pub struct CustomFunction {
+pub struct Function {
     name: String,
     for_type: Option<Type>,
     instance_name: Option<String>,
@@ -75,9 +80,9 @@ pub struct CustomFunction {
     return_type: Option<Type>
 }
 
-impl CustomFunction {
+impl Function {
     pub fn new(name: String, for_type: Option<Type>, instance_name: Option<String>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
-        CustomFunction {
+        Function {
             name,
             for_type,
             instance_name,
@@ -108,7 +113,7 @@ impl CustomFunction {
 #[derive(Debug)]
 pub enum FunctionType {
     Native(NativeFunction),
-    Custom(CustomFunction)
+    Custom(Function)
 }
 
 impl FunctionType {

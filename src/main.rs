@@ -1,9 +1,14 @@
-use xelis_vm::Lexer;
-use xelis_vm::Parser;
-use xelis_vm::Environment;
-use xelis_vm::Interpreter;
-use std::time::Instant;
-use std::{fs, env};
+use xelis_vm::{
+    Lexer,
+    Parser,
+    Environment,
+    Interpreter,
+    State
+};
+use std::{
+    time::Instant,
+    {fs, env}
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -16,26 +21,23 @@ fn main() {
 
     let code = fs::read_to_string(file).expect("Something went wrong reading the file");
     let mut start = Instant::now();
-    match Lexer::new(code.as_str()).get() {
-        Ok(result) => {
-            println!("Lexer: {} microseconds\n", start.elapsed().as_micros());
-            start = Instant::now();
-            let environment = Environment::default();
-            match Parser::new(result, &environment).parse() {
-                Ok(result) => {
-                    println!("Parser: {} microseconds\n", start.elapsed().as_micros());
-                    // println!("Parser:\n{:?}\n", result);
-                    match Interpreter::new(&result, 50000, 1000, &environment) {
-                        Ok(interpreter) => match interpreter.call_entry_function(&"main".to_owned(), vec![]) {
-                            Ok(value) => println!("Exit code: {} | Expressions executed: {}", value, interpreter.get_count_expr()),
-                            Err(e) => println!("Error: {:?}", e)
-                        },
-                        Err(e) => println!("Interpreter error: {:?}", e)
-                    };
-                }
-                Err(e) => println!("Parser error: {:?}", e)
-            };
-        }
-        Err(e) => println!("Lexer error: {:?}", e)
-    };
+
+    // Apply the lexer to the code
+    let tokens = Lexer::new(code.as_str()).get().unwrap();
+    println!("Lexer: {:?}", start.elapsed());
+
+    // Create the default environment
+    let environment = Environment::default();
+
+    // Build the program
+    start = Instant::now();
+    let program = Parser::new(tokens, &environment).parse().unwrap();
+    println!("Parser: {:?}", start.elapsed());
+
+    // Create the VM instance
+    let vm = Interpreter::new(&program, &environment).unwrap();
+    let mut state = State::new(1000, 100);
+    start = Instant::now();
+    let exit = vm.call_entry_function(&"main".to_owned(), vec![], &mut state).unwrap();
+    println!("Exit code: {} | {} expressions executed in {:?}", exit, state.get_expressions_executed(), start.elapsed());
 }

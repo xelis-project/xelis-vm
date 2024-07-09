@@ -10,8 +10,8 @@ mod functions;
 pub use crate::{
     environment::Environment,
     token::Token,
-    functions::{FnInstance, CustomFunction, FnReturnType},
-    interpreter::{Interpreter, InterpreterError},
+    functions::{FnInstance, Function, FnReturnType},
+    interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError}
 };

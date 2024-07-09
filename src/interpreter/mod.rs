@@ -1,5 +1,6 @@
 mod context;
 mod variable;
+mod state;
 
 use crate::{
     expressions::{Statement, Expression, Operator},
@@ -10,10 +11,10 @@ use crate::{
 };
 use context::Context;
 use variable::Variable;
+pub use state::State;
 
 use std::{
-    collections::HashMap,
-    cell::RefCell,
+    collections::{HashMap, VecDeque},
     convert::TryInto
 };
 
@@ -79,7 +80,7 @@ macro_rules! shr {
 
 #[derive(Debug)]
 pub enum InterpreterError {
-    FunctionNotFound(String, Vec<Type>),
+    NoMatchingFunction,
     TypeNotFound(Value),
     FunctionEntry(bool, bool), // expected, got
     LimitReached,
@@ -102,6 +103,7 @@ pub enum InterpreterError {
     OutOfBounds(usize, usize),
     InvalidRange(u64, u64),
     NoValueFoundAtIndex(u64),
+    MissingValueForFunctionCall,
     InvalidStructValue(Value),
     InvalidValue(Value, Type), // got value, but expected type
     VariableNotFound(String),
@@ -127,60 +129,26 @@ impl<T> CopyRef<T> for Option<&mut T> {
     }
 }
 
-struct State {
-    count_expr: u64,
-    recursive: u16
-}
-
+// The interpreter structure can be reused to execute multiple times the program
 pub struct Interpreter<'a> {
+    // Program to execute
     program: &'a Program,
-    max_expr: u64,
-    max_recursive: u16,
-    state: RefCell<State>,
+    // Environment linked to execute the program
     env: &'a Environment,
     ref_structures: RefMap<'a, String, Struct>
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(program: &'a Program, max_expr: u64, max_recursive: u16, env: &'a Environment) -> Result<Self, InterpreterError> {
+    pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, InterpreterError> {
         let mut interpreter = Self {
             program,
-            max_expr,
-            max_recursive,
-            state: RefCell::new(State {
-                count_expr: 0,
-                recursive: 0
-            }),
             env,
             ref_structures: RefMap::new()
         };
 
         interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
 
-        // register constants
-        if !interpreter.program.constants.is_empty() {
-            let mut context = Context::new();
-            context.begin_scope();
-            for constant in &interpreter.program.constants {
-                let value = interpreter.execute_expression_and_expect_value(None, &constant.value, Some(&mut context))?;
-                let variable = Variable::new(value, constant.value_type.clone());
-                context.register_variable(constant.name.clone(), variable)?;
-            }
-            // interpreter.constants = context.remove_scope()?;
-        }
-
         Ok(interpreter)
-    }
-
-    fn increment_expr(&self) -> Result<(), InterpreterError> {
-        let mut state = self.state.borrow_mut();
-        state.count_expr += 1;
-
-        if self.max_expr != 0 && state.count_expr >= self.max_expr {
-            return Err(InterpreterError::LimitReached)
-        }
-
-        Ok(())
     }
 
     fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
@@ -247,7 +215,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn get_types_from_values(&self, values: &Vec<Value>) -> Result<Vec<Type>, InterpreterError> {
+    fn get_types_from_values<'b, I: Iterator<Item = &'b Value>>(&self, values: I) -> Result<Vec<Type>, InterpreterError> {
         let mut types: Vec<Type> = Vec::new();
         for value in values {
             types.push(self.get_type_from_value(&value)?);
@@ -256,11 +224,12 @@ impl<'a> Interpreter<'a> {
         Ok(types)
     }
 
-    fn get_compatible_function(&self, name: &String, for_type: Option<&Type>, values: &Vec<Value>) -> Result<&FunctionType, InterpreterError> {
-        self.get_function(name, for_type, &self.get_types_from_values(values)?)
+    fn get_compatible_function<'b, I: Iterator<Item = &'b Value>>(&self, name: &String, for_type: Option<&Type>, values: I) -> Result<&FunctionType, InterpreterError> {
+        let types = self.get_types_from_values(values)?;
+        self.get_function(name, for_type, types.iter())
     }
 
-    fn get_function(&self, name: &String, for_type: Option<&Type>, parameters: &Vec<Type>) -> Result<&FunctionType, InterpreterError> {
+    fn get_function<'b, I: Iterator<Item = &'b Type> + Clone + ExactSizeIterator>(&self, name: &String, for_type: Option<&Type>, parameters: I) -> Result<&FunctionType, InterpreterError> {
         'funcs: for f in self.program.functions.iter().chain(self.env.get_functions()) {
             if *f.get_name() == *name && f.get_parameters_count() == parameters.len() {
                 let same_type: bool = if let Some(type_a) = for_type {
@@ -275,8 +244,8 @@ impl<'a> Interpreter<'a> {
 
                 if same_type {
                     let f_types = f.get_parameters_types();
-                    for i in 0..f_types.len() {
-                        if *f_types[i] != Type::Any && *f_types[i] != parameters[i] {
+                    for (f_type, param_type) in f_types.into_iter().zip(parameters.clone()) {
+                        if *f_type != Type::Any && f_type != param_type {
                             continue 'funcs;
                         }
                     }
@@ -285,14 +254,14 @@ impl<'a> Interpreter<'a> {
             }
         }
 
-        return Err(InterpreterError::FunctionNotFound(name.clone(), parameters.clone()))
+        Err(InterpreterError::NoMatchingFunction)
     }
 
-    fn get_from_path<'b>(&self, ref_value: Option<&'b mut Value>, path: &Expression, context: Option<&'b mut Context>) -> Result<&'b mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, ref_value: Option<&'b mut Value>, path: &Expression, context: Option<&'b mut Context>, state: &mut State) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(None, expr_index, context)?.to_int()? as usize;
-                let array = self.get_from_path(ref_value, expr, None)?;
+                let index = self.execute_expression_and_expect_value(None, expr_index, context, state)?.to_int()? as usize;
+                let array = self.get_from_path(ref_value, expr, None, state)?;
                 let values = array.as_mut_vec()?;
                 let size = values.len();
                 match values.get_mut(index as usize) {
@@ -301,8 +270,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Path(left, right) => {
-                let left_value = self.get_from_path(ref_value, left, context)?;
-                self.get_from_path(Some(left_value), right, None)
+                let left_value = self.get_from_path(ref_value, left, context, state)?;
+                self.get_from_path(Some(left_value), right, None, state)
             },
             Expression::Variable(name) => {
                 Ok(match ref_value {
@@ -322,51 +291,44 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value<'b>(&self, on_value: Option<&'b mut Value>, expr: &Expression, context: Option<&mut Context>) -> Result<Value, InterpreterError> {
-        match self.execute_expression(on_value, expr, context)? {
+    fn execute_expression_and_expect_value<'b>(&self, on_value: Option<&'b mut Value>, expr: &Expression, context: Option<&mut Context>, state: &mut State) -> Result<Value, InterpreterError> {
+        match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
         }
     }
 
-    fn execute_expression(&self, on_value: Option<&mut Value>, expr: &Expression, mut context: Option<&mut Context>) -> Result<Option<Value>, InterpreterError> {
-        self.increment_expr()?;
+    fn execute_expression(&self, on_value: Option<&mut Value>, expr: &Expression, mut context: Option<&mut Context>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+        state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
                 let mut values: Vec<Value> = Vec::new();
                 for param in parameters {
-                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref())?);
+                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
                 }
 
-                {
-                    let mut state = self.state.borrow_mut();
-                    state.recursive += 1;
-                    if state.recursive >= self.max_recursive {
-                        return Err(InterpreterError::RecursiveLimitReached)
-                    }
-                }
+                state.increase_recursive_depth()?;
 
+                let params = self.get_types_from_values(values.iter())?;
                 let res = match on_value {
                     Some(v) => {
-                        let func = self.get_function(name, Some(&self.get_type_from_value(&v)?), &self.get_types_from_values(&values)?)?;
-                        self.execute_function(&func, Some(v), values)
+                        let func = self.get_function(name, Some(&self.get_type_from_value(&v)?), params.iter())?;
+                        self.execute_function(&func, Some(v), VecDeque::from(values), state)
                     },
                     None => {
-                        let func = self.get_function(name, None, &self.get_types_from_values(&values)?)?;
-                        self.execute_function(&func, None, values)
+                        let func = self.get_function(name, None, params.iter())?;
+                        self.execute_function(&func, None, VecDeque::from(values), state)
                     }
                 };
 
-                {
-                    let mut state = self.state.borrow_mut();
-                    state.recursive -= 1;
-                }
+                state.decrease_recursive_depth();
+
                 res
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = vec![];
                 for expr in expressions {
-                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref())?;
+                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
                     values.push(value);
                 }
 
@@ -376,7 +338,7 @@ impl<'a> Interpreter<'a> {
                 let s = self.ref_structures.get(struct_name).ok_or_else(|| InterpreterError::StructureNotFound(struct_name.clone()))?;
                 let mut fields = HashMap::new();
                 for (name, expr) in expr_fields {
-                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref())?;
+                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
                     let value_type = self.get_type_from_value(&value)?;
 
                     let expected_type = s.fields.get(name).ok_or_else(|| InterpreterError::StructureFieldNotFound(struct_name.clone(), name.clone()))?;
@@ -389,8 +351,8 @@ impl<'a> Interpreter<'a> {
                 Ok(Some(Value::Struct(struct_name.clone(), fields)))
             },
             Expression::ArrayCall(expr, expr_index) => {
-                let values = self.execute_expression_and_expect_value(on_value, &expr, context.copy_ref())?.to_vec()?;
-                let index = self.execute_expression_and_expect_value(None, &expr_index, context.copy_ref())?.to_int()? as usize;
+                let values = self.execute_expression_and_expect_value(on_value, &expr, context.copy_ref(), state)?.to_vec()?;
+                let index = self.execute_expression_and_expect_value(None, &expr_index, context.copy_ref(), state)?.to_int()? as usize;
 
                 Ok(match values.get(index) {
                     Some(v) => Some(v.clone()),
@@ -398,15 +360,15 @@ impl<'a> Interpreter<'a> {
                 })
             },
             Expression::IsNot(expr) => {
-                let val = self.execute_expression_and_expect_value(None, &expr, context)?.to_bool()?;
+                let val = self.execute_expression_and_expect_value(None, &expr, context, state)?.to_bool()?;
                 Ok(Some(Value::Boolean(!val)))
             }
-            Expression::SubExpression(expr) => self.execute_expression(None, expr, context),
+            Expression::SubExpression(expr) => self.execute_expression(None, expr, context, state),
             Expression::Ternary(condition, left, right) => {
-                if self.execute_expression_and_expect_value(None, &condition, context.copy_ref())?.to_bool()? {
-                    Ok(Some(self.execute_expression_and_expect_value(None, &left, context.copy_ref())?))
+                if self.execute_expression_and_expect_value(None, &condition, context.copy_ref(), state)?.to_bool()? {
+                    Ok(Some(self.execute_expression_and_expect_value(None, &left, context.copy_ref(), state)?))
                 } else {
-                    Ok(Some(self.execute_expression_and_expect_value(None, &right, context.copy_ref())?))
+                    Ok(Some(self.execute_expression_and_expect_value(None, &right, context.copy_ref(), state)?))
                 }
             }
             Expression::Value(v) => Ok(Some(v.clone())),
@@ -420,20 +382,18 @@ impl<'a> Interpreter<'a> {
                 None => match context {
                     Some(context) => match context.get_variable(var) {
                         Ok(v) => Ok(Some(v.get_value().clone())),
-                        Err(_) => Ok(Some(
-                            // self.constants.get(var)
-                            // .ok_or_else(|| InterpreterError::VariableNotFound(var.clone()))?
-                            // .get_value().borrow().clone()
-                            todo!("")
-                        )),
+                        Err(_) => Ok(match state.get_constant_value(var) {
+                            Some(v) => Some(v.clone()),
+                            None => return Err(InterpreterError::VariableNotFound(var.clone()))
+                        })
                     },
                     None => return Err(InterpreterError::ExpectedPath)
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
-                    let value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref())?;
-                    let path_value = self.get_from_path(None, expr_left, context.copy_ref())?;
+                    let value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
+                    let path_value = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
                     let path_type = self.get_type_from_value(&path_value)?;
                     let value_type = self.get_type_from_value(&value)?;
 
@@ -540,7 +500,7 @@ impl<'a> Interpreter<'a> {
                     };
                     Ok(None)
                 } else {
-                    let left = self.execute_expression_and_expect_value(None, &expr_left, context.copy_ref())?;
+                    let left = self.execute_expression_and_expect_value(None, &expr_left, context.copy_ref(), state)?;
                     let left_type = self.get_type_from_value(&left)?;
 
                     if op.is_and_or_or() {
@@ -550,14 +510,14 @@ impl<'a> Interpreter<'a> {
                                 if !left {
                                     false
                                 } else {
-                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
+                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context, state)?;
                                     right.to_bool()?
                                 }
                             }))),
                             Operator::Or => Ok(Some(Value::Boolean({
                                 let left = left.to_bool()?;
                                 if !left {
-                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context)?;
+                                    let right = self.execute_expression_and_expect_value(None, &expr_right, context, state)?;
                                     right.to_bool()?
                                 } else {
                                     true
@@ -566,7 +526,7 @@ impl<'a> Interpreter<'a> {
                             _ => return Err(InterpreterError::UnexpectedOperator)
                         }
                     } else {
-                        let right = self.execute_expression_and_expect_value(None, &expr_right, context.copy_ref())?;
+                        let right = self.execute_expression_and_expect_value(None, &expr_right, context.copy_ref(), state)?;
                         let right_type = self.get_type_from_value(&right)?;
                         if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
                             return Err(InterpreterError::OperationNotNumberType)
@@ -685,11 +645,11 @@ impl<'a> Interpreter<'a> {
                 }
             },
             Expression::Path(left, right) => {
-                let value = self.get_from_path(on_value, left, context)?;
-                self.execute_expression(Some(value), right, None)
+                let value = self.get_from_path(on_value, left, context, state)?;
+                self.execute_expression(Some(value), right, None, state)
             },
             Expression::Cast(expr, cast_type) => {
-                let value = self.execute_expression_and_expect_value(on_value, expr, context)?;
+                let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?;
                 match cast_type {
                     Type::Byte => Ok(Some(Value::Byte(value.cast_to_byte()?))),
                     Type::Short => Ok(Some(Value::Short(value.cast_to_short()?))),
@@ -702,10 +662,10 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context) -> Result<Option<Value>, InterpreterError> {
+    fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         let mut accept_else = false;
         for statement in statements {
-            self.increment_expr()?;
+            state.increase_expressions_executed()?;
             if context.get_loop_break() || context.get_loop_continue() {
                 break;
             }
@@ -718,13 +678,13 @@ impl<'a> Interpreter<'a> {
                     context.set_loop_continue(true);
                 },
                 Statement::Variable(var) => {
-                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context))?, var.value_type.clone());
+                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                 },
                 Statement::If(condition, statements) => {
-                    if self.execute_expression_and_expect_value(None, &condition, Some(context))?.to_bool()? {
+                    if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
                         context.begin_scope();
-                        match self.execute_statements(&statements, context)? {
+                        match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
                                 return Ok(Some(v))
@@ -738,9 +698,9 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 Statement::ElseIf(condition, statements) => if accept_else {
-                    if self.execute_expression_and_expect_value(None, &condition, Some(context))?.to_bool()? {
+                    if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
                         context.begin_scope();
-                        match self.execute_statements(&statements, context)? {
+                        match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
                                 return Ok(Some(v))
@@ -755,7 +715,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Else(statements) => if accept_else {
                     context.begin_scope();
-                    match self.execute_statements(&statements, context)? {
+                    match self.execute_statements(&statements, context, state)? {
                         Some(v) => {
                             context.end_scope()?;
                             return Ok(Some(v))
@@ -767,18 +727,19 @@ impl<'a> Interpreter<'a> {
                 }
                 Statement::For(var, condition, increment, statements) => {
                     context.begin_scope();
-                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context))?, var.value_type.clone());
+                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
                     context.register_variable(var.name.clone(), variable)?;
                     loop {
-                        if !self.execute_expression_and_expect_value(None, condition, Some(context))?.to_bool()? {
+                        if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
                             break;
                         }
 
-                        if self.execute_expression(None, increment, Some(context))?.is_some() { // assign operator don't return values
+                        // assign operator don't return values
+                        if self.execute_expression(None, increment, Some(context), state)?.is_some() {
                             return Err(InterpreterError::ExpectedAssignOperator);
                         }
 
-                        match self.execute_statements(&statements, context)? {
+                        match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
                                 return Ok(Some(v))
@@ -798,7 +759,7 @@ impl<'a> Interpreter<'a> {
                     context.end_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
-                    let values = self.execute_expression_and_expect_value(None, expr, Some(context))?.to_vec()?;
+                    let values = self.execute_expression_and_expect_value(None, expr, Some(context), state)?.to_vec()?;
                     if let Some(value) = values.first() {
                         context.begin_scope();
                         let value_type = self.get_type_from_value(&value)?;
@@ -806,7 +767,7 @@ impl<'a> Interpreter<'a> {
                         context.register_variable(var.clone(), variable)?;
                         for val in values {
                             context.set_variable_value(var, val, &self.ref_structures)?;
-                            match self.execute_statements(&statements, context)? {
+                            match self.execute_statements(&statements, context, state)? {
                                 Some(v) => {
                                     context.end_scope()?;
                                     return Ok(Some(v))
@@ -828,8 +789,8 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::While(condition, statements) => {
                     context.begin_scope();
-                    while self.execute_expression_and_expect_value(None, &condition, Some(context))?.to_bool()? {
-                        match self.execute_statements(&statements, context)? {
+                    while self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
+                        match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
                                 return Ok(Some(v))
@@ -850,13 +811,13 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Return(opt) => {
                     return Ok(match opt {
-                        Some(v) => Some(self.execute_expression_and_expect_value(None, &v, Some(context))?),
+                        Some(v) => Some(self.execute_expression_and_expect_value(None, &v, Some(context), state)?),
                         None => None
                     })
                 },
                 Statement::Scope(statements) => {
                     context.begin_scope();
-                    match self.execute_statements(&statements, context)? {
+                    match self.execute_statements(&statements, context, state)? {
                         Some(v) => {
                             context.end_scope()?;
                             return Ok(Some(v))
@@ -867,7 +828,7 @@ impl<'a> Interpreter<'a> {
                     };
                 },
                 Statement::Expression(expr) => {
-                    self.execute_expression(None, &expr, Some(context))?;
+                    self.execute_expression(None, &expr, Some(context), state)?;
                 }
             };
 
@@ -881,15 +842,13 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: Vec<Value>) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         if func.for_type().is_some() != type_instance.is_some() {
             return Err(InterpreterError::UnexpectedInstanceType)
         }
 
         match func {
-            FunctionType::Native(ref f) => {
-                f.call_function(&self, type_instance, values)
-            },
+            FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
             FunctionType::Custom(ref f) => {
                 let mut context = Context::new();
                 context.begin_scope();
@@ -908,11 +867,12 @@ impl<'a> Interpreter<'a> {
                     None => {}
                 };
 
-                for param in f.get_parameters() {
-                    let variable = Variable::new(values.remove(0), param.get_type().clone());
+                for param in f.get_parameters().iter() {
+                    let value = values.pop_front().ok_or(InterpreterError::MissingValueForFunctionCall)?;
+                    let variable = Variable::new(value, param.get_type().clone());
                     context.register_variable(param.get_name().clone(), variable)?;
                 }
-                let result = self.execute_statements(f.get_statements(), &mut context);
+                let result = self.execute_statements(f.get_statements(), &mut context, state);
                 context.end_scope()?;
 
                 result
@@ -920,24 +880,19 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn call_entry_function(&self, function_name: &String, parameters: Vec<Value>) -> Result<u64, InterpreterError> {
-        let func = self.get_compatible_function(function_name, None, &parameters)?;
-        if !func.is_entry() { // only function marked as entry can be called from external
+    // Execute the program by calling an available entry function
+    pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &String, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
+        let params = parameters.into();
+        let func = self.get_compatible_function(function_name, None, params.iter())?;
+
+        // only function marked as entry can be called from external
+        if !func.is_entry() {
             return Err(InterpreterError::FunctionEntry(true, false))
         }
 
-        match self.execute_function(func, None, parameters)? {
+        match self.execute_function(func, None, params, state)? {
             Some(val) => Ok(val.to_int()?),
             None => return Err(InterpreterError::NoExitCode)
         }
-    }
-
-    pub fn get_count_expr(&self) -> u64 {
-        self.state.borrow().count_expr
-    }
-
-    pub fn add_count_expr(&self, n: u64) {
-        let mut state = self.state.borrow_mut();
-        state.count_expr += n;
     }
 }

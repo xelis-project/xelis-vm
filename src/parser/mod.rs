@@ -7,7 +7,7 @@ use self::context::Context;
 
 use crate::{
     expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter},
-    functions::{CustomFunction, FunctionType},
+    functions::{Function, FunctionType},
     types::{Value, Type, Struct, RefMap},
     Environment,
     Token
@@ -940,7 +940,7 @@ impl<'a> Parser<'a> {
         }
 
         let statements = Vec::new();
-        let function = FunctionType::Custom(CustomFunction::new(
+        let function = FunctionType::Custom(Function::new(
             name,
             for_type,
             instance_name,
