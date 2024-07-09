@@ -1,9 +1,7 @@
 use crate::functions::{FunctionType, NativeFunction, FnInstance, FnReturnType};
-use crate::types::{Type, Value, RefValue, Struct};
+use crate::types::{Type, Value, Struct};
 use crate::interpreter::InterpreterError;
 use std::collections::HashMap;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Environment {
     functions: Vec<FunctionType>,
@@ -88,26 +86,26 @@ fn len(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(Rc::new(RefCell::new(param)));
+    zelf?.as_mut_vec()?.push(param);
     Ok(None)
 }
 
 fn remove(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let index = parameters.remove(0).to_int()? as usize;
-    Ok(Some(zelf?.as_mut_vec()?.remove(index).borrow().clone()))
+    Ok(Some(zelf?.as_mut_vec()?.remove(index)))
 }
 
 fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let start = parameters.remove(0).to_int()?;
     let end = parameters.remove(0).to_int()?;
 
-    let vec: &Vec<RefValue> = zelf?.as_vec()?;
+    let vec: &Vec<Value> = zelf?.as_vec()?;
     let len_u64 = vec.len() as u64;
     if start >= len_u64 || end >= len_u64 || start >= end {
         return Err(InterpreterError::InvalidRange(start, end))
     }
 
-    let mut slice: Vec<RefValue> = Vec::new();
+    let mut slice: Vec<Value> = Vec::new();
     for i in start..end {
         let value = match vec.get(i as usize) {
             Some(v) => v.clone(), // due to RefValue, slice are connected.
@@ -157,9 +155,9 @@ fn to_lowercase(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
 fn to_bytes(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
 
-    let mut bytes: Vec<RefValue> = Vec::new();
+    let mut bytes: Vec<Value> = Vec::new();
     for byte in s.as_bytes() {
-        bytes.push(Rc::new(RefCell::new(Value::Byte(*byte))));
+        bytes.push(Value::Byte(*byte));
     }
 
     Ok(Some(Value::Array(bytes)))

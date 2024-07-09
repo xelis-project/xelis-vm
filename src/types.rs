@@ -2,9 +2,7 @@ use crate::interpreter::InterpreterError;
 use crate::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
-use std::cell::RefCell;
 use std::hash::Hash;
-use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -17,8 +15,8 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(String, Scope),
-    Array(Vec<RefValue>)
+    Struct(String, HashMap<String, Value>),
+    Array(Vec<Value>)
 }
 
 impl Value {
@@ -71,28 +69,28 @@ impl Value {
         }
     }
 
-    pub fn as_map(&self) -> Result<&Scope, InterpreterError> {
+    pub fn as_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn as_mut_map(&mut self) -> Result<&mut Scope, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn as_vec(&self) -> Result<&Vec<RefValue>, InterpreterError> {
+    pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
         }
     }
 
-    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<RefValue>, InterpreterError> {
+    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -141,14 +139,14 @@ impl Value {
         }
     }
 
-    pub fn to_map(self) -> Result<Scope, InterpreterError> {
+    pub fn to_map(self) -> Result<HashMap<String, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn to_vec(self) -> Result<Vec<RefValue>, InterpreterError> {
+    pub fn to_vec(self) -> Result<Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -232,11 +230,11 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
-                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v.get_value().borrow())).collect();
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
             },
         }
@@ -337,7 +335,7 @@ impl Type {
             Value::Long(_) => Type::Long,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
-            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.borrow(), structures)?)),
+            Value::Array(values) => Type::Array(Box::new(Type::from_value(values.first()?, structures)?)),
             Value::Struct(name, _) => match structures.get(name) {
                 Some(_) => Type::Struct(name.clone()),
                 None => return None
@@ -410,35 +408,5 @@ impl Type {
             Type::Byte | Type::Short | Type::Int | Type::Long => true,
             _ => false
         }
-    }
-}
-
-pub type Scope = HashMap<String, Variable>;
-pub type RefValue = Rc<RefCell<Value>>;
-
-#[derive(Debug, Clone)]
-pub struct Variable {
-    value: RefValue,
-    value_type: Type
-}
-
-impl Variable {
-    pub fn new(value: Value, value_type: Type) -> Self {
-        Self {
-            value: Rc::new(RefCell::new(value)),
-            value_type
-        }
-    }
-
-    pub fn get_value(&self) -> &RefValue {
-        &self.value
-    }
-
-    pub fn set_value(&mut self, value: RefValue) {
-        self.value = value;
-    }
-
-    pub fn get_type(&self) -> &Type {
-        &self.value_type
     }
 }
