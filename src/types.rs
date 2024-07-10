@@ -1,7 +1,10 @@
-use crate::interpreter::InterpreterError;
-use crate::{Token, VariableIdentifier};
+use crate::{
+    interpreter::InterpreterError,
+    Token,
+    VariableIdentifier
+};
 use std::{
-    collections::{HashMap, hash_map::RandomState},
+    collections::{HashMap, HashSet, hash_map::RandomState},
     hash::Hash
 };
 
@@ -16,7 +19,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(String, HashMap<String, Value>),
+    Struct(String, HashMap<VariableIdentifier, Value>),
     Array(Vec<Value>)
 }
 
@@ -70,14 +73,14 @@ impl Value {
         }
     }
 
-    pub fn as_map(&self) -> Result<&HashMap<String, Value>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&HashMap<VariableIdentifier, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<String, Value>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<VariableIdentifier, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -140,7 +143,7 @@ impl Value {
         }
     }
 
-    pub fn to_map(self) -> Result<HashMap<String, Value>, InterpreterError> {
+    pub fn to_map(self) -> Result<HashMap<VariableIdentifier, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -305,7 +308,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_token(s: Token, structures: &HashMap<String, Struct>) -> Option<Self> {
+    pub fn from_token(s: Token, structures: &HashSet<String>) -> Option<Self> {
         let value: Self = match s {
             Token::Byte => Type::Byte,
             Token::Short => Type::Short,
@@ -314,8 +317,7 @@ impl Type {
             Token::Boolean => Type::Boolean,
             Token::String => Type::String,
             Token::Identifier(s) => {
-                let structure = structures.get(&s)?;
-                if structure.name == s {
+                if structures.contains(&s) {
                     Type::Struct(s)
                 } else {
                     return None
@@ -327,7 +329,7 @@ impl Type {
         Some(value)
     }
 
-    pub fn from_value(value: &Value, structures: &RefMap<String, Struct>) -> Option<Self> {
+    pub fn from_value(value: &Value, structures: &HashSet<String>) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
             Value::Byte(_) => Type::Byte,
@@ -337,9 +339,10 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
             Value::Array(values) => Type::Array(Box::new(Type::from_value(values.first()?, structures)?)),
-            Value::Struct(name, _) => match structures.get(name) {
-                Some(_) => Type::Struct(name.clone()),
-                None => return None
+            Value::Struct(name, _) => if structures.contains(name) {
+                Type::Struct(name.clone())
+            } else {
+                return None
             }
         };
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{InterpreterError, VariableIdentifier};
 
-use super::{variable::Variable, RefMap, Struct, Type, Value};
+use super::{variable::Variable, Value};
 
 pub type Scope = HashMap<VariableIdentifier, Variable>;
 
@@ -80,17 +80,8 @@ impl Context {
             .get_mut(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn set_variable_value(&mut self, name: &VariableIdentifier, value: Value, structures: &RefMap<String, Struct>) -> Result<(), InterpreterError> {
+    pub fn set_variable_value(&mut self, name: &VariableIdentifier, value: Value) -> Result<(), InterpreterError> {
         let var = self.get_mut_variable(name)?;
-        match Type::from_value(&value, structures) {
-            Some(t) => {
-                if *var.get_type() != t {
-                    return Err(InterpreterError::ExpectedValueType(var.get_type().clone()))
-                }
-            },
-            None => return Err(InterpreterError::ExpectedValueType(var.get_type().clone()))
-        };
-
         var.set_value(value);
         Ok(())
     }

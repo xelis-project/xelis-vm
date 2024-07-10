@@ -17,4 +17,4 @@ pub use crate::{
 };
 
 // Variable identifier used in the parser and interpreter
-pub(crate) type VariableIdentifier = String;
+pub(crate) type VariableIdentifier = u64;

@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
-    expressions::{Statement, Parameter},
+    expressions::{Parameter, Statement},
     interpreter::{InterpreterError, State},
-    types::{Type, Value}
+    types::{Type, Value}, VariableIdentifier
 };
 
 // first parameter is the current value / instance
@@ -73,7 +73,7 @@ impl std::fmt::Debug for NativeFunction {
 pub struct Function {
     name: String,
     for_type: Option<Type>,
-    instance_name: Option<String>,
+    instance_name: Option<VariableIdentifier>,
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
     entry: bool,
@@ -81,7 +81,7 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<String>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
+    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<VariableIdentifier>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
         Function {
             name,
             for_type,
@@ -105,7 +105,7 @@ impl Function {
         &self.parameters
     }
 
-    pub fn get_instance_name(&self) -> &Option<String> {
+    pub fn get_instance_name(&self) -> &Option<VariableIdentifier> {
         &self.instance_name
     }
 }
@@ -159,44 +159,3 @@ impl FunctionType {
         }
     }
 }
-/*
-pub struct NativeFunctionCallManager {
-    instance_type: Option<Value>,
-    values: Vec<Value>,
-}
-
-impl NativeFunctionCallManager {
-    pub fn new(instance_type: Option<Value>, values: Vec<Value>) -> Self {
-        Self {
-            instance_type,
-            values
-        }
-    }
-
-    pub fn get_parameters_count(&self) -> usize {
-        self.values.len()
-    }
-
-    pub fn has_instance_type(&self) -> bool {
-        self.instance_type.is_some()
-    }
-
-    pub fn get_instance_type(&mut self) -> Result<&mut Value, InterpreterError> {
-        match self.instance_type {
-            Some(ref mut v) => Ok(v),
-            None => Err(InterpreterError::NoInstanceType) 
-        }
-    }
-
-    pub fn get_parameter_at(&mut self, index: usize) -> Result<Value, InterpreterError> {
-        if self.get_parameters_count() <= index {
-            return Err(InterpreterError::OutOfBounds(self.get_parameters_count(), index))
-        }
-
-        Ok(self.values.remove(index))
-    }
-
-    pub fn get_parameter(&mut self) -> Result<Value, InterpreterError> {
-        self.get_parameter_at(0)
-    }
-}*/

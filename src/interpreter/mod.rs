@@ -98,7 +98,7 @@ pub enum InterpreterError {
     OverflowOccured,
     DivByZero,
     StructureNotFound(String),
-    StructureFieldNotFound(String, String),
+    StructureFieldNotFound(String, VariableIdentifier),
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -210,7 +210,7 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
-        match Type::from_value(value, &self.ref_structures) {
+        match Type::from_value(value, todo!("")) {
             Some(v) => Ok(v),
             None => Err(InterpreterError::TypeNotFound(value.clone()))
         }
@@ -680,7 +680,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Variable(var) => {
                     let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
-                    context.register_variable(var.name.clone(), variable)?;
+                    context.register_variable(var.id.clone(), variable)?;
                 },
                 Statement::If(condition, statements) => {
                     if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
@@ -729,7 +729,7 @@ impl<'a> Interpreter<'a> {
                 Statement::For(var, condition, increment, statements) => {
                     context.begin_scope();
                     let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
-                    context.register_variable(var.name.clone(), variable)?;
+                    context.register_variable(var.id.clone(), variable)?;
                     loop {
                         if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
                             break;
@@ -767,7 +767,7 @@ impl<'a> Interpreter<'a> {
                         let variable = Variable::new(Value::Null, value_type);
                         context.register_variable(var.clone(), variable)?;
                         for val in values {
-                            context.set_variable_value(var, val, &self.ref_structures)?;
+                            context.set_variable_value(var, val)?;
                             match self.execute_statements(&statements, context, state)? {
                                 Some(v) => {
                                     context.end_scope()?;

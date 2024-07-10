@@ -10,8 +10,8 @@ pub enum Expression {
     FunctionCall(String, Vec<Expression>), // function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
-    StructConstructor(String, HashMap<String, Expression>),
-    Variable(String), // variable name
+    StructConstructor(String, HashMap<VariableIdentifier, Expression>),
+    Variable(VariableIdentifier), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
@@ -27,7 +27,7 @@ pub enum Statement {
     Else(Vec<Statement>),
     ElseIf(Expression, Vec<Statement>),
     While(Expression, Vec<Statement>),
-    ForEach(String, Expression, Vec<Statement>), // for a in array
+    ForEach(VariableIdentifier, Expression, Vec<Statement>), // for a in array
     For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: int = 0; i < 10; i++ (; will not be saved)
     Expression(Expression),
     Return(Option<Expression>),
@@ -74,7 +74,7 @@ pub enum Operator {
 
 #[derive(Debug)]
 pub struct DeclarationStatement {
-    pub name: VariableIdentifier,
+    pub id: VariableIdentifier,
     pub value_type: Type,
     pub value: Expression,
 }

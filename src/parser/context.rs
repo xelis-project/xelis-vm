@@ -27,7 +27,7 @@ impl Context {
             }
         }
 
-        Err(ParserError::UnexpectedVariable(key.clone()))
+        Err(ParserError::UnexpectedMappedVariableId(key.clone()))
     }
 
     // returns true if this variable name is registered in scopes
@@ -38,7 +38,7 @@ impl Context {
     // register a variable in the current scope
     pub fn register_variable(&mut self, key: VariableIdentifier, var_type: Type) -> Result<(), ParserError> {
         if self.has_variable(&key) {
-            return Err(ParserError::VariableNameAlreadyUsed(key))
+            return Err(ParserError::VariableIdAlreadyUsed(key))
         }
 
         self.scopes.last_mut()
