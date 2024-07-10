@@ -1,5 +1,8 @@
-use crate::types::{Value, Type};
-use crate::token::Token;
+use crate::{
+    types::{Value, Type},
+    token::Token,
+    VariableIdentifier
+};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -71,26 +74,26 @@ pub enum Operator {
 
 #[derive(Debug)]
 pub struct DeclarationStatement {
-    pub name: String,
+    pub name: VariableIdentifier,
     pub value_type: Type,
     pub value: Expression,
 }
 
 #[derive(Debug)]
 pub struct Parameter {
-    name: String,
+    name: VariableIdentifier,
     value_type: Type
 }
 
 impl Parameter {
-    pub fn new(name: String, value_type: Type) -> Self {
+    pub fn new(name: VariableIdentifier, value_type: Type) -> Self {
         Parameter {
             name,
             value_type
         }
     }
 
-    pub fn get_name(&self) -> &String {
+    pub fn get_name(&self) -> &VariableIdentifier {
         &self.name
     }
 
@@ -98,7 +101,7 @@ impl Parameter {
         &self.value_type
     }
 
-    pub fn consume(self) -> (String, Type) {
+    pub fn consume(self) -> (VariableIdentifier, Type) {
         (self.name, self.value_type)
     }
 }

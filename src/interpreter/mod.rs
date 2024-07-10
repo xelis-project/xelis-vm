@@ -3,10 +3,11 @@ mod variable;
 mod state;
 
 use crate::{
-    expressions::{Statement, Expression, Operator},
+    expressions::{Expression, Operator, Statement},
     environment::Environment,
     functions::FunctionType,
     parser::Program,
+    VariableIdentifier,
     types::*
 };
 use context::Context;
@@ -106,8 +107,8 @@ pub enum InterpreterError {
     MissingValueForFunctionCall,
     InvalidStructValue(Value),
     InvalidValue(Value, Type), // got value, but expected type
-    VariableNotFound(String),
-    VariableAlreadyExists(String),
+    VariableNotFound(VariableIdentifier),
+    VariableAlreadyExists(VariableIdentifier),
     NoScopeFound,
     ExpectedAssignOperator,
     OperationNotNumberType,

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::InterpreterError;
+use crate::{InterpreterError, VariableIdentifier};
 
 use super::{variable::Variable, RefMap, Struct, Type, Value};
 
-pub type Scope = HashMap<String, Variable>;
+pub type Scope = HashMap<VariableIdentifier, Variable>;
 
 pub struct Context {
     variables: Vec<Scope>,
@@ -66,21 +66,21 @@ impl Context {
         self.variables.pop().ok_or(InterpreterError::NoScopeFound)
     }
 
-    pub fn get_variable(&self, name: &String) -> Result<&Variable, InterpreterError> {
+    pub fn get_variable(&self, name: &VariableIdentifier) -> Result<&Variable, InterpreterError> {
         self.variables.iter().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
             .get(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn get_mut_variable(&mut self, name: &String) -> Result<&mut Variable, InterpreterError> {
+    pub fn get_mut_variable(&mut self, name: &VariableIdentifier) -> Result<&mut Variable, InterpreterError> {
         self.variables.iter_mut().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
             .get_mut(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn set_variable_value(&mut self, name: &String, value: Value, structures: &RefMap<String, Struct>) -> Result<(), InterpreterError> {
+    pub fn set_variable_value(&mut self, name: &VariableIdentifier, value: Value, structures: &RefMap<String, Struct>) -> Result<(), InterpreterError> {
         let var = self.get_mut_variable(name)?;
         match Type::from_value(&value, structures) {
             Some(t) => {
@@ -95,11 +95,11 @@ impl Context {
         Ok(())
     }
 
-    pub fn has_variable(&self, name: &String) -> bool {
+    pub fn has_variable(&self, name: &VariableIdentifier) -> bool {
         self.get_variable(name).is_ok()
     }
 
-    pub fn register_variable(&mut self, name: String, variable: Variable) -> Result<(), InterpreterError> {
+    pub fn register_variable(&mut self, name: VariableIdentifier, variable: Variable) -> Result<(), InterpreterError> {
         if self.has_variable(&name) {
             return Err(InterpreterError::VariableAlreadyExists(name))
         }

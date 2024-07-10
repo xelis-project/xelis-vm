@@ -15,3 +15,6 @@ pub use crate::{
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError}
 };
+
+// Variable identifier used in the parser and interpreter
+pub(crate) type VariableIdentifier = String;

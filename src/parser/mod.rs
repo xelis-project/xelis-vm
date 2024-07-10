@@ -6,11 +6,12 @@ pub use self::error::ParserError;
 use self::context::Context;
 
 use crate::{
-    expressions::{Operator, Statement, Expression, DeclarationStatement, Parameter},
+    expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
     functions::{Function, FunctionType},
-    types::{Value, Type, Struct, RefMap},
+    types::{RefMap, Struct, Type, Value},
     Environment,
-    Token
+    Token,
+    VariableIdentifier
 };
 use std::{
     borrow::Cow,
@@ -37,9 +38,6 @@ pub struct Program {
     // TODO HashMap with signature as key
     pub functions: Vec<FunctionType>
 }
-
-// TODO: use a u64
-type VariableId = String;
 
 pub struct Parser<'a> {
     constants: Vec<DeclarationStatement>,
@@ -678,14 +676,13 @@ impl<'a> Parser<'a> {
                 }
                 Token::ForEach => { // Example: foreach a in array {}
                     context.begin_scope();
-                    let variable: String = match self.advance()? {
-                        Token::Identifier(v) => v,
-                        token => return Err(ParserError::UnexpectedToken(token))
-                    };
+                    let variable: String = self.next_identifier()?;
                     self.expect_token(Token::In)?;
                     let expr = self.read_expression(context)?;
                     let expr_type = self.get_type_from_expression(None, &expr, context)?;
-                    if !expr_type.is_array() { // verify that we can iter on it
+
+                    // verify that we can iter on it
+                    if !expr_type.is_array() {
                         return Err(ParserError::InvalidValueType(expr_type, Type::Array(Box::new(Type::Any))))
                     }
                     context.register_variable(variable.clone(), expr_type.get_array_type().clone())?;
@@ -1052,7 +1049,7 @@ impl<'a> Parser<'a> {
         };
 
         self.expect_token(Token::BraceOpen)?;
-        let mut fields: HashMap<String, Type> = HashMap::new();
+        let mut fields: HashMap<VariableIdentifier, Type> = HashMap::new();
         for param in self.read_parameters()? {
             let (name, _type) = param.consume();
             fields.insert(name, _type);

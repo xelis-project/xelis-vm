@@ -1,5 +1,5 @@
-use crate::{types::Type, ParserError};
-use super::{scope::Scope, VariableId};
+use crate::{types::Type, ParserError, VariableIdentifier};
+use super::scope::Scope;
 
 #[derive(Clone)]
 pub struct Context {
@@ -20,7 +20,7 @@ impl Context {
     }
 
     // get the value type of a variable registered in scopes using its name
-    pub fn get_type_of_variable(&self, key: &VariableId) -> Result<&Type, ParserError> {
+    pub fn get_type_of_variable(&self, key: &VariableIdentifier) -> Result<&Type, ParserError> {
         for vars in self.scopes.iter().rev() {
             if let Some(_type) = vars.get(key) {
                 return Ok(_type)
@@ -31,12 +31,12 @@ impl Context {
     }
 
     // returns true if this variable name is registered in scopes
-    pub fn has_variable(&self, key: &VariableId) -> bool {
+    pub fn has_variable(&self, key: &VariableIdentifier) -> bool {
         self.get_type_of_variable(key).is_ok()
     }
 
     // register a variable in the current scope
-    pub fn register_variable(&mut self, key: VariableId, var_type: Type) -> Result<(), ParserError> {
+    pub fn register_variable(&mut self, key: VariableIdentifier, var_type: Type) -> Result<(), ParserError> {
         if self.has_variable(&key) {
             return Err(ParserError::VariableNameAlreadyUsed(key))
         }

@@ -1,8 +1,9 @@
 use crate::interpreter::InterpreterError;
-use crate::Token;
-use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
-use std::hash::Hash;
+use crate::{Token, VariableIdentifier};
+use std::{
+    collections::{HashMap, hash_map::RandomState},
+    hash::Hash
+};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -244,7 +245,7 @@ impl std::fmt::Display for Value {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
     pub name: String,
-    pub fields: HashMap<String, Type> // order doesn't matter in fields, so use a HashMap for future
+    pub fields: HashMap<VariableIdentifier, Type>
 }
 
 pub struct RefMap<'a, K, V = RandomState> {

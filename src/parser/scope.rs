@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use crate::types::Type;
-use super::VariableId;
+use crate::{types::Type, VariableIdentifier};
 
 // Scope is used to store variables
 // Variables are stored in a HashMap with a unique id
 #[derive(Debug, Clone)]
 pub struct Scope {
-    variables: HashMap<VariableId, Type>
+    variables: HashMap<VariableIdentifier, Type>
 }
 
 impl Scope {
@@ -16,11 +15,11 @@ impl Scope {
         }
     }
 
-    pub fn insert(&mut self, key: VariableId, var_type: Type) {
+    pub fn insert(&mut self, key: VariableIdentifier, var_type: Type) {
         self.variables.insert(key, var_type);
     }
 
-    pub fn get(&self, key: &VariableId) -> Option<&Type> {
+    pub fn get(&self, key: &VariableIdentifier) -> Option<&Type> {
         self.variables.get(key)
     }
 }
