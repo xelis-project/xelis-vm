@@ -1,7 +1,7 @@
 use crate::{
     types::{Value, Type},
     token::Token,
-    VariableIdentifier
+    IdentifierType
 };
 use std::collections::HashMap;
 
@@ -10,8 +10,8 @@ pub enum Expression {
     FunctionCall(String, Vec<Expression>), // function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
-    StructConstructor(String, HashMap<VariableIdentifier, Expression>),
-    Variable(VariableIdentifier), // variable name
+    StructConstructor(IdentifierType, HashMap<IdentifierType, Expression>),
+    Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
@@ -27,7 +27,7 @@ pub enum Statement {
     Else(Vec<Statement>),
     ElseIf(Expression, Vec<Statement>),
     While(Expression, Vec<Statement>),
-    ForEach(VariableIdentifier, Expression, Vec<Statement>), // for a in array
+    ForEach(IdentifierType, Expression, Vec<Statement>), // for a in array
     For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: int = 0; i < 10; i++ (; will not be saved)
     Expression(Expression),
     Return(Option<Expression>),
@@ -74,26 +74,26 @@ pub enum Operator {
 
 #[derive(Debug)]
 pub struct DeclarationStatement {
-    pub id: VariableIdentifier,
+    pub id: IdentifierType,
     pub value_type: Type,
     pub value: Expression,
 }
 
 #[derive(Debug)]
 pub struct Parameter {
-    name: VariableIdentifier,
+    name: IdentifierType,
     value_type: Type
 }
 
 impl Parameter {
-    pub fn new(name: VariableIdentifier, value_type: Type) -> Self {
+    pub fn new(name: IdentifierType, value_type: Type) -> Self {
         Parameter {
             name,
             value_type
         }
     }
 
-    pub fn get_name(&self) -> &VariableIdentifier {
+    pub fn get_name(&self) -> &IdentifierType {
         &self.name
     }
 
@@ -101,7 +101,7 @@ impl Parameter {
         &self.value_type
     }
 
-    pub fn consume(self) -> (VariableIdentifier, Type) {
+    pub fn consume(self) -> (IdentifierType, Type) {
         (self.name, self.value_type)
     }
 }

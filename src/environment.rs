@@ -1,11 +1,14 @@
-use crate::functions::{FunctionType, NativeFunction, FnInstance, FnReturnType};
-use crate::types::{Type, Value, Struct};
-use crate::interpreter::InterpreterError;
+use crate::{
+    functions::{FunctionType, NativeFunction, FnInstance, FnReturnType},
+    types::{Type, Value, Struct},
+    interpreter::InterpreterError,
+    IdentifierType
+};
 use std::collections::HashMap;
 
 pub struct Environment {
     functions: Vec<FunctionType>,
-    structures: HashMap<String, Struct>
+    structures: HashMap<IdentifierType, Struct>
 }
 
 impl Environment {
@@ -57,19 +60,19 @@ impl Environment {
         self.functions.push(FunctionType::Native(function));
     }
 
-    pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
-        self.structures.insert(name, structure)
-    }
+    // pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
+    //     self.structures.insert(name, structure)
+    // }
 
     pub fn get_functions(&self) -> &Vec<FunctionType> {
         &self.functions
     }
 
-    pub fn get_structure(&self, name: &String) -> Option<&Struct> {
-        self.structures.get(name)
-    }
+    // pub fn get_structure(&self, name: &String) -> Option<&Struct> {
+    //     self.structures.get(name)
+    // }
 
-    pub fn get_structures(&self) -> &HashMap<String, Struct> {
+    pub fn get_structures(&self) -> &HashMap<IdentifierType, Struct> {
         &self.structures
     }
 }

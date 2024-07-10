@@ -1,8 +1,8 @@
-use crate::{expressions::Expression, types::Type, Token, VariableIdentifier};
+use crate::{expressions::Expression, types::Type, Token, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError {
-    StructNotFound(String),
+    StructNotFound(IdentifierType),
     AssignReturnNothing,
     EntryFunctionCannotHaveForType,
     ExpectedToken,
@@ -14,15 +14,14 @@ pub enum ParserError {
     NoIfBeforeElse,
     StructNameAlreadyUsed(String),
     VariableNameAlreadyUsed(String),
-    VariableIdAlreadyUsed(VariableIdentifier),
+    VariableIdAlreadyUsed(IdentifierType),
     FunctionSignatureAlreadyExist(String),
     UnexpectedVariable(String),
-    UnexpectedMappedVariableId(VariableIdentifier),
+    UnexpectedMappedVariableId(IdentifierType),
     MappingNotFound,
     UnexpectedType(Type),
     InvalidStructField(String),
     InvalidStructureName(String),
-    StructureNotFound(String),
     FunctionNotFound(String, usize),
     FunctionNoReturnType(String),
     NoScopeFound,

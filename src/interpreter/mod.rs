@@ -7,7 +7,7 @@ use crate::{
     environment::Environment,
     functions::FunctionType,
     parser::Program,
-    VariableIdentifier,
+    IdentifierType,
     types::*
 };
 use context::Context;
@@ -97,8 +97,8 @@ pub enum InterpreterError {
     NativeFunctionExpectedInstance,
     OverflowOccured,
     DivByZero,
-    StructureNotFound(String),
-    StructureFieldNotFound(String, VariableIdentifier),
+    StructureNotFound(IdentifierType),
+    StructureFieldNotFound(IdentifierType, IdentifierType),
     ExpectedValueType(Type),
     InvalidType(Type),
     OutOfBounds(usize, usize),
@@ -107,8 +107,8 @@ pub enum InterpreterError {
     MissingValueForFunctionCall,
     InvalidStructValue(Value),
     InvalidValue(Value, Type), // got value, but expected type
-    VariableNotFound(VariableIdentifier),
-    VariableAlreadyExists(VariableIdentifier),
+    VariableNotFound(IdentifierType),
+    VariableAlreadyExists(IdentifierType),
     NoScopeFound,
     ExpectedAssignOperator,
     OperationNotNumberType,
@@ -136,7 +136,7 @@ pub struct Interpreter<'a> {
     program: &'a Program,
     // Environment linked to execute the program
     env: &'a Environment,
-    ref_structures: RefMap<'a, String, Struct>
+    ref_structures: RefMap<'a, IdentifierType, Struct>
 }
 
 impl<'a> Interpreter<'a> {

@@ -17,4 +17,7 @@ pub use crate::{
 };
 
 // Variable identifier used in the parser and interpreter
-pub(crate) type VariableIdentifier = u64;
+// This is used to optimize the memory usage by using a smaller type
+// to represent an identifier
+// A mapper is done to map a string name into an identifier
+pub type IdentifierType = u16;

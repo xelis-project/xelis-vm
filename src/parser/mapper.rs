@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use crate::{ParserError, VariableIdentifier};
+use crate::{ParserError, IdentifierType};
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
 #[derive(Debug)]
-pub struct VariableMapper {
-    next_id: u64,
-    mappings: HashMap<String, VariableIdentifier>
+pub struct IdMapper {
+    next_id: IdentifierType,
+    mappings: HashMap<String, IdentifierType>
 }
 
-impl VariableMapper {
+impl IdMapper {
     // Create a new VariableMapper
     pub fn new() -> Self {
         Self {
@@ -20,7 +20,7 @@ impl VariableMapper {
     }
 
     // Get the identifier of a variable name
-    pub fn get(&self, name: &String) -> Result<VariableIdentifier, ParserError> {
+    pub fn get(&self, name: &String) -> Result<IdentifierType, ParserError> {
         self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound)
     }
 
@@ -29,7 +29,7 @@ impl VariableMapper {
     }
 
     // Register a new variable name
-    pub fn register(&mut self, name: String) -> VariableIdentifier {
+    pub fn register(&mut self, name: String) -> IdentifierType {
         let id = self.next_id;
         self.mappings.insert(name, id);
         self.next_id += 1;

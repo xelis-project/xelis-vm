@@ -1,7 +1,8 @@
 use crate::{
     interpreter::InterpreterError,
+    parser::StructManager,
     Token,
-    VariableIdentifier
+    IdentifierType
 };
 use std::{
     collections::{HashMap, HashSet, hash_map::RandomState},
@@ -19,7 +20,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(String, HashMap<VariableIdentifier, Value>),
+    Struct(IdentifierType, HashMap<IdentifierType, Value>),
     Array(Vec<Value>)
 }
 
@@ -73,14 +74,14 @@ impl Value {
         }
     }
 
-    pub fn as_map(&self) -> Result<&HashMap<VariableIdentifier, Value>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&HashMap<IdentifierType, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<VariableIdentifier, Value>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<IdentifierType, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -143,7 +144,7 @@ impl Value {
         }
     }
 
-    pub fn to_map(self) -> Result<HashMap<VariableIdentifier, Value>, InterpreterError> {
+    pub fn to_map(self) -> Result<HashMap<IdentifierType, Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -248,7 +249,7 @@ impl std::fmt::Display for Value {
 // Represents a struct in the language
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
-    pub fields: HashMap<VariableIdentifier, Type>
+    pub fields: HashMap<IdentifierType, Type>
 }
 
 pub struct RefMap<'a, K, V = RandomState> {
@@ -260,12 +261,6 @@ impl<'a, K, V> RefMap<'a, K, V> {
     pub fn new() -> Self {
         RefMap {
             maps: vec![]
-        }
-    }
-
-    pub fn from_vec(maps: Vec<&'a HashMap<K, V>>) -> Self {
-        RefMap {
-            maps
         }
     }
 
@@ -303,12 +298,12 @@ pub enum Type {
 
     String,
     Boolean,
-    Struct(String),
+    Struct(IdentifierType),
     Array(Box<Type>)
 }
 
 impl Type {
-    pub fn from_token<H: HasKey<String>>(s: Token, structures: &H) -> Option<Self> {
+    pub(crate) fn from_token(s: Token, struct_manager: &StructManager) -> Option<Self> {
         let value: Self = match s {
             Token::Byte => Type::Byte,
             Token::Short => Type::Short,
@@ -317,8 +312,8 @@ impl Type {
             Token::Boolean => Type::Boolean,
             Token::String => Type::String,
             Token::Identifier(s) => {
-                if structures.has(&s) {
-                    Type::Struct(s)
+                if let Ok(id) = struct_manager.get_mapping(&s) {
+                    Type::Struct(id)
                 } else {
                     return None
                 }
@@ -329,7 +324,7 @@ impl Type {
         Some(value)
     }
 
-    pub fn from_value<H: HasKey<String>>(value: &Value, structures: &H) -> Option<Self> {
+    pub fn from_value<H: HasKey<IdentifierType>>(value: &Value, structures: &H) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
             Value::Byte(_) => Type::Byte,

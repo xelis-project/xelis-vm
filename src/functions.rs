@@ -3,7 +3,8 @@ use std::collections::VecDeque;
 use crate::{
     expressions::{Parameter, Statement},
     interpreter::{InterpreterError, State},
-    types::{Type, Value}, VariableIdentifier
+    types::{Type, Value},
+    IdentifierType
 };
 
 // first parameter is the current value / instance
@@ -73,7 +74,7 @@ impl std::fmt::Debug for NativeFunction {
 pub struct Function {
     name: String,
     for_type: Option<Type>,
-    instance_name: Option<VariableIdentifier>,
+    instance_name: Option<IdentifierType>,
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
     entry: bool,
@@ -81,7 +82,7 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<VariableIdentifier>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
+    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
         Function {
             name,
             for_type,
@@ -105,7 +106,7 @@ impl Function {
         &self.parameters
     }
 
-    pub fn get_instance_name(&self) -> &Option<VariableIdentifier> {
+    pub fn get_instance_name(&self) -> &Option<IdentifierType> {
         &self.instance_name
     }
 }

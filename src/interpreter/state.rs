@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{InterpreterError, VariableIdentifier};
+use crate::{InterpreterError, IdentifierType};
 use super::Value;
 
 pub struct State {
@@ -13,7 +13,7 @@ pub struct State {
     // Maximum number of recursive calls
     max_recursive: u16,
     // constants variables that can be used
-    constants: HashMap<VariableIdentifier, Value>
+    constants: HashMap<IdentifierType, Value>
 }
 
 impl State {
@@ -29,7 +29,7 @@ impl State {
     }
 
     // Constants variables registered in the state
-    pub fn get_constant_value(&self, name: &VariableIdentifier) -> Option<&Value> {
+    pub fn get_constant_value(&self, name: &IdentifierType) -> Option<&Value> {
         self.constants.get(name)
     }
 
