@@ -210,7 +210,7 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
-        match Type::from_value(value, todo!("")) {
+        match Type::from_value(value, &self.ref_structures) {
             Some(v) => Ok(v),
             None => Err(InterpreterError::TypeNotFound(value.clone()))
         }

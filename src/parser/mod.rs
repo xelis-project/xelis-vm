@@ -120,7 +120,7 @@ impl<'a> Parser<'a> {
      */
     fn read_type(&mut self, struct_manager: &StructManager) -> Result<Type, ParserError> {
         let token = self.advance()?;
-        let mut _type = match Type::from_token(token, struct_manager.keys()) {
+        let mut _type = match Type::from_token(token, struct_manager.inner()) {
             Some(v) => v,
             None => return Err(ParserError::TypeNotFound)
         };
@@ -185,7 +185,7 @@ impl<'a> Parser<'a> {
                 }
             },
             // we have to clone everything due to this
-            Expression::Value(ref val) => match Type::from_value(val, struct_manager.keys()) {
+            Expression::Value(ref val) => match Type::from_value(val, struct_manager.inner()) {
                 Some(v) => v,
                 None => return Err(ParserError::EmptyValue)
             },
@@ -1075,8 +1075,7 @@ impl<'a> Parser<'a> {
 
         Ok(Program {
             constants: self.constants,
-            // TODO
-            structures: HashMap::new(),
+            structures: struct_manager.finalize(),
             functions: self.functions,
         })
     }

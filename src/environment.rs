@@ -57,8 +57,8 @@ impl Environment {
         self.functions.push(FunctionType::Native(function));
     }
 
-    pub fn register_structure(&mut self, structure: Struct) -> Option<Struct> {
-        self.structures.insert(structure.name.clone(), structure)
+    pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
+        self.structures.insert(name, structure)
     }
 
     pub fn get_functions(&self) -> &Vec<FunctionType> {

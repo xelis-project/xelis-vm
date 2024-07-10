@@ -245,9 +245,9 @@ impl std::fmt::Display for Value {
     }
 }
 
+// Represents a struct in the language
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
-    pub name: String,
     pub fields: HashMap<VariableIdentifier, Type>
 }
 
@@ -308,7 +308,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_token(s: Token, structures: &HashSet<String>) -> Option<Self> {
+    pub fn from_token<H: HasKey<String>>(s: Token, structures: &H) -> Option<Self> {
         let value: Self = match s {
             Token::Byte => Type::Byte,
             Token::Short => Type::Short,
@@ -317,7 +317,7 @@ impl Type {
             Token::Boolean => Type::Boolean,
             Token::String => Type::String,
             Token::Identifier(s) => {
-                if structures.contains(&s) {
+                if structures.has(&s) {
                     Type::Struct(s)
                 } else {
                     return None
@@ -329,7 +329,7 @@ impl Type {
         Some(value)
     }
 
-    pub fn from_value(value: &Value, structures: &HashSet<String>) -> Option<Self> {
+    pub fn from_value<H: HasKey<String>>(value: &Value, structures: &H) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
             Value::Byte(_) => Type::Byte,
@@ -339,7 +339,7 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
             Value::Array(values) => Type::Array(Box::new(Type::from_value(values.first()?, structures)?)),
-            Value::Struct(name, _) => if structures.contains(name) {
+            Value::Struct(name, _) => if structures.has(name) {
                 Type::Struct(name.clone())
             } else {
                 return None
@@ -412,5 +412,27 @@ impl Type {
             Type::Byte | Type::Short | Type::Int | Type::Long => true,
             _ => false
         }
+    }
+}
+
+pub trait HasKey<K> {
+    fn has(&self, key: &K) -> bool;
+}
+
+impl<K: Hash + Eq> HasKey<K> for HashSet<K> {
+    fn has(&self, key: &K) -> bool {
+        self.contains(key)
+    }
+}
+
+impl<K: Hash + Eq, V> HasKey<K> for HashMap<K, V> {
+    fn has(&self, key: &K) -> bool {
+        self.contains_key(key)
+    }
+}
+
+impl<K: Hash + Eq, V> HasKey<K> for RefMap<'_, K, V> {
+    fn has(&self, key: &K) -> bool {
+        self.get(key).is_some()
     }
 }
