@@ -6,10 +6,10 @@ The syntax is strongly inspired by Rust and Golang.
 All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
 
 The different primitive types are:
-- `byte` (unsigned 8-bytes integer)
-- `short` (unsigned 16-bytes integer)
-- `int` (unsigned 64-bytes integer)
-- `long` (unsigned 128-bytes integer)
+- `byte` (unsigned 8 bits)
+- `short` (unsigned 16 bits)
+- `int` (unsigned 64 bits)
+- `long` (unsigned 128 bits)
 - `bool`
 - `string`
 - `struct`
