@@ -286,7 +286,7 @@ impl<'a, K, V> RefMap<'a, K, V> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Type {
     Any,
     //T, // TODO T must be same as for type

@@ -11,11 +11,11 @@ use self::context::Context;
 use crate::{
     expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
     functions::{Function, FunctionType},
+    mapper::{FunctionMapper, IdMapper},
     types::{Struct, Type, Value},
     Environment,
-    Token,
     IdentifierType,
-    mapper::IdMapper
+    Token
 };
 use std::{
     borrow::Cow,
@@ -268,7 +268,7 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, on_type: Option<&Type>, name: String, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
+    fn read_function_call(&mut self, on_type: Option<&Type>, name: String, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -288,7 +288,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = functions_mapper.get(&name)?;
+        let id = functions_mapper.get(&(name, on_type.cloned()))?;
         let func = self.get_function(on_type, &id, types.as_slice())?;
         // Function call cannot call entry function
         if func.is_entry() {
@@ -303,7 +303,7 @@ impl<'a> Parser<'a> {
     // struct_name { field_name: value1, field2: value2 }
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
-    fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_name: IdentifierType, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
+    fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_name: IdentifierType, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
         self.expect_token(Token::BraceOpen)?;
         let structure = struct_manager.get(&struct_name)?;
         let mut fields = HashMap::new();
@@ -341,13 +341,13 @@ impl<'a> Parser<'a> {
     }
 
     // Read an expression with default parameters
-    fn read_expression(&mut self, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
+    fn read_expression(&mut self, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
         self.read_expr(None, true, None, context, mapper, functions_mapper, struct_manager)
     }
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
-    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, number_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
+    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, number_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while {
@@ -579,7 +579,7 @@ impl<'a> Parser<'a> {
      *     ...
      * }
      */
-    fn read_body(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
+    fn read_body(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
         context.begin_scope();
         let statements = self.read_statements(context, return_type, consume_brace, mapper, functions_mapper, struct_manager)?;
         context.end_scope();
@@ -594,7 +594,7 @@ impl<'a> Parser<'a> {
      * - Must provide a value type
      * - If no value is set, Null is set by default
      */
-    fn read_variable(&mut self, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager, is_const: bool) -> Result<DeclarationStatement, ParserError> {
+    fn read_variable(&mut self, context: &mut Context, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager, is_const: bool) -> Result<DeclarationStatement, ParserError> {
         let name = self.next_identifier()?;
 
         // Variable name must be unique
@@ -645,7 +645,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn read_loop_body(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
+    fn read_loop_body(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
         let old_value = context.is_in_a_loop(); // support loop in loop
         context.set_in_a_loop(true);
         let statements = self.read_body(context, return_type, true, mapper, functions_mapper, struct_manager)?;
@@ -657,7 +657,7 @@ impl<'a> Parser<'a> {
     // Read all statements in a block
     // return type is used to verify that the last statement is a return with a valid value type
     // consume_brace is used to know if we should consume the open brace
-    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper, functions_mapper: &IdMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
+    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper, functions_mapper: &FunctionMapper, struct_manager: &StructManager) -> Result<Vec<Statement>, ParserError> {
         if consume_brace {
             self.expect_token(Token::BraceOpen)?;
         }
@@ -888,7 +888,7 @@ impl<'a> Parser<'a> {
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a int value
      */
-    fn read_function(&mut self, entry: bool, context: &mut Context, constants_mapper: &IdMapper, functions_mapper: &mut IdMapper, struct_manager: &StructManager) -> Result<(), ParserError> {
+    fn read_function(&mut self, entry: bool, context: &mut Context, constants_mapper: &IdMapper, functions_mapper: &mut FunctionMapper, struct_manager: &StructManager) -> Result<(), ParserError> {
         context.begin_scope();
 
         // we need to clone the constants mapper to use it as our own local mapper
@@ -941,7 +941,7 @@ impl<'a> Parser<'a> {
         };
 
         let types: Vec<Cow<'_, Type>> = parameters.iter().map(|p| Cow::Borrowed(p.get_type())).collect();
-        let id = functions_mapper.register(name);
+        let id = functions_mapper.register((name, for_type.clone()));
         if self.has_function(for_type.as_ref(), &id, &types) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }
@@ -1070,7 +1070,7 @@ impl<'a> Parser<'a> {
     }
 
     // Parse the tokens and return a Program
-    pub fn parse(mut self, functions_mapper: &mut IdMapper) -> Result<Program, ParserError> {
+    pub fn parse(mut self, functions_mapper: &mut FunctionMapper) -> Result<Program, ParserError> {
         let mut context: Context = Context::new();
         let mut constants_mapper = IdMapper::new();
         let mut struct_manager = StructManager::new();

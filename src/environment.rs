@@ -1,17 +1,21 @@
 use crate::{
-    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn}, interpreter::InterpreterError, mapper::IdMapper, types::{Struct, Type, Value}, IdentifierType
+    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
+    interpreter::InterpreterError,
+    mapper::FunctionMapper,
+    types::{Struct, Type, Value},
+    IdentifierType
 };
 use std::collections::HashMap;
 
 pub struct EnvironmentBuilder {
-    functions_mapper: IdMapper,
+    functions_mapper: FunctionMapper,
     functions: Vec<FunctionType>,
     structures: HashMap<IdentifierType, Struct>
 }
 
 impl EnvironmentBuilder {
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let id = self.functions_mapper.register(name.to_owned());
+        let id = self.functions_mapper.register((name.to_owned(), for_type.clone()));
         self.functions.push(FunctionType::Native(NativeFunction::new(id, for_type, parameters, on_call, cost, return_type)));
     }
 
@@ -19,7 +23,7 @@ impl EnvironmentBuilder {
     //     self.structures.insert(name, structure)
     // }
 
-    pub fn build(self) -> (Environment, IdMapper) {
+    pub fn build(self) -> (Environment, FunctionMapper) {
         (Environment {
             functions: self.functions,
             structures: self.structures
@@ -30,7 +34,7 @@ impl EnvironmentBuilder {
 impl Default for EnvironmentBuilder {
     fn default() -> Self {
         let mut env = Self {
-            functions_mapper: IdMapper::new(),
+            functions_mapper: FunctionMapper::new(),
             functions: Vec::new(),
             structures: HashMap::new()
         };
@@ -76,7 +80,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> (Self, IdMapper) {
+    pub fn new() -> (Self, FunctionMapper) {
         let builder = EnvironmentBuilder::default();
         builder.build()
     }
