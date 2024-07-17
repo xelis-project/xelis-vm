@@ -1,5 +1,4 @@
 mod context;
-mod variable;
 mod state;
 
 use crate::{
@@ -11,7 +10,6 @@ use crate::{
     types::*
 };
 use context::Context;
-use variable::Variable;
 pub use state::State;
 
 use std::{
@@ -283,7 +281,7 @@ impl<'a> Interpreter<'a> {
                         }
                     },
                     None => match context {
-                        Some(context) => context.get_mut_variable(name)?.get_mut_value(),
+                        Some(context) => context.get_mut_variable(name)?,
                         None => return Err(InterpreterError::ExpectedPath)
                     }
                 })
@@ -382,7 +380,7 @@ impl<'a> Interpreter<'a> {
                 },
                 None => match context {
                     Some(context) => match context.get_variable(var) {
-                        Ok(v) => Ok(Some(v.get_value().clone())),
+                        Ok(v) => Ok(Some(v.clone())),
                         Err(_) => Ok(match state.get_constant_value(var) {
                             Some(v) => Some(v.clone()),
                             None => return Err(InterpreterError::VariableNotFound(var.clone()))
@@ -679,8 +677,8 @@ impl<'a> Interpreter<'a> {
                     context.set_loop_continue(true);
                 },
                 Statement::Variable(var) => {
-                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
-                    context.register_variable(var.id.clone(), variable)?;
+                    let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
+                    context.register_variable(var.id.clone(), value)?;
                 },
                 Statement::If(condition, statements) => {
                     if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
@@ -728,8 +726,8 @@ impl<'a> Interpreter<'a> {
                 }
                 Statement::For(var, condition, increment, statements) => {
                     context.begin_scope();
-                    let variable = Variable::new(self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?, var.value_type.clone());
-                    context.register_variable(var.id.clone(), variable)?;
+                    let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
+                    context.register_variable(var.id.clone(), value)?;
                     loop {
                         if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
                             break;
@@ -761,11 +759,9 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::ForEach(var, expr, statements) => {
                     let values = self.execute_expression_and_expect_value(None, expr, Some(context), state)?.to_vec()?;
-                    if let Some(value) = values.first() {
+                    if !values.is_empty() {
                         context.begin_scope();
-                        let value_type = self.get_type_from_value(&value)?;
-                        let variable = Variable::new(Value::Null, value_type);
-                        context.register_variable(var.clone(), variable)?;
+                        context.register_variable(var.clone(), Value::Null)?;
                         for val in values {
                             context.set_variable_value(var, val)?;
                             match self.execute_statements(&statements, context, state)? {
@@ -856,12 +852,11 @@ impl<'a> Interpreter<'a> {
                 match &f.get_instance_name() {
                     Some(name) => match type_instance {
                         Some(instance) => {
-                            let value_type = match func.for_type() {
-                                Some(t) => t.clone(),
-                                None => return Err(InterpreterError::ExpectedInstanceType)
-                            };
-                            let var = Variable::new(instance.clone(), value_type);
-                            context.register_variable(name.clone(), var)?;
+                            if func.for_type().is_none() {
+                                return Err(InterpreterError::ExpectedInstanceType)
+                            }
+
+                            context.register_variable(name.clone(), instance.clone())?;
                         },
                         None => return Err(InterpreterError::UnexpectedInstanceType)
                     },
@@ -870,8 +865,7 @@ impl<'a> Interpreter<'a> {
 
                 for param in f.get_parameters().iter() {
                     let value = values.pop_front().ok_or(InterpreterError::MissingValueForFunctionCall)?;
-                    let variable = Variable::new(value, param.get_type().clone());
-                    context.register_variable(param.get_name().clone(), variable)?;
+                    context.register_variable(param.get_name().clone(), value)?;
                 }
                 let result = self.execute_statements(f.get_statements(), &mut context, state);
                 context.end_scope()?;

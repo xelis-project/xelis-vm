@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{InterpreterError, IdentifierType};
+use super::Value;
 
-use super::{variable::Variable, Value};
-
-pub type Scope = HashMap<IdentifierType, Variable>;
+pub type Scope = HashMap<IdentifierType, Value>;
 
 pub struct Context {
     variables: Vec<Scope>,
@@ -66,14 +65,14 @@ impl Context {
         self.variables.pop().ok_or(InterpreterError::NoScopeFound)
     }
 
-    pub fn get_variable(&self, name: &IdentifierType) -> Result<&Variable, InterpreterError> {
+    pub fn get_variable(&self, name: &IdentifierType) -> Result<&Value, InterpreterError> {
         self.variables.iter().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
             .get(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut Variable, InterpreterError> {
+    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut Value, InterpreterError> {
         self.variables.iter_mut().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
@@ -82,7 +81,7 @@ impl Context {
 
     pub fn set_variable_value(&mut self, name: &IdentifierType, value: Value) -> Result<(), InterpreterError> {
         let var = self.get_mut_variable(name)?;
-        var.set_value(value);
+        *var = value;
         Ok(())
     }
 
@@ -90,12 +89,12 @@ impl Context {
         self.get_variable(name).is_ok()
     }
 
-    pub fn register_variable(&mut self, name: IdentifierType, variable: Variable) -> Result<(), InterpreterError> {
+    pub fn register_variable(&mut self, name: IdentifierType, value: Value) -> Result<(), InterpreterError> {
         if self.has_variable(&name) {
             return Err(InterpreterError::VariableAlreadyExists(name))
         }
         let scope = self.get_last_scope()?;
-        scope.insert(name, variable);
+        scope.insert(name, value);
 
         Ok(())
     }
