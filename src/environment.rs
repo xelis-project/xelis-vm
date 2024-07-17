@@ -1,10 +1,74 @@
 use crate::{
-    functions::{FunctionType, NativeFunction, FnInstance, FnReturnType},
-    types::{Type, Value, Struct},
-    interpreter::InterpreterError,
-    IdentifierType
+    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn}, interpreter::InterpreterError, mapper::IdMapper, types::{Struct, Type, Value}, IdentifierType
 };
 use std::collections::HashMap;
+
+pub struct EnvironmentBuilder {
+    functions_mapper: IdMapper,
+    functions: Vec<FunctionType>,
+    structures: HashMap<IdentifierType, Struct>
+}
+
+impl EnvironmentBuilder {
+    pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+        let id = self.functions_mapper.register(name.to_owned());
+        self.functions.push(FunctionType::Native(NativeFunction::new(id, for_type, parameters, on_call, cost, return_type)));
+    }
+
+    // pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
+    //     self.structures.insert(name, structure)
+    // }
+
+    pub fn build(self) -> (Environment, IdMapper) {
+        (Environment {
+            functions: self.functions,
+            structures: self.structures
+        }, self.functions_mapper)
+    }
+}
+
+impl Default for EnvironmentBuilder {
+    fn default() -> Self {
+        let mut env = Self {
+            functions_mapper: IdMapper::new(),
+            functions: Vec::new(),
+            structures: HashMap::new()
+        };
+
+        env.register_native_function("println", None, vec![Type::Any], println, 1, None);
+
+        // Array
+        env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::Int));
+        env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, 1, None); // TODO Any
+        env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![], remove, 1, Some(Type::Any));
+        env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::Any))));
+
+        // String
+        env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::Int));
+        env.register_native_function("trim", Some(Type::String), vec![], trim, 1, Some(Type::String));
+        env.register_native_function("contains", Some(Type::String), vec![Type::String], contains, 1, Some(Type::Boolean));
+        env.register_native_function("contains_ignore_case", Some(Type::String), vec![Type::String], contains_ignore_case, 1, Some(Type::Boolean));
+        env.register_native_function("to_uppercase", Some(Type::String), vec![], to_uppercase, 1, Some(Type::String));
+        env.register_native_function("to_lowercase", Some(Type::String), vec![], to_lowercase, 1, Some(Type::String));
+        env.register_native_function("to_bytes", Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::Byte))));
+
+        env.register_native_function("index_of", Some(Type::String), vec![Type::String], println, 3, Some(Type::Int));
+        env.register_native_function("last_index_of", Some(Type::String), vec![Type::String], println, 3, Some(Type::Int));
+        env.register_native_function("replace", Some(Type::String), vec![Type::String, Type::String], println, 3, Some(Type::String));
+        env.register_native_function("starts_with", Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean));
+        env.register_native_function("ends_with", Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean));
+        env.register_native_function("split", Some(Type::String), vec![Type::String], println, 3, Some(Type::Array(Box::new(Type::String))));
+        env.register_native_function("char_at", Some(Type::String), vec![Type::Int], println, 1, Some(Type::String));
+
+        env.register_native_function("is_empty", Some(Type::String), vec![], println, 1, Some(Type::Boolean));
+        env.register_native_function("matches", Some(Type::String), vec![Type::String], println, 25, Some(Type::Boolean));
+        env.register_native_function("substring", Some(Type::String), vec![Type::Int], println, 3, Some(Type::String));
+        env.register_native_function("substring", Some(Type::String), vec![Type::Int, Type::Int], println, 3, Some(Type::String));
+        env.register_native_function("format", Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, 5, Some(Type::String));
+
+        env
+    }
+}
 
 pub struct Environment {
     functions: Vec<FunctionType>,
@@ -12,57 +76,10 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> Self {
-        Self {
-            functions: Vec::new(),
-            structures: HashMap::new()
-        }
+    pub fn new() -> (Self, IdMapper) {
+        let builder = EnvironmentBuilder::default();
+        builder.build()
     }
-
-    pub fn default() -> Self {
-        let mut env = Self::new();
-
-        env.register_native_function(NativeFunction::new("println".to_owned(), None, vec![Type::Any], println, 1, None));
-
-        // Array
-        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::Int)));
-        env.register_native_function(NativeFunction::new("push".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, 1, None)); // TODO Any
-        env.register_native_function(NativeFunction::new("remove".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![], remove, 1, Some(Type::Any)));
-        env.register_native_function(NativeFunction::new("slice".to_owned(), Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::Any)))));
-
-        // String
-        env.register_native_function(NativeFunction::new("len".to_owned(), Some(Type::String), vec![], len, 1, Some(Type::Int)));
-        env.register_native_function(NativeFunction::new("trim".to_owned(), Some(Type::String), vec![], trim, 1, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("contains".to_owned(), Some(Type::String), vec![Type::String], contains, 1, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("contains_ignore_case".to_owned(), Some(Type::String), vec![Type::String], contains_ignore_case, 1, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("to_uppercase".to_owned(), Some(Type::String), vec![], to_uppercase, 1, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("to_lowercase".to_owned(), Some(Type::String), vec![], to_lowercase, 1, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("to_bytes".to_owned(), Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::Byte)))));
-
-        env.register_native_function(NativeFunction::new("index_of".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Int)));
-        env.register_native_function(NativeFunction::new("last_index_of".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Int)));
-        env.register_native_function(NativeFunction::new("replace".to_owned(), Some(Type::String), vec![Type::String, Type::String], println, 3, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("starts_with".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("ends_with".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("split".to_owned(), Some(Type::String), vec![Type::String], println, 3, Some(Type::Array(Box::new(Type::String)))));
-        env.register_native_function(NativeFunction::new("char_at".to_owned(), Some(Type::String), vec![Type::Int], println, 1, Some(Type::String)));
-
-        env.register_native_function(NativeFunction::new("is_empty".to_owned(), Some(Type::String), vec![], println, 1, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("matches".to_owned(), Some(Type::String), vec![Type::String], println, 25, Some(Type::Boolean)));
-        env.register_native_function(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int], println, 3, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("substring".to_owned(), Some(Type::String), vec![Type::Int, Type::Int], println, 3, Some(Type::String)));
-        env.register_native_function(NativeFunction::new("format".to_owned(), Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, 5, Some(Type::String)));
-
-        env
-    }
-
-    pub fn register_native_function(&mut self, function: NativeFunction) {
-        self.functions.push(FunctionType::Native(function));
-    }
-
-    // pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
-    //     self.structures.insert(name, structure)
-    // }
 
     pub fn get_functions(&self) -> &Vec<FunctionType> {
         &self.functions

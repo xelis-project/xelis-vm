@@ -14,7 +14,7 @@ pub type FnInstance<'a> = Result<&'a mut Value, InterpreterError>;
 pub type OnCallFn = fn(FnInstance, Vec<Value>) -> FnReturnType;
 
 pub struct NativeFunction {
-    name: String,
+    identifier: IdentifierType,
     for_type: Option<Type>, // function on type
     parameters: Vec<Type>,
     on_call: OnCallFn,
@@ -23,9 +23,9 @@ pub struct NativeFunction {
 }
 
 impl NativeFunction {
-    pub fn new(name: String, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
+    pub fn new(identifier: IdentifierType, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
-            name,
+            identifier,
             for_type,
             parameters,
             on_call,
@@ -62,7 +62,7 @@ impl NativeFunction {
 impl std::fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NativeFunction")
-         .field("name", &self.name)
+         .field("name", &self.identifier)
          .field("for_type", &self.for_type)
          .field("parameters", &self.parameters)
          .field("return_type", &self.return_type)
@@ -72,7 +72,7 @@ impl std::fmt::Debug for NativeFunction {
 
 #[derive(Debug)]
 pub struct Function {
-    name: String,
+    identifier: IdentifierType,
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
     parameters: Vec<Parameter>,
@@ -82,9 +82,9 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(name: String, for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
+    pub fn new(identifier: IdentifierType, for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
         Function {
-            name,
+            identifier,
             for_type,
             instance_name,
             parameters,
@@ -118,10 +118,10 @@ pub enum FunctionType {
 }
 
 impl FunctionType {
-    pub fn get_name(&self) -> &String {
+    pub fn get_name(&self) -> &IdentifierType {
         match &self {
-            FunctionType::Native(ref f) => &f.name,
-            FunctionType::Custom(ref f) => &f.name
+            FunctionType::Native(ref f) => &f.identifier,
+            FunctionType::Custom(ref f) => &f.identifier
         }
     }
 

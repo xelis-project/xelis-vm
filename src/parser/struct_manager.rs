@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{types::{Struct, Type}, ParserError, IdentifierType};
-
-use super::mapper::IdMapper;
+use crate::{types::{Struct, Type}, ParserError, IdentifierType, mapper::IdMapper};
 
 #[derive(Debug)]
 pub struct StructBuilder {

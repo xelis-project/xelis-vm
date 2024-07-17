@@ -4,7 +4,7 @@ use crate::{ParserError, IdentifierType};
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IdMapper {
     next_id: IdentifierType,
     mappings: HashMap<String, IdentifierType>
@@ -21,7 +21,7 @@ impl IdMapper {
 
     // Get the identifier of a variable name
     pub fn get(&self, name: &String) -> Result<IdentifierType, ParserError> {
-        self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound)
+        Ok(self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound).unwrap())
     }
 
     pub fn has_variable(&self, name: &String) -> bool {

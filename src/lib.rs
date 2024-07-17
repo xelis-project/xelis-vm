@@ -5,7 +5,8 @@ mod expressions;
 mod lexer;
 mod token;
 mod types;
-mod functions; 
+mod functions;
+mod mapper;
 
 pub use crate::{
     environment::Environment,

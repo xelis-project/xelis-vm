@@ -146,7 +146,6 @@ impl<'a> Interpreter<'a> {
         };
 
         interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
-
         Ok(interpreter)
     }
 
@@ -223,12 +222,12 @@ impl<'a> Interpreter<'a> {
         Ok(types)
     }
 
-    fn get_compatible_function<'b, I: Iterator<Item = &'b Value>>(&self, name: &String, for_type: Option<&Type>, values: I) -> Result<&FunctionType, InterpreterError> {
+    fn get_compatible_function<'b, I: Iterator<Item = &'b Value>>(&self, name: &IdentifierType, for_type: Option<&Type>, values: I) -> Result<&FunctionType, InterpreterError> {
         let types = self.get_types_from_values(values)?;
         self.get_function(name, for_type, types.iter())
     }
 
-    fn get_function<'b, I: Iterator<Item = &'b Type> + Clone + ExactSizeIterator>(&self, name: &String, for_type: Option<&Type>, parameters: I) -> Result<&FunctionType, InterpreterError> {
+    fn get_function<'b, I: Iterator<Item = &'b Type> + Clone + ExactSizeIterator>(&self, name: &IdentifierType, for_type: Option<&Type>, parameters: I) -> Result<&FunctionType, InterpreterError> {
         'funcs: for f in self.program.functions.iter().chain(self.env.get_functions()) {
             if *f.get_name() == *name && f.get_parameters_count() == parameters.len() {
                 let same_type: bool = if let Some(type_a) = for_type {
@@ -876,9 +875,21 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &String, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
+    pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &IdentifierType, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
         let params = parameters.into();
         let func = self.get_compatible_function(function_name, None, params.iter())?;
+
+        // initialize constants
+        if !self.program.constants.is_empty() && !state.has_cache_initilized() {
+            let mut context = Context::new();
+            context.begin_scope();
+            for c in &self.program.constants {
+                let value = self.execute_expression_and_expect_value(None, &c.value, Some(&mut context), state)?;
+                context.register_variable(c.id.clone(), value)?;
+            }
+
+            state.set_constants_cache(context.remove_scope()?);
+        }
 
         // only function marked as entry can be called from external
         if !func.is_entry() {

@@ -27,17 +27,17 @@ fn main() {
     println!("Lexer: {:?}", start.elapsed());
 
     // Create the default environment
-    let environment = Environment::default();
+    let (environment, mut mapper) = Environment::new();
 
     // Build the program
     start = Instant::now();
-    let program = Parser::new(tokens, &environment).parse().unwrap();
+    let program = Parser::new(tokens, &environment).parse(&mut mapper).unwrap();
     println!("Parser: {:?}", start.elapsed());
 
     // Create the VM instance
     let vm = Interpreter::new(&program, &environment).unwrap();
     let mut state = State::new(1000, 100);
     start = Instant::now();
-    let exit = vm.call_entry_function(&"main".to_owned(), vec![], &mut state).unwrap();
+    let exit = vm.call_entry_function(&mapper.get(&"main".to_owned()).unwrap(), vec![], &mut state).unwrap();
     println!("Exit code: {} | {} expressions executed in {:?}", exit, state.get_expressions_executed(), start.elapsed());
 }

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Expression {
-    FunctionCall(String, Vec<Expression>), // function name, parameters
+    FunctionCall(IdentifierType, Vec<Expression>), // function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     StructConstructor(IdentifierType, HashMap<IdentifierType, Expression>),

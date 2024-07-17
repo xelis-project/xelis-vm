@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use crate::{InterpreterError, IdentifierType};
-use super::Value;
+use super::{context, Value};
 
 pub struct State {
     // Count the number of expressions executed
@@ -13,7 +11,7 @@ pub struct State {
     // Maximum number of recursive calls
     max_recursive: u16,
     // constants variables that can be used
-    constants: HashMap<IdentifierType, Value>
+    constants: Option<context::Scope>
 }
 
 impl State {
@@ -24,13 +22,16 @@ impl State {
             recursive: 0,
             max_expr,
             max_recursive,
-            constants: HashMap::new()
+            constants: None
         }
     }
 
     // Constants variables registered in the state
-    pub fn get_constant_value(&self, name: &IdentifierType) -> Option<&Value> {
-        self.constants.get(name)
+    pub fn get_constant_value<'b>(&'b self, name: &IdentifierType) -> Option<&'b Value> {
+        match &self.constants {
+            Some(constants) => constants.get(name),
+            None => None
+        }
     }
 
     // increase the number of expressions executed
@@ -81,9 +82,20 @@ impl State {
         self.recursive -= 1;
     }
 
+    // set the constants cache in the state
+    pub fn set_constants_cache(&mut self, constants: context::Scope) {
+        self.constants = Some(constants);
+    }
+
+    // check if the cache has been initialized
+    pub fn has_cache_initilized(&self) -> bool {
+        self.constants.is_some()
+    }
+
     // Reset the state
     pub fn reset(&mut self) {
         self.count_expr = 0;
         self.recursive = 0;
+        self.constants = None;
     }
 }
