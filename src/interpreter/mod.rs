@@ -663,17 +663,23 @@ impl<'a> Interpreter<'a> {
     fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         let mut accept_else = false;
         for statement in statements {
-            state.increase_expressions_executed()?;
+            // In case some inner statement has a break or continue, we stop the loop
             if context.get_loop_break() || context.get_loop_continue() {
                 break;
             }
 
+            // Increase the number of executed expressions
+            state.increase_expressions_executed()?;
+
+
             match statement {
                 Statement::Break => {
                     context.set_loop_break(true);
+                    break;
                 },
                 Statement::Continue => {
                     context.set_loop_continue(true);
+                    break;
                 },
                 Statement::Variable(var) => {
                     let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
@@ -838,11 +844,8 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
+    // Execute the selected function
     fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
-        if func.for_type().is_some() != type_instance.is_some() {
-            return Err(InterpreterError::UnexpectedInstanceType)
-        }
-
         match func {
             FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
             FunctionType::Custom(ref f) => {
