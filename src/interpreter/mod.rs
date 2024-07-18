@@ -255,11 +255,11 @@ impl<'a> Interpreter<'a> {
         Err(InterpreterError::NoMatchingFunction)
     }
 
-    fn get_from_path<'b>(&self, ref_value: Option<&'b mut Value>, path: &Expression, context: Option<&'b mut Context>, state: &mut State) -> Result<&'b mut Value, InterpreterError> {
+    fn get_from_path<'b>(&self, ref_value: Option<&'b mut Value>, path: &Expression, mut context: Option<&'b mut Context>, state: &mut State) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(None, expr_index, context, state)?.to_int()? as usize;
-                let array = self.get_from_path(ref_value, expr, None, state)?;
+                let index = self.execute_expression_and_expect_value(None, expr_index, context.copy_ref(), state)?.to_int()? as usize;
+                let array = self.get_from_path(ref_value, expr, context, state)?;
                 let values = array.as_mut_vec()?;
                 let size = values.len();
                 match values.get_mut(index as usize) {
