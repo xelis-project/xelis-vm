@@ -5,6 +5,7 @@ use super::Value;
 
 pub type Scope = HashMap<IdentifierType, Value>;
 
+#[derive(Debug)]
 pub struct Context {
     variables: Vec<Scope>,
     loop_break: bool,

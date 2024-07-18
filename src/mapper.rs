@@ -25,9 +25,10 @@ impl<T: Clone + Eq + Hash> Mapper<T> {
 
     // Get the identifier of a variable name
     pub fn get(&self, name: &T) -> Result<IdentifierType, ParserError> {
-        Ok(self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound).unwrap())
+        self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound)
     }
 
+    // Check if a variable name is already registered
     pub fn has_variable(&self, name: &T) -> bool {
         self.mappings.contains_key(name)
     }
@@ -38,5 +39,25 @@ impl<T: Clone + Eq + Hash> Mapper<T> {
         self.mappings.insert(name, id);
         self.next_id += 1;
         id
+    }
+}
+
+impl FunctionMapper {
+    pub fn get_compatible(&self, key: (String, Option<Type>)) -> Result<IdentifierType, ParserError> {
+        match self.get(&key) {
+            Ok(id) => Ok(id),
+            Err(e) => match key.1 {
+                Some(t) => {
+                    let new_type = if t.is_array() {
+                        Type::Array(Box::new(Type::Any))
+                    } else {
+                        Type::Any
+                    };
+
+                    self.get(&(key.0, Some(new_type)))
+                },
+                None => Err(e)
+            }
+        }
     }
 }

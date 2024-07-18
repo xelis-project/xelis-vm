@@ -288,7 +288,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = functions_mapper.get(&(name, on_type.cloned()))?;
+        let id = functions_mapper.get_compatible((name, on_type.cloned()))?;
         let func = self.get_function(on_type, &id, types.as_slice())?;
         // Function call cannot call entry function
         if func.is_entry() {
