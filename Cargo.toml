@@ -10,5 +10,5 @@ edition = "2021"
 criterion = "0.5.1"
 
 [[bench]]
-name = "lexer"
+name = "bench"
 harness = false

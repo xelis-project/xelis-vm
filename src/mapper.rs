@@ -14,6 +14,12 @@ pub struct Mapper<T: Clone + Eq + Hash> {
     mappings: HashMap<T, IdentifierType>
 }
 
+impl<T: Clone + Eq + Hash> Default for Mapper<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Clone + Eq + Hash> Mapper<T> {
     // Create a new VariableMapper
     pub fn new() -> Self {
