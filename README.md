@@ -13,6 +13,7 @@ The different primitive types are:
 - `bool`
 - `string`
 - `struct`
+- `optional<T>` where T is another type (it allow the value to be nullable)
 
 File extension is `.xel`
 
