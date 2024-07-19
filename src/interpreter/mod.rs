@@ -192,8 +192,8 @@ impl<'a> Interpreter<'a> {
                 let right_vec = right.as_vec()?;
                 if left_vec.len() == right_vec.len() {
                     let mut equal = true;
-                    for i in 0..left_vec.len() {
-                        if !self.is_same_value(sub_type, &left_vec[i], &right_vec[i])? {
+                    for (left, right) in left_vec.iter().zip(right_vec.iter()) {
+                        if !self.is_same_value(sub_type, left, right)? {
                             equal = false;
                             break;
                         }
@@ -213,46 +213,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn get_types_from_values<'b, I: Iterator<Item = &'b Value>>(&self, values: I) -> Result<Vec<Type>, InterpreterError> {
-        let mut types: Vec<Type> = Vec::new();
-        for value in values {
-            types.push(self.get_type_from_value(&value)?);
+    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, InterpreterError> {
+        match self.env.get_functions().get(name) {
+            Some(func) => Ok(func),
+            None => self.program.functions.get(name).ok_or_else(|| InterpreterError::NoMatchingFunction)
         }
-
-        Ok(types)
-    }
-
-    fn get_compatible_function<'b, I: Iterator<Item = &'b Value>>(&self, name: &IdentifierType, for_type: Option<&Type>, values: I) -> Result<&FunctionType, InterpreterError> {
-        let types = self.get_types_from_values(values)?;
-        self.get_function(name, for_type, types.iter())
-    }
-
-    fn get_function<'b, I: Iterator<Item = &'b Type> + Clone + ExactSizeIterator>(&self, name: &IdentifierType, for_type: Option<&Type>, parameters: I) -> Result<&FunctionType, InterpreterError> {
-        'funcs: for f in self.program.functions.iter().chain(self.env.get_functions()) {
-            if *f.get_name() == *name && f.get_parameters_count() == parameters.len() {
-                let same_type: bool = if let Some(type_a) = for_type {
-                    if let Some(type_b) = f.for_type() {
-                        type_a.is_compatible_with(type_b)
-                    } else {
-                        false
-                    }
-                } else {
-                    for_type == f.for_type().as_ref()
-                };
-
-                if same_type {
-                    let f_types = f.get_parameters_types();
-                    for (f_type, param_type) in f_types.into_iter().zip(parameters.clone()) {
-                        if *f_type != Type::Any && f_type != param_type {
-                            continue 'funcs;
-                        }
-                    }
-                    return Ok(f)
-                }
-            }
-        }
-
-        Err(InterpreterError::NoMatchingFunction)
     }
 
     fn get_from_path<'b>(&self, ref_value: Option<&'b mut Value>, path: &Expression, mut context: Option<&'b mut Context>, state: &mut State) -> Result<&'b mut Value, InterpreterError> {
@@ -300,21 +265,20 @@ impl<'a> Interpreter<'a> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
-                let mut values: Vec<Value> = Vec::new();
+                let mut values: Vec<Value> = Vec::with_capacity(parameters.len());
                 for param in parameters {
                     values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
                 }
 
                 state.increase_recursive_depth()?;
 
-                let params = self.get_types_from_values(values.iter())?;
                 let res = match on_value {
                     Some(v) => {
-                        let func = self.get_function(name, Some(&self.get_type_from_value(&v)?), params.iter())?;
+                        let func = self.get_function(name)?;
                         self.execute_function(&func, Some(v), VecDeque::from(values), state)
                     },
                     None => {
-                        let func = self.get_function(name, None, params.iter())?;
+                        let func = self.get_function(name)?;
                         self.execute_function(&func, None, VecDeque::from(values), state)
                     }
                 };
@@ -324,7 +288,7 @@ impl<'a> Interpreter<'a> {
                 res
             },
             Expression::ArrayConstructor(expressions) => {
-                let mut values = vec![];
+                let mut values = Vec::with_capacity(expressions.len());
                 for expr in expressions {
                     let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
                     values.push(value);
@@ -334,7 +298,7 @@ impl<'a> Interpreter<'a> {
             },
             Expression::StructConstructor(struct_name, expr_fields) => {
                 let s = self.ref_structures.get(struct_name).ok_or_else(|| InterpreterError::StructureNotFound(struct_name.clone()))?;
-                let mut fields = HashMap::new();
+                let mut fields = HashMap::with_capacity(expr_fields.len());
                 for (name, expr) in expr_fields {
                     let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
                     let value_type = self.get_type_from_value(&value)?;
@@ -880,7 +844,7 @@ impl<'a> Interpreter<'a> {
     // Execute the program by calling an available entry function
     pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &IdentifierType, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
         let params = parameters.into();
-        let func = self.get_compatible_function(function_name, None, params.iter())?;
+        let func = self.get_function(function_name)?;
 
         // initialize constants
         if !self.program.constants.is_empty() && !state.has_cache_initilized() {

@@ -35,7 +35,7 @@ impl StructManager {
             return Err(ParserError::StructNameAlreadyUsed(name));
         }
 
-        let id = self.mapper.register(name);
+        let id = self.mapper.register(name)?;
         self.structures.insert(id, builder);
 
         Ok(())

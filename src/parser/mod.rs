@@ -39,14 +39,13 @@ pub struct Program {
     // All structures declared
     pub structures: HashMap<IdentifierType, Struct>,
     // All functions declared
-    // TODO HashMap with signature as key
-    pub functions: Vec<FunctionType>
+    pub functions: HashMap<IdentifierType, FunctionType>
 }
 
 pub struct Parser<'a> {
     constants: Vec<DeclarationStatement>,
     tokens: VecDeque<Token>,
-    functions: Vec<FunctionType>,
+    functions: HashMap<IdentifierType, FunctionType>,
     // Environment contains all the library linked to the program
     env: &'a Environment
 }
@@ -56,7 +55,7 @@ impl<'a> Parser<'a> {
         Parser {
             constants: Vec::new(),
             tokens,
-            functions: Vec::new(),
+            functions: HashMap::new(),
             env,
         }
     }
@@ -170,14 +169,9 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::UnexpectedMappedVariableId(var_name.clone()))
                     }
                 }
-            
             },
-            Expression::FunctionCall(name, parameters) => {
-                let types: Vec<Cow<'_, Type>> = parameters.into_iter()
-                    .map(|param| self.get_type_from_expression(on_type, param, context, struct_manager))
-                    .collect::<Result<_, ParserError>>()?;
-
-                let func = self.get_function(on_type, name, types.as_slice())?;
+            Expression::FunctionCall(name, _) => {
+                let func = self.get_function(name)?;
                 match &func.return_type() {
                     Some(ref v) => Cow::Borrowed(v),
                     None => return Err(ParserError::FunctionNoReturnType)
@@ -289,10 +283,10 @@ impl<'a> Parser<'a> {
         }
 
         let id = functions_mapper.get_compatible((name, on_type.cloned()))?;
-        let func = self.get_function(on_type, &id, types.as_slice())?;
-        // Function call cannot call entry function
+        let func = self.get_function(&id)?;
+        // Entry are only callable by external
         if func.is_entry() {
-            return Err(ParserError::FunctionNotFound(id, parameters.len()))
+            return Err(ParserError::FunctionNotFound(id))
         }
 
         self.expect_token(Token::ParenthesisClose)?;
@@ -635,7 +629,7 @@ impl<'a> Parser<'a> {
             Expression::Value(Value::Null)
         };
 
-        let id = mapper.register(name);
+        let id = mapper.register(name)?;
         context.register_variable(id, value_type.clone())?;
 
         Ok(DeclarationStatement {
@@ -700,7 +694,7 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::ExpectedArrayType)
                     }
 
-                    let id = mapper.register(variable);
+                    let id = mapper.register(variable)?;
                     context.register_variable(id, expr_type.get_array_type().clone())?;
                     let statements = self.read_loop_body(context, return_type, mapper, functions_mapper, struct_manager)?;
                     context.end_scope();
@@ -818,7 +812,7 @@ impl<'a> Parser<'a> {
             self.expect_token(Token::Colon)?;
             let value_type = self.read_type(struct_manager)?;
 
-            parameters.push(Parameter::new(mapper.register(name), value_type));
+            parameters.push(Parameter::new(mapper.register(name)?, value_type));
 
             if *self.peek()? != Token::Comma {
                 break;
@@ -909,7 +903,7 @@ impl<'a> Parser<'a> {
                 return Err(ParserError::InvalidFunctionType(for_type))
             }
 
-            let id = mapper.register(instance_name);
+            let id = mapper.register(instance_name)?;
             context.register_variable(id, for_type.clone())?;
             self.expect_token(Token::ParenthesisClose)?;
 
@@ -940,9 +934,8 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let types: Vec<Cow<'_, Type>> = parameters.iter().map(|p| Cow::Borrowed(p.get_type())).collect();
-        let id = functions_mapper.register((name, for_type.clone()));
-        if self.has_function(for_type.as_ref(), &id, &types) {
+        let id = functions_mapper.register((name, for_type.clone()))?;
+        if self.has_function(&id) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }
 
@@ -952,9 +945,16 @@ impl<'a> Parser<'a> {
             context.register_variable(param.get_name().clone(), param.get_type().clone())?;
         }
 
-        let statements = Vec::new();
+        let statements = self.read_body(context, &return_type, true, &mut mapper, &functions_mapper, struct_manager)?;
+
+        context.end_scope();
+
+        // verify that the function ends with a return
+        if has_return_type && !self.ends_with_return(&statements)? {
+            return Err(ParserError::NoReturnFound)
+        }
+
         let function = FunctionType::Custom(Function::new(
-            id,
             for_type,
             instance_name,
             parameters,
@@ -964,70 +964,23 @@ impl<'a> Parser<'a> {
         ));
 
         // push function before reading statements to allow recursive calls
-        self.functions.push(function);
+        self.functions.insert(id, function);
 
-        let statements = self.read_body(context, &return_type, true, &mut mapper, &functions_mapper, struct_manager)?;
-
-        // verify that the function ends with a return
-        if has_return_type && !self.ends_with_return(&statements)? {
-            return Err(ParserError::NoReturnFound)
-        }
-
-        context.end_scope();
-
-        match self.functions.last_mut() {
-            Some(function) => {
-                if let FunctionType::Custom(f) = function {
-                    f.set_statements(statements);
-                }
-            },
-            None => return Err(ParserError::LastFunction) // shouldn't happen
-        };
 
         Ok(())
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, for_type: Option<&Type>, name: &IdentifierType, params: &[Cow<'_, Type>]) -> bool {
-        self.get_function(for_type, name, params).is_ok()
+    fn has_function(&self, name: &IdentifierType) -> bool {
+        self.get_function(name).is_ok()
     }
 
     // get a function exist based on signature (name + params)
-    fn get_function(&self, for_type: Option<&Type>, name: &IdentifierType, params: &[Cow<'_, Type>]) -> Result<&FunctionType, ParserError> {
-        // merge both iterators in one
-        let functions = self.functions.iter().map(|v| v).chain(self.env.get_functions());
-
-        'funcs: for f in functions {
-            if *f.get_name() == *name && f.get_parameters_count() == params.len() {
-                let same_type: bool = if let Some(type_a) = for_type {
-                    if let Some(type_b) = f.for_type() {
-                        type_a.is_compatible_with(type_b)
-                    } else {
-                        false
-                    }
-                } else {
-                    let f_type = f.for_type();
-                    if let (Some(left), Some(right)) = (for_type, f_type) {
-                        left == right
-                    } else {
-                        for_type.is_none() && f_type.is_none()
-                    }
-                };
-
-                if same_type {
-                    let types = f.get_parameters_types();
-                    for (param, param_type) in params.into_iter().zip(types.into_iter()) {
-                        if *param.as_ref() != *param_type && *param_type != Type::Any {
-                            continue 'funcs;
-                        }
-                    }
-    
-                    return Ok(&f);
-                }
-            }
+    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, ParserError> {
+        match self.env.get_functions().get(name) {
+            Some(func) => Ok(func),
+            None => self.functions.get(name).ok_or(ParserError::FunctionNotFound(name.clone()))
         }
-
-        Err(ParserError::FunctionNotFound(name.clone(), params.len()))
     }
 
     /**

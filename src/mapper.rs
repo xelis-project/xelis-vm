@@ -40,11 +40,14 @@ impl<T: Clone + Eq + Hash> Mapper<T> {
     }
 
     // Register a new variable name
-    pub fn register(&mut self, name: T) -> IdentifierType {
+    pub fn register(&mut self, name: T) -> Result<IdentifierType, ParserError> {
         let id = self.next_id;
-        self.mappings.insert(name, id);
+        if let Some(v) = self.mappings.insert(name, id) {
+            return Err(ParserError::MappingExists(v));
+        }
+
         self.next_id += 1;
-        id
+        Ok(id)
     }
 }
 
