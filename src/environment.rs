@@ -15,14 +15,9 @@ pub struct EnvironmentBuilder {
 
 impl EnvironmentBuilder {
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        println!("Registering native function: {}", name);
         let id = self.functions_mapper.register((name.to_owned(), for_type.clone())).unwrap();
         self.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
-
-    // pub fn register_structure(&mut self, name: String, structure: Struct) -> Option<Struct> {
-    //     self.structures.insert(name, structure)
-    // }
 
     pub fn build(self) -> (Environment, FunctionMapper) {
         (Environment {
@@ -44,9 +39,9 @@ impl Default for EnvironmentBuilder {
 
         // Array
         env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::Int));
-        env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::Any], push, 1, None); // TODO Any
-        env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![], remove, 1, Some(Type::Any));
-        env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::Any))));
+        env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None); // TODO Any
+        env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], remove, 1, Some(Type::T));
+        env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::T))));
 
         // String
         env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::Int));
@@ -56,8 +51,13 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("to_uppercase", Some(Type::String), vec![], to_uppercase, 1, Some(Type::String));
         env.register_native_function("to_lowercase", Some(Type::String), vec![], to_lowercase, 1, Some(Type::String));
         env.register_native_function("to_bytes", Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::Byte))));
+        env.register_native_function("index_of", Some(Type::String), vec![Type::String], index_of, 3, Some(Type::Optional(Box::new(Type::Int))));
 
-        // env.register_native_function("index_of", Some(Type::String), vec![Type::String], println, 3, Some(Type::Int));
+        // Optional
+        env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::Any))), vec![], is_none, 1, Some(Type::Boolean));
+        env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::Any))), vec![], is_some, 1, Some(Type::Boolean));
+        env.register_native_function("take", Some(Type::Optional(Box::new(Type::Any))), vec![], optional_take, 1, Some(Type::T));
+
         // env.register_native_function("last_index_of", Some(Type::String), vec![Type::String], println, 3, Some(Type::Int));
         // env.register_native_function("replace", Some(Type::String), vec![Type::String, Type::String], println, 3, Some(Type::String));
         // env.register_native_function("starts_with", Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean));
@@ -186,4 +186,26 @@ fn to_bytes(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     }
 
     Ok(Some(Value::Array(bytes)))
+}
+
+fn index_of(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    if let Some(index) = s.find(&value) {
+        Ok(Some(Value::Optional(Some(Box::new(Value::Int(index as u64))))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn is_none(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_none())))
+}
+
+fn is_some(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_some())))
+}
+
+fn optional_take(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    Ok(Some(zelf?.take_from_optional(&Type::T)?))
 }

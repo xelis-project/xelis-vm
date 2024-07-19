@@ -79,6 +79,7 @@ macro_rules! shr {
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    OptionalIsNull,
     NoMatchingFunction,
     TypeNotFound(Value),
     FunctionEntry(bool, bool), // expected, got
@@ -158,6 +159,15 @@ impl<'a> Interpreter<'a> {
             Type::Long => *left.as_long()? == *right.as_long()?,
             Type::Boolean => *left.as_bool()? == *right.as_bool()?,
             Type::String => *left.as_string()? == *right.as_string()?,
+            Type::Optional(sub_type) => {
+                let opt_left = left.as_optional(&sub_type)?;
+                let opt_right = right.as_optional(&sub_type)?;
+                if let (Some(left), Some(right)) = (opt_left, opt_right) {
+                    self.is_same_value(sub_type, left, right)?
+                } else {
+                    opt_left.is_some() == opt_right.is_some()
+                }
+            },
             Type::Struct(structure) => {
                 let left_map = left.as_map()?;
                 let right_map = right.as_map()?;
@@ -202,7 +212,8 @@ impl<'a> Interpreter<'a> {
                 } else {
                     false
                 }
-            }
+            },
+            _ => return Err(InterpreterError::InvalidType(value_type.clone()))
         })
     }
 

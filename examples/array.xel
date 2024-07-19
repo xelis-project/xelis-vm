@@ -25,5 +25,9 @@ entry main() {
     println(array)
     println(slice)
 
+    let b: int = slice.remove(0);
+    println(b)
+    println(slice)
+
     return 0
 }

@@ -1,0 +1,9 @@
+entry main() {
+    let opt: optional<byte> = null;
+    if opt.is_some() {
+        let v: byte = opt.take();
+        return v as int
+    } else {
+        return 0
+    }
+}

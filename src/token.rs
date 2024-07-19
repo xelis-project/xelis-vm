@@ -17,6 +17,7 @@ pub enum Token {
     Long,
     Boolean,
     String,
+    Optional(Box<Token>),
 
     BraceOpen,
     BraceClose,
@@ -142,7 +143,7 @@ impl Token {
             "long" => Long,
             "bool" => Boolean,
             "string" => String,
-            
+
             "let" => Let,
 
             "const" => Const,
@@ -214,6 +215,21 @@ impl Token {
             | Dot
             | OperatorTernary
             | As => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_type(&self) -> bool {
+        use Token::*;
+        match self {
+            | Byte
+            | Short
+            | Int
+            | Long
+            | Boolean
+            | String
+            | Identifier(_)
+            | Optional(_) => true,
             _ => false,
         }
     }

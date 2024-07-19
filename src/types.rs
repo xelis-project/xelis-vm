@@ -21,7 +21,8 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Struct(IdentifierType, HashMap<IdentifierType, Value>),
-    Array(Vec<Value>)
+    Array(Vec<Value>),
+    Optional(Option<Box<Value>>)
 }
 
 impl Value {
@@ -99,6 +100,21 @@ impl Value {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+        }
+    }
+
+    pub fn as_optional(&self, expected: &Type) -> Result<&Option<Box<Value>>, InterpreterError> {
+        match self {
+            Value::Null => Ok(&None),
+            Value::Optional(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
+        }
+    }
+
+    pub fn take_from_optional(&mut self, expected: &Type) -> Result<Value, InterpreterError> {
+        match self {
+            Value::Optional(opt) => Ok(*opt.take().ok_or(InterpreterError::OptionalIsNull)?),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
         }
     }
 
@@ -242,6 +258,10 @@ impl std::fmt::Display for Value {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
             },
+            Value::Optional(value) => match value.as_ref() {
+                Some(value) => write!(f, "Optional({})", value),
+                None => write!(f, "Optional(null)")
+            },
         }
     }
 }
@@ -289,7 +309,7 @@ impl<'a, K, V> RefMap<'a, K, V> {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Type {
     Any,
-    //T, // TODO T must be same as for type
+    T,
 
     Byte,
     Short,
@@ -299,7 +319,8 @@ pub enum Type {
     String,
     Boolean,
     Struct(IdentifierType),
-    Array(Box<Type>)
+    Array(Box<Type>),
+    Optional(Box<Type>)
 }
 
 impl Type {
@@ -311,6 +332,7 @@ impl Type {
             Token::Long => Type::Long,
             Token::Boolean => Type::Boolean,
             Token::String => Type::String,
+            Token::Optional(token) => Type::Optional(Box::new(Type::from_token(*token, struct_manager)?)),
             Token::Identifier(s) => {
                 if let Ok(id) = struct_manager.get_mapping(&s) {
                     Type::Struct(id)
@@ -333,6 +355,7 @@ impl Type {
             Value::Long(_) => Type::Long,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
+            Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),
             Value::Array(values) => Type::Array(Box::new(Type::from_value(values.first()?, structures)?)),
             Value::Struct(name, _) => if structures.has(name) {
                 Type::Struct(name.clone())
@@ -351,17 +374,25 @@ impl Type {
         }
     }
 
+    pub fn allow_null(&self) -> bool {
+        match self {
+            Type::Optional(_) => true,
+            _ => false
+        }
+    }
+
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {
-            Type::Any => true,
-            Type::Array(sub_type) => match sub_type.as_ref() {
-                Type::Any => self.is_array(),
-                o => match self {
-                    Type::Array(sub_type) => *o == *sub_type.as_ref() || *sub_type.as_ref() == Type::Any,
-                    _ => false
-                }
+            Type::Any | Type::T => true,
+            Type::Array(sub_type) => match self {
+                Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
             },
-            o => *o == *self 
+            Type::Optional(sub_type) => match self {
+                Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
+            },
+            o => *o == *self || *self == Type::T || *self == Type::Any
         }
     }
 
@@ -405,6 +436,13 @@ impl Type {
     pub fn is_number(&self) -> bool {
         match &self {
             Type::Byte | Type::Short | Type::Int | Type::Long => true,
+            _ => false
+        }
+    }
+
+    pub fn is_optional(&self) -> bool {
+        match &self {
+            Type::Optional(_) => true,
             _ => false
         }
     }

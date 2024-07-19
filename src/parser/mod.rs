@@ -141,9 +141,17 @@ impl<'a> Parser<'a> {
         Ok(_type)
     }
 
+    // get the type of an expression
+    fn get_type_from_expression<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context, struct_manager: &'b StructManager) -> Result<Cow<'b, Type>, ParserError> {
+        match self.get_type_from_expression_internal(on_type, expression, context, struct_manager)? {
+            Some(v) => Ok(v),
+            None => Err(ParserError::EmptyValue)
+        }
+    }
+
     // this function don't verify, but only returns the type of an expression
     // all tests should be done when constructing an expression, not here
-    fn get_type_from_expression<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context, struct_manager: &'b StructManager) -> Result<Cow<'b, Type>, ParserError> {
+    fn get_type_from_expression_internal<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context, struct_manager: &'b StructManager) -> Result<Option<Cow<'b, Type>>, ParserError> {
         let _type: Cow<'b, Type> = match expression {
             Expression::ArrayConstructor(ref values) => match values.first() {
                 Some(v) => Cow::Owned(Type::Array(Box::new(self.get_type_from_expression(on_type, v, context, struct_manager)?.into_owned()))),
@@ -173,14 +181,24 @@ impl<'a> Parser<'a> {
             Expression::FunctionCall(name, _) => {
                 let func = self.get_function(name)?;
                 match &func.return_type() {
-                    Some(ref v) => Cow::Borrowed(v),
+                    Some(ref v) => match v {
+                        Type::T => match on_type {
+                            Some(t) => match t {
+                                Type::Optional(_type) => Cow::Owned(*_type.clone()),
+                                Type::Array(_type) => Cow::Owned(*_type.clone()),
+                                _ => return Err(ParserError::InvalidTypeT)
+                            },
+                            None => return Err(ParserError::InvalidTypeT)
+                        },
+                        _ => Cow::Borrowed(v)
+                    },
                     None => return Err(ParserError::FunctionNoReturnType)
                 }
             },
             // we have to clone everything due to this
             Expression::Value(ref val) => match Type::from_value(val, struct_manager.inner()) {
                 Some(v) => Cow::Owned(v),
-                None => return Err(ParserError::EmptyValue)
+                None => return Ok(None)
             },
             Expression::ArrayCall(path, _) => {
                 match self.get_type_from_expression(on_type, path, context, struct_manager)?.into_owned() {
@@ -257,7 +275,7 @@ impl<'a> Parser<'a> {
             Expression::Cast(_, _type) => Cow::Borrowed(_type)
         };
 
-        Ok(_type)
+        Ok(Some(_type))
     }
 
     // Read a function call with the following syntax:
@@ -442,6 +460,13 @@ impl<'a> Parser<'a> {
                         Type::Short => Value::Short(convert!(value)),
                         Type::Int => Value::Int(value),
                         Type::Long => Value::Long(convert!(value)),
+                        Type::Optional(inner) => Value::Optional(Some(Box::new(match inner.as_ref() {
+                            Type::Byte => Value::Byte(convert!(value)),
+                            Type::Short => Value::Short(convert!(value)),
+                            Type::Int => Value::Int(value),
+                            Type::Long => Value::Long(convert!(value)),
+                            _ => return Err(ParserError::ExpectedNumberType)
+                        }))),
                         _ => return Err(ParserError::ExpectedNumberType)
                     },
                     None => Value::Int(value)
@@ -517,40 +542,46 @@ impl<'a> Parser<'a> {
                                 };
 
                                 let expr = self.read_expr(on_type, true, Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
-                                let right_type = self.get_type_from_expression(on_type, &expr, context, struct_manager)?;
-    
-                                match &op {
-                                    Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
-                                    | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
-                                    | Operator::BitwiseLeft | Operator::BitwiseRight
-                                    | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
-                                    | Operator::GreaterOrEqual => {
-                                        if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
-                                            return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
-                                        }
-                                    },
-                                    Operator::Plus => {
-                                        if left_type != Type::String && *right_type != Type::String {
-                                            if left_type != *right_type {
+                                if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
+                                    match &op {
+                                        Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
+                                        | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
+                                        | Operator::BitwiseLeft | Operator::BitwiseRight
+                                        | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
+                                        | Operator::GreaterOrEqual => {
+                                            if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
                                                 return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                             }
+                                        },
+                                        Operator::Plus => {
+                                            if left_type != Type::String && *right_type != Type::String {
+                                                if left_type != *right_type {
+                                                    return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
+                                                }
+                                            }
+                                        },
+                                        Operator::And | Operator::Or => {
+                                            if left_type != Type::Boolean {
+                                                return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Boolean))
+                                            }
+        
+                                            if *right_type != Type::Boolean {
+                                                return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Boolean))
+                                            }
+                                        },
+                                        _ => if left_type != *right_type {
+                                            return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                         }
-                                    },
-                                    Operator::And | Operator::Or => {
-                                        if left_type != Type::Boolean {
-                                            return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Boolean))
-                                        }
-    
-                                        if *right_type != Type::Boolean {
-                                            return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Boolean))
-                                        }
-                                    },
-                                    _ => if left_type != *right_type {
-                                        return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
+                                    };
+        
+                                    Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
+                                } else {
+                                    match op {
+                                        Operator::Equals | Operator::NotEquals |
+                                        Operator::Assign if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
+                                        _ => return Err(ParserError::IncompatibleNullWith(left_type))
                                     }
-                                };
-    
-                                Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
+                                }
                             }
                         }
                         None => return Err(ParserError::InvalidOperation)
@@ -613,13 +644,21 @@ impl<'a> Parser<'a> {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(None, true, Some(&value_type), context, mapper, functions_mapper, struct_manager)?;
 
-            let expr_type = match self.get_type_from_expression(None, &expr, context, struct_manager) {
-                Ok(_type) => _type,
+            let expr_type = match self.get_type_from_expression_internal(None, &expr, context, struct_manager) {
+                Ok(opt_type) => match opt_type {
+                    Some(v) => v,
+                    None => if value_type.is_optional() {
+                        Cow::Owned(value_type.clone())
+                    } else {
+                        return Err(ParserError::NoValueType)
+                    }
+                },
                 Err(e) => match e { // support empty array declaration
                     ParserError::EmptyArrayConstructor if value_type.is_array() => Cow::Owned(value_type.clone()),
                     _ => return Err(e)
                 }
             };
+
             if !expr_type.is_compatible_with(&value_type) {
                 return Err(ParserError::InvalidValueType(expr_type.into_owned(), value_type))
             }
@@ -1003,7 +1042,7 @@ impl<'a> Parser<'a> {
                     return Err(ParserError::InvalidStructureName(name))
                 }
             },
-            None => return Err(ParserError::EmptyValue)
+            None => return Err(ParserError::EmptyStructName)
         };
 
         let mut mapper = IdMapper::new();

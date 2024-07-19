@@ -57,10 +57,10 @@ impl FunctionMapper {
             Ok(id) => Ok(id),
             Err(e) => match key.1 {
                 Some(t) => {
-                    let new_type = if t.is_array() {
-                        Type::Array(Box::new(Type::Any))
-                    } else {
-                        Type::Any
+                    let new_type = match t {
+                        Type::Array(_) => Type::Array(Box::new(Type::Any)),
+                        Type::Optional(_) => Type::Optional(Box::new(Type::Any)),
+                        _ => t
                     };
 
                     self.get(&(key.0, Some(new_type)))

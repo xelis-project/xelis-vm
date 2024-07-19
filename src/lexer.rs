@@ -6,7 +6,8 @@ pub enum LexerError { // left is line, right is column
     EndOfFile,
     ParseToNumber(usize, usize),
     NoTokenFound(usize, usize),
-    ExpectedChar(usize, usize)
+    ExpectedChar(usize, usize),
+    ExpectedType
 }
 
 pub struct Lexer<'a> {
@@ -90,11 +91,11 @@ impl<'a> Lexer<'a> {
     }
 
     // read characters while the delimiter is true
-    fn read_while<F>(&mut self, delimiter: F) -> Result<&'a str, LexerError>
+    fn read_while<F>(&mut self, delimiter: F, diff: usize) -> Result<&'a str, LexerError>
     where 
         F: Fn(&char) -> bool,
     {
-        let init_pos = self.pos - 1;
+        let init_pos = self.pos - diff;
         loop {
             let value = self.advance()?;
             if !delimiter(&value) {
@@ -263,9 +264,32 @@ impl<'a> Lexer<'a> {
                 c if c.is_alphabetic() => {
                     let value = self.read_while(|v| -> bool {
                         *v == '_' || v.is_ascii_alphanumeric()
-                    })?;
+                    }, 1)?;
 
-                    Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.into()))
+                    match Token::value_of(&value) {
+                        Some(token) => token,
+                        None => if value == "optional" && self.peek()? == '<' {
+                            self.advance()?;
+                            let type_token = self.read_while(|v| -> bool {
+                                *v == '_' || v.is_ascii_alphanumeric()
+                            }, 0)?;
+
+                            if self.advance()? != '>' {
+                                return Err(LexerError::ExpectedChar(self.line, self.column));
+                            }
+
+                            let token = Token::value_of(&type_token)
+                                .ok_or_else(|| LexerError::NoTokenFound(self.line, self.column))?;
+
+                            if !token.is_type() {
+                                return Err(LexerError::ExpectedType);
+                            }
+
+                            Token::Optional(Box::new(token))
+                        } else {
+                            Token::Identifier(value.to_owned())
+                        }
+                    }
                 },
                 _ => {
                     // We must check token with the next character because of operations with assignations
@@ -522,6 +546,16 @@ mod tests {
             Token::Comma,
             Token::IntValue(20),
             Token::ParenthesisClose
+        ]);
+    }
+
+    #[test]
+    fn test_optional() {
+        let code = "optional<int>";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Optional(Box::new(Token::Int))
         ]);
     }
 }
