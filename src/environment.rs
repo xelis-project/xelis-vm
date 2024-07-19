@@ -42,6 +42,13 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None); // TODO Any
         env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], remove, 1, Some(Type::T));
         env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::Int, Type::Int], slice, 3, Some(Type::Array(Box::new(Type::T))));
+        env.register_native_function("contains", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], array_contains, 1, Some(Type::Boolean));
+        env.register_native_function("get", Some(Type::Array(Box::new(Type::Any))), vec![Type::Int], array_get, 1, Some(Type::Optional(Box::new(Type::T))));
+
+        // Optional
+        env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::Any))), vec![], is_none, 1, Some(Type::Boolean));
+        env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::Any))), vec![], is_some, 1, Some(Type::Boolean));
+        env.register_native_function("take", Some(Type::Optional(Box::new(Type::Any))), vec![], optional_take, 1, Some(Type::T));
 
         // String
         env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::Int));
@@ -52,24 +59,17 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("to_lowercase", Some(Type::String), vec![], to_lowercase, 1, Some(Type::String));
         env.register_native_function("to_bytes", Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::Byte))));
         env.register_native_function("index_of", Some(Type::String), vec![Type::String], index_of, 3, Some(Type::Optional(Box::new(Type::Int))));
+        env.register_native_function("last_index_of", Some(Type::String), vec![Type::String], last_index_of, 3, Some(Type::Optional(Box::new(Type::Int))));
+        env.register_native_function("replace", Some(Type::String), vec![Type::String, Type::String], replace, 5, Some(Type::String));
+        env.register_native_function("starts_with", Some(Type::String), vec![Type::String], starts_with, 3, Some(Type::Boolean));
+        env.register_native_function("ends_with", Some(Type::String), vec![Type::String], ends_with, 3, Some(Type::Boolean));
+        env.register_native_function("split", Some(Type::String), vec![Type::String], split, 5, Some(Type::Array(Box::new(Type::String))));
+        env.register_native_function("char_at", Some(Type::String), vec![Type::Int], char_at, 1, Some(Type::Optional(Box::new(Type::String))));
 
-        // Optional
-        env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::Any))), vec![], is_none, 1, Some(Type::Boolean));
-        env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::Any))), vec![], is_some, 1, Some(Type::Boolean));
-        env.register_native_function("take", Some(Type::Optional(Box::new(Type::Any))), vec![], optional_take, 1, Some(Type::T));
-
-        // env.register_native_function("last_index_of", Some(Type::String), vec![Type::String], println, 3, Some(Type::Int));
-        // env.register_native_function("replace", Some(Type::String), vec![Type::String, Type::String], println, 3, Some(Type::String));
-        // env.register_native_function("starts_with", Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean));
-        // env.register_native_function("ends_with", Some(Type::String), vec![Type::String], println, 3, Some(Type::Boolean));
-        // env.register_native_function("split", Some(Type::String), vec![Type::String], println, 3, Some(Type::Array(Box::new(Type::String))));
-        // env.register_native_function("char_at", Some(Type::String), vec![Type::Int], println, 1, Some(Type::String));
-
-        // env.register_native_function("is_empty", Some(Type::String), vec![], println, 1, Some(Type::Boolean));
-        // env.register_native_function("matches", Some(Type::String), vec![Type::String], println, 25, Some(Type::Boolean));
-        // env.register_native_function("substring", Some(Type::String), vec![Type::Int], println, 3, Some(Type::String));
-        // env.register_native_function("substring", Some(Type::String), vec![Type::Int, Type::Int], println, 3, Some(Type::String));
-        // env.register_native_function("format", Some(Type::String), vec![Type::String, Type::Array(Box::new(Type::String))], println, 5, Some(Type::String));
+        env.register_native_function("is_empty", Some(Type::String), vec![], is_empty, 1, Some(Type::Boolean));
+        env.register_native_function("matches", Some(Type::String), vec![Type::String], string_matches, 50, Some(Type::Array(Box::new(Type::String))));
+        env.register_native_function("substring", Some(Type::String), vec![Type::Int], string_substring, 3, Some(Type::Optional(Box::new(Type::String))));
+        env.register_native_function("substring", Some(Type::String), vec![Type::Int, Type::Int], string_subtring_range, 3, Some(Type::Optional(Box::new(Type::String))));
 
         env
     }
@@ -142,6 +142,22 @@ fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     Ok(Some(Value::Array(slice)))
 }
 
+fn array_contains(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let value = parameters.remove(0);
+    let vec: &Vec<Value> = zelf?.as_vec()?;
+    Ok(Some(Value::Boolean(vec.contains(&value))))
+}
+
+fn array_get(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let index = parameters.remove(0).to_int()? as usize;
+    let vec: &Vec<Value> = zelf?.as_vec()?;
+    if let Some(value) = vec.get(index) {
+        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
 fn println(_: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let param = parameters.remove(0);
     println!("{}", param);
@@ -150,6 +166,7 @@ fn println(_: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
 }
 
 // string
+
 fn trim(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     let s = zelf?.as_string()?.trim().to_string();
     Ok(Some(Value::String(s)))
@@ -197,6 +214,89 @@ fn index_of(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
         Ok(Some(Value::Optional(None)))
     }
 }
+
+fn last_index_of(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    if let Some(index) = s.rfind(&value) {
+        Ok(Some(Value::Optional(Some(Box::new(Value::Int(index as u64))))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn replace(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let old = parameters.remove(0).to_string()?;
+    let new = parameters.remove(0).to_string()?;
+    let s = s.replace(&old, &new);
+    Ok(Some(Value::String(s)))
+}
+
+fn starts_with(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    Ok(Some(Value::Boolean(s.starts_with(&value))))
+}
+
+fn ends_with(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    Ok(Some(Value::Boolean(s.ends_with(&value))))
+}
+
+fn split(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    let values: Vec<Value> = s.split(&value).map(|s| Value::String(s.to_string())).collect();
+    Ok(Some(Value::Array(values)))
+}
+
+fn char_at(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let index = parameters.remove(0).to_int()? as usize;
+    let s: &String = zelf?.as_string()?;
+    if let Some(c) = s.chars().nth(index) {
+        Ok(Some(Value::Optional(Some(Box::new(Value::String(c.to_string()))))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn is_empty(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    Ok(Some(Value::Boolean(s.is_empty())))
+}
+
+fn string_matches(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let value = parameters.remove(0).to_string()?;
+    let m = s.matches(&value);
+
+    Ok(Some(Value::Array(m.map(|s| Value::String(s.to_string())).collect())))
+}
+
+fn string_substring(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let start = parameters.remove(0).to_int()? as usize;
+    if let Some(s) = s.get(start..) {
+        Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn string_subtring_range(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let s: &String = zelf?.as_string()?;
+    let start = parameters.remove(0).to_int()? as usize;
+    let end = parameters.remove(0).to_int()? as usize;
+    if let Some(s) = s.get(start..end) {
+        Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+// Optional
 
 fn is_none(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_none())))
