@@ -284,7 +284,7 @@ impl<'a> Parser<'a> {
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
-        let mut types: Vec<Cow<'_, Type>> = Vec::new();
+        let mut types: Vec<Type> = Vec::new();
 
         // read parameters for function call
         while *self.peek()? != Token::ParenthesisClose {
@@ -292,7 +292,7 @@ impl<'a> Parser<'a> {
 
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
-            types.push(Cow::Owned(self.get_type_from_expression(on_type, &expr, context, struct_manager)?.into_owned()));
+            types.push(self.get_type_from_expression(on_type, &expr, context, struct_manager)?.into_owned());
             parameters.push(expr);
 
             if *self.peek()? == Token::Comma {
@@ -300,7 +300,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = functions_mapper.get_compatible((name, on_type.cloned()))?;
+        let id = functions_mapper.get_compatible((name, on_type.cloned(), types))?;
         let func = self.get_function(&id)?;
         // Entry are only callable by external
         if func.is_entry() {
@@ -973,7 +973,8 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let id = functions_mapper.register((name, for_type.clone()))?;
+        let types: Vec<Type> = parameters.iter().map(|p| p.get_type().clone()).collect();
+        let id = functions_mapper.register((name, for_type.clone(), types))?;
         if self.has_function(&id) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }

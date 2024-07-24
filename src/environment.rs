@@ -15,7 +15,7 @@ pub struct EnvironmentBuilder {
 
 impl EnvironmentBuilder {
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let id = self.functions_mapper.register((name.to_owned(), for_type.clone())).unwrap();
+        let id = self.functions_mapper.register((name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
         self.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
 

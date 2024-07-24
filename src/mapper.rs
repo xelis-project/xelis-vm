@@ -4,7 +4,8 @@ use crate::{types::Type, IdentifierType, ParserError};
 
 pub type IdMapper = Mapper<String>;
 
-pub type FunctionMapper = Mapper<(String, Option<Type>)>;
+type FunctionSignature = (String, Option<Type>, Vec<Type>);
+pub type FunctionMapper = Mapper<FunctionSignature>;
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
@@ -52,7 +53,7 @@ impl<T: Clone + Eq + Hash> Mapper<T> {
 }
 
 impl FunctionMapper {
-    pub fn get_compatible(&self, key: (String, Option<Type>)) -> Result<IdentifierType, ParserError> {
+    pub fn get_compatible(&self, key: FunctionSignature) -> Result<IdentifierType, ParserError> {
         match self.get(&key) {
             Ok(id) => Ok(id),
             Err(e) => match key.1 {
@@ -63,7 +64,7 @@ impl FunctionMapper {
                         _ => t
                     };
 
-                    self.get(&(key.0, Some(new_type)))
+                    self.get(&(key.0, Some(new_type), key.2))
                 },
                 None => Err(e)
             }
