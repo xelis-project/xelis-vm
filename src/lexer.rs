@@ -231,6 +231,26 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
+    // read a type
+    // it supports optional types
+    fn read_type(&mut self, diff: usize) -> Result<Token, LexerError> {
+        let value = self.read_while(|v| -> bool {
+            *v == '_' || v.is_ascii_alphanumeric()
+        }, diff)?;
+
+        if value == "optional" && self.peek()? == '<' {
+            self.advance()?;
+            let inner = self.read_type(0)?;
+            if '>' != self.advance()? {
+                return Err(LexerError::ExpectedChar(self.line, self.column));
+            }
+
+            Ok(Token::Optional(Box::new(inner)))
+        } else {
+            Token::value_of(&value).ok_or(LexerError::ExpectedType)
+        }
+    }
+
     // retrieve the next token available
     fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
         while let Some(c) = self.next_char() {
@@ -261,36 +281,7 @@ impl<'a> Lexer<'a> {
                 },
                 // read a number value
                 c if c.is_digit(10) => self.read_number(c)?,
-                c if c.is_alphabetic() => {
-                    let value = self.read_while(|v| -> bool {
-                        *v == '_' || v.is_ascii_alphanumeric()
-                    }, 1)?;
-
-                    match Token::value_of(&value) {
-                        Some(token) => token,
-                        None => if value == "optional" && self.peek()? == '<' {
-                            self.advance()?;
-                            let type_token = self.read_while(|v| -> bool {
-                                *v == '_' || v.is_ascii_alphanumeric()
-                            }, 0)?;
-
-                            if self.advance()? != '>' {
-                                return Err(LexerError::ExpectedChar(self.line, self.column));
-                            }
-
-                            let token = Token::value_of(&type_token)
-                                .ok_or_else(|| LexerError::NoTokenFound(self.line, self.column))?;
-
-                            if !token.is_type() {
-                                return Err(LexerError::ExpectedType);
-                            }
-
-                            Token::Optional(Box::new(token))
-                        } else {
-                            Token::Identifier(value.to_owned())
-                        }
-                    }
-                },
+                c if c.is_alphabetic() => self.read_type(1)?,
                 _ => {
                     // We must check token with the next character because of operations with assignations
                     if let Some(token) = self.try_token_with(1) {
@@ -556,6 +547,16 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Optional(Box::new(Token::Int))
+        ]);
+    }
+
+    #[test]
+    fn test_optional_2() {
+        let code = "optional<optional<int>>";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Optional(Box::new(Token::Optional(Box::new(Token::Int))))
         ]);
     }
 }
