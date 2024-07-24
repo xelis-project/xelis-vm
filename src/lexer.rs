@@ -605,4 +605,47 @@ mod tests {
             Token::BraceClose
         ]);
     }
+
+    #[test]
+    fn test_cast() {
+        let code = "let a = 10 as byte;";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Let,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorAssign,
+            Token::IntValue(10),
+            Token::As,
+            Token::Byte
+        ]);
+    }
+
+    #[test]
+    fn test_import() {
+        let code = "from \"file\" import TestStruct;";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::From,
+            Token::StringValue("file".to_owned()),
+            Token::Import,
+            Token::Identifier("TestStruct".to_owned()),
+        ]);
+    }
+
+    #[test]
+    fn test_import_as() {
+        let code = "from \"file\" import TestStruct as Test;";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::From,
+            Token::StringValue("file".to_owned()),
+            Token::Import,
+            Token::Identifier("TestStruct".to_owned()),
+            Token::As,
+            Token::Identifier("Test".to_owned())
+        ]);
+    }
 }

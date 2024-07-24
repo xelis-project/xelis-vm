@@ -82,6 +82,7 @@ pub enum Token {
     OperatorTernary,
 
     Import,
+    From,
     As
 }
 
@@ -166,6 +167,7 @@ impl Token {
             "false" => False,
 
             "import" => Import,
+            "from" => From,
             "as" => As,
 
             _ => return None,
