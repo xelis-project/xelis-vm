@@ -19,7 +19,7 @@ use crate::{
 };
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     convert::TryInto
 };
 
@@ -35,7 +35,7 @@ macro_rules! convert {
 #[derive(Debug)]
 pub struct Program {
     // All constants declared
-    pub constants: Vec<DeclarationStatement>,
+    pub constants: HashSet<DeclarationStatement>,
     // All structures declared
     pub structures: HashMap<IdentifierType, Struct>,
     // All functions declared
@@ -43,7 +43,7 @@ pub struct Program {
 }
 
 pub struct Parser<'a> {
-    constants: Vec<DeclarationStatement>,
+    constants: HashSet<DeclarationStatement>,
     tokens: VecDeque<Token>,
     functions: HashMap<IdentifierType, FunctionType>,
     // Environment contains all the library linked to the program
@@ -53,7 +53,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(tokens: VecDeque<Token>, env: &'a Environment) -> Self {
         Parser {
-            constants: Vec::new(),
+            constants: HashSet::new(),
             tokens,
             functions: HashMap::new(),
             env,
@@ -1072,7 +1072,10 @@ impl<'a> Parser<'a> {
                 Token::Import => return Err(ParserError::NotImplemented),
                 Token::Const => {
                     let var = self.read_variable(&mut context, &mut constants_mapper, functions_mapper, &mut struct_manager, true)?;
-                    self.constants.push(var);
+                    let id = var.id;
+                    if !self.constants.insert(var) {
+                        return Err(ParserError::VariableIdAlreadyUsed(id))
+                    }
                 },
                 Token::Function => self.read_function(false, &mut context, &constants_mapper, functions_mapper, &struct_manager)?,
                 Token::Entry => self.read_function(true, &mut context, &constants_mapper, functions_mapper, &struct_manager)?,

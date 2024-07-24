@@ -231,23 +231,27 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    // read a type
-    // it supports optional types
-    fn read_type(&mut self, diff: usize) -> Result<Token, LexerError> {
+    // read a token
+    // it also supports optional types
+    fn read_token(&mut self, diff: usize) -> Result<Token, LexerError> {
         let value = self.read_while(|v| -> bool {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
 
         if value == "optional" && self.peek()? == '<' {
             self.advance()?;
-            let inner = self.read_type(0)?;
+            let inner = self.read_token(0)?;
             if '>' != self.advance()? {
                 return Err(LexerError::ExpectedChar(self.line, self.column));
             }
 
+            if !inner.is_type() {
+                return Err(LexerError::ExpectedType);
+            }
+
             Ok(Token::Optional(Box::new(inner)))
         } else {
-            Token::value_of(&value).ok_or(LexerError::ExpectedType)
+            Ok(Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.to_owned())))
         }
     }
 
@@ -281,7 +285,7 @@ impl<'a> Lexer<'a> {
                 },
                 // read a number value
                 c if c.is_digit(10) => self.read_number(c)?,
-                c if c.is_alphabetic() => self.read_type(1)?,
+                c if c.is_alphabetic() => self.read_token(1)?,
                 _ => {
                     // We must check token with the next character because of operations with assignations
                     if let Some(token) = self.try_token_with(1) {
@@ -557,6 +561,48 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Optional(Box::new(Token::Optional(Box::new(Token::Int))))
+        ]);
+    }
+
+    #[test]
+    fn test_condition() {
+        let code = "if a == 10 { return 10; } else { return 20; }";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::If,
+            Token::Identifier("a".to_owned()),
+            Token::OperatorEquals,
+            Token::IntValue(10),
+            Token::BraceOpen,
+            Token::Return,
+            Token::IntValue(10),
+            Token::BraceClose,
+            Token::Else,
+            Token::BraceOpen,
+            Token::Return,
+            Token::IntValue(20),
+            Token::BraceClose
+        ]);
+    }
+
+    #[test]
+    fn test_struct() {
+        let code = "struct User { name: string, age: int }";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Struct,
+            Token::Identifier("User".to_owned()),
+            Token::BraceOpen,
+            Token::Identifier("name".to_owned()),
+            Token::Colon,
+            Token::String,
+            Token::Comma,
+            Token::Identifier("age".to_owned()),
+            Token::Colon,
+            Token::Int,
+            Token::BraceClose
         ]);
     }
 }

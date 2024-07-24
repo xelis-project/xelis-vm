@@ -79,6 +79,20 @@ pub struct DeclarationStatement {
     pub value: Expression,
 }
 
+impl std::hash::Hash for DeclarationStatement {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl std::cmp::PartialEq for DeclarationStatement {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl std::cmp::Eq for DeclarationStatement {}
+
 #[derive(Debug)]
 pub struct Parameter {
     name: IdentifierType,
