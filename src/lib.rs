@@ -11,7 +11,7 @@ mod mapper;
 pub use crate::{
     environment::Environment,
     token::Token,
-    functions::{FnInstance, Function, FnReturnType},
+    functions::{FnInstance, DeclaredFunction, EntryFunction, FnReturnType},
     interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError}

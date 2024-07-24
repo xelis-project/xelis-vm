@@ -68,23 +68,21 @@ impl std::fmt::Debug for NativeFunction {
 }
 
 #[derive(Debug)]
-pub struct Function {
+pub struct DeclaredFunction {
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
-    entry: bool,
     return_type: Option<Type>
 }
 
-impl Function {
-    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, entry: bool, return_type: Option<Type>) -> Self {
-        Function {
+impl DeclaredFunction {
+    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>) -> Self {
+        DeclaredFunction {
             for_type,
             instance_name,
             parameters,
             statements,
-            entry,
             return_type
         }
     }
@@ -107,43 +105,71 @@ impl Function {
 }
 
 #[derive(Debug)]
+pub struct EntryFunction {
+    parameters: Vec<Parameter>,
+    statements: Vec<Statement>,
+}
+
+impl EntryFunction {
+    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>) -> Self {
+        EntryFunction {
+            parameters,
+            statements
+        }
+    }
+
+    pub fn get_parameters(&self) -> &Vec<Parameter> {
+        &self.parameters
+    }
+
+    pub fn get_statements(&self) -> &Vec<Statement> {
+        &self.statements
+    }
+}
+
+#[derive(Debug)]
 pub enum FunctionType {
     Native(NativeFunction),
-    Custom(Function)
+    Declared(DeclaredFunction),
+    Entry(EntryFunction)
 }
 
 impl FunctionType {
     pub fn get_parameters_types(&self) -> Vec<&Type> {
         match &self {
             FunctionType::Native(ref f) => f.parameters.iter().map(|p| p).collect(),
-            FunctionType::Custom(ref f) => f.parameters.iter().map(|p| p.get_type()).collect()
+            FunctionType::Declared(ref f) => f.parameters.iter().map(|p| p.get_type()).collect(),
+            FunctionType::Entry(ref f) => f.parameters.iter().map(|p| p.get_type()).collect()
         }
     }
 
     pub fn get_parameters_count(&self) -> usize {
         match &self {
             FunctionType::Native(ref f) => f.parameters.len(),
-            FunctionType::Custom(ref f) => f.parameters.len()
+            FunctionType::Declared(ref f) => f.parameters.len(),
+            FunctionType::Entry(ref f) => f.parameters.len()
         } 
     }
 
     pub fn for_type(&self) -> &Option<Type> {
         match &self {
             FunctionType::Native(ref f) => &f.for_type,
-            FunctionType::Custom(ref f) => &f.for_type
+            FunctionType::Declared(ref f) => &f.for_type,
+            FunctionType::Entry(_) => &None
         }
     }
 
     pub fn return_type(&self) -> &Option<Type> {
         match &self {
             FunctionType::Native(ref f) => &f.return_type,
-            FunctionType::Custom(ref f) => &f.return_type 
+            FunctionType::Declared(ref f) => &f.return_type ,
+            FunctionType::Entry(_) => &None
         }
     }
 
     pub fn is_entry(&self) -> bool {
         match &self {
-            FunctionType::Custom(ref f) => f.entry,
+            FunctionType::Entry(_) => true,
             _ => false
         }
     }

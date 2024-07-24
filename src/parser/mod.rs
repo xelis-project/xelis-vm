@@ -10,7 +10,7 @@ use self::context::Context;
 
 use crate::{
     expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
-    functions::{Function, FunctionType},
+    functions::{DeclaredFunction, EntryFunction, FunctionType},
     mapper::{FunctionMapper, IdMapper},
     types::{Struct, Type, Value},
     Environment,
@@ -993,18 +993,19 @@ impl<'a> Parser<'a> {
             return Err(ParserError::NoReturnFound)
         }
 
-        let function = FunctionType::Custom(Function::new(
-            for_type,
-            instance_name,
-            parameters,
-            statements,
-            entry,
-            return_type.clone()
-        ));
+        let function = match entry {
+            true => FunctionType::Entry(EntryFunction::new(parameters, statements)),
+            false => FunctionType::Declared(DeclaredFunction::new(
+                for_type,
+                instance_name,
+                parameters,
+                statements,
+                return_type,
+            ))
+        };
 
         // push function before reading statements to allow recursive calls
         self.functions.insert(id, function);
-
 
         Ok(())
     }

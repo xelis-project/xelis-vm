@@ -2,12 +2,12 @@ mod context;
 mod state;
 
 use crate::{
-    expressions::{Expression, Operator, Statement},
     environment::Environment,
+    expressions::{Expression, Operator, Parameter, Statement},
     functions::FunctionType,
     parser::Program,
-    IdentifierType,
-    types::*
+    types::*,
+    IdentifierType
 };
 use context::Context;
 pub use state::State;
@@ -819,36 +819,35 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
+    fn execute_function_internal(&self, type_instance: Option<(&mut Value, IdentifierType)>, parameters: &Vec<Parameter>, values: VecDeque<Value>, statements: &Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+        let mut context = Context::new();
+        context.begin_scope();
+        if let Some((instance, instance_name)) = type_instance {
+            context.register_variable(instance_name, instance.clone())?;
+        }
+
+        for (param, value) in parameters.iter().zip(values.into_iter()) {
+            context.register_variable(param.get_name().clone(), value)?;
+        }
+
+        let result = self.execute_statements(statements, &mut context, state);
+        context.end_scope()?;
+        result
+    }
+
     // Execute the selected function
-    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, mut values: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, values: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         match func {
             FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
-            FunctionType::Custom(ref f) => {
-                let mut context = Context::new();
-                context.begin_scope();
-                match &f.get_instance_name() {
-                    Some(name) => match type_instance {
-                        Some(instance) => {
-                            if func.for_type().is_none() {
-                                return Err(InterpreterError::ExpectedInstanceType)
-                            }
-
-                            context.register_variable(name.clone(), instance.clone())?;
-                        },
-                        None => return Err(InterpreterError::UnexpectedInstanceType)
-                    },
-                    None => {}
+            FunctionType::Declared(ref f) => {
+                let instance = match (type_instance, f.get_instance_name()) {
+                    (Some(v), Some(n)) => Some((v, *n)),
+                    (None, None) => None,
+                    _ => return Err(InterpreterError::NativeFunctionExpectedInstance)
                 };
-
-                for param in f.get_parameters().iter() {
-                    let value = values.pop_front().ok_or(InterpreterError::MissingValueForFunctionCall)?;
-                    context.register_variable(param.get_name().clone(), value)?;
-                }
-                let result = self.execute_statements(f.get_statements(), &mut context, state);
-                context.end_scope()?;
-
-                result
-            }
+                self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), state)
+            },
+            FunctionType::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), state)
         }
     }
 
