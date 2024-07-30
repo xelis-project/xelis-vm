@@ -2,7 +2,8 @@ use crate::{
     functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
     interpreter::InterpreterError,
     mapper::FunctionMapper,
-    types::{Struct, Type, Value},
+    types::{Struct, Type},
+    values::{Value, ValueVariant},
     IdentifierType
 };
 use std::collections::HashMap;
@@ -111,29 +112,36 @@ fn len(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(param);
+    zelf?.as_mut_vec()?.push(ValueVariant::Value(param));
     Ok(None)
 }
 
 fn remove(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let index = parameters.remove(0).to_int()? as usize;
-    Ok(Some(zelf?.as_mut_vec()?.remove(index)))
+
+    let array = zelf?.as_mut_vec()?;
+    if index >= array.len() {
+        return Err(InterpreterError::OutOfBounds(index, array.len()))
+    }
+
+    Ok(Some(array.remove(index).into_value()))
 }
 
 fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let start = parameters.remove(0).to_int()?;
     let end = parameters.remove(0).to_int()?;
 
-    let vec: &Vec<Value> = zelf?.as_vec()?;
+    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
     let len_u64 = vec.len() as u64;
     if start >= len_u64 || end >= len_u64 || start >= end {
         return Err(InterpreterError::InvalidRange(start, end))
     }
 
-    let mut slice: Vec<Value> = Vec::new();
+    let mut slice: Vec<ValueVariant> = Vec::new();
     for i in start..end {
+        // due to SharedValue, slice are connected.
         let value = match vec.get(i as usize) {
-            Some(v) => v.clone(), // due to RefValue, slice are connected.
+            Some(v) => v.clone(),
             None => return Err(InterpreterError::NoValueFoundAtIndex(i))
         };
         slice.push(value);
@@ -144,15 +152,15 @@ fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
 
 fn array_contains(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let value = parameters.remove(0);
-    let vec: &Vec<Value> = zelf?.as_vec()?;
-    Ok(Some(Value::Boolean(vec.contains(&value))))
+    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+    Ok(Some(Value::Boolean(vec.contains(&ValueVariant::Value(value)))))
 }
 
 fn array_get(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let index = parameters.remove(0).to_int()? as usize;
-    let vec: &Vec<Value> = zelf?.as_vec()?;
+    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -197,9 +205,9 @@ fn to_lowercase(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
 fn to_bytes(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
 
-    let mut bytes: Vec<Value> = Vec::new();
+    let mut bytes: Vec<ValueVariant> = Vec::new();
     for byte in s.as_bytes() {
-        bytes.push(Value::Byte(*byte));
+        bytes.push(ValueVariant::Value(Value::Byte(*byte)));
     }
 
     Ok(Some(Value::Array(bytes)))
@@ -248,7 +256,10 @@ fn ends_with(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
 fn split(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
     let value = parameters.remove(0).to_string()?;
-    let values: Vec<Value> = s.split(&value).map(|s| Value::String(s.to_string())).collect();
+    let values: Vec<ValueVariant> = s.split(&value)
+        .map(|s| ValueVariant::Value(Value::String(s.to_string())))
+        .collect();
+
     Ok(Some(Value::Array(values)))
 }
 
@@ -271,8 +282,7 @@ fn string_matches(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType 
     let s: &String = zelf?.as_string()?;
     let value = parameters.remove(0).to_string()?;
     let m = s.matches(&value);
-
-    Ok(Some(Value::Array(m.map(|s| Value::String(s.to_string())).collect())))
+    Ok(Some(Value::Array(m.map(|s| ValueVariant::Value(Value::String(s.to_string()))).collect())))
 }
 
 fn string_substring(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {

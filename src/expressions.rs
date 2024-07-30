@@ -1,5 +1,6 @@
 use crate::{
-    types::{Value, Type},
+    types::Type,
+    values::Value,
     token::Token,
     IdentifierType
 };

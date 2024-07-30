@@ -12,7 +12,8 @@ use crate::{
     expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
     functions::{DeclaredFunction, EntryFunction, FunctionType},
     mapper::{FunctionMapper, IdMapper},
-    types::{Struct, Type, Value},
+    types::{Struct, Type},
+    values::Value,
     Environment,
     IdentifierType,
     Token

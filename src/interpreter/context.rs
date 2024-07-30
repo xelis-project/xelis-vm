@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{InterpreterError, IdentifierType};
-use super::Value;
+use crate::{InterpreterError, IdentifierType, values::*};
 
-pub type Scope = HashMap<IdentifierType, Value>;
+pub type Scope = HashMap<IdentifierType, ValueVariant>;
 
 #[derive(Debug)]
 pub struct Context {
@@ -66,21 +65,25 @@ impl Context {
         self.variables.pop().ok_or(InterpreterError::NoScopeFound)
     }
 
-    pub fn get_variable(&self, name: &IdentifierType) -> Result<&Value, InterpreterError> {
+    pub fn get_variable(&self, name: &IdentifierType) -> Result<&ValueVariant, InterpreterError> {
         self.variables.iter().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
             .get(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut Value, InterpreterError> {
+    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut ValueVariant, InterpreterError> {
         self.variables.iter_mut().rev()
             .find(|v| v.contains_key(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?
             .get_mut(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn set_variable_value(&mut self, name: &IdentifierType, value: Value) -> Result<(), InterpreterError> {
+    pub fn get_sharable_value(&mut self, name: &IdentifierType) -> Result<SharableValue, InterpreterError> {
+        self.get_mut_variable(name).map(|v| v.get_sharable())
+    }
+
+    pub fn set_variable_value(&mut self, name: &IdentifierType, value: ValueVariant) -> Result<(), InterpreterError> {
         let var = self.get_mut_variable(name)?;
         *var = value;
         Ok(())
@@ -90,12 +93,13 @@ impl Context {
         self.get_variable(name).is_ok()
     }
 
-    pub fn register_variable(&mut self, name: IdentifierType, value: Value) -> Result<(), InterpreterError> {
+    pub fn register_variable<V: Into<ValueVariant>>(&mut self, name: IdentifierType, value: V) -> Result<(), InterpreterError> {
         if self.has_variable(&name) {
             return Err(InterpreterError::VariableAlreadyExists(name))
         }
+
         let scope = self.get_last_scope()?;
-        scope.insert(name, value);
+        scope.insert(name, value.into());
 
         Ok(())
     }

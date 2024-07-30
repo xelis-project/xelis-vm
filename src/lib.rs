@@ -7,6 +7,7 @@ mod token;
 mod types;
 mod functions;
 mod mapper;
+mod values;
 
 pub use crate::{
     environment::Environment,

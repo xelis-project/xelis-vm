@@ -27,9 +27,9 @@ impl State {
     }
 
     // Constants variables registered in the state
-    pub fn get_constant_value<'b>(&'b self, name: &IdentifierType) -> Option<&'b Value> {
+    pub fn get_constant_value<'b>(&'b self, name: &IdentifierType) -> Option<Value> {
         match &self.constants {
-            Some(constants) => constants.get(name),
+            Some(constants) => Some(constants.get(name)?.clone_value()),
             None => None
         }
     }
