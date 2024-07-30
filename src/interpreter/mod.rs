@@ -14,8 +14,10 @@ use context::Context;
 pub use state::State;
 
 use std::{
+    cell::RefCell,
     collections::{HashMap, VecDeque},
-    convert::TryInto
+    convert::TryInto,
+    rc::Rc
 };
 
 macro_rules! exec {
@@ -825,9 +827,10 @@ impl<'a> Interpreter<'a> {
     fn execute_function_internal(&self, type_instance: Option<(&mut Value, IdentifierType)>, parameters: &Vec<Parameter>, values: VecDeque<Value>, statements: &Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         let mut context = Context::new();
         context.begin_scope();
-        if let Some((instance, instance_name)) = type_instance {
+        if let Some((instance, instance_name)) = type_instance.as_ref() {
             // TODO no clone, otherwise our changes will not be reflected
-            context.register_variable(instance_name, instance.clone())?;
+            let val = Rc::new(RefCell::new((*instance).clone()));
+            context.register_variable(instance_name.clone(), val)?;
         }
 
         for (param, value) in parameters.iter().zip(values.into_iter()) {
@@ -835,7 +838,15 @@ impl<'a> Interpreter<'a> {
         }
 
         let result = self.execute_statements(statements, &mut context, state);
-        context.end_scope()?;
+
+        let mut scope = context.remove_scope()?;
+        if let Some((instance, name)) = type_instance {
+            let expected = scope.remove(&name)
+                .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?;
+
+            *instance = expected.into_value();
+        }
+
         result
     }
 
