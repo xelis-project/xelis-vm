@@ -29,7 +29,7 @@ pub enum Statement {
     ElseIf(Expression, Vec<Statement>),
     While(Expression, Vec<Statement>),
     ForEach(IdentifierType, Expression, Vec<Statement>), // for a in array
-    For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: int = 0; i < 10; i++ (; will not be saved)
+    For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: u64 = 0; i < 10; i++ (; will not be saved)
     Expression(Expression),
     Return(Option<Expression>),
     Scope(Vec<Statement>),

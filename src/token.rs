@@ -3,19 +3,20 @@ pub enum Token {
     // Variable / function names
     Identifier(String),
     // Values
-    IntValue(u64),
-    LongValue(u128),
+    U64Value(u64),
+    U128Value(u128),
     StringValue(String),
     Null,
     True,
     False,
 
     // Types supported
-    Byte,
-    Short,
-    Int,
-    Long,
-    Boolean,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    Bool,
     String,
     Optional(Box<Token>),
 
@@ -138,11 +139,12 @@ impl Token {
             "," => Comma,
             ":" => Colon,
 
-            "byte" => Byte,
-            "short" => Short,
-            "int" => Int,
-            "long" => Long,
-            "bool" => Boolean,
+            "u8" => U8,
+            "u16" => U16,
+            "u32" => U32,
+            "u64" => U64,
+            "u128" => U128,
+            "bool" => Bool,
             "string" => String,
 
             "let" => Let,
@@ -224,11 +226,11 @@ impl Token {
     pub fn is_type(&self) -> bool {
         use Token::*;
         match self {
-            | Byte
-            | Short
-            | Int
-            | Long
-            | Boolean
+            | U8
+            | U16
+            | U64
+            | U128
+            | Bool
             | String
             | Identifier(_)
             | Optional(_) => true,

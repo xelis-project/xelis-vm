@@ -156,11 +156,11 @@ impl<'a> Interpreter<'a> {
     fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
         Ok(match value_type {
             Type::Any => return Err(InterpreterError::InvalidType(value_type.clone())),
-            Type::Byte => *left.as_byte()? == *right.as_byte()?,
-            Type::Short => *left.as_short()? == *right.as_short()?,
-            Type::Int => *left.as_int()? == *right.as_int()?,
-            Type::Long => *left.as_long()? == *right.as_long()?,
-            Type::Boolean => *left.as_bool()? == *right.as_bool()?,
+            Type::U8 => *left.as_byte()? == *right.as_byte()?,
+            Type::U16 => *left.as_u16()? == *right.as_u16()?,
+            Type::U64 => *left.as_u64()? == *right.as_u64()?,
+            Type::U128 => *left.as_u128()? == *right.as_u128()?,
+            Type::Bool => *left.as_bool()? == *right.as_bool()?,
             Type::String => *left.as_string()? == *right.as_string()?,
             Type::Optional(sub_type) => {
                 let opt_left = left.as_optional(&sub_type)?;
@@ -237,7 +237,7 @@ impl<'a> Interpreter<'a> {
     fn get_from_path<'b>(&self, ref_value: Option<SharableValue>, path: &Expression, mut context: Option<&mut Context>, state: &mut State) -> Result<SharableValue, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(None, expr_index, context.copy_ref(), state)?.to_int()? as usize;
+                let index = self.execute_expression_and_expect_value(None, expr_index, context.copy_ref(), state)?.to_u64()? as usize;
                 let array = self.get_from_path(ref_value, expr, context, state)?;
                 let mut a = array.borrow_mut();
                 let values = a.as_mut_vec()?;
@@ -329,7 +329,7 @@ impl<'a> Interpreter<'a> {
             },
             Expression::ArrayCall(expr, expr_index) => {
                 let values = self.execute_expression_and_expect_value(on_value, &expr, context.copy_ref(), state)?.to_vec()?;
-                let index = self.execute_expression_and_expect_value(None, &expr_index, context.copy_ref(), state)?.to_int()? as usize;
+                let index = self.execute_expression_and_expect_value(None, &expr_index, context.copy_ref(), state)?.to_u64()? as usize;
 
                 Ok(match values.get(index) {
                     Some(v) => Some(v.clone_value()),
@@ -385,92 +385,92 @@ impl<'a> Interpreter<'a> {
                         },
                         Operator::AssignPlus => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(add!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(add!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(add!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(add!(path_value.as_long()?,  value.to_long()?)),
+                                Type::U8 => Value::U8(add!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(add!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(add!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(add!(path_value.as_u128()?,  value.to_u128()?)),
                                 Type::String => Value::String(format!("{}{}", path_value.as_string()?, value.to_string()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMinus => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(sub!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(sub!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(sub!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(sub!(path_value.as_long()?, value.to_long()?)),
+                                Type::U8 => Value::U8(sub!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(sub!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(sub!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(sub!(path_value.as_u128()?, value.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignDivide => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(div!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(div!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(div!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(div!(path_value.as_long()?, value.to_long()?)),
+                                Type::U8 => Value::U8(div!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(div!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(div!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(div!(path_value.as_u128()?, value.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignMultiply => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(mul!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(mul!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(mul!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(mul!(path_value.as_long()?, value.to_long()?)),
+                                Type::U8 => Value::U8(mul!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(mul!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(mul!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(mul!(path_value.as_u128()?, value.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         }, 
                         Operator::AssignModulo => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? % value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? % value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? % value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? % value.to_long()?),
+                                Type::U8 => Value::U8(path_value.as_byte()? % value.to_u8()?),
+                                Type::U16 => Value::U16(path_value.as_u16()? % value.to_u16()?),
+                                Type::U64 => Value::U64(path_value.as_u64()? % value.to_u64()?),
+                                Type::U128 => Value::U128(path_value.as_u128()? % value.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignBitwiseXor => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? ^ value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? ^ value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? ^ value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? ^ value.to_long()?),
+                                Type::U8 => Value::U8(path_value.as_byte()? ^ value.to_u8()?),
+                                Type::U16 => Value::U16(path_value.as_u16()? ^ value.to_u16()?),
+                                Type::U64 => Value::U64(path_value.as_u64()? ^ value.to_u64()?),
+                                Type::U128 => Value::U128(path_value.as_u128()? ^ value.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignBitwiseAnd => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? & value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? & value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? & value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? & value.to_long()?),
+                                Type::U8 => Value::U8(path_value.as_byte()? & value.to_u8()?),
+                                Type::U16 => Value::U16(path_value.as_u16()? & value.to_u16()?),
+                                Type::U64 => Value::U64(path_value.as_u64()? & value.to_u64()?),
+                                Type::U128 => Value::U128(path_value.as_u128()? & value.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignBitwiseOr => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(path_value.as_byte()? | value.to_byte()?),
-                                Type::Short => Value::Short(path_value.as_short()? | value.to_short()?),
-                                Type::Int => Value::Int(path_value.as_int()? | value.to_int()?),
-                                Type::Long => Value::Long(path_value.as_long()? | value.to_long()?),
+                                Type::U8 => Value::U8(path_value.as_byte()? | value.to_u8()?),
+                                Type::U16 => Value::U16(path_value.as_u16()? | value.to_u16()?),
+                                Type::U64 => Value::U64(path_value.as_u64()? | value.to_u64()?),
+                                Type::U128 => Value::U128(path_value.as_u128()? | value.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignBitwiseLeft => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(shl!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(shl!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(shl!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(shl!(path_value.as_long()?, value.to_long()?)),
+                                Type::U8 => Value::U8(shl!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(shl!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(shl!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(shl!(path_value.as_u128()?, value.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
                         Operator::AssignBitwiseRight => {
                             *path_value = match path_type {
-                                Type::Byte => Value::Byte(shr!(path_value.as_byte()?, value.to_byte()?)),
-                                Type::Short => Value::Short(shr!(path_value.as_short()?, value.to_short()?)),
-                                Type::Int => Value::Int(shr!(path_value.as_int()?, value.to_int()?)),
-                                Type::Long => Value::Long(shr!(path_value.as_long()?, value.to_long()?)),
+                                Type::U8 => Value::U8(shr!(path_value.as_byte()?, value.to_u8()?)),
+                                Type::U16 => Value::U16(shr!(path_value.as_u16()?, value.to_u16()?)),
+                                Type::U64 => Value::U64(shr!(path_value.as_u64()?, value.to_u64()?)),
+                                Type::U128 => Value::U128(shr!(path_value.as_u128()?, value.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         },
@@ -518,103 +518,103 @@ impl<'a> Interpreter<'a> {
                                     Ok(Some(Value::String(format!("{}{}", left, right))))
                                 } else {
                                     Ok(Some(match left_type {
-                                        Type::Byte => Value::Byte(add!(left.to_byte()?, right.to_byte()?)),
-                                        Type::Short => Value::Short(add!(left.to_short()?, right.to_short()?)),
-                                        Type::Int => Value::Int(add!(left.to_int()?, right.to_int()?)),
-                                        Type::Long => Value::Long(add!(left.to_long()?, right.to_long()?)),
+                                        Type::U8 => Value::U8(add!(left.to_u8()?, right.to_u8()?)),
+                                        Type::U16 => Value::U16(add!(left.to_u16()?, right.to_u16()?)),
+                                        Type::U64 => Value::U64(add!(left.to_u64()?, right.to_u64()?)),
+                                        Type::U128 => Value::U128(add!(left.to_u128()?, right.to_u128()?)),
                                         _ => return Err(InterpreterError::OperationNotNumberType)
                                     }))
                                 }
                             },
                             Operator::Minus => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(sub!(left.to_byte()?, right.to_byte()?)),
-                                Type::Short => Value::Short(sub!(left.to_short()?, right.to_short()?)),
-                                Type::Int => Value::Int(sub!(left.to_int()?, right.to_int()?)),
-                                Type::Long => Value::Long(sub!(left.to_long()?, right.to_long()?)),
+                                Type::U8 => Value::U8(sub!(left.to_u8()?, right.to_u8()?)),
+                                Type::U16 => Value::U16(sub!(left.to_u16()?, right.to_u16()?)),
+                                Type::U64 => Value::U64(sub!(left.to_u64()?, right.to_u64()?)),
+                                Type::U128 => Value::U128(sub!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::Divide => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(div!(left.to_byte()?, right.to_byte()?)),
-                                Type::Short => Value::Short(div!(left.to_short()?, right.to_short()?)),
-                                Type::Int => Value::Int(div!(left.to_int()?, right.to_int()?)),
-                                Type::Long => Value::Long(div!(left.to_long()?, right.to_long()?)),
+                                Type::U8 => Value::U8(div!(left.to_u8()?, right.to_u8()?)),
+                                Type::U16 => Value::U16(div!(left.to_u16()?, right.to_u16()?)),
+                                Type::U64 => Value::U64(div!(left.to_u64()?, right.to_u64()?)),
+                                Type::U128 => Value::U128(div!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::Multiply => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(mul!(left.to_byte()?, right.to_byte()?)),
-                                Type::Short => Value::Short(mul!(left.to_short()?, right.to_short()?)),
-                                Type::Int => Value::Int(mul!(left.to_int()?, right.to_int()?)),
-                                Type::Long => Value::Long(mul!(left.to_long()?, right.to_long()?)),
+                                Type::U8 => Value::U8(mul!(left.to_u8()?, right.to_u8()?)),
+                                Type::U16 => Value::U16(mul!(left.to_u16()?, right.to_u16()?)),
+                                Type::U64 => Value::U64(mul!(left.to_u64()?, right.to_u64()?)),
+                                Type::U128 => Value::U128(mul!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::Modulo => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(left.to_byte()? % right.to_byte()?),
-                                Type::Short => Value::Short(left.to_short()? % right.to_short()?),
-                                Type::Int => Value::Int(left.to_int()? % right.to_int()?),
-                                Type::Long => Value::Long(left.to_long()? % right.to_long()?),
+                                Type::U8 => Value::U8(left.to_u8()? % right.to_u8()?),
+                                Type::U16 => Value::U16(left.to_u16()? % right.to_u16()?),
+                                Type::U64 => Value::U64(left.to_u64()? % right.to_u64()?),
+                                Type::U128 => Value::U128(left.to_u128()? % right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseXor => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(left.to_byte()? ^ right.to_byte()?),
-                                Type::Short => Value::Short(left.to_short()? ^ right.to_short()?),
-                                Type::Int => Value::Int(left.to_int()? ^ right.to_int()?),
-                                Type::Long => Value::Long(left.to_long()? ^ right.to_long()?),
+                                Type::U8 => Value::U8(left.to_u8()? ^ right.to_u8()?),
+                                Type::U16 => Value::U16(left.to_u16()? ^ right.to_u16()?),
+                                Type::U64 => Value::U64(left.to_u64()? ^ right.to_u64()?),
+                                Type::U128 => Value::U128(left.to_u128()? ^ right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseAnd => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(left.to_byte()? & right.to_byte()?),
-                                Type::Short => Value::Short(left.to_short()? & right.to_short()?),
-                                Type::Int => Value::Int(left.to_int()? & right.to_int()?),
-                                Type::Long => Value::Long(left.to_long()? & right.to_long()?),
+                                Type::U8 => Value::U8(left.to_u8()? & right.to_u8()?),
+                                Type::U16 => Value::U16(left.to_u16()? & right.to_u16()?),
+                                Type::U64 => Value::U64(left.to_u64()? & right.to_u64()?),
+                                Type::U128 => Value::U128(left.to_u128()? & right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseOr => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(left.to_byte()? | right.to_byte()?),
-                                Type::Short => Value::Short(left.to_short()? | right.to_short()?),
-                                Type::Int => Value::Int(left.to_int()? | right.to_int()?),
-                                Type::Long => Value::Long(left.to_long()? | right.to_long()?),
+                                Type::U8 => Value::U8(left.to_u8()? | right.to_u8()?),
+                                Type::U16 => Value::U16(left.to_u16()? | right.to_u16()?),
+                                Type::U64 => Value::U64(left.to_u64()? | right.to_u64()?),
+                                Type::U128 => Value::U128(left.to_u128()? | right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseLeft => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(shl!(left.to_byte()?, right.to_byte()?)),
-                                Type::Short => Value::Short(shl!(left.to_short()?, right.to_short()?)),
-                                Type::Int => Value::Int(shl!(left.to_int()?, right.to_int()?)),
-                                Type::Long => Value::Long(shl!(left.to_long()?, right.to_long()?)),
+                                Type::U8 => Value::U8(shl!(left.to_u8()?, right.to_u8()?)),
+                                Type::U16 => Value::U16(shl!(left.to_u16()?, right.to_u16()?)),
+                                Type::U64 => Value::U64(shl!(left.to_u64()?, right.to_u64()?)),
+                                Type::U128 => Value::U128(shl!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::BitwiseRight => Ok(Some(match left_type {
-                                Type::Byte => Value::Byte(shr!(left.to_byte()?, right.to_byte()?)),
-                                Type::Short => Value::Short(shr!(left.to_short()?, right.to_short()?)),
-                                Type::Int => Value::Int(shr!(left.to_int()?, right.to_int()?)),
-                                Type::Long => Value::Long(shr!(left.to_long()?, right.to_long()?)),
+                                Type::U8 => Value::U8(shr!(left.to_u8()?, right.to_u8()?)),
+                                Type::U16 => Value::U16(shr!(left.to_u16()?, right.to_u16()?)),
+                                Type::U64 => Value::U64(shr!(left.to_u64()?, right.to_u64()?)),
+                                Type::U128 => Value::U128(shr!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::GreaterOrEqual => Ok(Some(match left_type {
-                                Type::Byte => Value::Boolean(left.to_byte()? >= right.to_byte()?),
-                                Type::Short => Value::Boolean(left.to_short()? >= right.to_short()?),
-                                Type::Int => Value::Boolean(left.to_int()? >= right.to_int()?),
-                                Type::Long => Value::Boolean(left.to_long()? >= right.to_long()?),
+                                Type::U8 => Value::Boolean(left.to_u8()? >= right.to_u8()?),
+                                Type::U16 => Value::Boolean(left.to_u16()? >= right.to_u16()?),
+                                Type::U64 => Value::Boolean(left.to_u64()? >= right.to_u64()?),
+                                Type::U128 => Value::Boolean(left.to_u128()? >= right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::GreaterThan => Ok(Some(match left_type {
-                                Type::Byte => Value::Boolean(left.to_byte()? > right.to_byte()?),
-                                Type::Short => Value::Boolean(left.to_short()? > right.to_short()?),
-                                Type::Int => Value::Boolean(left.to_int()? > right.to_int()?),
-                                Type::Long => Value::Boolean(left.to_long()? > right.to_long()?),
+                                Type::U8 => Value::Boolean(left.to_u8()? > right.to_u8()?),
+                                Type::U16 => Value::Boolean(left.to_u16()? > right.to_u16()?),
+                                Type::U64 => Value::Boolean(left.to_u64()? > right.to_u64()?),
+                                Type::U128 => Value::Boolean(left.to_u128()? > right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::LessOrEqual => Ok(Some(match left_type {
-                                Type::Byte => Value::Boolean(left.to_byte()? <= right.to_byte()?),
-                                Type::Short => Value::Boolean(left.to_short()? <= right.to_short()?),
-                                Type::Int => Value::Boolean(left.to_int()? <= right.to_int()?),
-                                Type::Long => Value::Boolean(left.to_long()? <= right.to_long()?),
+                                Type::U8 => Value::Boolean(left.to_u8()? <= right.to_u8()?),
+                                Type::U16 => Value::Boolean(left.to_u16()? <= right.to_u16()?),
+                                Type::U64 => Value::Boolean(left.to_u64()? <= right.to_u64()?),
+                                Type::U128 => Value::Boolean(left.to_u128()? <= right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             Operator::LessThan => Ok(Some(match left_type {
-                                Type::Byte => Value::Boolean(left.to_byte()? < right.to_byte()?),
-                                Type::Short => Value::Boolean(left.to_short()? < right.to_short()?),
-                                Type::Int => Value::Boolean(left.to_int()? < right.to_int()?),
-                                Type::Long => Value::Boolean(left.to_long()? < right.to_long()?),
+                                Type::U8 => Value::Boolean(left.to_u8()? < right.to_u8()?),
+                                Type::U16 => Value::Boolean(left.to_u16()? < right.to_u16()?),
+                                Type::U64 => Value::Boolean(left.to_u64()? < right.to_u64()?),
+                                Type::U128 => Value::Boolean(left.to_u128()? < right.to_u128()?),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
                             _ => return Err(InterpreterError::UnexpectedOperator)
@@ -629,10 +629,10 @@ impl<'a> Interpreter<'a> {
             Expression::Cast(expr, cast_type) => {
                 let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?;
                 match cast_type {
-                    Type::Byte => Ok(Some(Value::Byte(value.cast_to_byte()?))),
-                    Type::Short => Ok(Some(Value::Short(value.cast_to_short()?))),
-                    Type::Int => Ok(Some(Value::Int(value.cast_to_int()?))),
-                    Type::Long => Ok(Some(Value::Long(value.cast_to_long()?))),
+                    Type::U8 => Ok(Some(Value::U8(value.cast_to_u8()?))),
+                    Type::U16 => Ok(Some(Value::U16(value.cast_to_u16()?))),
+                    Type::U64 => Ok(Some(Value::U64(value.cast_to_u64()?))),
+                    Type::U128 => Ok(Some(Value::U128(value.cast_to_u128()?))),
                     Type::String => Ok(Some(Value::String(value.cast_to_string()?))),
                     _ => Err(InterpreterError::InvalidType(cast_type.clone()))
                 }
@@ -889,7 +889,7 @@ impl<'a> Interpreter<'a> {
         }
 
         match self.execute_function(func, None, params, state)? {
-            Some(val) => Ok(val.to_int()?),
+            Some(val) => Ok(val.to_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
     }
@@ -922,12 +922,12 @@ mod tests {
         test_code_expect_return("entry main() { return 10 * 10; }", 100);
         test_code_expect_return("entry main() { return 10 / 10; }", 1);
         test_code_expect_return("entry main() { return 10 % 10; }", 0);
-        test_code_expect_return("entry main() { return (10 == 10) as int; }", 1);
-        test_code_expect_return("entry main() { return (10 != 10) as int; }", 0);
-        test_code_expect_return("entry main() { return (10 > 10) as int; }", 0);
-        test_code_expect_return("entry main() { return (10 >= 10) as int; }", 1);
-        test_code_expect_return("entry main() { return (10 < 10) as int; }", 0);
-        test_code_expect_return("entry main() { return (10 <= 10) as int; }", 1);
+        test_code_expect_return("entry main() { return (10 == 10) as u64; }", 1);
+        test_code_expect_return("entry main() { return (10 != 10) as u64; }", 0);
+        test_code_expect_return("entry main() { return (10 > 10) as u64; }", 0);
+        test_code_expect_return("entry main() { return (10 >= 10) as u64; }", 1);
+        test_code_expect_return("entry main() { return (10 < 10) as u64; }", 0);
+        test_code_expect_return("entry main() { return (10 <= 10) as u64; }", 1);
         test_code_expect_return("entry main() { return 10 & 10; }", 10);
         test_code_expect_return("entry main() { return 10 | 10; }", 10);
         test_code_expect_return("entry main() { return 10 ^ 10; }", 0);

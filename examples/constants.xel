@@ -2,7 +2,7 @@ func hello(): string {
     return "Hello World!"
 }
 
-const ZERO: int = 0
+const ZERO: u64 = 0
 const HELLO_WORLD: string = hello()
 
 entry main() {

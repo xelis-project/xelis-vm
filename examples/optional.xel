@@ -1,8 +1,8 @@
 entry main() {
-    let opt: optional<byte> = null;
+    let opt: optional<u8> = null;
     if opt.is_some() {
-        let v: byte = opt.take();
-        return v as int
+        let v: u8 = opt.take();
+        return v as u64
     } else {
         return 0
     }

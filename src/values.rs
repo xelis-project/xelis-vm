@@ -13,10 +13,10 @@ pub type SharableValue = Rc<RefCell<Value>>;
 pub enum Value {
     Null,
     // number types
-    Byte(u8),
-    Short(u16),
-    Int(u64),
-    Long(u128),
+    U8(u8),
+    U16(u16),
+    U64(u64),
+    U128(u128),
 
     String(String),
     Boolean(bool),
@@ -137,29 +137,29 @@ impl Value {
 
     pub fn as_byte(&self) -> Result<&u8, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Byte))
+            Value::U8(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))
         }
     }
 
-    pub fn as_short(&self) -> Result<&u16, InterpreterError> {
+    pub fn as_u16(&self) -> Result<&u16, InterpreterError> {
         match self {
-            Value::Short(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Short))
+            Value::U16(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
         }
     }
 
-    pub fn as_int(&self) -> Result<&u64, InterpreterError> {
+    pub fn as_u64(&self) -> Result<&u64, InterpreterError> {
         match self {
-            Value::Int(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Int))
+            Value::U64(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U64))
         }
     }
 
-    pub fn as_long(&self) -> Result<&u128, InterpreterError> {
+    pub fn as_u128(&self) -> Result<&u128, InterpreterError> {
         match self {
-            Value::Long(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Long))
+            Value::U128(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U128))
         }
     }
 
@@ -173,7 +173,7 @@ impl Value {
     pub fn as_bool(&self) -> Result<&bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Boolean))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Bool))
         }
     }
 
@@ -220,31 +220,31 @@ impl Value {
         }
     }
 
-    pub fn to_byte(self) -> Result<u8, InterpreterError> {
+    pub fn to_u8(self) -> Result<u8, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Byte))
+            Value::U8(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))
         }
     }
 
-    pub fn to_short(self) -> Result<u16, InterpreterError> {
+    pub fn to_u16(self) -> Result<u16, InterpreterError> {
         match self {
-            Value::Short(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Short))
+            Value::U16(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
         }
     }
 
-    pub fn to_int(self) -> Result<u64, InterpreterError> {
+    pub fn to_u64(self) -> Result<u64, InterpreterError> {
         match self {
-            Value::Int(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Int))
+            Value::U64(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U64))
         }
     }
 
-    pub fn to_long(self) -> Result<u128, InterpreterError> {
+    pub fn to_u128(self) -> Result<u128, InterpreterError> {
         match self {
-            Value::Long(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Long))
+            Value::U128(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U128))
         }
     }
 
@@ -258,7 +258,7 @@ impl Value {
     pub fn to_bool(self) -> Result<bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
-            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Boolean))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Bool))
         }
     }
 
@@ -279,7 +279,7 @@ impl Value {
     // Check if the value is a number
     pub fn is_number(&self) -> bool {
         match self {
-            Value::Byte(_) | Value::Short(_) | Value::Int(_) | Value::Long(_) => true,
+            Value::U8(_) | Value::U16(_) | Value::U64(_) | Value::U128(_) => true,
             _ => false
         }
     }
@@ -287,61 +287,61 @@ impl Value {
     // Cast value to string
     pub fn cast_to_string(self) -> Result<String, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n.to_string()),
-            Value::Short(n) => Ok(n.to_string()),
-            Value::Int(n) => Ok(n.to_string()),
-            Value::Long(n) => Ok(n.to_string()),
+            Value::U8(n) => Ok(n.to_string()),
+            Value::U16(n) => Ok(n.to_string()),
+            Value::U64(n) => Ok(n.to_string()),
+            Value::U128(n) => Ok(n.to_string()),
             Value::String(s) => Ok(s),
             Value::Boolean(b) => Ok(b.to_string()),
             _ => Err(InterpreterError::InvalidCastType(Type::String))
         }
     }
 
-    // Cast value to byte
-    pub fn cast_to_byte(self) -> Result<u8, InterpreterError> {
+    // Cast value to u8
+    pub fn cast_to_u8(self) -> Result<u8, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n),
-            Value::Short(n) => Ok(n as u8),
-            Value::Int(n) => Ok(n as u8),
-            Value::Long(n) => Ok(n as u8),
+            Value::U8(n) => Ok(n),
+            Value::U16(n) => Ok(n as u8),
+            Value::U64(n) => Ok(n as u8),
+            Value::U128(n) => Ok(n as u8),
             Value::Boolean(b) => Ok(b as u8),
-            _ => Err(InterpreterError::InvalidCastType(Type::Byte))
+            _ => Err(InterpreterError::InvalidCastType(Type::U8))
         }
     }
 
-    // Cast value to short
-    pub fn cast_to_short(self) -> Result<u16, InterpreterError> {
+    // Cast value to u16
+    pub fn cast_to_u16(self) -> Result<u16, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n as u16),
-            Value::Short(n) => Ok(n),
-            Value::Int(n) => Ok(n as u16),
-            Value::Long(n) => Ok(n as u16),
+            Value::U8(n) => Ok(n as u16),
+            Value::U16(n) => Ok(n),
+            Value::U64(n) => Ok(n as u16),
+            Value::U128(n) => Ok(n as u16),
             Value::Boolean(b) => Ok(b as u16),
-            _ => Err(InterpreterError::InvalidCastType(Type::Short))
+            _ => Err(InterpreterError::InvalidCastType(Type::U16))
         }
     }
 
-    // Cast value to int
-    pub fn cast_to_int(self) -> Result<u64, InterpreterError> {
+    // Cast value to u64
+    pub fn cast_to_u64(self) -> Result<u64, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n as u64),
-            Value::Short(n) => Ok(n as u64),
-            Value::Int(n) => Ok(n),
-            Value::Long(n) => Ok(n as u64),
+            Value::U8(n) => Ok(n as u64),
+            Value::U16(n) => Ok(n as u64),
+            Value::U64(n) => Ok(n),
+            Value::U128(n) => Ok(n as u64),
             Value::Boolean(b) => Ok(b as u64),
-            _ => Err(InterpreterError::InvalidCastType(Type::Int))
+            _ => Err(InterpreterError::InvalidCastType(Type::U64))
         }
     }
 
-    // Cast value to long
-    pub fn cast_to_long(self) -> Result<u128, InterpreterError> {
+    // Cast value to u128
+    pub fn cast_to_u128(self) -> Result<u128, InterpreterError> {
         match self {
-            Value::Byte(n) => Ok(n as u128),
-            Value::Short(n) => Ok(n as u128),
-            Value::Int(n) => Ok(n as u128),
-            Value::Long(n) => Ok(n),
+            Value::U8(n) => Ok(n as u128),
+            Value::U16(n) => Ok(n as u128),
+            Value::U64(n) => Ok(n as u128),
+            Value::U128(n) => Ok(n),
             Value::Boolean(b) => Ok(b as u128),
-            _ => Err(InterpreterError::InvalidCastType(Type::Long))
+            _ => Err(InterpreterError::InvalidCastType(Type::U128))
         }
     }
 }
@@ -359,10 +359,10 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Null => write!(f, "null"),
-            Value::Byte(v) => write!(f, "{}", v),
-            Value::Short(v) => write!(f, "{}", v),
-            Value::Int(v) => write!(f, "{}", v),
-            Value::Long(v) => write!(f, "{}", v),
+            Value::U8(v) => write!(f, "{}", v),
+            Value::U16(v) => write!(f, "{}", v),
+            Value::U64(v) => write!(f, "{}", v),
+            Value::U128(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {

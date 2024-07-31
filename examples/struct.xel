@@ -1,8 +1,8 @@
 struct Value {
-    value: int
+    value: u64
 }
 
-func (v Value) to_int(): int {
+func (v Value) to_int(): u64 {
     return v.value
 }
 
@@ -11,7 +11,7 @@ struct Rectangle {
     width: Value
 }
 
-func (r Rectangle) area(): int {
+func (r Rectangle) area(): u64 {
     return r.height.to_int() * r.width.to_int()
 }
 

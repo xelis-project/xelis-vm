@@ -1,4 +1,4 @@
-func factorial(n: long): long {
+func factorial(n: u128): u128 {
     if n == 0L {
         return 1L
     }
@@ -6,7 +6,7 @@ func factorial(n: long): long {
 }
 
 entry main() {
-    let a: long = 30L
+    let a: u128 = 30L
     println(factorial(a))
 
     return 0

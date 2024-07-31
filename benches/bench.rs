@@ -3,10 +3,10 @@ use xelis_vm::{Environment, Lexer, Parser};
 
 const CODE: &str = "
 entry main() {
-    let a: byte = 10;
-    let b: byte = 20;
-    let c: byte = a + b;
-    return c as int;
+    let a: u8 = 10;
+    let b: u8 = 20;
+    let c: u8 = a + b;
+    return c as u64;
 }
 ";
 

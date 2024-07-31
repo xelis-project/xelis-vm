@@ -54,13 +54,14 @@ pub enum Type {
     Any,
     T,
 
-    Byte,
-    Short,
-    Int,
-    Long,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
 
     String,
-    Boolean,
+    Bool,
     Struct(IdentifierType),
     Array(Box<Type>),
     Optional(Box<Type>)
@@ -69,11 +70,12 @@ pub enum Type {
 impl Type {
     pub(crate) fn from_token(s: Token, struct_manager: &StructManager) -> Option<Self> {
         let value: Self = match s {
-            Token::Byte => Type::Byte,
-            Token::Short => Type::Short,
-            Token::Int => Type::Int,
-            Token::Long => Type::Long,
-            Token::Boolean => Type::Boolean,
+            Token::U8 => Type::U8,
+            Token::U16 => Type::U16,
+            Token::U32 => Type::U32,
+            Token::U64 => Type::U64,
+            Token::U128 => Type::U128,
+            Token::Bool => Type::Bool,
             Token::String => Type::String,
             Token::Optional(token) => Type::Optional(Box::new(Type::from_token(*token, struct_manager)?)),
             Token::Identifier(s) => {
@@ -92,12 +94,12 @@ impl Type {
     pub fn from_value<H: HasKey<IdentifierType>>(value: &Value, structures: &H) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
-            Value::Byte(_) => Type::Byte,
-            Value::Short(_) => Type::Short,
-            Value::Int(_) => Type::Int,
-            Value::Long(_) => Type::Long,
+            Value::U8(_) => Type::U8,
+            Value::U16(_) => Type::U16,
+            Value::U64(_) => Type::U64,
+            Value::U128(_) => Type::U128,
             Value::String(_) => Type::String,
-            Value::Boolean(_) => Type::Boolean,
+            Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),
             Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.get_value(), structures)?)),
             Value::Struct(name, _) => if structures.has(name) {
@@ -142,25 +144,28 @@ impl Type {
     // check if the type can be casted to another type
     pub fn is_castable_to(&self, other: &Type) -> bool {
         match self {
-            Type::Byte => match other {
-                Type::Short | Type::Int | Type::Long | Type::String => true,
+            Type::U8 => match other {
+                Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
                 _ => false
             },
-            Type::Short => match other {
-                Type::Byte | Type::Int | Type::Long | Type::String => true,
+            Type::U16 => match other {
+                Type::U8 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
                 _ => false
             },
-            Type::Int => match other {
-                Type::Byte | Type::Short | Type::Long | Type::String => true,
+            Type::U32 => match other {
+                Type::U8 | Type::U16 | Type::U64 | Type::U128 | Type::String => true,
                 _ => false
             },
-            Type::Long => match other {
-                Type::Byte | Type::Short | Type::Int | Type::String => true,
+            Type::U64 => match other {
+                Type::U8 | Type::U16 | Type::U32 | Type::U128 | Type::String => true,
                 _ => false
             },
-            Type::Boolean => match other {
-                Type::String => true,
-                Type::Byte | Type::Short | Type::Int | Type::Long => true,
+            Type::U128 => match other {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::String => true,
+                _ => false
+            },
+            Type::Bool => match other {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
                 _ => false
             },
             _ => false
@@ -183,7 +188,7 @@ impl Type {
 
     pub fn is_number(&self) -> bool {
         match &self {
-            Type::Byte | Type::Short | Type::Int | Type::Long => true,
+            Type::U8 | Type::U16 | Type::U64 | Type::U128 => true,
             _ => false
         }
     }

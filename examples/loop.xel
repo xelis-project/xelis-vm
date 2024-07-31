@@ -1,14 +1,14 @@
 entry main() {
-    for i: int = 0; i < 10; i += 1 {
+    for i: u64 = 0; i < 10; i += 1 {
         println(i)
     }
 
-    let array: int[] = [11, 12, 13, 14, 15]
+    let array: u64[] = [11, 12, 13, 14, 15]
     foreach a in array {
         println(a)
     }
 
-    let i: int = 20
+    let i: u64 = 20
     while i > 0 {
         i -= 1
         if i == 17 {

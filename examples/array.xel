@@ -1,9 +1,9 @@
-func test_array(): int[] {
+func test_array(): u64[] {
     return [1, 2, 3]
 }
 
 entry main() {
-    let array: int[] = [10, 20, 30, 40]
+    let array: u64[] = [10, 20, 30, 40]
     println(array)
 
     array[0] = test_array()[0]
@@ -12,12 +12,12 @@ entry main() {
     array.push(50)
     println(array)
 
-    let size: int = array.len()
-    let value: int = array[size - 1]
+    let size: u64 = array.len()
+    let value: u64 = array[size - 1]
     println(value)
 
     // slices are connected
-    let slice: int[] = array.slice(0, 2)
+    let slice: u64[] = array.slice(0, 2)
     println(array)
     println(slice)
 
@@ -25,7 +25,7 @@ entry main() {
     println(array)
     println(slice)
 
-    let b: int = slice.remove(0);
+    let b: u64 = slice.remove(0);
     println(b)
     println(slice)
 

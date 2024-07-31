@@ -108,10 +108,10 @@ impl<'a> Parser<'a> {
     /**
      * Example: let message: string[] = ["hello", "world", "!"];
      * Types: (unsigned)
-     * - byte
-     * - short
-     * - int
-     * - long
+     * - u8
+     * - u16
+     * - u64
+     * - u128
      * - string
      * - bool
      * - Struct (Structure with name that starts with a uppercase letter)
@@ -229,7 +229,7 @@ impl<'a> Parser<'a> {
                 | Operator::GreaterThan
                 | Operator::LessOrEqual
                 | Operator::LessThan
-                | Operator::And => Cow::Owned(Type::Boolean),
+                | Operator::And => Cow::Owned(Type::Bool),
                 // Assign operators
                 Operator::Assign
                 | Operator::AssignPlus
@@ -271,7 +271,7 @@ impl<'a> Parser<'a> {
                     left_type
                 }
             },
-            Expression::IsNot(_) => Cow::Owned(Type::Boolean),
+            Expression::IsNot(_) => Cow::Owned(Type::Bool),
             Expression::Ternary(_, expr, _) => self.get_type_from_expression(on_type, expr, context, struct_manager)?,
             Expression::Cast(_, _type) => Cow::Borrowed(_type)
         };
@@ -379,10 +379,10 @@ impl<'a> Parser<'a> {
                                 return Err(ParserError::InvalidArrayCall)
                             }
 
-                            // Index must be of type Int
-                            let index = self.read_expr(on_type, true, Some(&Type::Int), context, mapper, functions_mapper, struct_manager)?;
+                            // Index must be of type u64
+                            let index = self.read_expr(on_type, true, Some(&Type::U64), context, mapper, functions_mapper, struct_manager)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context, struct_manager)?;
-                            if *index_type != Type::Int {
+                            if *index_type != Type::U64 {
                                 return Err(ParserError::InvalidArrayCallIndexType(index_type.into_owned()))
                             }
 
@@ -455,24 +455,24 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::IntValue(value) => Expression::Value(match number_type {
+                Token::U64Value(value) => Expression::Value(match number_type {
                     Some(t) => match t {
-                        Type::Byte => Value::Byte(convert!(value)),
-                        Type::Short => Value::Short(convert!(value)),
-                        Type::Int => Value::Int(value),
-                        Type::Long => Value::Long(convert!(value)),
+                        Type::U8 => Value::U8(convert!(value)),
+                        Type::U16 => Value::U16(convert!(value)),
+                        Type::U64 => Value::U64(value),
+                        Type::U128 => Value::U128(convert!(value)),
                         Type::Optional(inner) => Value::Optional(Some(Box::new(match inner.as_ref() {
-                            Type::Byte => Value::Byte(convert!(value)),
-                            Type::Short => Value::Short(convert!(value)),
-                            Type::Int => Value::Int(value),
-                            Type::Long => Value::Long(convert!(value)),
+                            Type::U8 => Value::U8(convert!(value)),
+                            Type::U16 => Value::U16(convert!(value)),
+                            Type::U64 => Value::U64(value),
+                            Type::U128 => Value::U128(convert!(value)),
                             _ => return Err(ParserError::ExpectedNumberType)
                         }))),
                         _ => return Err(ParserError::ExpectedNumberType)
                     },
-                    None => Value::Int(value)
+                    None => Value::U64(value)
                 }),
-                Token::LongValue(value) => Expression::Value(Value::Long(value)),
+                Token::U128Value(value) => Expression::Value(Value::U128(value)),
                 Token::StringValue(value) => Expression::Value(Value::String(value)),
                 Token::True => Expression::Value(Value::Boolean(true)),
                 Token::False => Expression::Value(Value::Boolean(false)),
@@ -492,16 +492,16 @@ impl<'a> Parser<'a> {
                 Token::IsNot => { // it's an operator, but not declared as
                     let expr = self.read_expression(context, mapper, functions_mapper, struct_manager)?;
                     let expr_type = self.get_type_from_expression(on_type, &expr, context, struct_manager)?;
-                    if *expr_type != Type::Boolean {
-                        return Err(ParserError::InvalidValueType(expr_type.into_owned(), Type::Boolean))
+                    if *expr_type != Type::Bool {
+                        return Err(ParserError::InvalidValueType(expr_type.into_owned(), Type::Bool))
                     }
 
                     Expression::IsNot(Box::new(expr))
                 },
                 Token::OperatorTernary => match last_expression { // condition ? expr : expr
                     Some(expr) => {
-                        if *self.get_type_from_expression(on_type, &expr, context, struct_manager)? != Type::Boolean {
-                            return Err(ParserError::InvalidCondition(Type::Boolean, expr))
+                        if *self.get_type_from_expression(on_type, &expr, context, struct_manager)? != Type::Bool {
+                            return Err(ParserError::InvalidCondition(Type::Bool, expr))
                         }
 
                         let valid_expr = self.read_expr(on_type, true, number_type, context, mapper, functions_mapper, struct_manager)?;
@@ -562,12 +562,12 @@ impl<'a> Parser<'a> {
                                             }
                                         },
                                         Operator::And | Operator::Or => {
-                                            if left_type != Type::Boolean {
-                                                return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Boolean))
+                                            if left_type != Type::Bool {
+                                                return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Bool))
                                             }
         
-                                            if *right_type != Type::Boolean {
-                                                return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Boolean))
+                                            if *right_type != Type::Bool {
+                                                return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Bool))
                                             }
                                         },
                                         _ => if left_type != *right_type {
@@ -702,12 +702,12 @@ impl<'a> Parser<'a> {
             let token = self.advance()?;
             let statement: Statement = match token {
                 Token::BraceClose => break,
-                Token::For => { // Example: for i: int = 0; i < 10; i += 1 {}
+                Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
                     let var = self.read_variable(context, mapper, functions_mapper, struct_manager, false)?;
                     let condition = self.read_expression(context, mapper, functions_mapper, struct_manager)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context, struct_manager)?;
-                    if  *condition_type != Type::Boolean {
+                    if  *condition_type != Type::Bool {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
@@ -744,7 +744,7 @@ impl<'a> Parser<'a> {
                 Token::While => { // Example: while i < 10 {}
                     let condition = self.read_expression(context, mapper, functions_mapper, struct_manager)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context, struct_manager)?;
-                    if  *condition_type != Type::Boolean {
+                    if  *condition_type != Type::Bool {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
@@ -755,7 +755,7 @@ impl<'a> Parser<'a> {
                 Token::If => {
                     let condition = self.read_expression(context, mapper, functions_mapper, struct_manager)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context, struct_manager)?;
-                    if  *condition_type != Type::Boolean {
+                    if  *condition_type != Type::Bool {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
@@ -770,7 +770,7 @@ impl<'a> Parser<'a> {
                         self.expect_token(Token::If)?;
                         let condition = self.read_expression(context, mapper, functions_mapper, struct_manager)?;
                         let condition_type = self.get_type_from_expression(None, &condition, context, struct_manager)?;
-                        if  *condition_type != Type::Boolean {
+                        if  *condition_type != Type::Bool {
                             return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                         }
                         Statement::ElseIf(condition, self.read_body(context, return_type, true, mapper, functions_mapper, struct_manager)?)
@@ -915,12 +915,12 @@ impl<'a> Parser<'a> {
      * Examples:
      * - entry foo() { ... }
      * - func foo() { ... }
-     * - func foo(): int { ... }
-     * - func foo(a: int, b: int) { ... }
+     * - func foo(): u64 { ... }
+     * - func foo(a: u64, b: u64) { ... }
      * - func (f Foo) bar() { ... }
      * Rules:
      * - Signature is based on function name, and parameters
-     * - Entry function is a "public callable" function and must return a int value
+     * - Entry function is a "public callable" function and must return a u64 value
      */
     fn read_function(&mut self, entry: bool, context: &mut Context, constants_mapper: &IdMapper, functions_mapper: &mut FunctionMapper, struct_manager: &StructManager) -> Result<(), ParserError> {
         context.begin_scope();
@@ -959,14 +959,14 @@ impl<'a> Parser<'a> {
         let parameters = self.read_parameters(&mut mapper, struct_manager)?;
         self.expect_token(Token::ParenthesisClose)?;
 
-        // all entries must return a int value without being specified
+        // all entries must return a u64 value without being specified
         let return_type: Option<Type> = if entry {
             // an entrypoint cannot be a method
             if for_type.is_some() {
                 return Err(ParserError::EntryFunctionCannotHaveForType)
             }
 
-            Some(Type::Int)
+            Some(Type::U64)
         } else if *self.peek()? == Token::Colon { // read returned type
             self.advance()?;
             Some(self.read_type(struct_manager)?)
@@ -1026,7 +1026,7 @@ impl<'a> Parser<'a> {
     }
 
     /**
-     * Example: Message { message_id: int, message: string }
+     * Example: Message { message_id: u64, message: string }
      * Rules:
      * - Structure name should start with a uppercase character
      * - only alphanumeric chars in name

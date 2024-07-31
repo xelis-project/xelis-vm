@@ -7,7 +7,7 @@ entry main() {
         return 1
     }
 
-    let i: int = bool_test() ? 10 : 0
+    let i: u64 = bool_test() ? 10 : 0
     if i == 10 {
         i = 0
         return i

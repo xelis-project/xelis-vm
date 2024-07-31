@@ -6,10 +6,11 @@ The syntax is strongly inspired by Rust and Golang.
 All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
 
 The different primitive types are:
-- `byte` (unsigned 8 bits)
-- `short` (unsigned 16 bits)
-- `int` (unsigned 64 bits)
-- `long` (unsigned 128 bits)
+- `u8` (unsigned 8 bits)
+- `u16` (unsigned 16 bits)
+- `u32` (unsigned 32 bits)
+- `u64` (unsigned 64 bits)
+- `u128` (unsigned 128 bits)
 - `bool`
 - `string`
 - `struct`
@@ -32,14 +33,14 @@ An error will be returned by the interpreter if an overflow is detected without 
 **Rules**
 - The value must be greater than or equal to `0`.
 - You can put `_` (underscore) for a better readability.
-- If no type is specified on the value, then `int` will be the default.
+- If no type is specified on the value, then `u64` will be the default.
 
 **Examples**
 ```rust
-let my_byte: byte = 10
-let my_short: short = 70
-let my_int: int = 25655
-let my_long: long = 100_000_000L
+let my_byte: u8 = 10
+let my_u16: u16 = 70
+let my_int: u64 = 25655
+let my_u128: u128 = 100_000_000L
 ```
 
 ### Variable
@@ -66,13 +67,13 @@ Values of built-in types can be casted into other built-in types easily using th
 
 **Examples**
 ```rust
-let id: long = 1337
-let b: byte = id as byte
+let id: u128 = 1337
+let b: u8 = id as u8
 let id_str: string = id as string 
 ```
 
 ### Function
-`entry` function is a "public callable" function and must return a `int` value.
+`entry` function is a "public callable" function and must return a `u64` value.
 
 **Rules**
 - Must starts with `func` or `entry` keyword.
@@ -84,8 +85,8 @@ let id_str: string = id as string
 ```go
 entry foo() { ... }
 func foo() { ... }
-func foo(): int { ... }
-func foo(a: int, b: int) { ... }
+func foo(): u64 { ... }
+func foo(a: u64, b: u64) { ... }
 func (f Foo) bar() { ... }
 ```
 
@@ -102,7 +103,7 @@ A structure can contain other structures.
 ```rust
 struct MyStruct {
     message: string,
-    value: int
+    value: u64
 }
 ```
 
@@ -114,7 +115,7 @@ struct MyStruct {
 
 **Examples**
 ```rust
-let score: int = is_winner() ? 20 : 0
+let score: u64 = is_winner() ? 20 : 0
 ```
 
 ### Negate operator
@@ -134,9 +135,9 @@ let negative: bool = !condition
 
 **Examples**
 ```rust
-let array: int[] = [10, 20, 30, 40]
+let array: u64[] = [10, 20, 30, 40]
 ...
-let dim: int[][] = [[34, 17], [8, 14], [0, 69]]
+let dim: u64[][] = [[34, 17], [8, 14], [0, 69]]
 ```
 
 ### If
@@ -217,7 +218,7 @@ foreach val in values {
 
 **Examples**
 ```rust
-for i: int = 0; i < 10; i += 1 {
+for i: u64 = 0; i < 10; i += 1 {
 	...
 }
 ```
