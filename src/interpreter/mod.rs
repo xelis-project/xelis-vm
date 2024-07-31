@@ -894,3 +894,49 @@ impl<'a> Interpreter<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{parser::Parser, lexer::Lexer};
+
+    fn test_code_expect_return(code: &str, expected: u64) {
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+
+        let (e, mut mapper) = Environment::new();
+        let parser = Parser::new(tokens, &e);
+        let program = parser.parse(&mut mapper).unwrap();
+
+        let mut state = State::new(10, 10);
+        let interpreter = Interpreter::new(&program, &e).unwrap();
+        let result = interpreter.call_entry_function(&mapper.get(&("main".to_owned(), None, Vec::new())).unwrap(), VecDeque::new(), &mut state).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_number_operations() {
+        test_code_expect_return("entry main() { return 10; }", 10);
+        test_code_expect_return("entry main() { return 10 + 10; }", 20);
+        test_code_expect_return("entry main() { return 10 - 10; }", 0);
+        test_code_expect_return("entry main() { return 10 * 10; }", 100);
+        test_code_expect_return("entry main() { return 10 / 10; }", 1);
+        test_code_expect_return("entry main() { return 10 % 10; }", 0);
+        test_code_expect_return("entry main() { return (10 == 10) as int; }", 1);
+        test_code_expect_return("entry main() { return (10 != 10) as int; }", 0);
+        test_code_expect_return("entry main() { return (10 > 10) as int; }", 0);
+        test_code_expect_return("entry main() { return (10 >= 10) as int; }", 1);
+        test_code_expect_return("entry main() { return (10 < 10) as int; }", 0);
+        test_code_expect_return("entry main() { return (10 <= 10) as int; }", 1);
+        test_code_expect_return("entry main() { return 10 & 10; }", 10);
+        test_code_expect_return("entry main() { return 10 | 10; }", 10);
+        test_code_expect_return("entry main() { return 10 ^ 10; }", 0);
+        test_code_expect_return("entry main() { return 10 << 10; }", 10240);
+        test_code_expect_return("entry main() { return 10 >> 10; }", 0);
+        test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
+        test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
+
+        // TODO
+        // test_code_expect_return("entry main() { return 10 + 10 * 10 + 10; }", 120);
+    }
+}
