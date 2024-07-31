@@ -158,6 +158,11 @@ impl Type {
                 Type::Byte | Type::Short | Type::Int | Type::String => true,
                 _ => false
             },
+            Type::Boolean => match other {
+                Type::String => true,
+                Type::Byte | Type::Short | Type::Int | Type::Long => true,
+                _ => false
+            },
             _ => false
         }
     }

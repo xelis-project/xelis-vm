@@ -304,6 +304,7 @@ impl Value {
             Value::Short(n) => Ok(n as u8),
             Value::Int(n) => Ok(n as u8),
             Value::Long(n) => Ok(n as u8),
+            Value::Boolean(b) => Ok(b as u8),
             _ => Err(InterpreterError::InvalidCastType(Type::Byte))
         }
     }
@@ -315,6 +316,7 @@ impl Value {
             Value::Short(n) => Ok(n),
             Value::Int(n) => Ok(n as u16),
             Value::Long(n) => Ok(n as u16),
+            Value::Boolean(b) => Ok(b as u16),
             _ => Err(InterpreterError::InvalidCastType(Type::Short))
         }
     }
@@ -326,6 +328,7 @@ impl Value {
             Value::Short(n) => Ok(n as u64),
             Value::Int(n) => Ok(n),
             Value::Long(n) => Ok(n as u64),
+            Value::Boolean(b) => Ok(b as u64),
             _ => Err(InterpreterError::InvalidCastType(Type::Int))
         }
     }
@@ -337,6 +340,7 @@ impl Value {
             Value::Short(n) => Ok(n as u128),
             Value::Int(n) => Ok(n as u128),
             Value::Long(n) => Ok(n),
+            Value::Boolean(b) => Ok(b as u128),
             _ => Err(InterpreterError::InvalidCastType(Type::Long))
         }
     }
