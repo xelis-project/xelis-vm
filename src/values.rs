@@ -304,6 +304,7 @@ impl Value {
         match self {
             Value::U8(n) => Ok(n.to_string()),
             Value::U16(n) => Ok(n.to_string()),
+            Value::U32(n) => Ok(n.to_string()),
             Value::U64(n) => Ok(n.to_string()),
             Value::U128(n) => Ok(n.to_string()),
             Value::String(s) => Ok(s),
@@ -317,6 +318,7 @@ impl Value {
         match self {
             Value::U8(n) => Ok(n),
             Value::U16(n) => Ok(n as u8),
+            Value::U32(n) => Ok(n as u8),
             Value::U64(n) => Ok(n as u8),
             Value::U128(n) => Ok(n as u8),
             Value::Boolean(b) => Ok(b as u8),
@@ -329,6 +331,7 @@ impl Value {
         match self {
             Value::U8(n) => Ok(n as u16),
             Value::U16(n) => Ok(n),
+            Value::U32(n) => Ok(n as u16),
             Value::U64(n) => Ok(n as u16),
             Value::U128(n) => Ok(n as u16),
             Value::Boolean(b) => Ok(b as u16),
@@ -354,6 +357,7 @@ impl Value {
         match self {
             Value::U8(n) => Ok(n as u64),
             Value::U16(n) => Ok(n as u64),
+            Value::U32(n) => Ok(n as u64),
             Value::U64(n) => Ok(n),
             Value::U128(n) => Ok(n as u64),
             Value::Boolean(b) => Ok(b as u64),
@@ -366,6 +370,7 @@ impl Value {
         match self {
             Value::U8(n) => Ok(n as u128),
             Value::U16(n) => Ok(n as u128),
+            Value::U32(n) => Ok(n as u128),
             Value::U64(n) => Ok(n as u128),
             Value::U128(n) => Ok(n),
             Value::Boolean(b) => Ok(b as u128),

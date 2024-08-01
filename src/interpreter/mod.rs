@@ -655,6 +655,7 @@ impl<'a> Interpreter<'a> {
                 match cast_type {
                     Type::U8 => Ok(Some(Value::U8(value.cast_to_u8()?))),
                     Type::U16 => Ok(Some(Value::U16(value.cast_to_u16()?))),
+                    Type::U32 => Ok(Some(Value::U32(value.cast_to_u32()?))),
                     Type::U64 => Ok(Some(Value::U64(value.cast_to_u64()?))),
                     Type::U128 => Ok(Some(Value::U128(value.cast_to_u128()?))),
                     Type::String => Ok(Some(Value::String(value.cast_to_string()?))),
@@ -998,5 +999,12 @@ mod tests {
         assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { return 10; }"));
         assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { return 10; }"));
         assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { return 10L; }"));
+
+        // Explicit casting
+        assert_eq!(Value::U8(10), test_code_expect_value(&key, "func main(): u8 { let a: u64 = 10; return a as u8; }"));
+        assert_eq!(Value::U16(10), test_code_expect_value(&key, "func main(): u16 { let a: u64 = 10; return a as u16; }"));
+        assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { let a: u64 = 10; return a as u32; }"));
+        assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { let a: u32 = 10; return a as u64; }"));
+        assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { let a: u64 = 10; return a as u128; }"));
     }
 }
