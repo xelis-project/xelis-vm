@@ -7,16 +7,16 @@ pub struct State {
     // Count the number of recursive calls
     recursive: u16,
     // Maximum number of expressions that can be executed
-    max_expr: u64,
+    max_expr: Option<u64>,
     // Maximum number of recursive calls
-    max_recursive: u16,
+    max_recursive: Option<u16>,
     // constants variables that can be used
     constants: Option<context::Scope>
 }
 
 impl State {
     // Create a new state with the given limits
-    pub fn new(max_expr: u64, max_recursive: u16) -> Self {
+    pub fn new(max_expr: Option<u64>, max_recursive: Option<u16>) -> Self {
         Self {
             count_expr: 0,
             recursive: 0,
@@ -38,8 +38,10 @@ impl State {
     pub fn increase_expressions_executed_by(&mut self, value: u64) -> Result<(), InterpreterError> {
         self.count_expr += value;
 
-        if self.max_expr != 0 && self.count_expr >= self.max_expr {
-            return Err(InterpreterError::LimitReached)
+        if let Some(max_expr) = self.max_expr {
+            if self.count_expr >= max_expr {
+                return Err(InterpreterError::LimitReached)
+            }
         }
 
         Ok(())
@@ -47,13 +49,7 @@ impl State {
 
     // increment the number of expressions executed
     pub fn increase_expressions_executed(&mut self) -> Result<(), InterpreterError> {
-        self.count_expr += 1;
-
-        if self.max_expr != 0 && self.count_expr >= self.max_expr {
-            return Err(InterpreterError::LimitReached)
-        }
-
-        Ok(())
+        self.increase_expressions_executed_by(1)
     }
 
     // decrement the number of expressions executed
@@ -70,8 +66,10 @@ impl State {
     pub fn increase_recursive_depth(&mut self) -> Result<(), InterpreterError> {
         self.recursive += 1;
 
-        if self.max_recursive != 0 && self.recursive >= self.max_recursive {
-            return Err(InterpreterError::RecursiveLimitReached)
+        if let Some(max_recursive) = self.max_recursive {
+            if self.recursive >= max_recursive {
+                return Err(InterpreterError::RecursiveLimitReached)
+            }
         }
 
         Ok(())

@@ -15,6 +15,7 @@ pub enum Value {
     // number types
     U8(u8),
     U16(u16),
+    U32(u32),
     U64(u64),
     U128(u128),
 
@@ -149,6 +150,13 @@ impl Value {
         }
     }
 
+    pub fn as_u32(&self) -> Result<&u32, InterpreterError> {
+        match self {
+            Value::U32(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U32))
+        }
+    }
+
     pub fn as_u64(&self) -> Result<&u64, InterpreterError> {
         match self {
             Value::U64(n) => Ok(n),
@@ -231,6 +239,13 @@ impl Value {
         match self {
             Value::U16(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
+        }
+    }
+
+    pub fn to_u32(self) -> Result<u32, InterpreterError> {
+        match self {
+            Value::U32(n) => Ok(n),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U32))
         }
     }
 
@@ -321,6 +336,19 @@ impl Value {
         }
     }
 
+    // Cast value to u32
+    pub fn cast_to_u32(self) -> Result<u32, InterpreterError> {
+        match self {
+            Value::U8(n) => Ok(n as u32),
+            Value::U16(n) => Ok(n as u32),
+            Value::U32(n) => Ok(n),
+            Value::U64(n) => Ok(n as u32),
+            Value::U128(n) => Ok(n as u32),
+            Value::Boolean(b) => Ok(b as u32),
+            _ => Err(InterpreterError::InvalidCastType(Type::U16))
+        }
+    }
+
     // Cast value to u64
     pub fn cast_to_u64(self) -> Result<u64, InterpreterError> {
         match self {
@@ -361,6 +389,7 @@ impl std::fmt::Display for Value {
             Value::Null => write!(f, "null"),
             Value::U8(v) => write!(f, "{}", v),
             Value::U16(v) => write!(f, "{}", v),
+            Value::U32(v) => write!(f, "{}", v),
             Value::U64(v) => write!(f, "{}", v),
             Value::U128(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),

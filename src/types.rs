@@ -96,6 +96,7 @@ impl Type {
             Value::Null => return None,
             Value::U8(_) => Type::U8,
             Value::U16(_) => Type::U16,
+            Value::U32(_) => Type::U32,
             Value::U64(_) => Type::U64,
             Value::U128(_) => Type::U128,
             Value::String(_) => Type::String,

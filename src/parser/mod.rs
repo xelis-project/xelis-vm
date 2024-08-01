@@ -459,11 +459,13 @@ impl<'a> Parser<'a> {
                     Some(t) => match t {
                         Type::U8 => Value::U8(convert!(value)),
                         Type::U16 => Value::U16(convert!(value)),
+                        Type::U32 => Value::U32(convert!(value)),
                         Type::U64 => Value::U64(value),
                         Type::U128 => Value::U128(convert!(value)),
                         Type::Optional(inner) => Value::Optional(Some(Box::new(match inner.as_ref() {
                             Type::U8 => Value::U8(convert!(value)),
                             Type::U16 => Value::U16(convert!(value)),
+                            Type::U32 => Value::U32(convert!(value)),
                             Type::U64 => Value::U64(value),
                             Type::U128 => Value::U128(convert!(value)),
                             _ => return Err(ParserError::ExpectedNumberType)
