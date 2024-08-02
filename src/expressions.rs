@@ -197,6 +197,20 @@ impl Operator {
         }
     }
 
+    pub fn is_bool_operator(&self) -> bool {
+        match &self {
+            Operator::Equals
+            | Operator::NotEquals
+            | Operator::And
+            | Operator::Or
+            | Operator::GreaterThan
+            | Operator::LessThan
+            | Operator::GreaterOrEqual
+            | Operator::LessOrEqual => true,
+            _ => false
+        }
+    }
+
     pub fn is_and_or_or(&self) -> bool {
         match &self {
             Operator::And | Operator::Or => true,

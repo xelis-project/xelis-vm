@@ -965,6 +965,7 @@ mod tests {
         test_code_expect_return("entry main() { return 10 ^ 10; }", 0);
         test_code_expect_return("entry main() { return 10 << 10; }", 10240);
         test_code_expect_return("entry main() { return 10 >> 10; }", 0);
+
         test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
         test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
 
@@ -1034,9 +1035,15 @@ mod tests {
     }
 
     #[test]
+    fn test_string_equals() {
+        let key = &(String::from("main"), None, Vec::new());
+        assert_eq!(Value::Boolean(true), test_code_expect_value(key, "func main(): bool { return \"test\" == 'test'; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(key, "func main(): bool { return \"test\" == \"test2\"; }"));
+    }
+
+    #[test]
     fn test_ternary() {
-        // TODO: priority in parsing
-        test_code_expect_return("entry main() { let a: u64 = 10; return (a == 10) ? 0 : 1; }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; return a == 10 ? 0 : 1; }", 0);
         test_code_expect_return("entry main() { let a: u64 = 0; return (a == 10) ? 1 : 0; }", 0);
     }
 

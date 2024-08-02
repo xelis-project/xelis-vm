@@ -544,7 +544,7 @@ impl<'a> Parser<'a> {
                                     None => return Err(ParserError::OperatorNotFound(token))
                                 };
 
-                                let expr = self.read_expr(on_type, true, Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
+                                let expr = self.read_expr(on_type, !op.is_bool_operator(), Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
                                 if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
                                     match &op {
                                         Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
