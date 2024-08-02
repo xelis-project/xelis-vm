@@ -1007,4 +1007,55 @@ mod tests {
         assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { let a: u32 = 10; return a as u64; }"));
         assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { let a: u64 = 10; return a as u128; }"));
     }
+
+    #[test]
+    fn test_foreach() {
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let sum: u64 = 0; foreach i in a { sum += i; } return sum; }", 6);
+    }
+
+    #[test]
+    fn test_while() {
+        test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; } return a; }", 10);
+    }
+
+    #[test]
+    fn test_for() {
+        test_code_expect_return("entry main() { let a: u64 = 1; for i: u64 = 0; i < 10; i += 1 { a *= 2; } return a; }", 1024);
+    }
+
+    #[test]
+    fn test_break() {
+        test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; if a == 5 { break; } } return a; }", 5);
+    }
+
+    #[test]
+    fn test_continue() {
+        test_code_expect_return("entry main() { let i: u64 = 0; let a: u64 = 1; while i < 10 { i += 1; if i == 5 { continue; } a *= 2; } return a; }", 512);
+    }
+
+    #[test]
+    fn test_ternary() {
+        // TODO: priority in parsing
+        test_code_expect_return("entry main() { let a: u64 = 10; return (a == 10) ? 0 : 1; }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 0; return (a == 10) ? 1 : 0; }", 0);
+    }
+
+    #[test]
+    fn test_if() {
+        test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 0; } else { return 1; } }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; if a == 0 { return 1; } else { return 0; } }", 0);
+    }
+
+    #[test]
+    fn test_nested_if() {
+        test_code_expect_return("entry main() { let a: u64 = 10; if a > 0 { if a == 10 { return 10; } else { return 0; } } else { return 0; } }", 10);
+        test_code_expect_return("entry main() { let a: u64 = 10; if a == 0 { if a == 10 { return 10; } else { return 0; } } else { return 0; } }", 0);
+    }
+
+    #[test]
+    fn test_else_if() {
+        test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 10);
+        test_code_expect_return("entry main() { let a: u64 = 0; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 1; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 1);
+    }
 }
