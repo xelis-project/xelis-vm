@@ -520,70 +520,68 @@ impl<'a> Parser<'a> {
                     },
                     None => return Err(ParserError::InvalidTernaryNoPreviousExpression)
                 },
-                token => {
-                    if !token.is_operator() {
-                        return Err(ParserError::UnexpectedToken(token))
+                Token::As => {
+                    let previous_expr = last_expression.ok_or_else(|| ParserError::InvalidOperation)?;
+                    let left_type = self.get_type_from_expression(on_type, &previous_expr, context, struct_manager)?.into_owned();
+                    let right_type = self.read_type(struct_manager)?;
+
+                    if !left_type.is_castable_to(&right_type) {
+                        return Err(ParserError::CastError(left_type, right_type))
                     }
 
+                    Expression::Cast(Box::new(previous_expr), right_type)
+                },
+                token => {
                     match last_expression {
                         Some(previous_expr) => {
                             required_operator = !required_operator;
 
                             let left_type = self.get_type_from_expression(on_type, &previous_expr, context, struct_manager)?.into_owned();
-                            if token == Token::As {
-                                let right_type = self.read_type(struct_manager)?;
-                                if !left_type.is_castable_to(&right_type) {
-                                    return Err(ParserError::CastError(left_type, right_type))
-                                }
+                            // Parse the operator for this token
+                            let op = match Operator::value_of(&token) {
+                                Some(op) => op,
+                                None => return Err(ParserError::OperatorNotFound(token))
+                            };
 
-                                Expression::Cast(Box::new(previous_expr), right_type)
-                            } else {
-                                // Parse the operator for this token
-                                let op = match Operator::value_of(&token) {
-                                    Some(op) => op,
-                                    None => return Err(ParserError::OperatorNotFound(token))
-                                };
-
-                                let expr = self.read_expr(on_type, !op.is_bool_operator(), Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
-                                if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
-                                    match &op {
-                                        Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
-                                        | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
-                                        | Operator::BitwiseLeft | Operator::BitwiseRight
-                                        | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
-                                        | Operator::GreaterOrEqual => {
-                                            if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
-                                                return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
-                                            }
-                                        },
-                                        Operator::Plus => {
-                                            if left_type != Type::String && *right_type != Type::String {
-                                                if left_type != *right_type {
-                                                    return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
-                                                }
-                                            }
-                                        },
-                                        Operator::And | Operator::Or => {
-                                            if left_type != Type::Bool {
-                                                return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Bool))
-                                            }
-        
-                                            if *right_type != Type::Bool {
-                                                return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Bool))
-                                            }
-                                        },
-                                        _ => if left_type != *right_type {
+                            let expr = self.read_expr(on_type, !op.is_bool_operator(), Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
+                            if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
+                                match &op {
+                                    Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
+                                    | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
+                                    | Operator::BitwiseLeft | Operator::BitwiseRight
+                                    | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
+                                    | Operator::GreaterOrEqual => {
+                                        if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
                                             return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                         }
-                                    };
-        
-                                    Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
-                                } else {
-                                    match op {
-                                        Operator::Equals | Operator::NotEquals |
-                                        Operator::Assign if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
-                                        _ => return Err(ParserError::IncompatibleNullWith(left_type))
+                                    },
+                                    Operator::Plus => {
+                                        if left_type != Type::String && *right_type != Type::String {
+                                            if left_type != *right_type {
+                                                return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
+                                            }
+                                        }
+                                    },
+                                    Operator::And | Operator::Or => {
+                                        if left_type != Type::Bool {
+                                            return Err(ParserError::InvalidOperationNotSameType(left_type, Type::Bool))
+                                        }
+
+                                        if *right_type != Type::Bool {
+                                            return Err(ParserError::InvalidOperationNotSameType(right_type.into_owned(), Type::Bool))
+                                        }
+                                    },
+                                    _ => if left_type != *right_type {
+                                        return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                     }
+                                };
+
+                                Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
+                            } else {
+                                match op {
+                                    Operator::Equals | Operator::NotEquals |
+                                    Operator::Assign if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
+                                    _ => return Err(ParserError::IncompatibleNullWith(left_type))
                                 }
                             }
                         }
