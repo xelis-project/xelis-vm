@@ -236,7 +236,7 @@ impl<'a> Parser<'a> {
                 | Operator::AssignMinus
                 | Operator::AssignDivide
                 | Operator::AssignMultiply
-                | Operator::AssignModulo
+                | Operator::AssignRem
                 | Operator::AssignBitwiseAnd
                 | Operator::AssignBitwiseXor
                 | Operator::AssignBitwiseOr
@@ -261,7 +261,7 @@ impl<'a> Parser<'a> {
                 | Operator::BitwiseOr
                 | Operator::BitwiseLeft
                 | Operator::BitwiseRight
-                | Operator::Modulo => {
+                | Operator::Rem => {
                     let left_type = self.get_type_from_expression(on_type, left, context, struct_manager)?;
                     let right_type = self.get_type_from_expression(on_type, right, context, struct_manager)?;
 
@@ -546,7 +546,7 @@ impl<'a> Parser<'a> {
                             let expr = self.read_expr(on_type, !op.is_bool_operator(), Some(&left_type), context, mapper, functions_mapper, struct_manager)?;
                             if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
                                 match &op {
-                                    Operator::Minus | Operator::Modulo | Operator::Divide | Operator::Multiply
+                                    Operator::Minus | Operator::Rem | Operator::Divide | Operator::Multiply
                                     | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
                                     | Operator::BitwiseLeft | Operator::BitwiseRight
                                     | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual

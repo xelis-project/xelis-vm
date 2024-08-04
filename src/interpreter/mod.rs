@@ -424,7 +424,7 @@ impl<'a> Interpreter<'a> {
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             };
                         }, 
-                        Operator::AssignModulo => {
+                        Operator::AssignRem => {
                             *path_value = match path_type {
                                 Type::U8 => Value::U8(path_value.as_byte()? % value.to_u8()?),
                                 Type::U16 => Value::U16(path_value.as_u16()? % value.to_u16()?),
@@ -561,7 +561,7 @@ impl<'a> Interpreter<'a> {
                                 Type::U128 => Value::U128(mul!(left.to_u128()?, right.to_u128()?)),
                                 _ => return Err(InterpreterError::OperationNotNumberType)
                             })),
-                            Operator::Modulo => Ok(Some(match left_type {
+                            Operator::Rem => Ok(Some(match left_type {
                                 Type::U8 => Value::U8(left.to_u8()? % right.to_u8()?),
                                 Type::U16 => Value::U16(left.to_u16()? % right.to_u16()?),
                                 Type::U32 => Value::U32(left.to_u32()? % right.to_u32()?),
@@ -968,9 +968,14 @@ mod tests {
 
         test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
         test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
+    }
 
-        // TODO
-        // test_code_expect_return("entry main() { return 10 + 10 * 10 + 10; }", 120);
+    #[test]
+    fn test_number_operations_priority() {
+        // test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
+        // test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
+
+        // test_code_expect_return("entry main() { return 10 + 10 / 5 + 3; }", 15);
     }
 
     #[test]

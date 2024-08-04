@@ -52,7 +52,7 @@ pub enum Operator {
     Minus, // -
     Multiply, // *
     Divide, // /
-    Modulo, // %
+    Rem, // %
 
     BitwiseXor, // ^
     BitwiseAnd, // &
@@ -65,7 +65,7 @@ pub enum Operator {
     AssignMinus, // -=
     AssignDivide, // /=
     AssignMultiply, // *=
-    AssignModulo, // %=
+    AssignRem, // %=
     AssignBitwiseXor, // ^=
     AssignBitwiseAnd, // &=
     AssignBitwiseOr, // |=
@@ -137,7 +137,7 @@ impl Operator {
             Token::OperatorMinus => Minus,
             Token::OperatorMultiply => Multiply,
             Token::OperatorDivide => Divide,
-            Token::OperatorModulo => Modulo,
+            Token::OperatorModulo => Rem,
 
             Token::OperatorBitwiseXor => BitwiseXor,
             Token::OperatorBitwiseAnd => BitwiseAnd,
@@ -150,7 +150,7 @@ impl Operator {
             Token::OperatorMinusAssign => AssignMinus,
             Token::OperatorDivideAssign => AssignDivide,
             Token::OperatorMultiplyAssign => AssignMultiply,
-            Token::OperatorModuloAssign => AssignModulo,
+            Token::OperatorModuloAssign => AssignRem,
             Token::OperatorBitwiseXorAssign => AssignBitwiseXor,
             Token::OperatorBitwiseAndAssign => AssignBitwiseAnd,
             Token::OperatorBitwiseOrAssign => AssignBitwiseOr,
@@ -169,7 +169,14 @@ impl Operator {
             | AssignPlus
             | AssignMinus
             | AssignDivide
-            | AssignMultiply => true,
+            | AssignMultiply
+            | AssignRem
+            | AssignBitwiseXor
+            | AssignBitwiseAnd
+            | AssignBitwiseOr
+            | AssignBitwiseLeft
+            | AssignBitwiseRight
+             => true,
             _ => false
         }
     }
@@ -183,7 +190,7 @@ impl Operator {
             | Operator::Minus
             | Operator::Divide
             | Operator::Multiply
-            | Operator::Modulo
+            | Operator::Rem
             | Operator::BitwiseXor
             | Operator::BitwiseAnd
             | Operator::BitwiseOr
