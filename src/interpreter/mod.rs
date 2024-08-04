@@ -153,10 +153,11 @@ impl<'a> Interpreter<'a> {
         Ok(interpreter)
     }
 
+    // Verify if the value is the same as the other
     fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
         Ok(match value_type {
             Type::Any => return Err(InterpreterError::InvalidType(value_type.clone())),
-            Type::U8 => *left.as_byte()? == *right.as_byte()?,
+            Type::U8 => *left.as_u8()? == *right.as_u8()?,
             Type::U16 => *left.as_u16()? == *right.as_u16()?,
             Type::U64 => *left.as_u64()? == *right.as_u64()?,
             Type::U128 => *left.as_u128()? == *right.as_u128()?,
@@ -269,6 +270,134 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    // Execute the selected operator
+    fn execute_operator(&self, op: &Operator, left: &Value, right: Value, left_type: Type, right_type: Type) -> Result<Value, InterpreterError> {
+        match op {
+            Operator::Equals => Ok(Value::Boolean(left_type == right_type && self.is_same_value(&left_type, &left, &right)?)),
+            Operator::NotEquals => Ok(Value::Boolean(left_type != right_type || !self.is_same_value(&left_type, &left, &right)?)),
+            Operator::Plus => {
+                if left_type == Type::String || right_type == Type::String {
+                    Ok(Value::String(format!("{}{}", left, right)))
+                } else {
+                    Ok(match left_type {
+                        Type::U8 => Value::U8(add!(left.as_u8()?, right.to_u8()?)),
+                        Type::U16 => Value::U16(add!(left.as_u16()?, right.to_u16()?)),
+                        Type::U32 => Value::U32(add!(left.as_u32()?, right.to_u32()?)),
+                        Type::U64 => Value::U64(add!(left.as_u64()?, right.to_u64()?)),
+                        Type::U128 => Value::U128(add!(left.as_u128()?, right.to_u128()?)),
+                        _ => return Err(InterpreterError::OperationNotNumberType)
+                    })
+                }
+            },
+            Operator::Minus => Ok(match left_type {
+                Type::U8 => Value::U8(sub!(left.as_u8()?, right.to_u8()?)),
+                Type::U16 => Value::U16(sub!(left.as_u16()?, right.to_u16()?)),
+                Type::U32 => Value::U32(sub!(left.as_u32()?, right.to_u32()?)),
+                Type::U64 => Value::U64(sub!(left.as_u64()?, right.to_u64()?)),
+                Type::U128 => Value::U128(sub!(left.as_u128()?, right.to_u128()?)),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::Divide => Ok(match left_type {
+                Type::U8 => Value::U8(div!(left.as_u8()?, right.to_u8()?)),
+                Type::U16 => Value::U16(div!(left.as_u16()?, right.to_u16()?)),
+                Type::U32 => Value::U32(div!(left.as_u32()?, right.to_u32()?)),
+                Type::U64 => Value::U64(div!(left.as_u64()?, right.to_u64()?)),
+                Type::U128 => Value::U128(div!(left.as_u128()?, right.to_u128()?)),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::Multiply => Ok(match left_type {
+                Type::U8 => Value::U8(mul!(left.as_u8()?, right.to_u8()?)),
+                Type::U16 => Value::U16(mul!(left.as_u16()?, right.to_u16()?)),
+                Type::U32 => Value::U32(mul!(left.as_u32()?, right.to_u32()?)),
+                Type::U64 => Value::U64(mul!(left.as_u64()?, right.to_u64()?)),
+                Type::U128 => Value::U128(mul!(left.as_u128()?, right.to_u128()?)),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::Rem => Ok(match left_type {
+                Type::U8 => Value::U8(left.as_u8()? % right.as_u8()?),
+                Type::U16 => Value::U16(left.as_u16()? % right.as_u16()?),
+                Type::U32 => Value::U32(left.as_u32()? % right.as_u32()?),
+                Type::U64 => Value::U64(left.as_u64()? % right.as_u64()?),
+                Type::U128 => Value::U128(left.as_u128()? % right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::BitwiseXor => Ok(match left_type {
+                Type::U8 => Value::U8(left.as_u8()? ^ right.as_u8()?),
+                Type::U16 => Value::U16(left.as_u16()? ^ right.as_u16()?),
+                Type::U32 => Value::U32(left.as_u32()? ^ right.as_u32()?),
+                Type::U64 => Value::U64(left.as_u64()? ^ right.as_u64()?),
+                Type::U128 => Value::U128(left.as_u128()? ^ right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::BitwiseAnd => Ok(match left_type {
+                Type::U8 => Value::U8(left.as_u8()? & right.as_u8()?),
+                Type::U16 => Value::U16(left.as_u16()? & right.as_u16()?),
+                Type::U32 => Value::U32(left.as_u32()? & right.as_u32()?),
+                Type::U64 => Value::U64(left.as_u64()? & right.as_u64()?),
+                Type::U128 => Value::U128(left.as_u128()? & right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::BitwiseOr => Ok(match left_type {
+                Type::U8 => Value::U8(left.as_u8()? | right.as_u8()?),
+                Type::U16 => Value::U16(left.as_u16()? | right.as_u16()?),
+                Type::U32 => Value::U32(left.as_u32()? | right.as_u32()?),
+                Type::U64 => Value::U64(left.as_u64()? | right.as_u64()?),
+                Type::U128 => Value::U128(left.as_u128()? | right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::BitwiseLeft => Ok(match left_type {
+                Type::U8 => Value::U8(shl!(left.as_u8()?, right.to_u8()?)),
+                Type::U16 => Value::U16(shl!(left.as_u16()?, right.to_u16()?)),
+                Type::U32 => Value::U32(shl!(left.as_u32()?, right.to_u32()?)),
+                Type::U64 => Value::U64(shl!(left.as_u64()?, right.to_u64()?)),
+                Type::U128 => Value::U128(shl!(left.as_u128()?, right.to_u128()?)),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::BitwiseRight => Ok(match left_type {
+                Type::U8 => Value::U8(shr!(left.as_u8()?, right.to_u8()?)),
+                Type::U16 => Value::U16(shr!(left.as_u16()?, right.to_u16()?)),
+                Type::U32 => Value::U32(shr!(left.as_u32()?, right.to_u32()?)),
+                Type::U64 => Value::U64(shr!(left.as_u64()?, right.to_u64()?)),
+                Type::U128 => Value::U128(shr!(left.as_u128()?, right.to_u128()?)),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::GreaterOrEqual => Ok(match left_type {
+                Type::U8 => Value::Boolean(left.as_u8()? >= right.as_u8()?),
+                Type::U16 => Value::Boolean(left.as_u16()? >= right.as_u16()?),
+                Type::U32 => Value::Boolean(left.as_u32()? >= right.as_u32()?),
+                Type::U64 => Value::Boolean(left.as_u64()? >= right.as_u64()?),
+                Type::U128 => Value::Boolean(left.as_u128()? >= right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::GreaterThan => Ok(match left_type {
+                Type::U8 => Value::Boolean(left.as_u8()? > right.as_u8()?),
+                Type::U16 => Value::Boolean(left.as_u16()? > right.as_u16()?),
+                Type::U32 => Value::Boolean(left.as_u32()? > right.as_u32()?),
+                Type::U64 => Value::Boolean(left.as_u64()? > right.as_u64()?),
+                Type::U128 => Value::Boolean(left.as_u128()? > right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::LessOrEqual => Ok(match left_type {
+                Type::U8 => Value::Boolean(left.as_u8()? <= right.as_u8()?),
+                Type::U16 => Value::Boolean(left.as_u16()? <= right.as_u16()?),
+                Type::U32 => Value::Boolean(left.as_u32()? <= right.as_u32()?),
+                Type::U64 => Value::Boolean(left.as_u64()? <= right.as_u64()?),
+                Type::U128 => Value::Boolean(left.as_u128()? <= right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            Operator::LessThan => Ok(match left_type {
+                Type::U8 => Value::Boolean(left.as_u8()? < right.as_u8()?),
+                Type::U16 => Value::Boolean(left.as_u16()? < right.as_u16()?),
+                Type::U32 => Value::Boolean(left.as_u32()? < right.as_u32()?),
+                Type::U64 => Value::Boolean(left.as_u64()? < right.as_u64()?),
+                Type::U128 => Value::Boolean(left.as_u128()? < right.as_u128()?),
+                _ => return Err(InterpreterError::OperationNotNumberType)
+            }),
+            // Those are handled in the execute_expression function
+            Operator::And | Operator::Or | Operator::Assign(_) => return Err(InterpreterError::UnexpectedOperator)
+        }
+    }
+
     fn execute_expression_and_expect_value(&self, on_value: Option<SharableValue>, expr: &Expression, context: Option<&mut Context>, state: &mut State) -> Result<Value, InterpreterError> {
         match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
@@ -369,120 +498,18 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
-                    let value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
+                    let mut value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
                     let path = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
                     let mut path_value = path.borrow_mut();
                     let path_type = self.get_type_from_value(&path_value)?;
                     let value_type = self.get_type_from_value(&value)?;
 
-                    if (!path_value.is_number() || !value.is_number() || path_type != value_type) && op.is_number_operator() && !(*op == Operator::AssignPlus && path_type == Type::String) {
-                        return Err(InterpreterError::OperationNotNumberType)
-                    }
-
                     match op {
-                        Operator::Assign => {
+                        Operator::Assign(op) => {
+                            if let Some(op) = op {
+                                value = self.execute_operator(&op, &path_value, value, path_type, value_type)?;
+                            }
                             *path_value = value;
-                        },
-                        Operator::AssignPlus => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(add!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(add!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(add!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(add!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(add!(path_value.as_u128()?,  value.to_u128()?)),
-                                Type::String => Value::String(format!("{}{}", path_value.as_string()?, value.to_string()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignMinus => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(sub!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(sub!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(sub!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(sub!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(sub!(path_value.as_u128()?, value.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignDivide => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(div!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(div!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(div!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(div!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(div!(path_value.as_u128()?, value.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignMultiply => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(mul!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(mul!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(mul!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(mul!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(mul!(path_value.as_u128()?, value.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        }, 
-                        Operator::AssignRem => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(path_value.as_byte()? % value.to_u8()?),
-                                Type::U16 => Value::U16(path_value.as_u16()? % value.to_u16()?),
-                                Type::U32 => Value::U32(path_value.as_u32()? % value.to_u32()?),
-                                Type::U64 => Value::U64(path_value.as_u64()? % value.to_u64()?),
-                                Type::U128 => Value::U128(path_value.as_u128()? % value.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignBitwiseXor => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(path_value.as_byte()? ^ value.to_u8()?),
-                                Type::U16 => Value::U16(path_value.as_u16()? ^ value.to_u16()?),
-                                Type::U32 => Value::U32(path_value.as_u32()? ^ value.to_u32()?),
-                                Type::U64 => Value::U64(path_value.as_u64()? ^ value.to_u64()?),
-                                Type::U128 => Value::U128(path_value.as_u128()? ^ value.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignBitwiseAnd => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(path_value.as_byte()? & value.to_u8()?),
-                                Type::U16 => Value::U16(path_value.as_u16()? & value.to_u16()?),
-                                Type::U32 => Value::U32(path_value.as_u32()? & value.to_u32()?),
-                                Type::U64 => Value::U64(path_value.as_u64()? & value.to_u64()?),
-                                Type::U128 => Value::U128(path_value.as_u128()? & value.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignBitwiseOr => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(path_value.as_byte()? | value.to_u8()?),
-                                Type::U16 => Value::U16(path_value.as_u16()? | value.to_u16()?),
-                                Type::U32 => Value::U32(path_value.as_u32()? | value.to_u32()?),
-                                Type::U64 => Value::U64(path_value.as_u64()? | value.to_u64()?),
-                                Type::U128 => Value::U128(path_value.as_u128()? | value.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignBitwiseLeft => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(shl!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(shl!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(shl!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(shl!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(shl!(path_value.as_u128()?, value.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
-                        },
-                        Operator::AssignBitwiseRight => {
-                            *path_value = match path_type {
-                                Type::U8 => Value::U8(shr!(path_value.as_byte()?, value.to_u8()?)),
-                                Type::U16 => Value::U16(shr!(path_value.as_u16()?, value.to_u16()?)),
-                                Type::U32 => Value::U32(shr!(path_value.as_u32()?, value.to_u32()?)),
-                                Type::U64 => Value::U64(shr!(path_value.as_u64()?, value.to_u64()?)),
-                                Type::U128 => Value::U128(shr!(path_value.as_u128()?, value.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            };
                         },
                         _ => return Err(InterpreterError::NotImplemented) 
                     };
@@ -519,130 +546,8 @@ impl<'a> Interpreter<'a> {
                         if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
                             return Err(InterpreterError::OperationNotNumberType)
                         }
-        
-                        match op {
-                            Operator::Equals => Ok(Some(Value::Boolean(left_type == right_type && self.is_same_value(&left_type, &left, &right)?))),
-                            Operator::NotEquals => Ok(Some(Value::Boolean(left_type != right_type || !self.is_same_value(&left_type, &left, &right)?))),
-                            Operator::Plus => {
-                                if left_type == Type::String || right_type == Type::String {
-                                    Ok(Some(Value::String(format!("{}{}", left, right))))
-                                } else {
-                                    Ok(Some(match left_type {
-                                        Type::U8 => Value::U8(add!(left.to_u8()?, right.to_u8()?)),
-                                        Type::U16 => Value::U16(add!(left.to_u16()?, right.to_u16()?)),
-                                        Type::U32 => Value::U32(add!(left.to_u32()?, right.to_u32()?)),
-                                        Type::U64 => Value::U64(add!(left.to_u64()?, right.to_u64()?)),
-                                        Type::U128 => Value::U128(add!(left.to_u128()?, right.to_u128()?)),
-                                        _ => return Err(InterpreterError::OperationNotNumberType)
-                                    }))
-                                }
-                            },
-                            Operator::Minus => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(sub!(left.to_u8()?, right.to_u8()?)),
-                                Type::U16 => Value::U16(sub!(left.to_u16()?, right.to_u16()?)),
-                                Type::U32 => Value::U32(sub!(left.to_u32()?, right.to_u32()?)),
-                                Type::U64 => Value::U64(sub!(left.to_u64()?, right.to_u64()?)),
-                                Type::U128 => Value::U128(sub!(left.to_u128()?, right.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::Divide => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(div!(left.to_u8()?, right.to_u8()?)),
-                                Type::U16 => Value::U16(div!(left.to_u16()?, right.to_u16()?)),
-                                Type::U32 => Value::U32(div!(left.to_u32()?, right.to_u32()?)),
-                                Type::U64 => Value::U64(div!(left.to_u64()?, right.to_u64()?)),
-                                Type::U128 => Value::U128(div!(left.to_u128()?, right.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::Multiply => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(mul!(left.to_u8()?, right.to_u8()?)),
-                                Type::U16 => Value::U16(mul!(left.to_u16()?, right.to_u16()?)),
-                                Type::U32 => Value::U32(mul!(left.to_u32()?, right.to_u32()?)),
-                                Type::U64 => Value::U64(mul!(left.to_u64()?, right.to_u64()?)),
-                                Type::U128 => Value::U128(mul!(left.to_u128()?, right.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::Rem => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(left.to_u8()? % right.to_u8()?),
-                                Type::U16 => Value::U16(left.to_u16()? % right.to_u16()?),
-                                Type::U32 => Value::U32(left.to_u32()? % right.to_u32()?),
-                                Type::U64 => Value::U64(left.to_u64()? % right.to_u64()?),
-                                Type::U128 => Value::U128(left.to_u128()? % right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::BitwiseXor => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(left.to_u8()? ^ right.to_u8()?),
-                                Type::U16 => Value::U16(left.to_u16()? ^ right.to_u16()?),
-                                Type::U32 => Value::U32(left.to_u32()? ^ right.to_u32()?),
-                                Type::U64 => Value::U64(left.to_u64()? ^ right.to_u64()?),
-                                Type::U128 => Value::U128(left.to_u128()? ^ right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::BitwiseAnd => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(left.to_u8()? & right.to_u8()?),
-                                Type::U16 => Value::U16(left.to_u16()? & right.to_u16()?),
-                                Type::U32 => Value::U32(left.to_u32()? & right.to_u32()?),
-                                Type::U64 => Value::U64(left.to_u64()? & right.to_u64()?),
-                                Type::U128 => Value::U128(left.to_u128()? & right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::BitwiseOr => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(left.to_u8()? | right.to_u8()?),
-                                Type::U16 => Value::U16(left.to_u16()? | right.to_u16()?),
-                                Type::U32 => Value::U32(left.to_u32()? | right.to_u32()?),
-                                Type::U64 => Value::U64(left.to_u64()? | right.to_u64()?),
-                                Type::U128 => Value::U128(left.to_u128()? | right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::BitwiseLeft => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(shl!(left.to_u8()?, right.to_u8()?)),
-                                Type::U16 => Value::U16(shl!(left.to_u16()?, right.to_u16()?)),
-                                Type::U32 => Value::U32(shl!(left.to_u32()?, right.to_u32()?)),
-                                Type::U64 => Value::U64(shl!(left.to_u64()?, right.to_u64()?)),
-                                Type::U128 => Value::U128(shl!(left.to_u128()?, right.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::BitwiseRight => Ok(Some(match left_type {
-                                Type::U8 => Value::U8(shr!(left.to_u8()?, right.to_u8()?)),
-                                Type::U16 => Value::U16(shr!(left.to_u16()?, right.to_u16()?)),
-                                Type::U32 => Value::U32(shr!(left.to_u32()?, right.to_u32()?)),
-                                Type::U64 => Value::U64(shr!(left.to_u64()?, right.to_u64()?)),
-                                Type::U128 => Value::U128(shr!(left.to_u128()?, right.to_u128()?)),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::GreaterOrEqual => Ok(Some(match left_type {
-                                Type::U8 => Value::Boolean(left.to_u8()? >= right.to_u8()?),
-                                Type::U16 => Value::Boolean(left.to_u16()? >= right.to_u16()?),
-                                Type::U32 => Value::Boolean(left.to_u32()? >= right.to_u32()?),
-                                Type::U64 => Value::Boolean(left.to_u64()? >= right.to_u64()?),
-                                Type::U128 => Value::Boolean(left.to_u128()? >= right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::GreaterThan => Ok(Some(match left_type {
-                                Type::U8 => Value::Boolean(left.to_u8()? > right.to_u8()?),
-                                Type::U16 => Value::Boolean(left.to_u16()? > right.to_u16()?),
-                                Type::U32 => Value::Boolean(left.to_u32()? > right.to_u32()?),
-                                Type::U64 => Value::Boolean(left.to_u64()? > right.to_u64()?),
-                                Type::U128 => Value::Boolean(left.to_u128()? > right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::LessOrEqual => Ok(Some(match left_type {
-                                Type::U8 => Value::Boolean(left.to_u8()? <= right.to_u8()?),
-                                Type::U16 => Value::Boolean(left.to_u16()? <= right.to_u16()?),
-                                Type::U32 => Value::Boolean(left.to_u32()? <= right.to_u32()?),
-                                Type::U64 => Value::Boolean(left.to_u64()? <= right.to_u64()?),
-                                Type::U128 => Value::Boolean(left.to_u128()? <= right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            Operator::LessThan => Ok(Some(match left_type {
-                                Type::U8 => Value::Boolean(left.to_u8()? < right.to_u8()?),
-                                Type::U16 => Value::Boolean(left.to_u16()? < right.to_u16()?),
-                                Type::U32 => Value::Boolean(left.to_u32()? < right.to_u32()?),
-                                Type::U64 => Value::Boolean(left.to_u64()? < right.to_u64()?),
-                                Type::U128 => Value::Boolean(left.to_u128()? < right.to_u128()?),
-                                _ => return Err(InterpreterError::OperationNotNumberType)
-                            })),
-                            _ => return Err(InterpreterError::UnexpectedOperator)
-                        }
+
+                        self.execute_operator(op, &left, right, left_type, right_type).map(Some)
                     }
                 }
             },

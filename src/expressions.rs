@@ -38,7 +38,7 @@ pub enum Statement {
     Variable(DeclarationStatement),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
     Equals, // ==
     NotEquals, // !=
@@ -60,17 +60,18 @@ pub enum Operator {
     BitwiseLeft, // <<
     BitwiseRight, // >>
 
-    Assign, // =
-    AssignPlus, // +=
-    AssignMinus, // -=
-    AssignDivide, // /=
-    AssignMultiply, // *=
-    AssignRem, // %=
-    AssignBitwiseXor, // ^=
-    AssignBitwiseAnd, // &=
-    AssignBitwiseOr, // |=
-    AssignBitwiseLeft, // <<=
-    AssignBitwiseRight, // >>=
+    Assign(Option<Box<Operator>>),
+    // Assign, // =
+    // AssignPlus, // +=
+    // AssignMinus, // -=
+    // AssignDivide, // /=
+    // AssignMultiply, // *=
+    // AssignRem, // %=
+    // AssignBitwiseXor, // ^=
+    // AssignBitwiseAnd, // &=
+    // AssignBitwiseOr, // |=
+    // AssignBitwiseLeft, // <<=
+    // AssignBitwiseRight, // >>=
 }
 
 #[derive(Debug)]
@@ -145,17 +146,17 @@ impl Operator {
             Token::OperatorBitwiseLeft => BitwiseLeft,
             Token::OperatorBitwiseRight => BitwiseRight,
 
-            Token::OperatorAssign => Assign,
-            Token::OperatorPlusAssign => AssignPlus,
-            Token::OperatorMinusAssign => AssignMinus,
-            Token::OperatorDivideAssign => AssignDivide,
-            Token::OperatorMultiplyAssign => AssignMultiply,
-            Token::OperatorModuloAssign => AssignRem,
-            Token::OperatorBitwiseXorAssign => AssignBitwiseXor,
-            Token::OperatorBitwiseAndAssign => AssignBitwiseAnd,
-            Token::OperatorBitwiseOrAssign => AssignBitwiseOr,
-            Token::OperatorBitwiseLeftAssign => AssignBitwiseLeft,
-            Token::OperatorBitwiseRightAssign => AssignBitwiseRight,
+            Token::OperatorAssign => Assign(None),
+            Token::OperatorPlusAssign => Assign(Some(Box::new(Plus))),
+            Token::OperatorMinusAssign => Assign(Some(Box::new(Minus))),
+            Token::OperatorDivideAssign => Assign(Some(Box::new(Divide))),
+            Token::OperatorMultiplyAssign => Assign(Some(Box::new(Multiply))),
+            Token::OperatorModuloAssign => Assign(Some(Box::new(Rem))),
+            Token::OperatorBitwiseXorAssign => Assign(Some(Box::new(BitwiseXor))),
+            Token::OperatorBitwiseAndAssign => Assign(Some(Box::new(BitwiseAnd))),
+            Token::OperatorBitwiseOrAssign => Assign(Some(Box::new(BitwiseOr))),
+            Token::OperatorBitwiseLeftAssign => Assign(Some(Box::new(BitwiseLeft))),
+            Token::OperatorBitwiseRightAssign => Assign(Some(Box::new(BitwiseRight))),
 
             _ => return None,
         };
@@ -163,30 +164,14 @@ impl Operator {
     }
 
     pub fn is_assignation(&self) -> bool {
-        use Operator::*;
         match &self {
-            Assign
-            | AssignPlus
-            | AssignMinus
-            | AssignDivide
-            | AssignMultiply
-            | AssignRem
-            | AssignBitwiseXor
-            | AssignBitwiseAnd
-            | AssignBitwiseOr
-            | AssignBitwiseLeft
-            | AssignBitwiseRight
-             => true,
+            Operator::Assign(_) => true,
             _ => false
         }
     }
 
     pub fn is_number_operator(&self) -> bool {
         match &self {
-            Operator::AssignPlus
-            | Operator::AssignMinus
-            | Operator::AssignDivide
-            | Operator::AssignMultiply
             | Operator::Minus
             | Operator::Divide
             | Operator::Multiply

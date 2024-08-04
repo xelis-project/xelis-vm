@@ -136,7 +136,7 @@ impl Value {
         }
     }
 
-    pub fn as_byte(&self) -> Result<&u8, InterpreterError> {
+    pub fn as_u8(&self) -> Result<&u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))

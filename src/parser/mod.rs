@@ -231,17 +231,7 @@ impl<'a> Parser<'a> {
                 | Operator::LessThan
                 | Operator::And => Cow::Owned(Type::Bool),
                 // Assign operators
-                Operator::Assign
-                | Operator::AssignPlus
-                | Operator::AssignMinus
-                | Operator::AssignDivide
-                | Operator::AssignMultiply
-                | Operator::AssignRem
-                | Operator::AssignBitwiseAnd
-                | Operator::AssignBitwiseXor
-                | Operator::AssignBitwiseOr
-                | Operator::AssignBitwiseLeft
-                | Operator::AssignBitwiseRight => return Err(ParserError::AssignReturnNothing),
+                Operator::Assign(_) => return Err(ParserError::AssignReturnNothing),
                 // String compatible operators
                 Operator::Plus | Operator::Minus => {
                     let left_type = self.get_type_from_expression(on_type, left, context, struct_manager)?;
@@ -547,8 +537,7 @@ impl<'a> Parser<'a> {
                             if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context, struct_manager)? {
                                 match &op {
                                     Operator::Minus | Operator::Rem | Operator::Divide | Operator::Multiply
-                                    | Operator::AssignMinus | Operator::AssignDivide | Operator::AssignMultiply
-                                    | Operator::BitwiseLeft | Operator::BitwiseRight
+                                    | Operator::Assign(_) | Operator::BitwiseLeft | Operator::BitwiseRight
                                     | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
                                     | Operator::GreaterOrEqual => {
                                         if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
@@ -580,7 +569,7 @@ impl<'a> Parser<'a> {
                             } else {
                                 match op {
                                     Operator::Equals | Operator::NotEquals |
-                                    Operator::Assign if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
+                                    Operator::Assign(None) if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
                                     _ => return Err(ParserError::IncompatibleNullWith(left_type))
                                 }
                             }
