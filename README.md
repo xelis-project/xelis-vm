@@ -39,6 +39,7 @@ An error will be returned by the interpreter if an overflow is detected without 
 ```rust
 let my_byte: u8 = 10
 let my_u16: u16 = 70
+let my_u32: u32 = 999
 let my_int: u64 = 25655
 let my_u128: u128 = 100_000_000L
 ```
