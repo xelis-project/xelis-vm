@@ -73,6 +73,28 @@ let b: u8 = id as u8
 let id_str: string = id as string 
 ```
 
+### Import
+Instead of having one file with all your code, you can have multiple files that will be compiled into one final program.
+
+**Rules**
+- Have a unique alias if set
+- No circular import
+- ends with `.xel` if its a local import
+
+**Examples**
+
+`math` namespace
+```rust
+import "math.xel" as math;
+...
+math.sum(a, b)
+```
+
+no namespace:
+```rust
+sum(a, b)
+```
+
 ### Function
 `entry` function is a "public callable" function and must return a `u64` value.
 
