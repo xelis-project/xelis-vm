@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{types::{Struct, Type}, ParserError, IdentifierType, mapper::IdMapper};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructBuilder {
     pub fields: HashMap<IdentifierType, Type>,
     pub mapper: IdMapper
