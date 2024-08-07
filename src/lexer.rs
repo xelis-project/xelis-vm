@@ -260,7 +260,7 @@ impl<'a> Lexer<'a> {
         while let Some(c) = self.next_char() {
             let token = match c {
                 // skipped characters
-                '\n' | ' ' | ';' => {
+                '\n' | ' ' | ';' | '\r' => {
                     // we just skip these characters
                     continue;
                 },
