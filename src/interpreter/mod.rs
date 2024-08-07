@@ -828,18 +828,19 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parser::Parser, lexer::Lexer};
+    use crate::{lexer::Lexer, parser::Parser, EnvironmentBuilder};
 
     fn test_code_expect_value(key: &(String, Option<Type>, Vec<Type>), code: &str) -> Value {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
 
-        let (e, mut mapper) = Environment::new();
+        let e = EnvironmentBuilder::new();
         let parser = Parser::new(tokens, &e);
-        let program = parser.parse(&mut mapper).unwrap();
+        let (program, mapper) = parser.parse().unwrap();
 
         let mut state = State::new(None, None);
-        let interpreter = Interpreter::new(&program, &e).unwrap();
+        let env = e.build();
+        let interpreter = Interpreter::new(&program, &env).unwrap();
 
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();

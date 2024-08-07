@@ -1,7 +1,7 @@
 use xelis_vm::{
     Lexer,
     Parser,
-    Environment,
+    EnvironmentBuilder,
     Interpreter,
     State
 };
@@ -27,15 +27,16 @@ fn main() {
     println!("Lexer: {:?}", start.elapsed());
 
     // Create the default environment
-    let (environment, mut mapper) = Environment::new();
+    let builder = EnvironmentBuilder::default();
 
     // Build the program
     start = Instant::now();
-    let program = Parser::new(tokens, &environment).parse(&mut mapper).unwrap();
+    let (program, mapper) = Parser::new(tokens, &builder).parse().unwrap();
     println!("Parser: {:?}", start.elapsed());
 
+    let env = builder.build();
     // Create the VM instance
-    let vm = Interpreter::new(&program, &environment).unwrap();
+    let vm = Interpreter::new(&program, &env).unwrap();
     let mut state = State::new(None, Some(100));
     start = Instant::now();
     let exit = vm.call_entry_function(&mapper.get(&("main".to_owned(), None, Vec::new())).unwrap(), vec![], &mut state).unwrap();

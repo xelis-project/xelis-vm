@@ -10,7 +10,7 @@ mod mapper;
 mod values;
 
 pub use crate::{
-    environment::Environment,
+    environment::{Environment, EnvironmentBuilder},
     token::Token,
     functions::{FnInstance, DeclaredFunction, EntryFunction, FnReturnType},
     interpreter::{Interpreter, InterpreterError, State},

@@ -14,14 +14,16 @@ use crate::{
     mapper::{FunctionMapper, IdMapper},
     types::{Struct, Type},
     values::Value,
-    Environment,
+    EnvironmentBuilder,
     IdentifierType,
+    Lexer,
     Token
 };
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet, VecDeque},
-    convert::TryInto
+    convert::TryInto,
+    fs
 };
 
 macro_rules! convert {
@@ -48,11 +50,11 @@ pub struct Parser<'a> {
     tokens: VecDeque<Token>,
     functions: HashMap<IdentifierType, FunctionType>,
     // Environment contains all the library linked to the program
-    env: &'a Environment
+    env: &'a EnvironmentBuilder
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: VecDeque<Token>, env: &'a Environment) -> Self {
+    pub fn new(tokens: VecDeque<Token>, env: &'a EnvironmentBuilder) -> Self {
         Parser {
             constants: HashSet::new(),
             tokens,
@@ -79,11 +81,7 @@ impl<'a> Parser<'a> {
     // Limited to 32 characters
     fn next_identifier(&mut self) -> Result<String, ParserError> {
         match self.advance()? {
-            Token::Identifier(id) => if id.len() <= 32 {
-                Ok(id)
-            } else {
-                Err(ParserError::VariableTooLong(id))
-            },
+            Token::Identifier(id) => Ok(id),
             token => Err(ParserError::ExpectedIdentifierToken(token))
         }
     }
@@ -1001,6 +999,48 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    // Read a type with the following syntax:
+    // import "filename.xel";
+    // or with an alias:
+    // import "filename.xel" as alias;
+    fn read_import(&mut self) -> Result<(), ParserError> {
+        let path = self.advance()?;
+
+        let Token::StringValue(path) = path else {
+            return Err(ParserError::InvalidImport)
+        };
+
+        // We don't allow absolute path or path that contains ".."
+        if path.starts_with("/") || path.contains("..") {
+            return Err(ParserError::InvalidImportPath(path))
+        }
+
+        // If its a local import, we will import its content directly
+        let is_local = path.ends_with(".xel");
+        if !is_local {
+            return Err(ParserError::NotImplemented)
+        }
+
+        let content = fs::read_to_string(&path).map_err(|e| ParserError::InvalidImportPath(e.to_string()))?;
+        let mut tokens = Lexer::new(&content).get().map_err(|e| ParserError::ImportLexerError(path, e))?;
+
+        if *self.peek()? == Token::As {
+            self.expect_token(Token::As)?;
+            // let alias = self.next_identifier()?;
+
+            // let parser = Parser::new(tokens, &self.env);
+            // let program = parser.parse(functions_mapper)?;
+            // We need to create a namespace and put the program in it
+            // self.env.add_namespace(alias, program);
+        } else {
+            // Append all the tokens parsed at the beginning
+            std::mem::swap(&mut self.tokens, &mut tokens);
+            self.tokens.append(&mut tokens);
+        }
+
+        Ok(())
+    }
+
     // check if a function with the same signature exists
     fn has_function(&self, name: &IdentifierType) -> bool {
         self.get_function(name).is_ok()
@@ -1054,23 +1094,26 @@ impl<'a> Parser<'a> {
     }
 
     // Parse the tokens and return a Program
-    pub fn parse(mut self, functions_mapper: &mut FunctionMapper) -> Result<Program, ParserError> {
+    pub fn parse(mut self) -> Result<(Program, FunctionMapper), ParserError> {
         let mut context: Context = Context::new();
         let mut constants_mapper = IdMapper::new();
         let mut struct_manager = StructManager::new();
+        let mut functions_mapper = FunctionMapper::new();
         while let Some(token) = self.next() {
             match token {
-                // TODO
-                Token::Import => return Err(ParserError::NotImplemented),
+                Token::Import => {
+                    self.read_import()?;
+                    continue;
+                }
                 Token::Const => {
-                    let var = self.read_variable(&mut context, &mut constants_mapper, functions_mapper, &mut struct_manager, true)?;
+                    let var = self.read_variable(&mut context, &mut constants_mapper, &mut functions_mapper, &mut struct_manager, true)?;
                     let id = var.id;
                     if !self.constants.insert(var) {
                         return Err(ParserError::VariableIdAlreadyUsed(id))
                     }
                 },
-                Token::Function => self.read_function(false, &mut context, &constants_mapper, functions_mapper, &struct_manager)?,
-                Token::Entry => self.read_function(true, &mut context, &constants_mapper, functions_mapper, &struct_manager)?,
+                Token::Function => self.read_function(false, &mut context, &constants_mapper, &mut functions_mapper, &struct_manager)?,
+                Token::Entry => self.read_function(true, &mut context, &constants_mapper, &mut functions_mapper, &struct_manager)?,
                 Token::Struct => {
                     let (name, builder) = self.read_struct(&struct_manager)?;
                     struct_manager.add(name, builder)?;
@@ -1079,10 +1122,10 @@ impl<'a> Parser<'a> {
             };
         }
 
-        Ok(Program {
+        Ok((Program {
             constants: self.constants,
             structures: struct_manager.finalize(),
             functions: self.functions,
-        })
+        }, functions_mapper))
     }
 }

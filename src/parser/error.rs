@@ -1,7 +1,11 @@
-use crate::{expressions::Expression, types::Type, Token, IdentifierType};
+use crate::{expressions::Expression, types::Type, IdentifierType, LexerError, Token};
 
 #[derive(Debug)]
 pub enum ParserError {
+    InvalidImport,
+    InvalidImportPath(String),
+    ImportNotFound(String),
+    ImportLexerError(String, LexerError),
     MappingExists(IdentifierType),
     ConstantNameNotUppercase(String),
     StructNotFound(IdentifierType),
@@ -21,7 +25,7 @@ pub enum ParserError {
     FunctionSignatureAlreadyExist,
     UnexpectedVariable(String),
     UnexpectedMappedVariableId(IdentifierType),
-    MappingNotFound,
+    MappingNotFound(String),
     UnexpectedType(Type),
     InvalidStructField(String),
     InvalidStructureName(String),

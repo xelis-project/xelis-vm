@@ -15,12 +15,40 @@ pub struct EnvironmentBuilder {
 }
 
 impl EnvironmentBuilder {
+    // Create a new instance of the EnvironmentBuilder
+    pub fn new() -> Self {
+        Self {
+            functions_mapper: FunctionMapper::new(),
+            functions: HashMap::new(),
+            structures: HashMap::new()
+        }
+    }
+
+    // Register a native function
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let id = self.functions_mapper.register((name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
         self.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
 
-    pub fn build(self) -> (Environment, FunctionMapper) {
+    // functions mapper, used to find the function id
+    pub fn get_functions_mapper(&self) -> &FunctionMapper {
+        &self.functions_mapper
+    }
+
+    // all registered functions
+    pub fn get_functions(&self) -> &HashMap<IdentifierType, FunctionType> {
+        &self.functions
+    }
+
+    // Build the environment for the interpreter
+    pub fn build(self) -> Environment {
+        Environment {
+            functions: self.functions,
+            structures: self.structures
+        }
+    }
+
+    pub fn build_and_take_mapper(self) -> (Environment, FunctionMapper) {
         (Environment {
             functions: self.functions,
             structures: self.structures
@@ -30,11 +58,7 @@ impl EnvironmentBuilder {
 
 impl Default for EnvironmentBuilder {
     fn default() -> Self {
-        let mut env = Self {
-            functions_mapper: FunctionMapper::new(),
-            functions: HashMap::new(),
-            structures: HashMap::new()
-        };
+        let mut env = Self::new();
 
         env.register_native_function("println", None, vec![Type::Any], println, 1, None);
 
@@ -82,7 +106,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> (Self, FunctionMapper) {
+    pub fn new() -> Self {
         let builder = EnvironmentBuilder::default();
         builder.build()
     }

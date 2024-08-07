@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 use crate::{types::Type, IdentifierType, ParserError};
 
@@ -15,13 +15,13 @@ pub struct Mapper<T: Clone + Eq + Hash> {
     mappings: HashMap<T, IdentifierType>
 }
 
-impl<T: Clone + Eq + Hash> Default for Mapper<T> {
+impl<T: Clone + Eq + Hash + Debug> Default for Mapper<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Clone + Eq + Hash> Mapper<T> {
+impl<T: Clone + Eq + Hash + Debug> Mapper<T> {
     // Create a new VariableMapper
     pub fn new() -> Self {
         Self {
@@ -32,7 +32,7 @@ impl<T: Clone + Eq + Hash> Mapper<T> {
 
     // Get the identifier of a variable name
     pub fn get(&self, name: &T) -> Result<IdentifierType, ParserError> {
-        self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound)
+        self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound(format!("{:?}", name)))
     }
 
     // Check if a variable name is already registered
