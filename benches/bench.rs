@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use xelis_vm::{Environment, Lexer, Parser};
+use xelis_vm::{EnvironmentBuilder, Lexer, Parser};
 
 const CODE: &str = "
 entry main() {
@@ -16,8 +16,8 @@ fn bench_lexer(c: &mut Criterion) {
 
 fn bench_parser(c: &mut Criterion) {
     let tokens = Lexer::new(CODE).get().unwrap();
-    let (env, mapper) = Environment::new();
-    c.bench_function("parser", |b| b.iter(|| Parser::new(tokens.clone(), &env).parse(&mut mapper.clone()).unwrap()));
+    let env = EnvironmentBuilder::new();
+    c.bench_function("parser", |b| b.iter(|| Parser::new(tokens.clone(), &env).parse().unwrap()));
 }
 
 criterion_group!(benches, bench_lexer, bench_parser);
