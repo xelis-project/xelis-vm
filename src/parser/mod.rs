@@ -524,7 +524,7 @@ impl<'a> Parser<'a> {
                     if !left_type.is_castable_to(&right_type) {
                         return Err(ParserError::CastError(left_type, right_type))
                     }
-
+                    required_operator = !required_operator;
                     Expression::Cast(Box::new(previous_expr), right_type)
                 },
                 token => {

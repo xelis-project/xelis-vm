@@ -918,6 +918,28 @@ mod tests {
         assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { let a: u64 = 10; return a as u32; }"));
         assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { let a: u32 = 10; return a as u64; }"));
         assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { let a: u64 = 10; return a as u128; }"));
+
+        let code = "
+            func add(left: u64, right: u64): u64 {
+                return left + right;
+            }
+
+            entry main() {
+                let a: u8 = 10;
+                let b: u8 = 20;
+                return add(a as u64, b as u64);
+            }
+        ";
+
+        assert_eq!(Value::U64(30), test_code_expect_value(&key, code));
+
+        let code = "entry main() {
+            let a: u8 = 10;
+            let b: u8 = 20;
+            return a as u64 + b as u64;
+        }";
+
+        assert_eq!(Value::U64(30), test_code_expect_value(&key, code));
     }
 
     #[test]
