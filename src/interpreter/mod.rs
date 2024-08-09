@@ -828,9 +828,9 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{lexer::Lexer, parser::Parser, EnvironmentBuilder};
+    use crate::{functions::Signature, lexer::Lexer, parser::Parser, EnvironmentBuilder};
 
-    fn test_code_expect_value(key: &(String, Option<Type>, Vec<Type>), code: &str) -> Value {
+    fn test_code_expect_value(key: &Signature, code: &str) -> Value {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
 
@@ -849,7 +849,7 @@ mod tests {
     }
 
     fn test_code_expect_return(code: &str, expected: u64) {
-        assert_eq!(test_code_expect_value(&("main".to_owned(), None, Vec::new()), code).to_u64().unwrap(), expected);
+        assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
     }
 
     #[test]
@@ -903,7 +903,7 @@ mod tests {
 
     #[test]
     fn test_casting() {
-        let key = &(String::from("main"), None, Vec::new());
+        let key = Signature::new("main".to_string(), None, Vec::new());
 
         // Auto casting
         assert_eq!(Value::U8(10), test_code_expect_value(&key, "func main(): u8 { return 10; }"));
@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn test_string_equals() {
-        let key = &(String::from("main"), None, Vec::new());
+        let key = &&Signature::new("main".to_string(), None, Vec::new());
         assert_eq!(Value::Boolean(true), test_code_expect_value(key, "func main(): bool { return \"test\" == 'test'; }"));
         assert_eq!(Value::Boolean(false), test_code_expect_value(key, "func main(): bool { return \"test\" == \"test2\"; }"));
     }

@@ -1,5 +1,5 @@
 use crate::{
-    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
+    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn, Signature},
     interpreter::InterpreterError,
     mapper::FunctionMapper,
     types::{Struct, Type},
@@ -26,7 +26,7 @@ impl EnvironmentBuilder {
 
     // Register a native function
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let id = self.functions_mapper.register((name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
+        let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
         self.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
 
@@ -64,7 +64,7 @@ impl Default for EnvironmentBuilder {
 
         // Array
         env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U64));
-        env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None); // TODO Any
+        env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None);
         env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], remove, 1, Some(Type::T));
         env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64, Type::U64], slice, 3, Some(Type::Array(Box::new(Type::T))));
         env.register_native_function("contains", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], array_contains, 1, Some(Type::Bool));

@@ -1,8 +1,9 @@
 use xelis_vm::{
-    Lexer,
-    Parser,
     EnvironmentBuilder,
     Interpreter,
+    Lexer,
+    Parser,
+    Signature,
     State
 };
 use std::{
@@ -39,6 +40,7 @@ fn main() {
     let vm = Interpreter::new(&program, &env).unwrap();
     let mut state = State::new(None, Some(100));
     start = Instant::now();
-    let exit = vm.call_entry_function(&mapper.get(&("main".to_owned(), None, Vec::new())).unwrap(), vec![], &mut state).unwrap();
+    let signature = Signature::new("main".to_owned(), None, Vec::new());
+    let exit = vm.call_entry_function(&mapper.get(&signature).unwrap(), vec![], &mut state).unwrap();
     println!("Exit code: {} | {} expressions executed in {:?}", exit, state.get_expressions_executed(), start.elapsed());
 }

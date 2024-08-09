@@ -12,7 +12,8 @@ mod values;
 pub use crate::{
     environment::{Environment, EnvironmentBuilder},
     token::Token,
-    functions::{FnInstance, DeclaredFunction, EntryFunction, FnReturnType},
+    types::Type,
+    functions::{FnInstance, DeclaredFunction, EntryFunction, FnReturnType, Signature},
     interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError}

@@ -10,7 +10,7 @@ use self::context::Context;
 
 use crate::{
     expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
-    functions::{DeclaredFunction, EntryFunction, FunctionType},
+    functions::{DeclaredFunction, EntryFunction, FunctionType, Signature},
     mapper::{FunctionMapper, IdMapper},
     types::{Struct, Type},
     values::Value,
@@ -287,7 +287,6 @@ impl<'a> Parser<'a> {
         // read parameters for function call
         while *self.peek()? != Token::ParenthesisClose {
             let expr = self.read_expression(context, mapper)?;
-
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
             types.push(self.get_type_from_expression(on_type, &expr, context)?.into_owned());
@@ -298,7 +297,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = self.functions_mapper.get_compatible((name, on_type.cloned(), types))?;
+        let id = self.functions_mapper.get_compatible(Signature::new(name, on_type.cloned(), types))?;
         let func = self.get_function(&id)?;
         // Entry are only callable by external
         if func.is_entry() {
@@ -357,7 +356,7 @@ impl<'a> Parser<'a> {
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
-    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, number_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError> {
+    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while {
@@ -391,7 +390,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
-                                let expr = self.read_expr(on_type, true, number_type.map(|t| t.get_array_type()), context, mapper)?;
+                                let expr = self.read_expr(on_type, true, expected_type.map(|t| t.get_array_type()), context, mapper)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
@@ -452,7 +451,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::U64Value(value) => Expression::Value(match number_type {
+                Token::U64Value(value) => Expression::Value(match expected_type {
                     Some(t) => match t {
                         Type::U8 => Value::U8(convert!(value)),
                         Type::U16 => Value::U16(convert!(value)),
@@ -480,7 +479,7 @@ impl<'a> Parser<'a> {
                     match last_expression {
                         Some(value) => {
                             let _type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
-                            let right_expr = self.read_expr(Some(&_type), false, None, context, mapper)?;
+                            let right_expr = self.read_expr(Some(&_type), false, expected_type, context, mapper)?;
                             // because we read operator DOT + right expression
                             required_operator = !required_operator;
                             Expression::Path(Box::new(value), Box::new(right_expr))
@@ -503,10 +502,10 @@ impl<'a> Parser<'a> {
                             return Err(ParserError::InvalidCondition(Type::Bool, expr))
                         }
 
-                        let valid_expr = self.read_expr(on_type, true, number_type, context, mapper)?;
+                        let valid_expr = self.read_expr(on_type, true, expected_type, context, mapper)?;
                         let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?.into_owned();
                         self.expect_token(Token::Colon)?;
-                        let else_expr = self.read_expr(on_type, true, number_type, context, mapper)?;
+                        let else_expr = self.read_expr(on_type, true, expected_type, context, mapper)?;
                         let else_type = self.get_type_from_expression(on_type, &else_expr, context)?;
                         
                         if first_type != *else_type { // both expr should have the SAME type.
@@ -971,7 +970,7 @@ impl<'a> Parser<'a> {
         };
 
         let types: Vec<Type> = parameters.iter().map(|p| p.get_type().clone()).collect();
-        let id = self.functions_mapper.register((name, for_type.clone(), types))?;
+        let id = self.functions_mapper.register(Signature::new(name, for_type.clone(), types))?;
         if self.has_function(&id) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }
@@ -1035,12 +1034,7 @@ impl<'a> Parser<'a> {
 
         if *self.peek()? == Token::As {
             self.expect_token(Token::As)?;
-            // let alias = self.next_identifier()?;
-
-            // let parser = Parser::new(tokens, &self.env);
-            // let program = parser.parse(functions_mapper)?;
-            // We need to create a namespace and put the program in it
-            // self.env.add_namespace(alias, program);
+            todo!()
         } else {
             // Append all the tokens parsed at the beginning
             std::mem::swap(&mut self.tokens, &mut tokens);

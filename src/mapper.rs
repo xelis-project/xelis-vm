@@ -1,11 +1,8 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
-
-use crate::{types::Type, IdentifierType, ParserError};
+use crate::{functions::Signature, IdentifierType, ParserError};
 
 pub type IdMapper = Mapper<String>;
-
-type FunctionSignature = (String, Option<Type>, Vec<Type>);
-pub type FunctionMapper = Mapper<FunctionSignature>;
+pub type FunctionMapper = Mapper<Signature>;
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
@@ -53,21 +50,24 @@ impl<T: Clone + Eq + Hash + Debug> Mapper<T> {
 }
 
 impl FunctionMapper {
-    pub fn get_compatible(&self, key: FunctionSignature) -> Result<IdentifierType, ParserError> {
-        match self.get(&key) {
-            Ok(id) => Ok(id),
-            Err(e) => match key.1 {
-                Some(t) => {
-                    let new_type = match t {
-                        Type::Array(_) => Type::Array(Box::new(Type::Any)),
-                        Type::Optional(_) => Type::Optional(Box::new(Type::Any)),
-                        _ => t
-                    };
+    pub fn get_compatible(&self, key: Signature) -> Result<IdentifierType, ParserError> {
+        if let Ok(id) = self.get(&key) {
+            return Ok(id);
+        }
 
-                    self.get(&(key.0, Some(new_type), key.2))
-                },
-                None => Err(e)
+        for (signature, id) in self.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name()) {
+            let params = signature.get_parameters().iter().zip(key.get_parameters()).all(|(s, k)| s.is_compatible_with(k));
+            let on_type = match (signature.get_on_type(), key.get_on_type()) {
+                (Some(s), Some(k)) => s.is_compatible_with(k),
+                (None, None) => true,
+                _ => false
+            };
+
+            if params && on_type {
+                return Ok(id.clone());
             }
         }
+
+        Err(ParserError::MappingNotFound(format!("{:?}", key)))
     }
 }
