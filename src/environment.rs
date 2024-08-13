@@ -94,7 +94,7 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("is_empty", Some(Type::String), vec![], is_empty, 1, Some(Type::Bool));
         env.register_native_function("matches", Some(Type::String), vec![Type::String], string_matches, 50, Some(Type::Array(Box::new(Type::String))));
         env.register_native_function("substring", Some(Type::String), vec![Type::U64], string_substring, 3, Some(Type::Optional(Box::new(Type::String))));
-        env.register_native_function("substring", Some(Type::String), vec![Type::U64, Type::U64], string_subtring_range, 3, Some(Type::Optional(Box::new(Type::String))));
+        env.register_native_function("substring", Some(Type::String), vec![Type::U64, Type::U64], string_substring_range, 3, Some(Type::Optional(Box::new(Type::String))));
 
         env
     }
@@ -319,7 +319,7 @@ fn string_substring(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnTyp
     }
 }
 
-fn string_subtring_range(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+fn string_substring_range(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
     let start = parameters.remove(0).to_u64()? as usize;
     let end = parameters.remove(0).to_u64()? as usize;
