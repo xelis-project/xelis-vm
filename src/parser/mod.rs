@@ -53,7 +53,7 @@ pub struct Parser<'a> {
     // All functions registered by the program
     functions: HashMap<IdentifierType, FunctionType>,
     // Functions mapper
-    functions_mapper: FunctionMapper,
+    functions_mapper: FunctionMapper<'a>,
     // Struct manager
     struct_manager: StructManager,
     // Environment contains all the library linked to the program
@@ -62,11 +62,13 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: VecDeque<Token>, env: &'a EnvironmentBuilder) -> Self {
+        let functions_mapper = FunctionMapper::with_parent(env.get_functions_mapper());
+
         Parser {
             tokens,
             constants: HashSet::new(),
             functions: HashMap::new(),
-            functions_mapper: FunctionMapper::new(),
+            functions_mapper,
             struct_manager: StructManager::new(),
             env,
         }
@@ -1098,7 +1100,7 @@ impl<'a> Parser<'a> {
 
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
-    pub fn parse(mut self) -> Result<(Program, FunctionMapper), ParserError> {
+    pub fn parse(mut self) -> Result<(Program, FunctionMapper<'a>), ParserError> {
         let mut context: Context = Context::new();
         let mut constants_mapper = IdMapper::new();
         while let Some(token) = self.next() {

@@ -1,30 +1,53 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 use crate::{functions::Signature, IdentifierType, ParserError};
 
-pub type IdMapper = Mapper<String>;
-pub type FunctionMapper = Mapper<Signature>;
+pub type IdMapper = Mapper<'static, String>;
+pub type FunctionMapper<'a> = Mapper<'a, Signature>;
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
 #[derive(Debug, Clone)]
-pub struct Mapper<T: Clone + Eq + Hash> {
+pub struct Mapper<'a, T: Clone + Eq + Hash> {
+    parent: Option<&'a Mapper<'a, T>>,
     next_id: IdentifierType,
     mappings: HashMap<T, IdentifierType>
 }
 
-impl<T: Clone + Eq + Hash + Debug> Default for Mapper<T> {
+impl<'a, T: Clone + Eq + Hash + Debug> Default for Mapper<'a, T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Clone + Eq + Hash + Debug> Mapper<T> {
+impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     // Create a new VariableMapper
     pub fn new() -> Self {
         Self {
+            parent: None,
             next_id: 0,
             mappings: HashMap::new()
         }
+    }
+
+    // Create a new VariableMapper starting at a specific id
+    pub fn with_parent(parent: &'a Self) -> Self {
+        Self {
+            next_id: parent.get_next_id(),
+            parent: Some(parent),
+            mappings: HashMap::new()
+        }
+    }
+
+    pub fn without_parent(self) -> Self {
+        Self {
+            next_id: self.get_next_id(),
+            parent: None,
+            mappings: HashMap::new()
+        }
+    }
+
+    pub fn get_next_id(&self) -> IdentifierType {
+        self.next_id
     }
 
     // Get the identifier of a variable name
@@ -49,7 +72,7 @@ impl<T: Clone + Eq + Hash + Debug> Mapper<T> {
     }
 }
 
-impl FunctionMapper {
+impl<'a> FunctionMapper<'a> {
     pub fn get_compatible(&self, key: Signature) -> Result<IdentifierType, ParserError> {
         if let Ok(id) = self.get(&key) {
             return Ok(id);
@@ -66,6 +89,10 @@ impl FunctionMapper {
             if params && on_type {
                 return Ok(id.clone());
             }
+        }
+
+        if let Some(parent) = self.parent {
+            return parent.get_compatible(key);
         }
 
         Err(ParserError::MappingNotFound(format!("{:?}", key)))

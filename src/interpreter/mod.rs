@@ -834,13 +834,12 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
 
-        let e = EnvironmentBuilder::new();
-        let parser = Parser::new(tokens, &e);
+        let builder = EnvironmentBuilder::new();
+        let parser = Parser::new(tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
 
         let mut state = State::new(None, None);
-        let env = e.build();
-        let interpreter = Interpreter::new(&program, &env).unwrap();
+        let interpreter = Interpreter::new(&program, builder.environment()).unwrap();
 
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();

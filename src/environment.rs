@@ -9,9 +9,8 @@ use crate::{
 use std::collections::HashMap;
 
 pub struct EnvironmentBuilder {
-    functions_mapper: FunctionMapper,
-    functions: HashMap<IdentifierType, FunctionType>,
-    structures: HashMap<IdentifierType, Struct>
+    functions_mapper: FunctionMapper<'static>,
+    env: Environment
 }
 
 impl EnvironmentBuilder {
@@ -19,15 +18,14 @@ impl EnvironmentBuilder {
     pub fn new() -> Self {
         Self {
             functions_mapper: FunctionMapper::new(),
-            functions: HashMap::new(),
-            structures: HashMap::new()
+            env: Environment::new()
         }
     }
 
     // Register a native function
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
-        self.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
+        self.env.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
 
     // functions mapper, used to find the function id
@@ -37,22 +35,21 @@ impl EnvironmentBuilder {
 
     // all registered functions
     pub fn get_functions(&self) -> &HashMap<IdentifierType, FunctionType> {
-        &self.functions
+        &self.env.functions
+    }
+
+    // Get the environment for the interpreter
+    pub fn environment(&self) -> &Environment {
+        &self.env
     }
 
     // Build the environment for the interpreter
     pub fn build(self) -> Environment {
-        Environment {
-            functions: self.functions,
-            structures: self.structures
-        }
+        self.env
     }
 
-    pub fn build_and_take_mapper(self) -> (Environment, FunctionMapper) {
-        (Environment {
-            functions: self.functions,
-            structures: self.structures
-        }, self.functions_mapper)
+    pub fn build_and_take_mapper(self) -> (Environment, FunctionMapper<'static>) {
+        (self.env, self.functions_mapper)
     }
 }
 
@@ -105,10 +102,19 @@ pub struct Environment {
     structures: HashMap<IdentifierType, Struct>
 }
 
-impl Environment {
-    pub fn new() -> Self {
+impl Default for Environment {
+    fn default() -> Self {
         let builder = EnvironmentBuilder::default();
         builder.build()
+    }
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Environment {
+            functions: HashMap::new(),
+            structures: HashMap::new()
+        }
     }
 
     pub fn get_functions(&self) -> &HashMap<IdentifierType, FunctionType> {
