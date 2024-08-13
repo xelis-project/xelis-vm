@@ -24,8 +24,7 @@ fn bench_vm(c: &mut Criterion) {
     let tokens = Lexer::new(CODE).get().unwrap();
     let env = EnvironmentBuilder::new();
     let (program, mapper) = Parser::new(tokens, &env).parse().unwrap();
-    let env = env.build();
-    let vm = xelis_vm::Interpreter::new(&program, &env).unwrap();
+    let vm = xelis_vm::Interpreter::new(&program, env.environment()).unwrap();
     let mut state = xelis_vm::State::new(None, Some(100));
     let signature = xelis_vm::Signature::new("main".to_owned(), None, Vec::new());
     c.bench_function("vm", |b| b.iter(|| vm.call_entry_function(&mapper.get(&signature).unwrap(), vec![], &mut state).unwrap()));
