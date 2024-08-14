@@ -57,11 +57,13 @@ pub struct Parser<'a> {
     // Struct manager
     struct_manager: StructManager,
     // Environment contains all the library linked to the program
-    env: &'a EnvironmentBuilder
+    env: &'a EnvironmentBuilder,
+    // Path to use to import files
+    path: Option<&'a str>
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: VecDeque<Token>, env: &'a EnvironmentBuilder) -> Self {
+    pub fn new(path: Option<&'a str>, tokens: VecDeque<Token>, env: &'a EnvironmentBuilder) -> Self {
         let functions_mapper = FunctionMapper::with_parent(env.get_functions_mapper());
 
         Parser {
@@ -71,6 +73,7 @@ impl<'a> Parser<'a> {
             functions_mapper,
             struct_manager: StructManager::new(),
             env,
+            path
         }
     }
 
@@ -291,7 +294,7 @@ impl<'a> Parser<'a> {
             let expr = self.read_expression(context, mapper)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
-            types.push(self.get_type_from_expression(on_type, &expr, context)?.into_owned());
+            types.push(self.get_type_from_expression(None, &expr, context)?.into_owned());
             parameters.push(expr);
 
             if *self.peek()? == Token::Comma {

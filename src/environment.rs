@@ -62,7 +62,8 @@ impl Default for EnvironmentBuilder {
         // Array
         env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U64));
         env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None);
-        env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], remove, 1, Some(Type::T));
+        env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64], remove, 1, Some(Type::T));
+        env.register_native_function("pop", Some(Type::Array(Box::new(Type::Any))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T))));
         env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64, Type::U64], slice, 3, Some(Type::Array(Box::new(Type::T))));
         env.register_native_function("contains", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], array_contains, 1, Some(Type::Bool));
         env.register_native_function("get", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64], array_get, 1, Some(Type::Optional(Box::new(Type::T))));
@@ -155,6 +156,15 @@ fn remove(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     }
 
     Ok(Some(array.remove(index).into_value()))
+}
+
+fn pop(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    let array = zelf?.as_mut_vec()?;
+    if let Some(value) = array.pop() {
+        Ok(Some(value.into_value()))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
 }
 
 fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {

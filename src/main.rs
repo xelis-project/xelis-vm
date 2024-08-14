@@ -7,8 +7,10 @@ use xelis_vm::{
     State
 };
 use std::{
-    time::Instant,
-    {fs, env}
+    env,
+    fs,
+    path::Path,
+    time::Instant
 };
 
 fn main() {
@@ -32,7 +34,8 @@ fn main() {
 
     // Build the program
     start = Instant::now();
-    let (program, mapper) = Parser::new(tokens, &builder).parse().unwrap();
+    let path = Path::new(file).parent().map(|p| p.to_str()).flatten();
+    let (program, mapper) = Parser::new(path, tokens, &builder).parse().unwrap();
     println!("Parser: {:?}", start.elapsed());
 
     // Create the VM instance

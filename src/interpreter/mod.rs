@@ -830,12 +830,13 @@ mod tests {
     use super::*;
     use crate::{functions::Signature, lexer::Lexer, parser::Parser, EnvironmentBuilder};
 
+    #[track_caller]
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
 
-        let builder = EnvironmentBuilder::new();
-        let parser = Parser::new(tokens, &builder);
+        let builder = EnvironmentBuilder::default();
+        let parser = Parser::new(None, tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
 
         let mut state = State::new(None, None);
@@ -847,6 +848,7 @@ mod tests {
         result.unwrap()
     }
 
+    #[track_caller]
     fn test_code_expect_return(code: &str, expected: u64) {
         assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
     }
@@ -873,6 +875,27 @@ mod tests {
 
         test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
         test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
+    }
+
+    #[test]
+    fn test_array() {
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[2]; }", 3);
+
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0] + a[1] + a[2]; }", 6);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0]; }", 10);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[1]; }", 2);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[2]; }", 3);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0] + a[1] + a[2]; }", 15);
+
+        // Push
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.push(10); return a[3]; }", 10);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let v: u64 = 10; a.push(v); return a[0] + a[1] + a[2] + a[3]; }", 16);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let b: u64[] = []; let v: u64 = 10; b.push(10); a.push(b[0]); return a[0] + a[1] + a[2] + a[3]; }", 16);
+
+        // Pop
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.pop(); return a.len(); }", 2);
     }
 
     #[test]
