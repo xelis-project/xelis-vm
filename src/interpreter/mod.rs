@@ -970,6 +970,11 @@ mod tests {
         assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (\"hello world\" + 10); }"));
         assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\"); }"));
         assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\" + 10); }"));
+
+        // With variables
+        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (\"hello world\" + a); }"));
+        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (a + \"hello world\"); }"));
+        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (a + \"hello world\" + a); }"));
     }
 
     #[test]
