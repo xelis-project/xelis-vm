@@ -965,6 +965,14 @@ mod tests {
     }
 
     #[test]
+    fn test_string_number_concatenation() {
+        let key = Signature::new("main".to_string(), None, Vec::new());
+        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (\"hello world\" + 10); }"));
+        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\"); }"));
+        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\" + 10); }"));
+    }
+
+    #[test]
     fn test_foreach() {
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let sum: u64 = 0; foreach i in a { sum += i; } return sum; }", 6);
     }

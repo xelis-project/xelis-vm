@@ -469,8 +469,10 @@ impl<'a> Parser<'a> {
                             Type::U32 => Value::U32(convert!(value)),
                             Type::U64 => Value::U64(value),
                             Type::U128 => Value::U128(convert!(value)),
+                            Type::String => Value::String(value.to_string()),
                             _ => return Err(ParserError::ExpectedNumberType)
                         }))),
+                        Type::String => Value::String(value.to_string()),
                         _ => return Err(ParserError::ExpectedNumberType)
                     },
                     None => Value::U64(value)
