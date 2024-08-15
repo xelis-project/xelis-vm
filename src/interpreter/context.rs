@@ -65,6 +65,13 @@ impl Context {
         self.scopes.pop().ok_or(InterpreterError::NoScopeFound)
     }
 
+    // Clear the latest scope created
+    pub fn clear_last_scope(&mut self) -> Result<(), InterpreterError> {
+        let scope = self.get_last_scope()?;
+        scope.clear();
+        Ok(())
+    }
+
     pub fn get_variable(&self, name: &IdentifierType) -> Result<&ValueVariant, InterpreterError> {
         for scope in self.scopes.iter().rev() {
             if let Some(v) = scope.get(name) {
@@ -87,12 +94,6 @@ impl Context {
 
     pub fn get_sharable_value(&mut self, name: &IdentifierType) -> Result<SharableValue, InterpreterError> {
         self.get_mut_variable(name).map(|v| v.get_sharable())
-    }
-
-    pub fn set_variable_value(&mut self, name: &IdentifierType, value: ValueVariant) -> Result<(), InterpreterError> {
-        let var = self.get_mut_variable(name)?;
-        *var = value;
-        Ok(())
     }
 
     pub fn has_variable(&self, name: &IdentifierType) -> bool {
