@@ -190,7 +190,7 @@ impl Type {
 
     pub fn is_number(&self) -> bool {
         match &self {
-            Type::U8 | Type::U16 | Type::U64 | Type::U128 => true,
+            Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 => true,
             _ => false
         }
     }
