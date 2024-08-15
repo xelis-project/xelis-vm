@@ -78,7 +78,7 @@ impl<'a> FunctionMapper<'a> {
             return Ok(id);
         }
 
-        for (signature, id) in self.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name()) {
+        for (signature, id) in self.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name() && s.get_parameters().len() == key.get_parameters().len()) {
             let params = signature.get_parameters().iter().zip(key.get_parameters()).all(|(s, k)| s.is_compatible_with(k));
             let on_type = match (signature.get_on_type(), key.get_on_type()) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
