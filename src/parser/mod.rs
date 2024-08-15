@@ -420,7 +420,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::ParenthesisOpen => {
-                    let expr = self.read_expression(context, mapper)?;
+                    let expr = self.read_expr(None, true, expected_type, context, mapper)?;
                     self.expect_token(Token::ParenthesisClose)?;
                     Expression::SubExpression(Box::new(expr))
                 },
