@@ -196,12 +196,15 @@ impl<'a> Parser<'a> {
                 match &func.return_type() {
                     Some(ref v) => match v {
                         Type::T => match on_type {
-                            Some(t) => match t {
-                                Type::Optional(_type) => Cow::Owned(*_type.clone()),
-                                Type::Array(_type) => Cow::Owned(*_type.clone()),
-                                _ => return Err(ParserError::InvalidTypeT)
-                            },
+                            Some(t) => Cow::Owned(t.get_inner_type().clone()),
                             None => return Err(ParserError::InvalidTypeT)
+                        },
+                        Type::Optional(inner) => match inner.as_ref() {
+                            Type::T => match on_type {
+                                Some(t) => Cow::Owned(Type::Optional(Box::new(t.get_inner_type().clone()))),
+                                None => return Err(ParserError::InvalidTypeT)
+                            },
+                            _ => Cow::Borrowed(v)
                         },
                         _ => Cow::Borrowed(v)
                     },
@@ -395,7 +398,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while *self.peek()? != Token::BracketClose {
-                                let expr = self.read_expr(on_type, true, expected_type.map(|t| t.get_array_type()), context, mapper)?;
+                                let expr = self.read_expr(on_type, true, expected_type.map(|t| t.get_inner_type()), context, mapper)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
@@ -735,7 +738,7 @@ impl<'a> Parser<'a> {
                     }
 
                     let id = mapper.register(variable)?;
-                    context.register_variable(id, expr_type.get_array_type().clone())?;
+                    context.register_variable(id, expr_type.get_inner_type().clone())?;
                     let statements = self.read_loop_body(context, return_type, mapper)?;
                     context.end_scope();
 

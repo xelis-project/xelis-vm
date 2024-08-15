@@ -315,7 +315,21 @@ impl<'a> Interpreter<'a> {
                         None => return Err(InterpreterError::ExpectedPath)
                     },
                 })
-            }
+            },
+            Expression::FunctionCall(id, params) => {
+                let mut values = Vec::with_capacity(params.len());
+                for param in params {
+                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
+                }
+
+                let func = self.get_function(id)?;
+                let instance = match ref_value {
+                    Some(v) => self.execute_function(&func, Some(&mut v.borrow_mut()), VecDeque::from(values), state),
+                    None => self.execute_function(&func, None, VecDeque::from(values), state)
+                }?;
+
+                instance.map(|v| Rc::new(RefCell::new(v))).ok_or(InterpreterError::ExpectedValue)
+            },
             _ => Err(InterpreterError::ExpectedPath)
         }
     }
@@ -806,6 +820,11 @@ mod tests {
     #[track_caller]
     fn test_code_expect_return(code: &str, expected: u64) {
         assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
+    }
+
+    #[test]
+    fn test_optional() {
+        test_code_expect_return("entry main() { let a: u64[] = []; return a.first().unwrap_or(777); }", 777);
     }
 
     #[test]

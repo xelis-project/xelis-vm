@@ -113,9 +113,10 @@ impl Type {
         Some(_type)
     }
 
-    pub fn get_array_type(&self) -> &Type {
+    pub fn get_inner_type(&self) -> &Type {
         match &self {
             Type::Array(ref _type) => _type,
+            Type::Optional(ref _type) => _type,
             _ => &self
         }
     }

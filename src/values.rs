@@ -129,6 +129,7 @@ impl Into<ValueVariant> for SharableValue {
 }
 
 impl Value {
+    #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
             Value::Null => true,
@@ -136,6 +137,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u8(&self) -> Result<&u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
@@ -143,6 +145,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u16(&self) -> Result<&u16, InterpreterError> {
         match self {
             Value::U16(n) => Ok(n),
@@ -150,6 +153,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u32(&self) -> Result<&u32, InterpreterError> {
         match self {
             Value::U32(n) => Ok(n),
@@ -157,6 +161,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u64(&self) -> Result<&u64, InterpreterError> {
         match self {
             Value::U64(n) => Ok(n),
@@ -164,6 +169,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u128(&self) -> Result<&u128, InterpreterError> {
         match self {
             Value::U128(n) => Ok(n),
@@ -171,6 +177,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_string(&self) -> Result<&String, InterpreterError> {
         match self {
             Value::String(n) => Ok(n),
@@ -178,6 +185,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_bool(&self) -> Result<&bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
@@ -185,6 +193,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_map(&self) -> Result<&HashMap<IdentifierType, ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
@@ -192,6 +201,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_mut_map(&mut self) -> Result<&mut HashMap<IdentifierType, ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
@@ -199,6 +209,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_vec(&self) -> Result<&Vec<ValueVariant>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
@@ -206,6 +217,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_mut_vec(&mut self) -> Result<&mut Vec<ValueVariant>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
@@ -213,6 +225,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_optional(&self, expected: &Type) -> Result<&Option<Box<Value>>, InterpreterError> {
         match self {
             Value::Null => Ok(&None),
@@ -221,6 +234,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn take_from_optional(&mut self, expected: &Type) -> Result<Value, InterpreterError> {
         match self {
             Value::Optional(opt) => Ok(*opt.take().ok_or(InterpreterError::OptionalIsNull)?),
@@ -228,6 +242,15 @@ impl Value {
         }
     }
 
+    #[inline]
+    pub fn take_optional(&mut self) -> Result<Option<Box<Value>>, InterpreterError> {
+        match self {
+            Value::Optional(opt) => Ok(opt.take()),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
+        }
+    }
+
+    #[inline]
     pub fn to_u8(self) -> Result<u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
@@ -235,6 +258,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_u16(self) -> Result<u16, InterpreterError> {
         match self {
             Value::U16(n) => Ok(n),
@@ -242,6 +266,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_u32(self) -> Result<u32, InterpreterError> {
         match self {
             Value::U32(n) => Ok(n),
@@ -249,6 +274,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_u64(self) -> Result<u64, InterpreterError> {
         match self {
             Value::U64(n) => Ok(n),
@@ -256,6 +282,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_u128(self) -> Result<u128, InterpreterError> {
         match self {
             Value::U128(n) => Ok(n),
@@ -263,6 +290,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_string(self) -> Result<String, InterpreterError> {
         match self {
             Value::String(n) => Ok(n),
@@ -270,6 +298,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_bool(self) -> Result<bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
@@ -277,6 +306,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_map(self) -> Result<HashMap<IdentifierType, ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
@@ -284,6 +314,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn to_vec(self) -> Result<Vec<ValueVariant>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
@@ -292,6 +323,7 @@ impl Value {
     }
 
     // Check if the value is a number
+    #[inline]
     pub fn is_number(&self) -> bool {
         match self {
             Value::U8(_) | Value::U16(_) | Value::U64(_) | Value::U128(_) => true,
@@ -300,6 +332,7 @@ impl Value {
     }
 
     // Cast value to string
+    #[inline]
     pub fn cast_to_string(self) -> Result<String, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n.to_string()),
@@ -314,6 +347,7 @@ impl Value {
     }
 
     // Cast value to u8
+    #[inline]
     pub fn cast_to_u8(self) -> Result<u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
@@ -327,6 +361,7 @@ impl Value {
     }
 
     // Cast value to u16
+    #[inline]
     pub fn cast_to_u16(self) -> Result<u16, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u16),
@@ -340,6 +375,7 @@ impl Value {
     }
 
     // Cast value to u32
+    #[inline]
     pub fn cast_to_u32(self) -> Result<u32, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u32),
@@ -353,6 +389,7 @@ impl Value {
     }
 
     // Cast value to u64
+    #[inline]
     pub fn cast_to_u64(self) -> Result<u64, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u64),
@@ -366,6 +403,7 @@ impl Value {
     }
 
     // Cast value to u128
+    #[inline]
     pub fn cast_to_u128(self) -> Result<u128, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u128),

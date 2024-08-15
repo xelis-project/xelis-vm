@@ -71,9 +71,10 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("last", Some(Type::Array(Box::new(Type::Any))), vec![], array_last, 1, Some(Type::Optional(Box::new(Type::T))));
 
         // Optional
-        env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::Any))), vec![], is_none, 1, Some(Type::Bool));
-        env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::Any))), vec![], is_some, 1, Some(Type::Bool));
-        env.register_native_function("take", Some(Type::Optional(Box::new(Type::Any))), vec![], optional_take, 1, Some(Type::T));
+        env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T))), vec![], is_none, 1, Some(Type::Bool));
+        env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T))), vec![], is_some, 1, Some(Type::Bool));
+        env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T))), vec![], optional_unwrap, 1, Some(Type::T));
+        env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T))), vec![Type::T], optional_unwrap_or, 1, Some(Type::T));
 
         // String
         env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::U64));
@@ -376,6 +377,12 @@ fn is_some(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_some())))
 }
 
-fn optional_take(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+fn optional_unwrap(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     Ok(Some(zelf?.take_from_optional(&Type::T)?))
+}
+
+fn optional_unwrap_or(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+    let default = parameters.remove(0);
+    let optional = zelf?.take_optional()?;
+    Ok(Some(optional.map(|v| *v).unwrap_or(default)))
 }
