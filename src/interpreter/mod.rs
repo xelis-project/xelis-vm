@@ -978,6 +978,14 @@ mod tests {
     }
 
     #[test]
+    fn test_negative_bool() {
+        let key = Signature::new("main".to_string(), None, Vec::new());
+        assert_eq!(Value::Boolean(true), test_code_expect_value(&key, "func main(): bool { return !false; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "func main(): bool { return !true; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "func main(): bool { let add: bool = true; add = !add; return add; }"));
+    }
+
+    #[test]
     fn test_foreach() {
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let sum: u64 = 0; foreach i in a { sum += i; } return sum; }", 6);
     }

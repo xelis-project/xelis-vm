@@ -553,7 +553,7 @@ impl<'a> Parser<'a> {
                                     | Operator::Assign(_) | Operator::BitwiseLeft | Operator::BitwiseRight
                                     | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
                                     | Operator::GreaterOrEqual => {
-                                        if left_type != *right_type || !left_type.is_number() || !right_type.is_number() {
+                                        if left_type != *right_type {
                                             return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                         }
                                     },
