@@ -558,10 +558,8 @@ impl<'a> Parser<'a> {
                                         }
                                     },
                                     Operator::Plus => {
-                                        if left_type != Type::String && *right_type != Type::String {
-                                            if left_type != *right_type {
-                                                return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
-                                            }
+                                        if left_type != *right_type && !(left_type == Type::String || *right_type == Type::String) {
+                                            return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
                                         }
                                     },
                                     Operator::And | Operator::Or => {

@@ -881,6 +881,11 @@ mod tests {
     }
 
     #[test]
+    fn test_u128() {
+        test_code_expect_return("entry main() { let j: u128 = 10; j = 2 + j; return j as u64; }", 12);
+    }
+
+    #[test]
     fn test_array() {
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
