@@ -641,18 +641,18 @@ impl<'a> Interpreter<'a> {
                 }
                 Statement::For(var, condition, increment, statements) => {
                     context.begin_scope();
+
+                    // register the variable
                     let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
                     context.register_variable(var.id.clone(), value)?;
+
                     loop {
+                        // check the condition
                         if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
                             break;
                         }
 
-                        // assign operator don't return values
-                        if self.execute_expression(None, increment, Some(context), state)?.is_some() {
-                            return Err(InterpreterError::ExpectedAssignOperator);
-                        }
-
+                        // execute the statements
                         match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
@@ -669,6 +669,9 @@ impl<'a> Interpreter<'a> {
                         if context.get_loop_continue() {
                             context.set_loop_continue(false);
                         }
+
+                        // increment once the iteration is done
+                        self.execute_expression(None, increment, Some(context), state)?;                        
                     }
                     context.end_scope()?;
                 },
