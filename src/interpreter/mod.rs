@@ -20,66 +20,6 @@ use std::{
     rc::Rc
 };
 
-// macro_rules! exec {
-//     ($func: ident, $a: expr, $b: expr) => {{
-//         let (v, overflow) = $a.$func($b);
-//         if overflow {
-//             return Err(InterpreterError::OverflowOccured)
-//         }
-//         v
-//     }};
-// }
-
-// macro_rules! add {
-//     ($a: expr, $b: expr) => {{
-//         exec!(overflowing_add, $a, $b)
-//     }};
-// }
-
-// macro_rules! sub {
-//     ($a: expr, $b: expr) => {{
-//         exec!(overflowing_sub, $a, $b)
-//     }};
-// }
-
-// macro_rules! mul {
-//     ($a: expr, $b: expr) => {{
-//         exec!(overflowing_mul, $a, $b)
-//     }};
-// }
-
-// macro_rules! div {
-//     ($a: expr, $b: expr) => {{
-//         let v = $b;
-//         if v == 0 {
-//             return Err(InterpreterError::DivByZero)
-//         }
-
-//         exec!(overflowing_div, $a, v)
-//     }};
-// }
-
-// macro_rules! convert {
-//     ($a: expr) => {{
-//         match $a.try_into() {
-//             Ok(v) => v,
-//             Err(_) => return Err(InterpreterError::CastNumberError)
-//         }
-//     }};
-// }
-
-// macro_rules! shl {
-//     ($a: expr, $b: expr) => {{
-//         exec!(overflowing_shl, $a, convert!($b))
-//     }};
-// }
-
-// macro_rules! shr {
-//     ($a: expr, $b: expr) => {{
-//         exec!(overflowing_shr, $a, convert!($b))
-//     }};
-// }
-
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
