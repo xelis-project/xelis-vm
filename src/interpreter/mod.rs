@@ -883,6 +883,7 @@ mod tests {
     #[test]
     fn test_u128() {
         test_code_expect_return("entry main() { let j: u128 = 10; j = 2 + j; return j as u64; }", 12);
+        test_code_expect_return("entry main() { let j: u128 = 10; j = ((2 + j) * (3 + j) * (4 + j)); return j as u64; }", 2184);
     }
 
     #[test]
