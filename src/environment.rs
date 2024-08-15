@@ -67,6 +67,8 @@ impl Default for EnvironmentBuilder {
         env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64, Type::U64], slice, 3, Some(Type::Array(Box::new(Type::T))));
         env.register_native_function("contains", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], array_contains, 1, Some(Type::Bool));
         env.register_native_function("get", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64], array_get, 1, Some(Type::Optional(Box::new(Type::T))));
+        env.register_native_function("first", Some(Type::Array(Box::new(Type::Any))), vec![], array_first, 1, Some(Type::Optional(Box::new(Type::T))));
+        env.register_native_function("last", Some(Type::Array(Box::new(Type::Any))), vec![], array_last, 1, Some(Type::Optional(Box::new(Type::T))));
 
         // Optional
         env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::Any))), vec![], is_none, 1, Some(Type::Bool));
@@ -200,6 +202,24 @@ fn array_get(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     let index = parameters.remove(0).to_u64()? as usize;
     let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
+        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn array_first(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+    if let Some(value) = vec.first() {
+        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
+    } else {
+        Ok(Some(Value::Optional(None)))
+    }
+}
+
+fn array_last(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+    if let Some(value) = vec.last() {
         Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
     } else {
         Ok(Some(Value::Optional(None)))
