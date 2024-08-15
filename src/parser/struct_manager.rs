@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use crate::{types::{Struct, Type}, ParserError, IdentifierType, mapper::IdMapper};
+use crate::{mapper::IdMapper, types::{Struct, Type}, IdentifierType, NoHashMap, ParserError};
 
 #[derive(Debug, Clone)]
 pub struct StructBuilder {
-    pub fields: HashMap<IdentifierType, Type>,
+    pub fields: NoHashMap<Type>,
     pub mapper: IdMapper
 }
 
 pub struct StructManager {
     // All structs registered in the manager
-    structures: HashMap<IdentifierType, StructBuilder>,
+    structures: NoHashMap<StructBuilder>,
     // mapper to map each string name into a unique identifier
     mapper: IdMapper
 }
@@ -19,13 +19,13 @@ impl StructManager {
     // Create a new struct manager
     pub fn new() -> Self {
         StructManager {
-            structures: HashMap::new(),
+            structures: HashMap::default(),
             mapper: IdMapper::new()
         }
     }
 
     // Get all the names of the structures
-    pub fn inner(&self) -> &HashMap<IdentifierType, StructBuilder> {
+    pub fn inner(&self) -> &NoHashMap<StructBuilder> {
         &self.structures
     }
 
@@ -57,7 +57,7 @@ impl StructManager {
     }
 
     // Convert the struct manager into a hashmap of structs
-    pub fn finalize(self) -> HashMap<IdentifierType, Struct> {
+    pub fn finalize(self) -> NoHashMap<Struct> {
         self.structures.into_iter().map(|(k, v)| (k, Struct { fields: v.fields })).collect()
     }
 }

@@ -17,11 +17,12 @@ use crate::{
     EnvironmentBuilder,
     IdentifierType,
     Lexer,
-    Token
+    Token,
+    NoHashMap
 };
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     convert::TryInto,
     fs
 };
@@ -40,9 +41,9 @@ pub struct Program {
     // All constants declared
     pub constants: HashSet<DeclarationStatement>,
     // All structures declared
-    pub structures: HashMap<IdentifierType, Struct>,
+    pub structures: NoHashMap<Struct>,
     // All functions declared
-    pub functions: HashMap<IdentifierType, FunctionType>
+    pub functions: NoHashMap<FunctionType>
 }
 
 pub struct Parser<'a> {
@@ -51,7 +52,7 @@ pub struct Parser<'a> {
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
-    functions: HashMap<IdentifierType, FunctionType>,
+    functions: NoHashMap<FunctionType>,
     // Functions mapper
     functions_mapper: FunctionMapper<'a>,
     // Struct manager
@@ -69,7 +70,7 @@ impl<'a> Parser<'a> {
         Parser {
             tokens,
             constants: HashSet::new(),
-            functions: HashMap::new(),
+            functions: NoHashMap::default(),
             functions_mapper,
             struct_manager: StructManager::new(),
             env,
@@ -323,7 +324,7 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_name: IdentifierType, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError> {
         self.expect_token(Token::BraceOpen)?;
         let structure = self.struct_manager.get(&struct_name)?.clone();
-        let mut fields = HashMap::new();
+        let mut fields = NoHashMap::default();
         for (id, t) in structure.fields.iter() {
             let field_name = self.next_identifier()?;
             let field_value = match self.advance()? {
@@ -1090,7 +1091,7 @@ impl<'a> Parser<'a> {
 
         let mut mapper = IdMapper::new();
         self.expect_token(Token::BraceOpen)?;
-        let mut fields: HashMap<IdentifierType, Type> = HashMap::new();
+        let mut fields: NoHashMap<Type> = NoHashMap::default();
         for param in self.read_parameters(&mut mapper)? {
             let (id, _type) = param.consume();
             fields.insert(id, _type);

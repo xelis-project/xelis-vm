@@ -4,9 +4,8 @@ use crate::{
     mapper::FunctionMapper,
     types::{Struct, Type},
     values::{Value, ValueVariant},
-    IdentifierType
+    NoHashMap
 };
-use std::collections::HashMap;
 
 pub struct EnvironmentBuilder {
     functions_mapper: FunctionMapper<'static>,
@@ -34,7 +33,7 @@ impl EnvironmentBuilder {
     }
 
     // all registered functions
-    pub fn get_functions(&self) -> &HashMap<IdentifierType, FunctionType> {
+    pub fn get_functions(&self) -> &NoHashMap<FunctionType> {
         &self.env.functions
     }
 
@@ -102,8 +101,8 @@ impl Default for EnvironmentBuilder {
 }
 
 pub struct Environment {
-    functions: HashMap<IdentifierType, FunctionType>,
-    structures: HashMap<IdentifierType, Struct>
+    functions: NoHashMap<FunctionType>,
+    structures: NoHashMap<Struct>
 }
 
 impl Default for Environment {
@@ -116,12 +115,12 @@ impl Default for Environment {
 impl Environment {
     pub fn new() -> Self {
         Environment {
-            functions: HashMap::new(),
-            structures: HashMap::new()
+            functions: NoHashMap::default(),
+            structures: NoHashMap::default()
         }
     }
 
-    pub fn get_functions(&self) -> &HashMap<IdentifierType, FunctionType> {
+    pub fn get_functions(&self) -> &NoHashMap<FunctionType> {
         &self.functions
     }
 
@@ -129,7 +128,7 @@ impl Environment {
     //     self.structures.get(name)
     // }
 
-    pub fn get_structures(&self) -> &HashMap<IdentifierType, Struct> {
+    pub fn get_structures(&self) -> &NoHashMap<Struct> {
         &self.structures
     }
 }

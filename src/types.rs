@@ -2,25 +2,26 @@ use crate::{
     parser::StructManager,
     values::Value,
     IdentifierType,
+    NoHashMap,
     Token
 };
 use std::{
-    collections::{HashMap, HashSet, hash_map::RandomState},
-    hash::Hash
+    collections::{hash_map::RandomState, HashMap, HashSet},
+    hash::{BuildHasher, Hash}
 };
 
 // Represents a struct in the language
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
-    pub fields: HashMap<IdentifierType, Type>
+    pub fields: NoHashMap<Type>
 }
 
-pub struct RefMap<'a, K, V = RandomState> {
-    maps: Vec<&'a HashMap<K, V>>
+pub struct RefMap<'a, K, V, S = RandomState> {
+    maps: Vec<&'a HashMap<K, V, S>>
 }
 
 // link multiple maps in one struct for read-only
-impl<'a, K, V> RefMap<'a, K, V> {
+impl<'a, K, V, S: BuildHasher> RefMap<'a, K, V, S> {
     pub fn new() -> Self {
         RefMap {
             maps: vec![]
@@ -38,13 +39,13 @@ impl<'a, K, V> RefMap<'a, K, V> {
         None
     }
 
-    pub fn link_maps(&mut self, maps: Vec<&'a HashMap<K, V>>) {
+    pub fn link_maps(&mut self, maps: Vec<&'a HashMap<K, V, S>>) {
         for map in maps {
             self.link_map(map);
         }
     }
 
-    pub fn link_map(&mut self, map: &'a HashMap<K, V>) {
+    pub fn link_map(&mut self, map: &'a HashMap<K, V, S>) {
         self.maps.push(map);
     }
 }
@@ -213,7 +214,7 @@ impl<K: Hash + Eq> HasKey<K> for HashSet<K> {
     }
 }
 
-impl<K: Hash + Eq, V> HasKey<K> for HashMap<K, V> {
+impl<K: Hash + Eq, V, S: BuildHasher> HasKey<K> for HashMap<K, V, S> {
     fn has(&self, key: &K) -> bool {
         self.contains_key(key)
     }

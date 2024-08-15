@@ -8,14 +8,15 @@ use crate::{
     parser::Program,
     types::*,
     values::{SharableValue, Value, ValueVariant},
-    IdentifierType
+    IdentifierType, NoHashMap, NoOpHasher
 };
 use context::Context;
 pub use state::State;
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
+    hash::BuildHasherDefault,
     rc::Rc
 };
 
@@ -188,7 +189,7 @@ pub struct Interpreter<'a> {
     program: &'a Program,
     // Environment linked to execute the program
     env: &'a Environment,
-    ref_structures: RefMap<'a, IdentifierType, Struct>
+    ref_structures: RefMap<'a, IdentifierType, Struct, BuildHasherDefault<NoOpHasher>>
 }
 
 impl<'a> Interpreter<'a> {
@@ -201,81 +202,6 @@ impl<'a> Interpreter<'a> {
 
         interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
         Ok(interpreter)
-    }
-
-    // Verify if the value is the same as the other
-    fn is_same_value(&self, value_type: &Type, left: &Value, right: &Value) -> Result<bool, InterpreterError> {
-        Ok(match value_type {
-            Type::Any => return Err(InterpreterError::InvalidType(value_type.clone())),
-            Type::U8 => *left.as_u8()? == *right.as_u8()?,
-            Type::U16 => *left.as_u16()? == *right.as_u16()?,
-            Type::U64 => *left.as_u64()? == *right.as_u64()?,
-            Type::U128 => *left.as_u128()? == *right.as_u128()?,
-            Type::Bool => *left.as_bool()? == *right.as_bool()?,
-            Type::String => *left.as_string()? == *right.as_string()?,
-            Type::Optional(sub_type) => {
-                let opt_left = left.as_optional(&sub_type)?;
-                let opt_right = right.as_optional(&sub_type)?;
-                if let (Some(left), Some(right)) = (opt_left, opt_right) {
-                    self.is_same_value(sub_type, left, right)?
-                } else {
-                    opt_left.is_some() == opt_right.is_some()
-                }
-            },
-            Type::Struct(structure) => {
-                let left_map = left.as_map()?;
-                let right_map = right.as_map()?;
-
-                if left_map.len() == right_map.len() {
-                    let mut equal = true;
-                    for (k, v) in left_map {
-                        if !match right_map.get(k) {
-                            Some(r_v) => {
-                                let field_type = match self.ref_structures.get(structure) {
-                                    Some(structure) => match structure.fields.get(k) {
-                                        Some(field) => field,
-                                        None => return Err(InterpreterError::InvalidStructValue(v.clone_value()))
-                                    },
-                                    None => return Err(InterpreterError::StructureNotFound(structure.clone()))
-                                };
-                                self.is_same_value(field_type, &v.get_value(), &r_v.get_value())?
-                            },
-                            None => false
-                        } {
-                            equal = false;
-                            break;
-                        }
-                    }
-                    equal
-                } else {
-                    false
-                }
-            },
-            Type::Array(sub_type) => {
-                let left_vec = left.as_vec()?;
-                let right_vec = right.as_vec()?;
-                if left_vec.len() == right_vec.len() {
-                    let mut equal = true;
-                    for (left, right) in left_vec.iter().zip(right_vec.iter()) {
-                        if !self.is_same_value(sub_type, &left.get_value(), &right.get_value())? {
-                            equal = false;
-                            break;
-                        }
-                    }
-                    equal
-                } else {
-                    false
-                }
-            },
-            _ => return Err(InterpreterError::InvalidType(value_type.clone()))
-        })
-    }
-
-    pub fn get_type_from_value(&self, value: &Value) -> Result<Type, InterpreterError> {
-        match Type::from_value(value, &self.ref_structures) {
-            Some(v) => Ok(v),
-            None => Err(InterpreterError::TypeNotFound(value.clone()))
-        }
     }
 
     fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, InterpreterError> {
@@ -335,12 +261,12 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, left_type: Type, right_type: Type) -> Result<Value, InterpreterError> {
+    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value) -> Result<Value, InterpreterError> {
         match op {
-            Operator::Equals => Ok(Value::Boolean(left_type == right_type && self.is_same_value(&left_type, &left, &right)?)),
-            Operator::NotEquals => Ok(Value::Boolean(left_type != right_type || !self.is_same_value(&left_type, &left, &right)?)),
+            Operator::Equals => Ok(Value::Boolean(left ==right)),
+            Operator::NotEquals => Ok(Value::Boolean(left != right)),
             Operator::Plus => {
-                if left_type == Type::String || right_type == Type::String {
+                if left.is_string() || right.is_string() {
                     Ok(Value::String(format!("{}{}", left, right)))
                 } else {
                     Ok(op!(left, right, +))
@@ -407,16 +333,9 @@ impl<'a> Interpreter<'a> {
                 Ok(Some(Value::Array(values)))
             },
             Expression::StructConstructor(struct_name, expr_fields) => {
-                let s = self.ref_structures.get(struct_name).ok_or_else(|| InterpreterError::StructureNotFound(struct_name.clone()))?;
-                let mut fields = HashMap::with_capacity(expr_fields.len());
+                let mut fields = NoHashMap::with_capacity_and_hasher(expr_fields.len(), Default::default());
                 for (name, expr) in expr_fields {
                     let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
-                    let value_type = self.get_type_from_value(&value)?;
-
-                    let expected_type = s.fields.get(name).ok_or_else(|| InterpreterError::StructureFieldNotFound(struct_name.clone(), name.clone()))?;
-                    if *expected_type != value_type {
-                        return Err(InterpreterError::InvalidType(value_type))
-                    }
 
                     fields.insert(name.clone(), ValueVariant::Value(value));
                 }
@@ -467,13 +386,11 @@ impl<'a> Interpreter<'a> {
                     let mut value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
                     let path = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
                     let mut path_value = path.borrow_mut();
-                    let path_type = self.get_type_from_value(&path_value)?;
-                    let value_type = self.get_type_from_value(&value)?;
 
                     match op {
                         Operator::Assign(op) => {
                             if let Some(op) = op {
-                                value = self.execute_operator(&op, &path_value, &value, path_type, value_type)?;
+                                value = self.execute_operator(&op, &path_value, &value)?;
                             }
                             *path_value = value;
                         },
@@ -482,7 +399,6 @@ impl<'a> Interpreter<'a> {
                     Ok(None)
                 } else {
                     let left = self.execute_expression_and_expect_value(None, &expr_left, context.copy_ref(), state)?;
-                    let left_type = self.get_type_from_value(&left)?;
 
                     if op.is_and_or_or() {
                         match op {
@@ -508,12 +424,7 @@ impl<'a> Interpreter<'a> {
                         }
                     } else {
                         let right = self.execute_expression_and_expect_value(None, &expr_right, context.copy_ref(), state)?;
-                        let right_type = self.get_type_from_value(&right)?;
-                        if (!left.is_number() || !right.is_number() || right_type != left_type) && op.is_number_operator() {
-                            return Err(InterpreterError::OperationNotNumberType)
-                        }
-
-                        self.execute_operator(op, &left, &right, left_type, right_type).map(Some)
+                        self.execute_operator(op, &left, &right).map(Some)
                     }
                 }
             },

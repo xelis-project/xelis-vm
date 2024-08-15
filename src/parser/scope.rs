@@ -1,17 +1,16 @@
-use std::collections::HashMap;
-use crate::{types::Type, IdentifierType};
+use crate::{types::Type, IdentifierType, NoHashMap};
 
 // Scope is used to store variables
 // Variables are stored in a HashMap with a unique id
 #[derive(Debug, Clone)]
 pub struct Scope {
-    variables: HashMap<IdentifierType, Type>
+    variables: NoHashMap<Type>
 }
 
 impl Scope {
     pub fn new() -> Self {
         Scope {
-            variables: HashMap::new()
+            variables: NoHashMap::default()
         }
     }
 

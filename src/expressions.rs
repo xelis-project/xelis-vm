@@ -1,17 +1,17 @@
 use crate::{
+    token::Token,
     types::Type,
     values::Value,
-    token::Token,
-    IdentifierType
+    IdentifierType,
+    NoHashMap
 };
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Expression {
     FunctionCall(IdentifierType, Vec<Expression>), // function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
-    StructConstructor(IdentifierType, HashMap<IdentifierType, Expression>),
+    StructConstructor(IdentifierType, NoHashMap<Expression>),
     Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),

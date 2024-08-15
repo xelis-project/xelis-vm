@@ -1,27 +1,6 @@
-use std::{collections::HashMap, hash::{BuildHasherDefault, Hasher}};
+use crate::{values::*, IdentifierType, InterpreterError, NoHashMap};
 
-use crate::{InterpreterError, IdentifierType, values::*};
-
-pub type Scope = HashMap<IdentifierType, ValueVariant, BuildHasherDefault<NoOpHasher>>;
-
-// Hasher that does nothing
-// Because we have u16 as the key, we don't need to hash it
-#[derive(Debug, Default)]
-pub struct NoOpHasher(u16);
-
-impl Hasher for NoOpHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        self.0 = u16::from_le_bytes([bytes[0], bytes[1]]);
-    }
-
-    fn write_u64(&mut self, _: u64) {
-        unimplemented!("write_u64")
-    }
-
-    fn finish(&self) -> u64 {
-        self.0 as u64
-    }
-}
+pub type Scope = NoHashMap<ValueVariant>;
 
 #[derive(Debug)]
 pub struct Context {

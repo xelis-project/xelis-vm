@@ -1,11 +1,10 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
     ops::{Deref, DerefMut},
     rc::Rc
 };
 
-use crate::{types::Type, IdentifierType, InterpreterError};
+use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
 
 pub type SharableValue = Rc<RefCell<Value>>;
 
@@ -21,7 +20,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(IdentifierType, HashMap<IdentifierType, ValueVariant>),
+    Struct(IdentifierType, NoHashMap<ValueVariant>),
     Array(Vec<ValueVariant>),
     Optional(Option<Box<Value>>)
 }
@@ -138,6 +137,14 @@ impl Value {
     }
 
     #[inline]
+    pub fn is_string(&self) -> bool {
+        match &self {
+            Value::String(_) => true,
+            _ => false
+        }
+    }
+
+    #[inline]
     pub fn as_u8(&self) -> Result<&u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
@@ -194,7 +201,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<IdentifierType, ValueVariant>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&NoHashMap<ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -202,7 +209,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<IdentifierType, ValueVariant>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut NoHashMap<ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -307,7 +314,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<HashMap<IdentifierType, ValueVariant>, InterpreterError> {
+    pub fn to_map(self) -> Result<NoHashMap<ValueVariant>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
