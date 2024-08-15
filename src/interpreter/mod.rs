@@ -398,7 +398,6 @@ impl<'a> Interpreter<'a> {
             // Increase the number of executed expressions
             state.increase_expressions_executed()?;
 
-
             match statement {
                 Statement::Break => {
                     context.set_loop_break(true);
@@ -488,7 +487,11 @@ impl<'a> Interpreter<'a> {
                         }
 
                         // increment once the iteration is done
-                        self.execute_expression(None, increment, Some(context), state)?;                        
+                        self.execute_expression(None, increment, Some(context), state)?;
+
+                        // We clear the last scope to avoid keeping the variables
+                        // as we may register them again in next iteration
+                        context.clear_last_scope()?;
                     }
                     context.end_scope()?;
                 },
@@ -496,9 +499,8 @@ impl<'a> Interpreter<'a> {
                     let values = self.execute_expression_and_expect_value(None, expr, Some(context), state)?.to_vec()?;
                     if !values.is_empty() {
                         context.begin_scope();
-                        context.register_variable(var.clone(), Value::Null)?;
                         for val in values {
-                            context.set_variable_value(var, val)?;
+                            context.register_variable(var.clone(), val)?;
                             match self.execute_statements(&statements, context, state)? {
                                 Some(v) => {
                                     context.end_scope()?;
@@ -515,6 +517,8 @@ impl<'a> Interpreter<'a> {
                             if context.get_loop_continue() {
                                 context.set_loop_continue(false);
                             }
+
+                            context.clear_last_scope()?;
                         }
                         context.end_scope()?;
                     }
@@ -538,6 +542,7 @@ impl<'a> Interpreter<'a> {
                         if context.get_loop_continue() {
                             context.set_loop_continue(false);
                         }
+                        context.clear_last_scope()?;
                     }
                     context.end_scope()?;
                 },
