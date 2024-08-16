@@ -12,7 +12,6 @@ use crate::{
 };
 use context::Context;
 pub use state::State;
-
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -72,6 +71,7 @@ macro_rules! op_bool {
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    NoReturnValue,
     OptionalIsNull,
     NoMatchingFunction,
     TypeNotFound(Value),
@@ -388,7 +388,6 @@ impl<'a> Interpreter<'a> {
     }
 
     fn execute_statements(&self, statements: &Vec<Statement>, context: &mut Context, state: &mut State) -> Result<Option<Value>, InterpreterError> {
-        let mut accept_else = false;
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if context.get_loop_break() || context.get_loop_continue() {
@@ -411,57 +410,28 @@ impl<'a> Interpreter<'a> {
                     let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
                     context.register_variable(var.id.clone(), value)?;
                 },
-                Statement::If(condition, statements) => {
-                    if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
-                        context.begin_scope();
-                        match self.execute_statements(&statements, context, state)? {
-                            Some(v) => {
-                                context.end_scope()?;
-                                return Ok(Some(v))
-                            },
-                            None => {
-                                context.end_scope()?;
-                            }
-                        };
+                Statement::If(condition, statements, else_statements) => {
+                    let statements = if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
+                        Some(statements)
+                    } else if let Some(statements) = else_statements {
+                        Some(statements)
                     } else {
-                        accept_else = true;
-                    }
-                },
-                Statement::ElseIf(condition, statements) => if accept_else {
-                    if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
-                        context.begin_scope();
-                        match self.execute_statements(&statements, context, state)? {
-                            Some(v) => {
-                                context.end_scope()?;
-                                return Ok(Some(v))
-                            },
-                            None => {
-                                context.end_scope()?;
-                            }
-                        };
-                    } else {
-                        accept_else = true;
-                    }
-                },
-                Statement::Else(statements) => if accept_else {
-                    context.begin_scope();
-                    match self.execute_statements(&statements, context, state)? {
-                        Some(v) => {
-                            context.end_scope()?;
-                            return Ok(Some(v))
-                        },
-                        None => {
-                            context.end_scope()?;
-                        }
+                        None
                     };
-                }
-                Statement::For(var, condition, increment, statements) => {
-                    context.begin_scope();
 
+                    if let Some(statements) = statements {
+                        match self.execute_statements(&statements, context, state)? {
+                            Some(v) => return Ok(Some(v)),
+                            None => {}
+                        };
+                    }
+                },
+                Statement::For(var, condition, increment, statements) => {
                     // register the variable
                     let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
                     context.register_variable(var.id.clone(), value)?;
 
+                    context.begin_scope();
                     loop {
                         // check the condition
                         if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
@@ -493,6 +463,12 @@ impl<'a> Interpreter<'a> {
                         // as we may register them again in next iteration
                         context.clear_last_scope()?;
                     }
+
+                    // Before ending the loop, we remove the variable
+                    // Because we registered outside of the newly created scope
+                    // as we clear this scope each time
+                    context.remove_variable(&var.id)?;
+
                     context.end_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
@@ -566,13 +542,6 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Expression(expr) => {
                     self.execute_expression(None, &expr, Some(context), state)?;
-                }
-            };
-
-            match statement {
-                Statement::If(_, _) | Statement::ElseIf(_, _) => {},
-                _ => {
-                    accept_else = false;
                 }
             };
         }
@@ -659,7 +628,6 @@ mod tests {
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
-
         let builder = EnvironmentBuilder::default();
         let parser = Parser::new(None, tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
@@ -868,7 +836,7 @@ mod tests {
     #[test]
     fn test_nested_if() {
         test_code_expect_return("entry main() { let a: u64 = 10; if a > 0 { if a == 10 { return 10; } else { return 0; } } else { return 0; } }", 10);
-        test_code_expect_return("entry main() { let a: u64 = 10; if a == 0 { if a == 10 { return 10; } else { return 0; } } else { return 0; } }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; if a != 0 { if a == 10 { return 0; } else { return 11; } } return 999; }", 0);
     }
 
     #[test]

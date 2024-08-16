@@ -72,6 +72,17 @@ impl Context {
         Ok(())
     }
 
+    // Remove a variable from the context
+    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<ValueVariant, InterpreterError> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(v) = scope.remove(name) {
+                return Ok(v)
+            }
+        }
+
+        Err(InterpreterError::VariableNotFound(name.clone()))
+    }
+
     pub fn get_variable(&self, name: &IdentifierType) -> Result<&ValueVariant, InterpreterError> {
         for scope in self.scopes.iter().rev() {
             if let Some(v) = scope.get(name) {

@@ -701,9 +701,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut statements: Vec<Statement> = Vec::new();
-        let mut has_if = false;
-        loop {
-            let token = self.advance()?;
+        while let Some(token) = self.next() {
             let statement: Statement = match token {
                 Token::BraceClose => break,
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
@@ -763,24 +761,20 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
-                    Statement::If(condition, self.read_body(context, return_type, true, mapper)?)
-                },
-                Token::Else => {
-                    if !has_if {
-                        return Err(ParserError::NoIfBeforeElse)
-                    }
+                    let body = self.read_body(context, return_type, true, mapper)?;
 
-                    if *self.peek()? == Token::If {
-                        self.expect_token(Token::If)?;
-                        let condition = self.read_expression(context, mapper)?;
-                        let condition_type = self.get_type_from_expression(None, &condition, context)?;
-                        if  *condition_type != Type::Bool {
-                            return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
-                        }
-                        Statement::ElseIf(condition, self.read_body(context, return_type, true, mapper)?)
+                    let else_statement = if *self.peek()? == Token::Else {
+                        self.advance()?;
+                        Some(if *self.peek()? == Token::If {
+                            self.read_statements(context, return_type, false, mapper)?
+                        } else {
+                            self.read_body(context, return_type, true, mapper)?
+                        })
                     } else {
-                        Statement::Else(self.read_body(context, return_type, true, mapper)?)
-                    }
+                        None
+                    };
+
+                    Statement::If(condition, body, else_statement)
                 },
                 Token::BraceOpen => Statement::Scope(self.read_body(context, return_type, false, mapper)?),
                 Token::Let => Statement::Variable(self.read_variable(context, mapper, false)?),
@@ -832,16 +826,6 @@ impl<'a> Parser<'a> {
                     Statement::Expression(self.read_expression(context, mapper)?)
                 }
             };
-
-            match &statement {
-                Statement::If(_, _) | Statement::ElseIf(_, _) => {
-                    has_if = true;
-                },
-                _ => {
-                    has_if = false;
-                }
-            };
-
             statements.push(statement);
         }
 
@@ -873,39 +857,16 @@ impl<'a> Parser<'a> {
     // to have dead code after a return
     fn ends_with_return(&self, statements: &Vec<Statement>) -> Result<bool, ParserError> {
         let mut ok = false;
-        let mut last_is_else = false;
-        let size = statements.len();
-        for (i, statement) in statements.into_iter().enumerate() {
+        if let Some(statement) = statements.last() {
             match statement {
-                Statement::If(_, statements) => {
-                    if i + 1 < size { // verify that there is not a if alone
-                        ok = self.ends_with_return(statements)?;
-                    }
-                    last_is_else = false;
-                }
-                Statement::ElseIf(_, statements) => {
-                    if ok {
-                        ok = self.ends_with_return(statements)?;
-                    }
-                    last_is_else = false;
-                }
-                Statement::Else(statements) => {
-                    if ok {
-                        ok = self.ends_with_return(statements)?;
-                        if ok {
-                            last_is_else = true;
-                            
-                            if i + 1 < size { // if we have all case that returns something, then we don't allow dead code.
-                                return Err(ParserError::DeadCodeNotAllowed) 
-                            }
-                        }
+                Statement::If(_, statements, else_statements) => {
+                    // if its the last statement
+                    ok = self.ends_with_return(statements)?;
+                    if let Some(statements) = else_statements.as_ref().filter(|_| ok) {
+                        self.ends_with_return(statements)?;
                     }
                 }
                 Statement::Return(_) => {
-                    if last_is_else { // this return would be useless because if & else have a return, so we don't accept this one.
-                        return Err(ParserError::ReturnAlreadyInElse)
-                    }
-
                     ok = true;
                 },
                 _ => {}

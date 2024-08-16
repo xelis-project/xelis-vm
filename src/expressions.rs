@@ -24,9 +24,7 @@ pub enum Expression {
 
 #[derive(Debug)]
 pub enum Statement {
-    If(Expression, Vec<Statement>),
-    Else(Vec<Statement>),
-    ElseIf(Expression, Vec<Statement>),
+    If(Expression, Vec<Statement>, Option<Vec<Statement>>),
     While(Expression, Vec<Statement>),
     ForEach(IdentifierType, Expression, Vec<Statement>), // for a in array
     For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: u64 = 0; i < 10; i++ (; will not be saved)
