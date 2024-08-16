@@ -10,6 +10,18 @@ pub enum LexerError { // left is line, right is column
     ExpectedType
 }
 
+#[derive(Clone)]
+pub struct TokenResult {
+    // the token value
+    pub token: Token,
+    // the line number where the token is located
+    pub line: usize,
+    // the column number where the token starts
+    pub column_start: usize,
+    // the column number where the token ends
+    pub column_end: usize
+}
+
 pub struct Lexer<'a> {
     // input code
     input: &'a str,
@@ -33,7 +45,7 @@ impl<'a> Lexer<'a> {
             chars: input.chars().collect::<Vec<_>>().into(),
             pos: 0,
             line: 1,
-            column: 1
+            column: 0
         }
     }
 
@@ -52,20 +64,12 @@ impl<'a> Lexer<'a> {
 
     // get the next character
     fn next_char(&mut self) -> Option<char> {
-        match self.chars.pop_front() {
-            Some(c) => {
-                self.pos += 1;
-                if c == '\n' {
-                    self.line += 1;
-                    self.column = 1;
-                } else {
-                    self.column += 1;
-                }
-                Some(c)
-            },
-            None => None
-        }
+        self.pos += 1;
+        self.column += 1;
+
+        self.chars.pop_front()
     }
+
     // get a str slice of the input
     // this is done to prevent copying the string
     fn get_slice(&self, start: usize, end: usize) -> Result<&'a str, LexerError> {
@@ -85,9 +89,15 @@ impl<'a> Lexer<'a> {
     }
 
     // try to parse a slice of string as a token using n+1 characters
-    fn try_token_with(&self, n: usize) -> Option<Token> {
+    fn try_token_with(&self, n: usize) -> Option<TokenResult> {
         let slice = self.input.get(self.pos - 1..self.pos + n)?;
-        Token::value_of(slice)
+        let token = Token::value_of(slice);
+        token.map(|t| TokenResult {
+            token: t,
+            line: self.line,
+            column_start: self.column,
+            column_end: self.column + n
+        })
     }
 
     // read characters while the delimiter is true
@@ -164,9 +174,11 @@ impl<'a> Lexer<'a> {
 
     // Read a number
     // Support base 10 and base 16, also support u128 numbers
-    fn read_number(&mut self, c: char) -> Result<Token, LexerError> {
+    fn read_number(&mut self, c: char) -> Result<TokenResult, LexerError> {
         let mut is_u128 = false;
         let is_hex = c == '0' && self.peek()? == 'x';
+
+        let column_start = self.column;
 
         let mut init_pos = if is_hex {
             // Skip the x
@@ -210,10 +222,16 @@ impl<'a> Lexer<'a> {
         };
 
         let radix = if is_hex { 16 } else { 10 };
-        Ok(if is_u128 {
+        let token = if is_u128 {
             Token::U128Value(u128::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
         } else {
             Token::U64Value(u64::from_str_radix(&v, radix).map_err(|_| LexerError::ParseToNumber(self.line, self.column))?)
+        };
+        Ok(TokenResult {
+            token,
+            line: self.line,
+            column_start,
+            column_end: self.column
         })
     }
 
@@ -233,7 +251,8 @@ impl<'a> Lexer<'a> {
 
     // read a token
     // it also supports optional types
-    fn read_token(&mut self, diff: usize) -> Result<Token, LexerError> {
+    fn read_token(&mut self, diff: usize) -> Result<TokenResult, LexerError> {
+        let column_start = self.column;
         let value = self.read_while(|v| -> bool {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
@@ -245,30 +264,51 @@ impl<'a> Lexer<'a> {
                 return Err(LexerError::ExpectedChar(self.line, self.column));
             }
 
-            if !inner.is_type() {
+            if !inner.token.is_type() {
                 return Err(LexerError::ExpectedType);
             }
 
-            Ok(Token::Optional(Box::new(inner)))
+            Ok(TokenResult {
+                token: Token::Optional(Box::new(inner.token)),
+                line: self.line,
+                column_start,
+                column_end: self.column
+            })
         } else {
-            Ok(Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.to_owned())))
+            Ok(TokenResult {
+                token: Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.to_owned())),
+                line: self.line,
+                column_start,
+                column_end: self.column
+            })
         }
     }
 
     // retrieve the next token available
-    fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
+    fn next_token(&mut self) -> Result<Option<TokenResult>, LexerError> {
         while let Some(c) = self.next_char() {
-            let token = match c {
+            let token: TokenResult = match c {
+                '\n' | '\t' => {
+                    self.line += 1;
+                    self.column = 0;
+                    continue;
+                },
                 // skipped characters
-                '\n' | ' ' | ';' | '\r' => {
+                ' ' | ';' => {
                     // we just skip these characters
                     continue;
                 },
                 // read a string value
                 // It supports escaped characters
                 '"' | '\'' => {
+                    let column_start = self.column;
                     let value = self.read_string(c)?;
-                    Token::StringValue(value.into_owned())
+                    TokenResult {
+                        token: Token::StringValue(value.into_owned()),
+                        line: self.line,
+                        column_start,
+                        column_end: self.column
+                    }
                 },
                 // it's only a comment, skip until its end
                 '/' if {
@@ -306,19 +346,20 @@ impl<'a> Lexer<'a> {
     }
 
     // Parse the code into a list of tokens
+    // This returns only the list of tokens without any other information
     pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
             // push the token to the list
-            tokens.push_back(token);
+            tokens.push_back(token.token);
         }
 
         Ok(tokens)
     }
 }
 
-impl Iterator for Lexer<'_> {
-    type Item = Result<Token, LexerError>;
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Result<TokenResult, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token().transpose()
@@ -647,5 +688,34 @@ mod tests {
             Token::As,
             Token::Identifier("Test".to_owned())
         ]);
+    }
+
+    #[test]
+    fn test_token_result() {
+        let code = "let a = 10;";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Let);
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 1);
+        assert_eq!(token.column_end, 3);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("a".to_owned()));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 5);
+        assert_eq!(token.column_end, 5);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::OperatorAssign);
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 7);
+        assert_eq!(token.column_end, 7);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::U64Value(10));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 9);
+        assert_eq!(token.column_end, 10);
     }
 }
