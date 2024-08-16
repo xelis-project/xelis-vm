@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, hash::Hash};
 use crate::{functions::Signature, IdentifierType, ParserError};
 
 pub type IdMapper = Mapper<'static, String>;
@@ -51,12 +51,20 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Get the identifier of a variable name
-    pub fn get(&self, name: &T) -> Result<IdentifierType, ParserError> {
+    pub fn get<K: Debug>(&self, name: &K) -> Result<IdentifierType, ParserError>
+    where
+        T: Borrow<K>,
+        K: Eq + Hash
+    {
         self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound(format!("{:?}", name)))
     }
 
     // Check if a variable name is already registered
-    pub fn has_variable(&self, name: &T) -> bool {
+    pub fn has_variable<K>(&self, name: &K) -> bool
+    where
+        T: Borrow<K>,
+        K: Eq + Hash
+    {
         self.mappings.contains_key(name)
     }
 
