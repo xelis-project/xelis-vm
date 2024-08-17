@@ -1,7 +1,7 @@
-use std::{borrow::Borrow, collections::HashMap, fmt::Debug, hash::Hash};
+use std::{borrow::{Borrow, Cow}, collections::HashMap, fmt::Debug, hash::Hash};
 use crate::{functions::Signature, IdentifierType, ParserError};
 
-pub type IdMapper = Mapper<'static, String>;
+pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
 pub type FunctionMapper<'a> = Mapper<'a, Signature>;
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
@@ -51,7 +51,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Get the identifier of a variable name
-    pub fn get<K: ?Sized + Debug>(&self, name: &K) -> Result<IdentifierType, ParserError>
+    pub fn get<K: ?Sized + Debug>(&self, name: &K) -> Result<IdentifierType, ParserError<'a>>
     where
         T: Borrow<K>,
         K: Eq + Hash
@@ -69,7 +69,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Register a new variable name
-    pub fn register(&mut self, name: T) -> Result<IdentifierType, ParserError> {
+    pub fn register(&mut self, name: T) -> Result<IdentifierType, ParserError<'a>> {
         let id = self.next_id;
         if let Some(v) = self.mappings.insert(name, id) {
             return Err(ParserError::MappingExists(v));
@@ -81,7 +81,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
 }
 
 impl<'a> FunctionMapper<'a> {
-    pub fn get_compatible(&self, key: Signature) -> Result<IdentifierType, ParserError> {
+    pub fn get_compatible(&self, key: Signature) -> Result<IdentifierType, ParserError<'a>> {
         if let Ok(id) = self.get(&key) {
             return Ok(id);
         }

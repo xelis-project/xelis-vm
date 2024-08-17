@@ -20,7 +20,7 @@ impl Context {
     }
 
     // get the value type of a variable registered in scopes using its name
-    pub fn get_type_of_variable(&self, key: &IdentifierType) -> Result<&Type, ParserError> {
+    pub fn get_type_of_variable<'a>(&self, key: &IdentifierType) -> Result<&Type, ParserError<'a>> {
         for vars in self.scopes.iter().rev() {
             if let Some(_type) = vars.get(key) {
                 return Ok(_type)
@@ -36,7 +36,7 @@ impl Context {
     }
 
     // register a variable in the current scope
-    pub fn register_variable(&mut self, key: IdentifierType, var_type: Type) -> Result<(), ParserError> {
+    pub fn register_variable<'a>(&mut self, key: IdentifierType, var_type: Type) -> Result<(), ParserError<'a>> {
         if self.has_variable(&key) {
             return Err(ParserError::VariableIdAlreadyUsed(key))
         }

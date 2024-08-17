@@ -124,10 +124,6 @@ impl Environment {
         &self.functions
     }
 
-    // pub fn get_structure(&self, name: &String) -> Option<&Struct> {
-    //     self.structures.get(name)
-    // }
-
     pub fn get_structures(&self) -> &NoHashMap<Struct> {
         &self.structures
     }

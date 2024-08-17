@@ -1,21 +1,21 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::{mapper::IdMapper, types::{Struct, Type}, IdentifierType, NoHashMap, ParserError};
 
 #[derive(Debug, Clone)]
-pub struct StructBuilder {
+pub struct StructBuilder<'a> {
     pub fields: NoHashMap<Type>,
-    pub mapper: IdMapper
+    pub mapper: IdMapper<'a>
 }
 
-pub struct StructManager {
+pub struct StructManager<'a> {
     // All structs registered in the manager
-    structures: NoHashMap<StructBuilder>,
+    structures: NoHashMap<StructBuilder<'a>>,
     // mapper to map each string name into a unique identifier
-    mapper: IdMapper
+    mapper: IdMapper<'a>
 }
 
-impl StructManager {
+impl<'a> StructManager<'a> {
     // Create a new struct manager
     pub fn new() -> Self {
         StructManager {
@@ -30,9 +30,10 @@ impl StructManager {
     }
 
     // register a new struct in the manager
-    pub fn add(&mut self, name: String, builder: StructBuilder) -> Result<(), ParserError> {
+    pub fn add(&mut self, name: String, builder: StructBuilder<'a>) -> Result<(), ParserError<'a>> {
+        let name = Cow::Owned(name);
         if self.mapper.has_variable(&name) {
-            return Err(ParserError::StructNameAlreadyUsed(name));
+            return Err(ParserError::StructNameAlreadyUsed(name.into_owned()));
         }
 
         let id = self.mapper.register(name)?;
@@ -47,12 +48,12 @@ impl StructManager {
     }
 
     // Get the mapping of a struct by name
-    pub fn get_mapping(&self, name: &String) -> Result<IdentifierType, ParserError> {
+    pub fn get_mapping(&self, name: &str) -> Result<IdentifierType, ParserError<'a>> {
         self.mapper.get(name)
     }
 
     // Get a struct by name
-    pub fn get(&self, name: &IdentifierType) -> Result<&StructBuilder, ParserError> {
+    pub fn get(&self, name: &IdentifierType) -> Result<&StructBuilder<'a>, ParserError<'a>> {
         self.structures.get(name).ok_or_else(|| ParserError::StructNotFound(name.clone()))
     }
 

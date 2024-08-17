@@ -1,7 +1,7 @@
 use crate::{expressions::Expression, types::Type, IdentifierType, LexerError, Token};
 
 #[derive(Debug)]
-pub enum ParserError {
+pub enum ParserError<'a> {
     InvalidImport,
     InvalidImportPath(String),
     ImportNotFound(String),
@@ -14,9 +14,9 @@ pub enum ParserError {
     ExpectedToken,
     VariableTooLong(String),
     VariableMustStartWithAlphabetic(String),
-    ExpectedIdentifierToken(Token),
-    UnexpectedToken(Token),
-    InvalidToken(Token, Token),
+    ExpectedIdentifierToken(Token<'a>),
+    UnexpectedToken(Token<'a>),
+    InvalidToken(Token<'a>, Token<'a>),
     TypeNotFound,
     NoIfBeforeElse,
     StructNameAlreadyUsed(String),
@@ -45,7 +45,7 @@ pub enum ParserError {
     InvalidTernaryNoPreviousExpression,
     DeadCodeNotAllowed,
     InvalidForExpression(Expression),
-    OperatorNotFound(Token),
+    OperatorNotFound(Token<'a>),
     InvalidCondition(Type, Expression),
     InvalidOperationNotSameType(Type, Type),
     CastError(Type, Type),
