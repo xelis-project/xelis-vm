@@ -51,7 +51,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Get the identifier of a variable name
-    pub fn get<K: Debug>(&self, name: &K) -> Result<IdentifierType, ParserError>
+    pub fn get<K: ?Sized + Debug>(&self, name: &K) -> Result<IdentifierType, ParserError>
     where
         T: Borrow<K>,
         K: Eq + Hash
@@ -60,7 +60,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Check if a variable name is already registered
-    pub fn has_variable<K>(&self, name: &K) -> bool
+    pub fn has_variable<K: ?Sized>(&self, name: &K) -> bool
     where
         T: Borrow<K>,
         K: Eq + Hash

@@ -1,11 +1,13 @@
+use std::borrow::Cow;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Token {
+pub enum Token<'a> {
     // Variable / function names
-    Identifier(String),
+    Identifier(&'a str),
     // Values
     U64Value(u64),
     U128Value(u128),
-    StringValue(String),
+    StringValue(Cow<'a, str>),
     Null,
     True,
     False,
@@ -18,7 +20,7 @@ pub enum Token {
     U128,
     Bool,
     String,
-    Optional(Box<Token>),
+    Optional(Box<Token<'a>>),
 
     BraceOpen,
     BraceClose,
@@ -87,7 +89,7 @@ pub enum Token {
     As
 }
 
-impl Token {
+impl Token<'_> {
     pub fn value_of(s: &str) -> Option<Token> {
         use Token::*;
         Some(match s {

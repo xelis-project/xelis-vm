@@ -11,9 +11,9 @@ pub enum LexerError { // left is line, right is column
 }
 
 #[derive(Clone)]
-pub struct TokenResult {
+pub struct TokenResult<'a> {
     // the token value
-    pub token: Token,
+    pub token: Token<'a>,
     // the line number where the token is located
     pub line: usize,
     // the column number where the token starts
@@ -64,10 +64,11 @@ impl<'a> Lexer<'a> {
 
     // get the next character
     fn next_char(&mut self) -> Option<char> {
-        self.pos += 1;
-        self.column += 1;
-
-        self.chars.pop_front()
+        self.chars.pop_front().map(|c| {
+            self.pos += 1;
+            self.column += 1;
+            c
+        })
     }
 
     // get a str slice of the input
@@ -89,7 +90,7 @@ impl<'a> Lexer<'a> {
     }
 
     // try to parse a slice of string as a token using n+1 characters
-    fn try_token_with(&self, n: usize) -> Option<TokenResult> {
+    fn try_token_with(&self, n: usize) -> Option<TokenResult<'a>> {
         let slice = self.input.get(self.pos - 1..self.pos + n)?;
         let token = Token::value_of(slice);
         token.map(|t| TokenResult {
@@ -174,7 +175,7 @@ impl<'a> Lexer<'a> {
 
     // Read a number
     // Support base 10 and base 16, also support u128 numbers
-    fn read_number(&mut self, c: char) -> Result<TokenResult, LexerError> {
+    fn read_number(&mut self, c: char) -> Result<TokenResult<'a>, LexerError> {
         let mut is_u128 = false;
         let is_hex = c == '0' && self.peek()? == 'x';
 
@@ -251,7 +252,7 @@ impl<'a> Lexer<'a> {
 
     // read a token
     // it also supports optional types
-    fn read_token(&mut self, diff: usize) -> Result<TokenResult, LexerError> {
+    fn read_token(&mut self, diff: usize) -> Result<TokenResult<'a>, LexerError> {
         let column_start = self.column;
         let value = self.read_while(|v| -> bool {
             *v == '_' || v.is_ascii_alphanumeric()
@@ -276,7 +277,7 @@ impl<'a> Lexer<'a> {
             })
         } else {
             Ok(TokenResult {
-                token: Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value.to_owned())),
+                token: Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value)),
                 line: self.line,
                 column_start,
                 column_end: self.column
@@ -285,9 +286,9 @@ impl<'a> Lexer<'a> {
     }
 
     // retrieve the next token available
-    fn next_token(&mut self) -> Result<Option<TokenResult>, LexerError> {
+    fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
-            let token: TokenResult = match c {
+            let token: TokenResult<'a> = match c {
                 '\n' | '\t' => {
                     self.line += 1;
                     self.column = 0;
@@ -304,7 +305,7 @@ impl<'a> Lexer<'a> {
                     let column_start = self.column;
                     let value = self.read_string(c)?;
                     TokenResult {
-                        token: Token::StringValue(value.into_owned()),
+                        token: Token::StringValue(value),
                         line: self.line,
                         column_start,
                         column_end: self.column
@@ -347,7 +348,7 @@ impl<'a> Lexer<'a> {
 
     // Parse the code into a list of tokens
     // This returns only the list of tokens without any other information
-    pub fn get(mut self) -> Result<VecDeque<Token>, LexerError> {
+    pub fn get(mut self) -> Result<VecDeque<Token<'a>>, LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
             // push the token to the list
@@ -359,7 +360,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<TokenResult, LexerError>;
+    type Item = Result<TokenResult<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_token().transpose()
@@ -377,7 +378,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Let,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorAssign,
             Token::U64Value(10)
         ]);
@@ -390,7 +391,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Function,
-            Token::Identifier("main".to_owned()),
+            Token::Identifier("main"),
             Token::ParenthesisOpen,
             Token::ParenthesisClose,
             Token::BraceOpen,
@@ -416,7 +417,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::StringValue("Hello, World!".to_owned())
+            Token::StringValue(Cow::Borrowed("Hello, World!"))
         ]);
     }
 
@@ -426,7 +427,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::StringValue("'Hello, World!'".to_owned())
+            Token::StringValue(Cow::Borrowed("'Hello, World!'"))
         ]);
     }
 
@@ -436,7 +437,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::StringValue("Hello, 'World!".to_owned())
+            Token::StringValue(Cow::Borrowed("Hello, 'World!"))
         ]);
     }
 
@@ -447,7 +448,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Let,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorAssign,
             Token::U64Value(10)
         ]);
@@ -460,7 +461,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Let,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorAssign,
             Token::U64Value(10)
         ]);
@@ -473,10 +474,10 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Let,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorAssign,
             Token::U64Value(10),
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorPlusAssign,
             Token::U64Value(20)
         ]);
@@ -549,13 +550,13 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Function,
-            Token::Identifier("sum".to_owned()),
+            Token::Identifier("sum"),
             Token::ParenthesisOpen,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::Colon,
             Token::U64,
             Token::Comma,
-            Token::Identifier("b".to_owned()),
+            Token::Identifier("b"),
             Token::Colon,
             Token::U64,
             Token::ParenthesisClose,
@@ -563,9 +564,9 @@ mod tests {
             Token::U64,
             Token::BraceOpen,
             Token::Return,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorPlus,
-            Token::Identifier("b".to_owned()),
+            Token::Identifier("b"),
             Token::BraceClose
         ]);
     }
@@ -576,7 +577,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Identifier("sum".to_owned()),
+            Token::Identifier("sum"),
             Token::ParenthesisOpen,
             Token::U64Value(10),
             Token::Comma,
@@ -612,7 +613,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::If,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorEquals,
             Token::U64Value(10),
             Token::BraceOpen,
@@ -634,13 +635,13 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Struct,
-            Token::Identifier("User".to_owned()),
+            Token::Identifier("User"),
             Token::BraceOpen,
-            Token::Identifier("name".to_owned()),
+            Token::Identifier("name"),
             Token::Colon,
             Token::String,
             Token::Comma,
-            Token::Identifier("age".to_owned()),
+            Token::Identifier("age"),
             Token::Colon,
             Token::U64,
             Token::BraceClose
@@ -654,7 +655,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Let,
-            Token::Identifier("a".to_owned()),
+            Token::Identifier("a"),
             Token::OperatorAssign,
             Token::U64Value(10),
             Token::As,
@@ -669,9 +670,9 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::From,
-            Token::StringValue("file".to_owned()),
+            Token::StringValue(Cow::Borrowed("file")),
             Token::Import,
-            Token::Identifier("TestStruct".to_owned()),
+            Token::Identifier("TestStruct"),
         ]);
     }
 
@@ -682,11 +683,11 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::From,
-            Token::StringValue("file".to_owned()),
+            Token::StringValue(Cow::Borrowed("file")),
             Token::Import,
-            Token::Identifier("TestStruct".to_owned()),
+            Token::Identifier("TestStruct"),
             Token::As,
-            Token::Identifier("Test".to_owned())
+            Token::Identifier("Test")
         ]);
     }
 
@@ -701,7 +702,7 @@ mod tests {
         assert_eq!(token.column_end, 3);
 
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.token, Token::Identifier("a".to_owned()));
+        assert_eq!(token.token, Token::Identifier("a"));
         assert_eq!(token.line, 1);
         assert_eq!(token.column_start, 5);
         assert_eq!(token.column_end, 5);
