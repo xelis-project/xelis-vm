@@ -56,7 +56,7 @@ pub struct Parser<'a> {
     // Struct manager
     struct_manager: StructManager<'a>,
     // Environment contains all the library linked to the program
-    env: &'a EnvironmentBuilder,
+    env: &'a EnvironmentBuilder<'a>,
     // TODO: Path to use to import files
     _path: Option<&'a str>
 }
