@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::ast::Token;
 use std::{borrow::Cow, collections::VecDeque};
 
 #[derive(Debug)]

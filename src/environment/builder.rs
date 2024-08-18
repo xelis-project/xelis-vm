@@ -1,12 +1,9 @@
-use std::collections::HashMap;
-
 use crate::{
-    functions::{FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
+    ast::{Signature, FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
     mapper::FunctionMapper,
     types::Type,
     values::Value,
     NoHashMap,
-    Signature
 };
 
 use super::{std as xstd, Environment};
@@ -16,7 +13,6 @@ use super::{std as xstd, Environment};
 // and import files by the user
 pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
-    imports: HashMap<&'a str, String>,
     env: Environment
 }
 
@@ -25,7 +21,6 @@ impl<'a> EnvironmentBuilder<'a> {
     pub fn new() -> Self {
         Self {
             functions_mapper: FunctionMapper::new(),
-            imports: HashMap::new(),
             env: Environment::new()
         }
     }

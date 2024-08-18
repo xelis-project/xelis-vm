@@ -1,4 +1,9 @@
-use crate::{expressions::{Parameter, Statement}, types::Type, IdentifierType};
+use crate::{
+    ast::Statement,
+    types::Type,
+    IdentifierType
+};
+use super::Parameter;
 
 #[derive(Debug)]
 pub struct DeclaredFunction {

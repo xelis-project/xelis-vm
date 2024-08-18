@@ -1,10 +1,5 @@
 use xelis_vm::{
-    EnvironmentBuilder,
-    Interpreter,
-    Lexer,
-    Parser,
-    Signature,
-    State
+    ast::Signature, EnvironmentBuilder, Interpreter, Lexer, Parser, State
 };
 use std::{
     env,

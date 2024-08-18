@@ -3,7 +3,7 @@ pub mod std;
 
 pub use builder::EnvironmentBuilder;
 
-use crate::{functions::FunctionType, types::Struct, NoHashMap};
+use crate::{ast::FunctionType, types::Struct, NoHashMap};
 
 pub struct Environment {
     functions: NoHashMap<FunctionType>,

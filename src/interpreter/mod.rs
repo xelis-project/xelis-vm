@@ -3,8 +3,8 @@ mod state;
 
 use crate::{
     environment::Environment,
-    expressions::{Expression, Operator, Parameter, Statement},
-    functions::FunctionType,
+    ast::{Expression, Operator, Statement},
+    ast::{Parameter, FunctionType},
     parser::Program,
     types::*,
     values::{SharableValue, Value, ValueVariant},
@@ -622,7 +622,7 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{functions::Signature, lexer::Lexer, parser::Parser, EnvironmentBuilder};
+    use crate::{ast::Signature, lexer::Lexer, parser::Parser, EnvironmentBuilder};
 
     #[track_caller]
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {

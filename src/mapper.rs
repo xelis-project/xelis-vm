@@ -1,5 +1,5 @@
 use std::{borrow::{Borrow, Cow}, collections::HashMap, fmt::Debug, hash::Hash};
-use crate::{functions::Signature, IdentifierType, ParserError};
+use crate::{ast::Signature, IdentifierType, ParserError};
 
 pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
 pub type FunctionMapper<'a> = Mapper<'a, Signature>;

@@ -9,15 +9,13 @@ pub use self::error::ParserError;
 use self::context::Context;
 
 use crate::{
-    expressions::{DeclarationStatement, Expression, Operator, Parameter, Statement},
-    functions::{DeclaredFunction, EntryFunction, FunctionType, Signature},
+    ast::*,
     mapper::{FunctionMapper, IdMapper, Mapper},
     types::{Struct, Type},
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
     NoHashMap,
-    Token
 };
 use std::{
     borrow::Cow,
@@ -1050,8 +1048,8 @@ impl<'a> Parser<'a> {
         self.expect_token(Token::BraceOpen)?;
         let mut fields: NoHashMap<Type> = NoHashMap::default();
         for param in self.read_parameters(&mut mapper)? {
-            let (id, _type) = param.consume();
-            fields.insert(id, _type);
+            let (name, value_type) = param.consume();
+            fields.insert(name, value_type);
         }
 
         self.expect_token(Token::BraceClose)?;

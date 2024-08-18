@@ -1,4 +1,9 @@
-use crate::{values::{Value, ValueVariant}, EnvironmentBuilder, FnInstance, FnReturnType, Type};
+use crate::{
+    ast::{FnInstance, FnReturnType},
+    values::{Value, ValueVariant},
+    EnvironmentBuilder,
+    Type
+};
 
 pub fn register(env: &mut EnvironmentBuilder) {
     // String

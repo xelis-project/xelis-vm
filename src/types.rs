@@ -3,7 +3,7 @@ use crate::{
     values::Value,
     IdentifierType,
     NoHashMap,
-    Token
+    ast::Token
 };
 use std::{
     collections::{hash_map::RandomState, HashMap, HashSet},

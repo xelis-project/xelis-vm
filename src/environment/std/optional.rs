@@ -1,4 +1,9 @@
-use crate::{values::Value, EnvironmentBuilder, FnInstance, FnReturnType, Type};
+use crate::{
+    values::Value,
+    EnvironmentBuilder,
+    Type,
+    ast::{FnInstance, FnReturnType}
+};
 
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T))), vec![], is_none, 1, Some(Type::Bool));

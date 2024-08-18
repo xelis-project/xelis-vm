@@ -1,4 +1,9 @@
-use crate::{expressions::Expression, types::Type, IdentifierType, LexerError, Token};
+use crate::{
+    ast::{Expression, Token},
+    types::Type,
+    IdentifierType,
+    LexerError
+};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {

@@ -1,4 +1,10 @@
-use crate::{values::{Value, ValueVariant}, EnvironmentBuilder, FnInstance, FnReturnType, InterpreterError, Type};
+use crate::{
+    values::{Value, ValueVariant},
+    EnvironmentBuilder,
+    ast::{FnInstance, FnReturnType},
+    InterpreterError,
+    Type
+};
 
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U64));
