@@ -1,8 +1,7 @@
 use crate::{
-    ast::{Signature, FnInstance, FnReturnType, FunctionType, NativeFunction, OnCallFn},
+    ast::{FnInstance, FnParams, FnReturnType, FunctionType, NativeFunction, OnCallFn, Signature},
     mapper::FunctionMapper,
     types::Type,
-    values::Value,
     NoHashMap,
 };
 
@@ -68,9 +67,9 @@ impl Default for EnvironmentBuilder<'_> {
     }
 }
 
-fn println(_: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+fn println(_: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    println!("{}", param);
+    println!("{}", param.as_value());
 
     Ok(None)
 }

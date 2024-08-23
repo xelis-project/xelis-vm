@@ -11,7 +11,7 @@ pub struct State {
     // Maximum number of recursive calls
     max_recursive: Option<u16>,
     // constants variables that can be used
-    constants: Option<context::Scope>
+    constants: Option<context::Scope<'static>>
 }
 
 impl State {
@@ -29,7 +29,7 @@ impl State {
     // Constants variables registered in the state
     pub fn get_constant_value<'b>(&'b self, name: &IdentifierType) -> Option<Value> {
         match &self.constants {
-            Some(constants) => Some(constants.get(name)?.clone_value()),
+            Some(constants) => Some(constants.get(name)?.to_owned()),
             None => None
         }
     }
@@ -81,7 +81,7 @@ impl State {
     }
 
     // set the constants cache in the state
-    pub fn set_constants_cache(&mut self, constants: context::Scope) {
+    pub fn set_constants_cache(&mut self, constants: context::Scope<'static>) {
         self.constants = Some(constants);
     }
 

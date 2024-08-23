@@ -1,12 +1,8 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
-    ops::{Deref, DerefMut},
-    rc::Rc
+    borrow::Borrow, cell::{Ref, RefMut}, ops::{Deref, DerefMut}
 };
 
 use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
-
-pub type SharableValue = Rc<RefCell<Value>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
@@ -20,15 +16,95 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(IdentifierType, NoHashMap<ValueVariant>),
-    Array(Vec<ValueVariant>),
+    Struct(IdentifierType, NoHashMap<Value>),
+    Array(Vec<Value>),
     Optional(Option<Box<Value>>)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueVariant {
-    Value(Value),
-    Reference(SharableValue)
+#[derive(Debug)]
+pub enum MutValue<'a> {
+    Owned(Value),
+    Borrowed(&'a mut Value)
+}
+
+impl<'a> Into<MutValue<'a>> for Value {
+    fn into(self) -> MutValue<'a> {
+        MutValue::Owned(self)
+    }
+}
+
+impl<'a> From<&'a mut Value> for MutValue<'a> {
+    fn from(value: &'a mut Value) -> Self {
+        MutValue::Borrowed(value)
+    }
+}
+
+impl<'a> AsMut<Value> for MutValue<'a> {
+    fn as_mut(&mut self) -> &mut Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
+}
+
+impl<'a> MutValue<'a> {
+    pub fn into_owned(self) -> Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v.clone(),
+        }
+    }
+
+    pub fn to_owned(&self) -> Value {
+        match self {
+            Self::Owned(v) => v.clone(),
+            Self::Borrowed(v) => (**v).clone(),
+        }
+    }
+
+    pub fn as_value(&'a self) -> &'a Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
+
+    pub fn as_mut_value(&'a mut self) -> &'a mut Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
+}
+
+impl Borrow<Value> for MutValue<'_> {
+    fn borrow(&self) -> &Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
+}
+
+impl Deref for MutValue<'_> {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
+}
+
+impl DerefMut for MutValue<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+        }
+    }
 }
 
 pub enum ValueHandle<'a> {
@@ -70,60 +146,6 @@ impl DerefMut for ValueHandleMut<'_> {
             Self::Value(v) => v,
             Self::Reference(v) => &mut **v,
         }
-    }
-}
-
-impl ValueVariant {
-    pub fn get_sharable(&mut self) -> SharableValue {
-        match self {
-            ValueVariant::Value(value) => {
-                let value = std::mem::replace(value, Value::Null);
-                let shared = Rc::new(RefCell::new(value));
-                *self = ValueVariant::Reference(shared.clone());
-                shared
-            },
-            ValueVariant::Reference(value) => value.clone()
-        }
-    }
-
-    pub fn clone_value(&self) -> Value {
-        match self {
-            ValueVariant::Value(value) => value.clone(),
-            ValueVariant::Reference(value) => value.borrow().clone()
-        }
-    }
-
-    pub fn into_value(self) -> Value {
-        match self {
-            ValueVariant::Value(value) => value,
-            ValueVariant::Reference(value) => value.borrow().clone()
-        }
-    }
-
-    pub fn get_value<'a>(&'a self) -> ValueHandle<'a> {
-        match self {
-            ValueVariant::Value(value) => ValueHandle::Value(value),
-            ValueVariant::Reference(ref value) => ValueHandle::Reference(value.borrow())
-        }
-    }
-
-    pub fn get_mut_value<'a>(&'a mut self) -> ValueHandleMut<'a> {
-        match self {
-            ValueVariant::Value(value) => ValueHandleMut::Value(value),
-            ValueVariant::Reference(ref mut value) => ValueHandleMut::Reference(value.borrow_mut())
-        }
-    }
-}
-
-impl Into<ValueVariant> for Value {
-    fn into(self) -> ValueVariant {
-        ValueVariant::Value(self)
-    }
-}
-
-impl Into<ValueVariant> for SharableValue {
-    fn into(self) -> ValueVariant {
-        ValueVariant::Reference(self)
     }
 }
 
@@ -201,7 +223,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&NoHashMap<ValueVariant>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&NoHashMap<Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -209,7 +231,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut NoHashMap<ValueVariant>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut NoHashMap<Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -217,7 +239,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_vec(&self) -> Result<&Vec<ValueVariant>, InterpreterError> {
+    pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -225,7 +247,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_vec(&mut self) -> Result<&mut Vec<ValueVariant>, InterpreterError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -314,7 +336,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<NoHashMap<ValueVariant>, InterpreterError> {
+    pub fn to_map(self) -> Result<NoHashMap<Value>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -322,7 +344,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<ValueVariant>, InterpreterError> {
+    pub fn to_vec(self) -> Result<Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -420,15 +442,6 @@ impl Value {
             Value::U128(n) => Ok(n),
             Value::Boolean(b) => Ok(b as u128),
             _ => Err(InterpreterError::InvalidCastType(Type::U128))
-        }
-    }
-}
-
-impl std::fmt::Display for ValueVariant {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValueVariant::Value(value) => write!(f, "{}", value),
-            ValueVariant::Reference(value) => write!(f, "Reference({})", value.borrow())
         }
     }
 }

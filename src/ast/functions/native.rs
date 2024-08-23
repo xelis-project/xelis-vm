@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::{
     interpreter::{InterpreterError, State},
     types::Type,
-    values::Value,
+    values::{MutValue, Value},
 };
 
 use super::OnCallFn;
@@ -31,7 +31,7 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: VecDeque<MutValue>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(InterpreterError::InvalidNativeFunctionCall)
         }
