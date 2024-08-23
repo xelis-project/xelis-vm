@@ -188,18 +188,24 @@ impl<'a> Parser<'a> {
                     }
                 }
             },
-            Expression::FunctionCall(name, _) => {
+            Expression::FunctionCall(path, name, _) => {
                 let func = self.get_function(name)?;
                 match &func.return_type() {
                     Some(ref v) => match v {
                         Type::T => match on_type {
                             Some(t) => Cow::Owned(t.get_inner_type().clone()),
-                            None => return Err(ParserError::InvalidTypeT)
+                            None => match path {
+                                Some(p) => Cow::Owned(self.get_type_from_expression(on_type, p, context)?.get_inner_type().clone()),
+                                None => return Err(ParserError::InvalidTypeT)
+                            }
                         },
                         Type::Optional(inner) => match inner.as_ref() {
                             Type::T => match on_type {
                                 Some(t) => Cow::Owned(Type::Optional(Box::new(t.get_inner_type().clone()))),
-                                None => return Err(ParserError::InvalidTypeT)
+                                None => match path {
+                                    Some(p) => Cow::Owned(Type::Optional(Box::new(self.get_type_from_expression(on_type, p, context)?.get_inner_type().clone()))),
+                                    None => return Err(ParserError::InvalidTypeT)
+                                }
                             },
                             _ => Cow::Borrowed(v)
                         },
@@ -283,7 +289,7 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, on_type: Option<&Type>, name: &str, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, on_path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -310,7 +316,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_token(Token::ParenthesisClose)?;
-        Ok(Expression::FunctionCall(id, parameters))
+        Ok(Expression::FunctionCall(on_path.map(Box::new), id, parameters))
     }
 
     // Read a struct constructor with the following syntax:
@@ -425,7 +431,7 @@ impl<'a> Parser<'a> {
                 Token::Identifier(id) => {
                     match self.peek()? {
                         // function call
-                        Token::ParenthesisOpen => self.read_function_call(on_type, id, context, mapper)?,
+                        Token::ParenthesisOpen => self.read_function_call(last_expression.take(), on_type, id, context, mapper)?,
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
@@ -487,7 +493,13 @@ impl<'a> Parser<'a> {
                             let right_expr = self.read_expr(Some(&_type), false, expected_type, context, mapper)?;
                             // because we read operator DOT + right expression
                             required_operator = !required_operator;
-                            Expression::Path(Box::new(value), Box::new(right_expr))
+
+                            if let Expression::FunctionCall(path, name, params) = right_expr {
+                                assert!(path.is_none());
+                                Expression::FunctionCall(Some(Box::new(value)), name, params)
+                            } else {
+                                Expression::Path(Box::new(value), Box::new(right_expr))
+                            }
                         },
                         None => return Err(ParserError::UnexpectedToken(Token::Dot))
                     }

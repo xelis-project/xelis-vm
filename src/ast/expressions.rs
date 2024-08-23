@@ -7,9 +7,9 @@ use crate::{
 
 use super::Operator;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
-    FunctionCall(IdentifierType, Vec<Expression>), // function name, parameters
+    FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // Path, function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     StructConstructor(IdentifierType, NoHashMap<Expression>),

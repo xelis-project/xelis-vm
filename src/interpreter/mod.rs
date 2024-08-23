@@ -73,7 +73,9 @@ pub enum InterpreterError {
     NoExitCode,
     ExpectedValue,
     InvalidNativeFunctionCall,
-    ExpectedPath,
+    ExpectedPath(Expression),
+    NoContextFoundForVariable,
+    NoContextFoundForPath,
     UnexpectedInstanceType,
     ExpectedInstanceType,
     UnexpectedOperator,
@@ -156,9 +158,9 @@ impl<'a> Interpreter<'a> {
                 }
             },
             Expression::Path(left, right) => {
-                let left_value = self.get_from_path(ref_value, left, context.copy_ref(), state)?;
-                // self.get_from_path(Some(left_value), right, context, state)
-                todo!()
+                let left_value = self.get_from_path(ref_value, left, context, state)?;
+                let v = self.get_from_path(Some(left_value), right, None, state)?;
+                Ok(v)
             },
             Expression::Variable(name) => {
                 Ok(match ref_value {
@@ -170,25 +172,11 @@ impl<'a> Interpreter<'a> {
                     },
                     None => match context {
                         Some(context) => context.get_mut_variable(name)?.into(),
-                        None => return Err(InterpreterError::ExpectedPath)
+                        None => return Err(InterpreterError::NoContextFoundForPath)
                     },
                 })
             },
-            // Expression::FunctionCall(id, params) => {
-            //     let mut values = Vec::with_capacity(params.len());
-            //     for param in params {
-            //         values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
-            //     }
-
-            //     let func = self.get_function(id)?;
-            //     let instance = match ref_value {
-            //         Some(mut v) => self.execute_function(&func, Some(&mut v), VecDeque::from(values), state),
-            //         None => self.execute_function(&func, None, VecDeque::from(values), state)
-            //     }?;
-
-            //     instance.map(|v| v.into()).ok_or(InterpreterError::ExpectedValue)
-            // },
-            _ => Err(InterpreterError::ExpectedPath)
+            e => Err(InterpreterError::ExpectedPath(e.clone()))
         }
     }
 
@@ -232,22 +220,30 @@ impl<'a> Interpreter<'a> {
     fn execute_expression<'c>(&self, mut on_value: Option<MutValue<'_>>, expr: &Expression, mut context: Option<&mut Context<'c>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
-            Expression::FunctionCall(name, parameters) => {
-                let mut values: Vec<Value> = Vec::with_capacity(parameters.len());
+            Expression::FunctionCall(path, name, parameters) => {
+                let mut values = VecDeque::with_capacity(parameters.len());
                 for param in parameters {
-                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
+                    values.push_back(MutValue::Owned(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?));
                 }
 
                 state.increase_recursive_depth()?;
 
-                let res = match on_value {
-                    Some(mut v) => {
+                let res = match path {
+                    Some(v) => {
+                        let mut on_value = if let Expression::FunctionCall(_, _, _) = v.as_ref() {
+                            let on_value = self.execute_expression_and_expect_value(on_value, v, context.copy_ref(), state)?;
+                            MutValue::Owned(on_value)
+                        } else {
+                            let on_value = self.get_from_path(on_value.as_deref_mut(), v, context.copy_ref(), state)?;
+                            MutValue::Borrowed(on_value)
+                        };
+
                         let func = self.get_function(name)?;
-                        self.execute_function(&func, Some(&mut v), VecDeque::from(values), state)
+                        self.execute_function(&func, Some(&mut on_value.as_mut_value()), values, state)
                     },
                     None => {
                         let func = self.get_function(name)?;
-                        self.execute_function(&func, None, VecDeque::from(values), state)
+                        self.execute_function(&func, None, values, state)
                     }
                 };
 
@@ -310,7 +306,7 @@ impl<'a> Interpreter<'a> {
                             None => return Err(InterpreterError::VariableNotFound(var.clone()))
                         })
                     },
-                    None => return Err(InterpreterError::ExpectedPath)
+                    None => return Err(InterpreterError::NoContextFoundForVariable)
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
@@ -360,8 +356,7 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Path(left, right) => {
                 let path = self.get_from_path(on_value.as_deref_mut(), left, context.copy_ref(), state)?;
-                self.execute_expression(Some(MutValue::Borrowed(path)), right, context, state)
-                // todo!("on_value {:?} {:?}", path, right)
+                self.execute_expression(Some(MutValue::Borrowed(path)), right, None, state)
             },
             Expression::Cast(expr, cast_type) => {
                 let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?;
@@ -539,7 +534,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function_internal(&self, type_instance: Option<(&mut Value, IdentifierType)>, parameters: &Vec<Parameter>, values: VecDeque<Value>, statements: &Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function_internal(&self, type_instance: Option<(&mut Value, IdentifierType)>, parameters: &Vec<Parameter>, values: VecDeque<MutValue>, statements: &Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         let mut context = Context::new();
         context.begin_scope();
         if let Some((instance, instance_name)) = type_instance {
@@ -557,9 +552,9 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, values: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function(&self, func: &FunctionType, type_instance: Option<&mut Value>, values: VecDeque<MutValue>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         match func {
-            FunctionType::Native(ref f) => f.call_function(type_instance, todo!(""), state),
+            FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
             FunctionType::Declared(ref f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
@@ -573,8 +568,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &IdentifierType, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
-        let params = parameters.into();
+    pub fn call_entry_function(&self, function_name: &IdentifierType, parameters: VecDeque<MutValue>, state: &mut State) -> Result<u64, InterpreterError> {
         let func = self.get_function(function_name)?;
 
         // initialize constants
@@ -594,7 +588,7 @@ impl<'a> Interpreter<'a> {
             return Err(InterpreterError::FunctionEntry(true, false))
         }
 
-        match self.execute_function(func, None, params, state)? {
+        match self.execute_function(func, None, parameters, state)? {
             Some(val) => Ok(val.to_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
@@ -631,6 +625,10 @@ mod tests {
     #[test]
     fn test_optional() {
         test_code_expect_return("entry main() { let a: u64[] = []; return a.first().unwrap_or(777); }", 777);
+        test_code_expect_return("entry main() { let a: u64[] = [1]; return a.first().unwrap_or(777); }", 1);
+
+        // Test take
+        test_code_expect_return("entry main() { let a: u64[] = [1]; let opt: optional<u64> = a.first(); let v: u64 = opt.unwrap_or(777); return opt.is_some() ? 1 : 0; }", 0);
     }
 
     #[test]
@@ -798,9 +796,9 @@ mod tests {
 
     #[test]
     fn test_string_equals() {
-        let key = &&Signature::new("main".to_string(), None, Vec::new());
-        assert_eq!(Value::Boolean(true), test_code_expect_value(key, "func main(): bool { return \"test\" == 'test'; }"));
-        assert_eq!(Value::Boolean(false), test_code_expect_value(key, "func main(): bool { return \"test\" == \"test2\"; }"));
+        let key = Signature::new("main".to_string(), None, Vec::new());
+        assert_eq!(Value::Boolean(true), test_code_expect_value(&key, "func main(): bool { return \"test\" == 'test'; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "func main(): bool { return \"test\" == \"test2\"; }"));
     }
 
     #[test]

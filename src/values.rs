@@ -1,5 +1,6 @@
 use std::{
-    borrow::Borrow, cell::{Ref, RefMut}, ops::{Deref, DerefMut}
+    borrow::Borrow,
+    ops::{Deref, DerefMut}
 };
 
 use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
@@ -107,48 +108,6 @@ impl DerefMut for MutValue<'_> {
     }
 }
 
-pub enum ValueHandle<'a> {
-    Value(&'a Value),
-    Reference(Ref<'a, Value>)
-}
-
-impl Deref for ValueHandle<'_> {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Value(v) => v,
-            Self::Reference(v) => &**v,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ValueHandleMut<'a> {
-    Value(&'a mut Value),
-    Reference(RefMut<'a, Value>)
-}
-
-impl Deref for ValueHandleMut<'_> {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Value(v) => v,
-            Self::Reference(v) => &**v,
-        }
-    }
-}
-
-impl DerefMut for ValueHandleMut<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Value(v) => v,
-            Self::Reference(v) => &mut **v,
-        }
-    }
-}
-
 impl Value {
     #[inline]
     pub fn is_null(&self) -> bool {
@@ -239,7 +198,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_vec(&self) -> Result<&Vec<Value>, InterpreterError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<Value>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
