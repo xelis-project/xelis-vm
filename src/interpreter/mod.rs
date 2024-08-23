@@ -7,10 +7,8 @@ use crate::{
 use context::Context;
 pub use state::State;
 use std::{
-    cell::RefCell,
     collections::VecDeque,
-    hash::BuildHasherDefault,
-    rc::Rc
+    hash::BuildHasherDefault
 };
 
 macro_rules! op {
@@ -145,11 +143,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn get_from_path<'b, 'c>(&self, ref_value: Option<MutValue<'b>>, path: &Expression, mut context: Option<&'b mut Context<'c>>, state: &mut State) -> Result<MutValue<'b>, InterpreterError> {
+    fn get_from_path<'b, 'c>(&self, ref_value: Option<&'b mut Value>, path: &Expression, mut context: Option<&'b mut Context<'c>>, state: &mut State) -> Result<&'b mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(None, expr_index, context.copy_ref(), state)?.to_u64()? as usize;
-                let mut array = self.get_from_path(ref_value, expr, context, state)?;
+                let array = self.get_from_path(ref_value, expr, context, state)?;
                 let values = array.as_mut_vec()?;
                 let size = values.len();
                 match values.get_mut(index as usize) {
@@ -164,9 +162,9 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Variable(name) => {
                 Ok(match ref_value {
-                    Some(mut v) => {
+                    Some(v) => {
                         match v.as_mut_map()?.get_mut(name) {
-                            Some(value) => todo!(), //value.into(),
+                            Some(value) => value,
                             None => return Err(InterpreterError::VariableNotFound(name.clone()))
                         }
                     },
@@ -176,20 +174,20 @@ impl<'a> Interpreter<'a> {
                     },
                 })
             },
-            Expression::FunctionCall(id, params) => {
-                let mut values = Vec::with_capacity(params.len());
-                for param in params {
-                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
-                }
+            // Expression::FunctionCall(id, params) => {
+            //     let mut values = Vec::with_capacity(params.len());
+            //     for param in params {
+            //         values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
+            //     }
 
-                let func = self.get_function(id)?;
-                let instance = match ref_value {
-                    Some(mut v) => self.execute_function(&func, Some(&mut v), VecDeque::from(values), state),
-                    None => self.execute_function(&func, None, VecDeque::from(values), state)
-                }?;
+            //     let func = self.get_function(id)?;
+            //     let instance = match ref_value {
+            //         Some(mut v) => self.execute_function(&func, Some(&mut v), VecDeque::from(values), state),
+            //         None => self.execute_function(&func, None, VecDeque::from(values), state)
+            //     }?;
 
-                instance.map(|v| v.into()).ok_or(InterpreterError::ExpectedValue)
-            },
+            //     instance.map(|v| v.into()).ok_or(InterpreterError::ExpectedValue)
+            // },
             _ => Err(InterpreterError::ExpectedPath)
         }
     }
@@ -231,7 +229,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression<'c>(&self, on_value: Option<MutValue<'_>>, expr: &Expression, mut context: Option<&mut Context<'c>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_expression<'c>(&self, mut on_value: Option<MutValue<'_>>, expr: &Expression, mut context: Option<&mut Context<'c>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
@@ -318,7 +316,7 @@ impl<'a> Interpreter<'a> {
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let mut value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
-                    let mut path = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
+                    let path = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
                     match op {
                         Operator::Assign(op) => {
                             if let Some(op) = op {
@@ -361,9 +359,9 @@ impl<'a> Interpreter<'a> {
                 }
             },
             Expression::Path(left, right) => {
-                let path = self.get_from_path(on_value, left, context.copy_ref(), state)?;
-                // self.execute_expression(Some(path), right, context, state)
-                todo!("")
+                let path = self.get_from_path(on_value.as_deref_mut(), left, context.copy_ref(), state)?;
+                self.execute_expression(Some(MutValue::Borrowed(path)), right, context, state)
+                // todo!("on_value {:?} {:?}", path, right)
             },
             Expression::Cast(expr, cast_type) => {
                 let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?;
