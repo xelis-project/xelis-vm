@@ -2,7 +2,6 @@ use xelis_vm::{
     ast::Signature, EnvironmentBuilder, Interpreter, Lexer, Parser, State
 };
 use std::{
-    collections::VecDeque,
     env,
     fs,
     path::Path,
@@ -39,6 +38,6 @@ fn main() {
     let mut state = State::new(None, Some(100));
     start = Instant::now();
     let signature = Signature::new("main".to_owned(), None, Vec::new());
-    let exit = vm.call_entry_function(&mapper.get(&signature).unwrap(), VecDeque::new(), &mut state).unwrap();
+    let exit = vm.call_entry_function(&mapper.get(&signature).unwrap(), Vec::new(), &mut state).unwrap();
     println!("Exit code: {} | {} expressions executed in {:?}", exit, state.get_expressions_executed(), start.elapsed());
 }

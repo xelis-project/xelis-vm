@@ -1,16 +1,18 @@
 mod native;
 mod declared;
 
+use std::borrow::Cow;
+
 pub use declared::{DeclaredFunction, EntryFunction};
 pub use native::NativeFunction;
 
-use crate::{types::Type, values::{MutValue, Value}, IdentifierType, InterpreterError};
+use crate::{types::Type, values::Value, IdentifierType, InterpreterError};
 
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType = Result<Option<Value>, InterpreterError>;
 pub type FnInstance<'a> = Result<&'a mut Value, InterpreterError>;
-pub type FnParams<'a> = Vec<MutValue<'a>>;
+pub type FnParams<'a> = Vec<Cow<'a, Value>>;
 pub type OnCallFn = fn(FnInstance, FnParams) -> FnReturnType;
 
 // Function parameter

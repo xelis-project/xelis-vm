@@ -126,41 +126,41 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_u8(&self) -> Result<&u8, InterpreterError> {
+    pub fn as_u8(&self) -> Result<u8, InterpreterError> {
         match self {
-            Value::U8(n) => Ok(n),
+            Value::U8(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))
         }
     }
 
     #[inline]
-    pub fn as_u16(&self) -> Result<&u16, InterpreterError> {
+    pub fn as_u16(&self) -> Result<u16, InterpreterError> {
         match self {
-            Value::U16(n) => Ok(n),
+            Value::U16(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
         }
     }
 
     #[inline]
-    pub fn as_u32(&self) -> Result<&u32, InterpreterError> {
+    pub fn as_u32(&self) -> Result<u32, InterpreterError> {
         match self {
-            Value::U32(n) => Ok(n),
+            Value::U32(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U32))
         }
     }
 
     #[inline]
-    pub fn as_u64(&self) -> Result<&u64, InterpreterError> {
+    pub fn as_u64(&self) -> Result<u64, InterpreterError> {
         match self {
-            Value::U64(n) => Ok(n),
+            Value::U64(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U64))
         }
     }
 
     #[inline]
-    pub fn as_u128(&self) -> Result<&u128, InterpreterError> {
+    pub fn as_u128(&self) -> Result<u128, InterpreterError> {
         match self {
-            Value::U128(n) => Ok(n),
+            Value::U128(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::U128))
         }
     }
@@ -174,9 +174,9 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_bool(&self) -> Result<&bool, InterpreterError> {
+    pub fn as_bool(&self) -> Result<bool, InterpreterError> {
         match self {
-            Value::Boolean(n) => Ok(n),
+            Value::Boolean(n) => Ok(*n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Bool))
         }
     }

@@ -31,7 +31,7 @@ fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 }
 
 fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let index = *parameters.remove(0).as_u64()? as usize;
+    let index = parameters.remove(0).as_u64()? as usize;
 
     let array = zelf?.as_mut_vec()?;
     if index >= array.len() {
@@ -51,8 +51,8 @@ fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
 }
 
 fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let start = *parameters.remove(0).as_u64()?;
-    let end = *parameters.remove(0).as_u64()?;
+    let start = parameters.remove(0).as_u64()?;
+    let end = parameters.remove(0).as_u64()?;
 
     let vec = zelf?.as_vec()?;
     let len_u64 = vec.len() as u64;
@@ -80,7 +80,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let index = *parameters.remove(0).as_u64()? as usize;
+    let index = parameters.remove(0).as_u64()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
         Ok(Some(Value::Optional(Some(Box::new(value.clone())))))

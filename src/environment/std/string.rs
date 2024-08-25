@@ -132,7 +132,7 @@ fn split(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 
 fn char_at(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param =  parameters.remove(0);
-    let index = *param.as_u64()? as usize;
+    let index = param.as_u64()? as usize;
     let s: &String = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
         Ok(Some(Value::Optional(Some(Box::new(Value::String(c.to_string()))))))
@@ -157,7 +157,7 @@ fn string_matches(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 fn string_substring(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let start = *param.as_u64()? as usize;
+    let start = param.as_u64()? as usize;
     if let Some(s) = s.get(start..) {
         Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
     } else {
@@ -169,8 +169,8 @@ fn string_substring_range(zelf: FnInstance, mut parameters: FnParams) -> FnRetur
     let s: &String = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
-    let start = *param1.as_u64()? as usize;
-    let end = *param2.as_u64()? as usize;
+    let start = param1.as_u64()? as usize;
+    let end = param2.as_u64()? as usize;
     if let Some(s) = s.get(start..end) {
         Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
     } else {

@@ -86,7 +86,7 @@ impl State {
     }
 
     // check if the cache has been initialized
-    pub fn has_cache_initilized(&self) -> bool {
+    pub fn has_cache_initialized(&self) -> bool {
         self.constants.is_some()
     }
 
