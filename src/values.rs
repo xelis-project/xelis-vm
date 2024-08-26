@@ -1,8 +1,3 @@
-use std::{
-    borrow::Borrow,
-    ops::{Deref, DerefMut}
-};
-
 use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,92 +15,6 @@ pub enum Value {
     Struct(IdentifierType, NoHashMap<Value>),
     Array(Vec<Value>),
     Optional(Option<Box<Value>>)
-}
-
-#[derive(Debug)]
-pub enum MutValue<'a> {
-    Owned(Value),
-    Borrowed(&'a mut Value)
-}
-
-impl<'a> Into<MutValue<'a>> for Value {
-    fn into(self) -> MutValue<'a> {
-        MutValue::Owned(self)
-    }
-}
-
-impl<'a> From<&'a mut Value> for MutValue<'a> {
-    fn from(value: &'a mut Value) -> Self {
-        MutValue::Borrowed(value)
-    }
-}
-
-impl<'a> AsMut<Value> for MutValue<'a> {
-    fn as_mut(&mut self) -> &mut Value {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
-}
-
-impl<'a> MutValue<'a> {
-    pub fn into_owned(self) -> Value {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v.clone(),
-        }
-    }
-
-    pub fn to_owned(&self) -> Value {
-        match self {
-            Self::Owned(v) => v.clone(),
-            Self::Borrowed(v) => (**v).clone(),
-        }
-    }
-
-    pub fn as_value(&'a self) -> &'a Value {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
-
-    pub fn as_mut_value(&'a mut self) -> &'a mut Value {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
-}
-
-impl Borrow<Value> for MutValue<'_> {
-    fn borrow(&self) -> &Value {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
-}
-
-impl Deref for MutValue<'_> {
-    type Target = Value;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
-}
-
-impl DerefMut for MutValue<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v,
-        }
-    }
 }
 
 impl Value {
