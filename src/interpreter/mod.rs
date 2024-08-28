@@ -11,6 +11,7 @@ use crate::{
     IdentifierType, NoHashMap, NoOpHasher
 };
 use context::Context;
+use itertools::Either;
 pub use state::State;
 use std::{
     borrow::Cow,
@@ -353,6 +354,17 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    fn map_to_cow_vec<'b>(v: Cow<'b, Value>) -> Result<impl Iterator<Item=Cow<'b, Value>>, InterpreterError> {
+        Ok(match v {
+            Cow::Borrowed(borrowed_value) => {
+                Either::Left(borrowed_value.as_vec()?.iter().map(|val| Cow::Borrowed(val)))
+            }
+            Cow::Owned(owned_value) => {
+                Either::Right(owned_value.to_vec()?.into_iter().map(|val| Cow::Owned(val)))
+            }
+        })
+    }
+
     fn execute_statements(&'a self, statements: &'a Vec<Statement>, context: &mut Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
@@ -438,44 +450,31 @@ impl<'a> Interpreter<'a> {
                     context.end_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
-                    fn map_to_cow_vec<'b>(v: Cow<'b, Value>) -> Result<Vec<Cow<'b, Value>>, InterpreterError> {
-                        Ok(match v {
-                            Cow::Borrowed(borrowed_value) => {
-                                borrowed_value.as_vec()?.iter().map(|val| Cow::Borrowed(val)).collect::<Vec<Cow<'b, Value>>>()
-                            }
-                            Cow::Owned(owned_value) => {
-                                owned_value.to_vec()?.into_iter().map(|val| Cow::Owned(val)).collect::<Vec<Cow<'b, Value>>>()
-                            }
-                        })
-                    }
-                    
                     let v = self.execute_expression_and_expect_value(None, expr, context, state)?;
-                    let values = map_to_cow_vec(v)?;
-                    if !values.is_empty() {
-                        context.begin_scope();
-                        for val in values {
-                            context.register_variable(var.clone(), val)?;
-                            match self.execute_statements(&statements, context, state)? {
-                                Some(v) => {
-                                    context.end_scope()?;
-                                    return Ok(Some(v))
-                                },
-                                None => {}
-                            };
+                    let values = Self::map_to_cow_vec(v)?;
+                    context.begin_scope();
+                    for val in values {
+                        context.register_variable(var.clone(), val)?;
+                        match self.execute_statements(&statements, context, state)? {
+                            Some(v) => {
+                                context.end_scope()?;
+                                return Ok(Some(v))
+                            },
+                            None => {}
+                        };
 
-                            if state.get_loop_break() {
-                                state.set_loop_break(false);
-                                break;
-                            }
-    
-                            if state.get_loop_continue() {
-                                state.set_loop_continue(false);
-                            }
-
-                            context.clear_last_scope()?;
+                        if state.get_loop_break() {
+                            state.set_loop_break(false);
+                            break;
                         }
-                        context.end_scope()?;
+
+                        if state.get_loop_continue() {
+                            state.set_loop_continue(false);
+                        }
+
+                        context.clear_last_scope()?;
                     }
+                    context.end_scope()?;
                 },
                 Statement::While(condition, statements) => {
                     context.begin_scope();

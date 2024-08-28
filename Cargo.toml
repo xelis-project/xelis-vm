@@ -12,3 +12,6 @@ criterion = "0.5.1"
 [[bench]]
 name = "bench"
 harness = false
+
+[dependencies]
+itertools = "0.13.0"

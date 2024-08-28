@@ -69,8 +69,6 @@ pub struct Context<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
     scopes: Vec<Scope<'a>>,
-    loop_break: bool,
-    loop_continue: bool
 }
 
 impl<'a> Context<'a> {
@@ -78,29 +76,7 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             scopes: Vec::new(),
-            loop_break: false,
-            loop_continue: false
         }
-    }
-
-    // Get the loop break flag
-    pub fn get_loop_break(&self) -> bool {
-        self.loop_break
-    }
-
-    // Set the loop break flag
-    pub fn set_loop_break(&mut self, value: bool) {
-        self.loop_break = value;
-    }
-
-    // Get the loop continue flag
-    pub fn get_loop_continue(&self) -> bool {
-        self.loop_continue
-    }
-
-    // Set the loop continue flag
-    pub fn set_loop_continue(&mut self, value: bool) {
-        self.loop_continue = value;
     }
 
     // Get the latest scope created
