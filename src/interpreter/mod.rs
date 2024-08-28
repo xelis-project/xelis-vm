@@ -14,7 +14,6 @@ use context::Context;
 pub use state::State;
 use std::{
     borrow::Cow,
-    collections::VecDeque,
     hash::BuildHasherDefault
 };
 
@@ -221,7 +220,7 @@ impl<'a> Interpreter<'a> {
                 state.increase_recursive_depth()?;
 
                 let func = self.get_function(name)?;
-                let res = self.execute_function(&func, on_value, VecDeque::from(values), state)?;
+                let res = self.execute_function(&func, on_value, values, state)?;
 
                 state.decrease_recursive_depth();
 
@@ -285,10 +284,7 @@ impl<'a> Interpreter<'a> {
                 },
                 None => match context.get_variable(var) {
                     Ok(v) => todo!(), //Ok(Some(Cow::Borrowed(v.as_value()))),
-                    Err(_) => Ok(match state.get_constant_value(var) {
-                        Some(v) => Some(Cow::Owned(v)),
-                        None => return Err(InterpreterError::VariableNotFound(var.clone()))
-                    })
+                    Err(_) => todo!("check constant"),
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
@@ -360,7 +356,7 @@ impl<'a> Interpreter<'a> {
     fn execute_statements(&'a self, statements: &'a Vec<Statement>, context: &mut Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
-            if context.get_loop_break() || context.get_loop_continue() {
+            if state.get_loop_break() || state.get_loop_continue() {
                 break;
             }
 
@@ -369,11 +365,11 @@ impl<'a> Interpreter<'a> {
 
             match statement {
                 Statement::Break => {
-                    context.set_loop_break(true);
+                    state.set_loop_break(true);
                     break;
                 },
                 Statement::Continue => {
-                    context.set_loop_continue(true);
+                    state.set_loop_continue(true);
                     break;
                 },
                 Statement::Variable(var) => {
@@ -417,13 +413,13 @@ impl<'a> Interpreter<'a> {
                             None => {}
                         };
 
-                        if context.get_loop_break() {
-                            context.set_loop_break(false);
+                        if state.get_loop_break() {
+                            state.set_loop_break(false);
                             break;
                         }
 
-                        if context.get_loop_continue() {
-                            context.set_loop_continue(false);
+                        if state.get_loop_continue() {
+                            state.set_loop_continue(false);
                         }
 
                         // increment once the iteration is done
@@ -467,13 +463,13 @@ impl<'a> Interpreter<'a> {
                                 None => {}
                             };
 
-                            if context.get_loop_break() {
-                                context.set_loop_break(false);
+                            if state.get_loop_break() {
+                                state.set_loop_break(false);
                                 break;
                             }
     
-                            if context.get_loop_continue() {
-                                context.set_loop_continue(false);
+                            if state.get_loop_continue() {
+                                state.set_loop_continue(false);
                             }
 
                             context.clear_last_scope()?;
@@ -492,13 +488,13 @@ impl<'a> Interpreter<'a> {
                             None => {}
                         };
 
-                        if context.get_loop_break() {
-                            context.set_loop_break(false);
+                        if state.get_loop_break() {
+                            state.set_loop_break(false);
                             break;
                         }
 
-                        if context.get_loop_continue() {
-                            context.set_loop_continue(false);
+                        if state.get_loop_continue() {
+                            state.set_loop_continue(false);
                         }
                         context.clear_last_scope()?;
                     }
@@ -530,7 +526,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: VecDeque<Cow<'a, Value>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
+    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Cow<'a, Value>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
         let mut context = Context::new();
         context.begin_scope();
         if let Some((instance, instance_name)) = type_instance {
@@ -545,9 +541,9 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: VecDeque<Cow<'a, Value>>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
+    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Cow<'a, Value>>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
         match func {
-            FunctionType::Native(ref f) => f.call_function(type_instance, todo!(), state).map(|v| v.map(Cow::Owned)),
+            FunctionType::Native(ref f) => f.call_function(type_instance, values, state).map(|v| v.map(Cow::Owned)),
             FunctionType::Declared(ref f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
@@ -561,27 +557,15 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function<I: Into<VecDeque<Value>>>(&self, function_name: &IdentifierType, parameters: I, state: &mut State) -> Result<u64, InterpreterError> {
+    pub fn call_entry_function(&self, function_name: &IdentifierType, parameters: Vec<Cow<'_, Value>>, state: &mut State) -> Result<u64, InterpreterError> {
         let func = self.get_function(function_name)?;
-
-        // initialize constants
-        if !self.program.constants.is_empty() && !state.has_cache_initilized() {
-            let mut context = Context::new();
-            context.begin_scope();
-            for c in &self.program.constants {
-                let value = self.execute_expression_and_expect_value(None, &c.value, &mut context, state)?;
-                context.register_variable(c.id.clone(), value)?;
-            }
-
-            state.set_constants_cache(context.remove_scope()?);
-        }
 
         // only function marked as entry can be called from external
         if !func.is_entry() {
             return Err(InterpreterError::FunctionEntry(true, false))
         }
 
-        match self.execute_function(func, None, Default::default(), state)? {
+        match self.execute_function(func, None, parameters, state)? {
             Some(val) => Ok(val.into_owned().to_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
@@ -606,7 +590,7 @@ mod tests {
 
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();
-        let result = interpreter.execute_function(func, None, VecDeque::new(), &mut state).unwrap();
+        let result = interpreter.execute_function(func, None, Vec::new(), &mut state).unwrap();
         result.unwrap().into_owned()
     }
 

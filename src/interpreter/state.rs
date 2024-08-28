@@ -1,6 +1,7 @@
-use crate::{InterpreterError, IdentifierType};
-use super::{context, Value};
+use crate::InterpreterError;
 
+// State is used to store the number of expressions executed and the number of recursive calls
+// 
 pub struct State {
     // Count the number of expressions executed
     count_expr: u64,
@@ -10,8 +11,10 @@ pub struct State {
     max_expr: Option<u64>,
     // Maximum number of recursive calls
     max_recursive: Option<u16>,
-    // constants variables that can be used
-    constants: Option<context::Scope>
+    // Flags to break a loop
+    loop_break: bool,
+    // Flags to continue in loop
+    loop_continue: bool,
 }
 
 impl State {
@@ -22,15 +25,8 @@ impl State {
             recursive: 0,
             max_expr,
             max_recursive,
-            constants: None
-        }
-    }
-
-    // Constants variables registered in the state
-    pub fn get_constant_value<'b>(&'b self, name: &IdentifierType) -> Option<Value> {
-        match &self.constants {
-            Some(constants) => Some(constants.get(name)?.clone_value()),
-            None => None
+            loop_break: false,
+            loop_continue: false,
         }
     }
 
@@ -80,20 +76,31 @@ impl State {
         self.recursive -= 1;
     }
 
-    // set the constants cache in the state
-    pub fn set_constants_cache(&mut self, constants: context::Scope) {
-        self.constants = Some(constants);
+    // Get the loop break flag
+    pub fn get_loop_break(&self) -> bool {
+        self.loop_break
     }
 
-    // check if the cache has been initialized
-    pub fn has_cache_initilized(&self) -> bool {
-        self.constants.is_some()
+    // Set the loop break flag
+    pub fn set_loop_break(&mut self, value: bool) {
+        self.loop_break = value;
+    }
+
+    // Get the loop continue flag
+    pub fn get_loop_continue(&self) -> bool {
+        self.loop_continue
+    }
+
+    // Set the loop continue flag
+    pub fn set_loop_continue(&mut self, value: bool) {
+        self.loop_continue = value;
     }
 
     // Reset the state
     pub fn reset(&mut self) {
         self.count_expr = 0;
         self.recursive = 0;
-        self.constants = None;
+        self.loop_break = false;
+        self.loop_continue = false;
     }
 }
