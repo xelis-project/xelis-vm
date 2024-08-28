@@ -1,7 +1,7 @@
 use crate::{
-    values::{Value, ValueVariant},
+    ast::{FnInstance, FnParams, FnReturnType},
+    values::Value,
     EnvironmentBuilder,
-    ast::{FnInstance, FnReturnType},
     InterpreterError,
     Type
 };
@@ -19,48 +19,48 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 // native functions
-fn len(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let len = zelf?.as_vec()?.len();
     Ok(Some(Value::U64(len as u64)))
 }
 
-fn push(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(ValueVariant::Value(param));
+    zelf?.as_mut_vec()?.push(param.into_owned());
     Ok(None)
 }
 
-fn remove(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
-    let index = parameters.remove(0).to_u64()? as usize;
+fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+    let index = parameters.remove(0).as_u64()? as usize;
 
     let array = zelf?.as_mut_vec()?;
     if index >= array.len() {
         return Err(InterpreterError::OutOfBounds(index, array.len()))
     }
 
-    Ok(Some(array.remove(index).into_value()))
+    Ok(Some(array.remove(index)))
 }
 
-fn pop(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
+fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value.into_value()))
+        Ok(Some(value))
     } else {
         Ok(Some(Value::Optional(None)))
     }
 }
 
-fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
-    let start = parameters.remove(0).to_u64()?;
-    let end = parameters.remove(0).to_u64()?;
+fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+    let start = parameters.remove(0).as_u64()?;
+    let end = parameters.remove(0).as_u64()?;
 
-    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+    let vec = zelf?.as_vec()?;
     let len_u64 = vec.len() as u64;
     if start >= len_u64 || end >= len_u64 || start >= end {
         return Err(InterpreterError::InvalidRange(start, end))
     }
 
-    let mut slice: Vec<ValueVariant> = Vec::new();
+    let mut slice = Vec::new();
     for i in start..end {
         // due to SharedValue, slice are connected.
         let value = match vec.get(i as usize) {
@@ -73,35 +73,35 @@ fn slice(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
     Ok(Some(Value::Array(slice)))
 }
 
-fn contains(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
+fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let value = parameters.remove(0);
-    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
-    Ok(Some(Value::Boolean(vec.contains(&ValueVariant::Value(value)))))
+    let vec = zelf?.as_vec()?;
+    Ok(Some(Value::Boolean(vec.contains(&value))))
 }
 
-fn get(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {
-    let index = parameters.remove(0).to_u64()? as usize;
-    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+    let index = parameters.remove(0).as_u64()? as usize;
+    let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
 }
 
-fn first(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
-    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
+    let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
 }
 
-fn last(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
-    let vec: &Vec<ValueVariant> = zelf?.as_vec()?;
+fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
+    let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone_value())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }

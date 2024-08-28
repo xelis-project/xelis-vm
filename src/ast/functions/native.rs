@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
-
 use crate::{
     interpreter::{InterpreterError, State},
     types::Type,
     values::Value,
 };
 
-use super::OnCallFn;
+use super::{FnParams, OnCallFn};
 
 pub struct NativeFunction {
     // function on type
@@ -31,7 +29,7 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: VecDeque<Value>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(InterpreterError::InvalidNativeFunctionCall)
         }
@@ -42,7 +40,7 @@ impl NativeFunction {
             Some(v) => Ok(v),
             None => Err(InterpreterError::NativeFunctionExpectedInstance)
         };
-        (self.on_call)(instance, parameters.into())
+        (self.on_call)(instance, parameters)
     }
 
     // Get parameters of the function
