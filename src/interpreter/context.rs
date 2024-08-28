@@ -1,17 +1,53 @@
+use std::borrow::Cow;
+
 use crate::{values::*, IdentifierType, InterpreterError, NoHashMap};
 
-pub type Scope = NoHashMap<ValueVariant>;
+#[derive(Debug)]
+pub enum VarValue<'a> {
+    Owned(Value),
+    Borrowed(&'a Value),
+    Mut(&'a mut Value)
+}
+
+impl<'a> From<Value> for VarValue<'a> {
+    fn from(value: Value) -> Self {
+        Self::Owned(value)
+    }
+}
+
+impl<'a> From<&'a Value> for VarValue<'a> {
+    fn from(value: &'a Value) -> Self {
+        Self::Borrowed(value)
+    }
+}
+
+impl<'a> From<Cow<'a, Value>> for VarValue<'a> {
+    fn from(value: Cow<'a, Value>) -> Self {
+        match value {
+            Cow::Borrowed(v) => Self::Borrowed(v),
+            Cow::Owned(v) => Self::Owned(v)
+        }
+    }
+}
+
+impl<'a> From<&'a mut Value> for VarValue<'a> {
+    fn from(value: &'a mut Value) -> Self {
+        Self::Mut(value)
+    }
+}
+
+pub type Scope<'a> = NoHashMap<VarValue<'a>>;
 
 #[derive(Debug)]
-pub struct Context {
+pub struct Context<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
-    scopes: Vec<Scope>,
+    scopes: Vec<Scope<'a>>,
     loop_break: bool,
     loop_continue: bool
 }
 
-impl Context {
+impl<'a> Context<'a> {
     // Create a new context
     pub fn new() -> Self {
         Self {
@@ -42,7 +78,7 @@ impl Context {
     }
 
     // Get the latest scope created
-    fn get_last_scope(&mut self) -> Result<&mut Scope, InterpreterError> {
+    fn get_last_scope(&mut self) -> Result<&mut Scope<'a>, InterpreterError> {
         match self.scopes.last_mut() {
             Some(scope) => Ok(scope),
             None => Err(InterpreterError::NoScopeFound)
@@ -61,7 +97,7 @@ impl Context {
     }
 
     // Remove the latest scope created
-    pub fn remove_scope(&mut self) -> Result<Scope, InterpreterError> {
+    pub fn remove_scope(&mut self) -> Result<Scope<'a>, InterpreterError> {
         self.scopes.pop().ok_or(InterpreterError::NoScopeFound)
     }
 
@@ -73,7 +109,7 @@ impl Context {
     }
 
     // Remove a variable from the context
-    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<ValueVariant, InterpreterError> {
+    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<VarValue<'a>, InterpreterError> {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(v) = scope.remove(name) {
                 return Ok(v)
@@ -83,7 +119,7 @@ impl Context {
         Err(InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn get_variable(&self, name: &IdentifierType) -> Result<&ValueVariant, InterpreterError> {
+    pub fn get_variable(&self, name: &IdentifierType) -> Result<&VarValue<'a>, InterpreterError> {
         for scope in self.scopes.iter().rev() {
             if let Some(v) = scope.get(name) {
                 return Ok(v)
@@ -93,7 +129,7 @@ impl Context {
         Err(InterpreterError::VariableNotFound(name.clone()))
     }
 
-    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut ValueVariant, InterpreterError> {
+    pub fn get_mut_variable(&mut self, name: &IdentifierType) -> Result<&mut VarValue<'a>, InterpreterError> {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(v) = scope.get_mut(name) {
                 return Ok(v)
@@ -111,7 +147,7 @@ impl Context {
         self.get_variable(name).is_ok()
     }
 
-    pub fn register_variable<V: Into<ValueVariant>>(&mut self, name: IdentifierType, value: V) -> Result<(), InterpreterError> {
+    pub fn register_variable<V: Into<VarValue<'a>>>(&mut self, name: IdentifierType, value: V) -> Result<(), InterpreterError> {
         if self.has_variable(&name) {
             return Err(InterpreterError::VariableAlreadyExists(name))
         }
