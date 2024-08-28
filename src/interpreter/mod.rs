@@ -110,19 +110,6 @@ pub enum InterpreterError {
     InvalidCastType(Type),
 }
 
-trait CopyRef<T> {
-    fn copy_ref(&mut self) -> Option<&mut T>;
-}
-
-impl<T> CopyRef<T> for Option<&mut T> {
-    fn copy_ref(&mut self) -> Option<&mut T> {
-        match self {
-            Some(ref mut x) => Some(x),
-            None => None,
-        }
-    }
-}
-
 // The interpreter structure can be reused to execute multiple times the program
 pub struct Interpreter<'a> {
     // Program to execute
@@ -151,10 +138,10 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn get_from_path<'b>(&self, ref_value: Option<SharableValue>, path: &Expression, mut context: Option<&mut Context>, state: &mut State) -> Result<SharableValue, InterpreterError> {
+    fn get_from_path<'b>(&self, ref_value: Option<SharableValue>, path: &Expression, context: &mut Context, state: &mut State) -> Result<SharableValue, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(None, expr_index, context.copy_ref(), state)?.to_u64()? as usize;
+                let index = self.execute_expression_and_expect_value(None, expr_index, context, state)?.to_u64()? as usize;
                 let array = self.get_from_path(ref_value, expr, context, state)?;
                 let mut a = array.borrow_mut();
                 let values = a.as_mut_vec()?;
@@ -165,7 +152,7 @@ impl<'a> Interpreter<'a> {
                 }
             },
             Expression::Path(left, right) => {
-                let left_value = self.get_from_path(ref_value, left, context.copy_ref(), state)?;
+                let left_value = self.get_from_path(ref_value, left, context, state)?;
                 self.get_from_path(Some(left_value), right, context, state)
             },
             Expression::Variable(name) => {
@@ -176,16 +163,13 @@ impl<'a> Interpreter<'a> {
                             None => return Err(InterpreterError::VariableNotFound(name.clone()))
                         }
                     },
-                    None => match context {
-                        Some(context) => context.get_sharable_value(name)?,
-                        None => return Err(InterpreterError::ExpectedPath)
-                    },
+                    None => context.get_sharable_value(name)?
                 })
             },
             Expression::FunctionCall(id, params) => {
                 let mut values = Vec::with_capacity(params.len());
                 for param in params {
-                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
+                    values.push(self.execute_expression_and_expect_value(None, param, context, state)?);
                 }
 
                 let func = self.get_function(id)?;
@@ -230,20 +214,20 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value(&self, on_value: Option<SharableValue>, expr: &Expression, context: Option<&mut Context>, state: &mut State) -> Result<Value, InterpreterError> {
+    fn execute_expression_and_expect_value(&self, on_value: Option<SharableValue>, expr: &Expression, context: &mut Context, state: &mut State) -> Result<Value, InterpreterError> {
         match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
         }
     }
 
-    fn execute_expression(&self, on_value: Option<SharableValue>, expr: &Expression, mut context: Option<&mut Context>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_expression(&self, on_value: Option<SharableValue>, expr: &Expression, context: &mut Context, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
                 let mut values: Vec<Value> = Vec::with_capacity(parameters.len());
                 for param in parameters {
-                    values.push(self.execute_expression_and_expect_value(None, param, context.copy_ref(), state)?);
+                    values.push(self.execute_expression_and_expect_value(None, param, context, state)?);
                 }
 
                 state.increase_recursive_depth()?;
@@ -266,7 +250,7 @@ impl<'a> Interpreter<'a> {
             Expression::ArrayConstructor(expressions) => {
                 let mut values = Vec::with_capacity(expressions.len());
                 for expr in expressions {
-                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
+                    let value = self.execute_expression_and_expect_value(None, &expr, context, state)?;
                     values.push(ValueVariant::Value(value));
                 }
 
@@ -275,15 +259,15 @@ impl<'a> Interpreter<'a> {
             Expression::StructConstructor(struct_name, expr_fields) => {
                 let mut fields = NoHashMap::with_capacity_and_hasher(expr_fields.len(), Default::default());
                 for (name, expr) in expr_fields {
-                    let value = self.execute_expression_and_expect_value(None, &expr, context.copy_ref(), state)?;
+                    let value = self.execute_expression_and_expect_value(None, &expr, context, state)?;
 
                     fields.insert(name.clone(), ValueVariant::Value(value));
                 }
                 Ok(Some(Value::Struct(struct_name.clone(), fields)))
             },
             Expression::ArrayCall(expr, expr_index) => {
-                let values = self.execute_expression_and_expect_value(on_value, &expr, context.copy_ref(), state)?.to_vec()?;
-                let index = self.execute_expression_and_expect_value(None, &expr_index, context.copy_ref(), state)?.to_u64()? as usize;
+                let values = self.execute_expression_and_expect_value(on_value, &expr, context, state)?.to_vec()?;
+                let index = self.execute_expression_and_expect_value(None, &expr_index, context, state)?.to_u64()? as usize;
 
                 Ok(match values.get(index) {
                     Some(v) => Some(v.clone_value()),
@@ -296,10 +280,10 @@ impl<'a> Interpreter<'a> {
             }
             Expression::SubExpression(expr) => self.execute_expression(None, expr, context, state),
             Expression::Ternary(condition, left, right) => {
-                if self.execute_expression_and_expect_value(None, &condition, context.copy_ref(), state)?.to_bool()? {
-                    Ok(Some(self.execute_expression_and_expect_value(None, &left, context.copy_ref(), state)?))
+                if self.execute_expression_and_expect_value(None, &condition, context, state)?.to_bool()? {
+                    Ok(Some(self.execute_expression_and_expect_value(None, &left, context, state)?))
                 } else {
-                    Ok(Some(self.execute_expression_and_expect_value(None, &right, context.copy_ref(), state)?))
+                    Ok(Some(self.execute_expression_and_expect_value(None, &right, context, state)?))
                 }
             }
             Expression::Value(v) => Ok(Some(v.clone())),
@@ -310,21 +294,18 @@ impl<'a> Interpreter<'a> {
                         None => return Err(InterpreterError::VariableNotFound(var.clone()))
                     }
                 },
-                None => match context {
-                    Some(context) => match context.get_variable(var) {
-                        Ok(v) => Ok(Some(v.clone_value())),
-                        Err(_) => Ok(match state.get_constant_value(var) {
-                            Some(v) => Some(v.clone()),
-                            None => return Err(InterpreterError::VariableNotFound(var.clone()))
-                        })
-                    },
-                    None => return Err(InterpreterError::ExpectedPath)
+                None => match context.get_variable(var) {
+                    Ok(v) => Ok(Some(v.clone_value())),
+                    Err(_) => Ok(match state.get_constant_value(var) {
+                        Some(v) => Some(v.clone()),
+                        None => return Err(InterpreterError::VariableNotFound(var.clone()))
+                    })
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
-                    let mut value = self.execute_expression_and_expect_value(None, expr_right, context.copy_ref(), state)?;
-                    let path = self.get_from_path(None, expr_left, context.copy_ref(), state)?;
+                    let mut value = self.execute_expression_and_expect_value(None, expr_right, context, state)?;
+                    let path = self.get_from_path(None, expr_left, context, state)?;
                     let mut path_value = path.borrow_mut();
 
                     match op {
@@ -338,7 +319,7 @@ impl<'a> Interpreter<'a> {
                     };
                     Ok(None)
                 } else {
-                    let left = self.execute_expression_and_expect_value(None, &expr_left, context.copy_ref(), state)?;
+                    let left = self.execute_expression_and_expect_value(None, &expr_left, context, state)?;
 
                     if op.is_and_or_or() {
                         match op {
@@ -363,13 +344,13 @@ impl<'a> Interpreter<'a> {
                             _ => return Err(InterpreterError::UnexpectedOperator)
                         }
                     } else {
-                        let right = self.execute_expression_and_expect_value(None, &expr_right, context.copy_ref(), state)?;
+                        let right = self.execute_expression_and_expect_value(None, &expr_right, context, state)?;
                         self.execute_operator(op, &left, &right).map(Some)
                     }
                 }
             },
             Expression::Path(left, right) => {
-                let path = self.get_from_path(on_value, left, context.copy_ref(), state)?;
+                let path = self.get_from_path(on_value, left, context, state)?;
                 self.execute_expression(Some(path), right, context, state)
             },
             Expression::Cast(expr, cast_type) => {
@@ -407,11 +388,11 @@ impl<'a> Interpreter<'a> {
                     break;
                 },
                 Statement::Variable(var) => {
-                    let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
+                    let value = self.execute_expression_and_expect_value(None, &var.value, context, state)?;
                     context.register_variable(var.id.clone(), value)?;
                 },
                 Statement::If(condition, statements, else_statements) => {
-                    let statements = if self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
+                    let statements = if self.execute_expression_and_expect_value(None, &condition, context, state)?.to_bool()? {
                         Some(statements)
                     } else if let Some(statements) = else_statements {
                         Some(statements)
@@ -428,13 +409,13 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::For(var, condition, increment, statements) => {
                     // register the variable
-                    let value = self.execute_expression_and_expect_value(None, &var.value, Some(context), state)?;
+                    let value = self.execute_expression_and_expect_value(None, &var.value, context, state)?;
                     context.register_variable(var.id.clone(), value)?;
 
                     context.begin_scope();
                     loop {
                         // check the condition
-                        if !self.execute_expression_and_expect_value(None, condition, Some(context), state)?.to_bool()? {
+                        if !self.execute_expression_and_expect_value(None, condition, context, state)?.to_bool()? {
                             break;
                         }
 
@@ -457,7 +438,7 @@ impl<'a> Interpreter<'a> {
                         }
 
                         // increment once the iteration is done
-                        self.execute_expression(None, increment, Some(context), state)?;
+                        self.execute_expression(None, increment, context, state)?;
 
                         // We clear the last scope to avoid keeping the variables
                         // as we may register them again in next iteration
@@ -472,7 +453,7 @@ impl<'a> Interpreter<'a> {
                     context.end_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
-                    let values = self.execute_expression_and_expect_value(None, expr, Some(context), state)?.to_vec()?;
+                    let values = self.execute_expression_and_expect_value(None, expr, context, state)?.to_vec()?;
                     if !values.is_empty() {
                         context.begin_scope();
                         for val in values {
@@ -501,7 +482,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::While(condition, statements) => {
                     context.begin_scope();
-                    while self.execute_expression_and_expect_value(None, &condition, Some(context), state)?.to_bool()? {
+                    while self.execute_expression_and_expect_value(None, &condition, context, state)?.to_bool()? {
                         match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
@@ -524,7 +505,7 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::Return(opt) => {
                     return Ok(match opt {
-                        Some(v) => Some(self.execute_expression_and_expect_value(None, &v, Some(context), state)?),
+                        Some(v) => Some(self.execute_expression_and_expect_value(None, &v, context, state)?),
                         None => None
                     })
                 },
@@ -541,7 +522,7 @@ impl<'a> Interpreter<'a> {
                     };
                 },
                 Statement::Expression(expr) => {
-                    self.execute_expression(None, &expr, Some(context), state)?;
+                    self.execute_expression(None, &expr, context, state)?;
                 }
             };
         }
@@ -600,7 +581,7 @@ impl<'a> Interpreter<'a> {
             let mut context = Context::new();
             context.begin_scope();
             for c in &self.program.constants {
-                let value = self.execute_expression_and_expect_value(None, &c.value, Some(&mut context), state)?;
+                let value = self.execute_expression_and_expect_value(None, &c.value, &mut context, state)?;
                 context.register_variable(c.id.clone(), value)?;
             }
 
