@@ -9,6 +9,32 @@ pub enum VarValue<'a> {
     Mut(&'a mut Value)
 }
 
+impl<'a> VarValue<'a> {
+    pub fn as_value<'b>(&'b self) -> &'b Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v,
+            Self::Mut(v) => v
+        }
+    }
+
+    // If the value is borrowed, we will clone it
+    pub fn as_mut(&mut self) -> &mut Value {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => {
+                let v = v.clone();
+                *self = Self::Owned(v);
+                match self {
+                    Self::Owned(v) => v,
+                    _ => unreachable!()
+                }
+            },
+            Self::Mut(v) => v
+        }
+    }
+}
+
 impl<'a> From<Value> for VarValue<'a> {
     fn from(value: Value) -> Self {
         Self::Owned(value)
@@ -137,10 +163,6 @@ impl<'a> Context<'a> {
         }
 
         Err(InterpreterError::VariableNotFound(name.clone()))
-    }
-
-    pub fn get_sharable_value(&mut self, name: &IdentifierType) -> Result<SharableValue, InterpreterError> {
-        self.get_mut_variable(name).map(|v| v.get_sharable())
     }
 
     pub fn has_variable(&self, name: &IdentifierType) -> bool {

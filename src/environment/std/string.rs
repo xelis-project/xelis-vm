@@ -1,6 +1,6 @@
 use crate::{
     ast::{FnInstance, FnReturnType},
-    values::{Value, ValueVariant},
+    values::Value,
     EnvironmentBuilder,
     Type
 };
@@ -63,12 +63,13 @@ fn to_lowercase(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
 fn to_bytes(zelf: FnInstance, _: Vec<Value>) -> FnReturnType {
     let s: &String = zelf?.as_string()?;
 
-    let mut bytes: Vec<ValueVariant> = Vec::new();
-    for b in s.as_bytes() {
-        bytes.push(ValueVariant::Value(Value::U8(*b)));
+    let bytes = s.as_bytes();
+    let mut values = Vec::with_capacity(bytes.len());
+    for b in bytes {
+        values.push(Value::U8(*b));
     }
 
-    Ok(Some(Value::Array(bytes)))
+    Ok(Some(Value::Array(values)))
 }
 
 fn index_of(zelf: FnInstance, mut parameters: Vec<Value>) -> FnReturnType {

@@ -103,7 +103,7 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),
-            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.get_value(), structures)?)),
+            Value::Array(values) => Type::Array(Box::new(Type::from_value(values.first()?, structures)?)),
             Value::Struct(name, _) => if structures.has(name) {
                 Type::Struct(name.clone())
             } else {
