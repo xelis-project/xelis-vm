@@ -1,8 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
-
-pub type SharableValue = Rc<RefCell<Value>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
