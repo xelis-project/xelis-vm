@@ -115,7 +115,9 @@ pub struct Interpreter<'a> {
     program: &'a Program,
     // Environment linked to execute the program
     env: &'a Environment,
-    ref_structures: RefMap<'a, IdentifierType, Struct, BuildHasherDefault<NoOpHasher>>
+    ref_structures: RefMap<'a, IdentifierType, Struct, BuildHasherDefault<NoOpHasher>>,
+    // All the constants defined in the program
+    constants: Option<NoHashMap<Value>>
 }
 
 impl<'a> Interpreter<'a> {
@@ -123,7 +125,8 @@ impl<'a> Interpreter<'a> {
         let mut interpreter = Self {
             program,
             env,
-            ref_structures: RefMap::new()
+            ref_structures: RefMap::new(),
+            constants: None
         };
 
         interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
@@ -285,7 +288,9 @@ impl<'a> Interpreter<'a> {
                 },
                 None => match context.get_variable(var) {
                     Ok(v) => todo!(), //Ok(Some(Cow::Borrowed(v.as_value()))),
-                    Err(_) => todo!("check constant"),
+                    Err(_) => self.constants.as_ref()
+                        .and_then(|c| c.get(var)).map(|v| Some(Cow::Borrowed(v)))
+                        .ok_or_else(|| InterpreterError::VariableNotFound(var.clone())),
                 }
             },
             Expression::Operator(op, expr_left, expr_right) => {
@@ -556,7 +561,20 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function(&self, function_name: &IdentifierType, parameters: Vec<Cow<'_, Value>>, state: &mut State) -> Result<u64, InterpreterError> {
+    pub fn call_entry_function(&mut self, function_name: &IdentifierType, parameters: Vec<Cow<'_, Value>>, state: &mut State) -> Result<u64, InterpreterError> {
+        if self.constants.is_none() {
+            let mut constants = NoHashMap::default();
+            let mut context = Context::new();
+
+            for constant in self.program.constants.iter() {
+                let value = self.execute_expression_and_expect_value(None, &constant.value, &mut context, state)?
+                    .into_owned();
+                constants.insert(constant.id.clone(), value);
+            }
+
+            self.constants = Some(constants);
+        }
+
         let func = self.get_function(function_name)?;
 
         // only function marked as entry can be called from external
