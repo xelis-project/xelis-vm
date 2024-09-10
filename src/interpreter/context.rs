@@ -1,6 +1,6 @@
 use std::{borrow::Cow, cell::{RefCell, Ref, RefMut}};
 
-use crate::{values::*, IdentifierType, InterpreterError, NoHashMap};
+use crate::{values::*, IdentifierType, InterpreterError, NoHashMap, Reference};
 
 #[derive(Debug)]
 pub enum Variable<'a> {
@@ -52,6 +52,16 @@ impl<'a> From<Cow<'a, Value>> for Variable<'a> {
         match value {
             Cow::Borrowed(v) => Self::Borrowed(v),
             Cow::Owned(v) => Self::Owned(v)
+        }
+    }
+}
+
+impl<'a> From<Reference<'a>> for Variable<'a> {
+    fn from(reference: Reference<'a>) -> Self {
+        match reference {
+            Reference::Owned(v) => Self::Owned(v),
+            Reference::Borrowed(v) => Self::Borrowed(v),
+            Reference::Ref(v) => todo!()
         }
     }
 }
@@ -126,6 +136,7 @@ impl<'a> Context<'a> {
         Err(InterpreterError::VariableNotFound(name.clone()))
     }
 
+    // Get a variable from the context
     pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<Ref<'b, Variable<'a>>, InterpreterError> {
         let borrow = self.scopes.borrow();
         Ref::filter_map(borrow, |scopes| {
@@ -137,6 +148,11 @@ impl<'a> Context<'a> {
 
             None
         }).map_err(|_| InterpreterError::VariableNotFound(name.clone()))
+    }
+
+    // Get a variable from the context as a value
+    pub fn get_variable_as_value<'b>(&'b self, name: &'b IdentifierType) -> Result<Ref<'b, Value>, InterpreterError> {
+        self.get_variable(name).map(|variable| Ref::map(variable, |v| v.as_value()))
     }
 
     pub fn get_mut_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<RefMut<'b, Variable<'a>>, InterpreterError> {

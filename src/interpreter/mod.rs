@@ -8,13 +8,16 @@ use crate::{
     parser::Program,
     types::*,
     values::Value,
-    IdentifierType, NoHashMap, NoOpHasher
+    IdentifierType,
+    NoHashMap,
+    NoOpHasher,
+    Reference,
 };
 use context::Context;
 use itertools::Either;
 pub use state::State;
 use std::{
-    borrow::Cow,
+    cell::Ref,
     hash::BuildHasherDefault
 };
 
@@ -203,7 +206,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Cow<'a, Value>, InterpreterError> {
+    fn execute_expression_and_expect_value(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
         match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
@@ -212,7 +215,7 @@ impl<'a> Interpreter<'a> {
 
     // Execute the selected expression
     // Do not give any mutable value, on reference or owned
-    fn execute_expression(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
+    fn execute_expression(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
@@ -228,7 +231,7 @@ impl<'a> Interpreter<'a> {
 
                 state.decrease_recursive_depth();
 
-                Ok(res.map(Cow::Owned))
+                Ok(res.map(Reference::Owned))
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = Vec::with_capacity(expressions.len());
@@ -237,7 +240,7 @@ impl<'a> Interpreter<'a> {
                     values.push(value.into_owned());
                 }
 
-                Ok(Some(Cow::Owned(Value::Array(values))))
+                Ok(Some(Reference::Owned(Value::Array(values))))
             },
             Expression::StructConstructor(struct_name, expr_fields) => {
                 let mut fields = NoHashMap::with_capacity_and_hasher(expr_fields.len(), Default::default());
@@ -246,29 +249,37 @@ impl<'a> Interpreter<'a> {
 
                     fields.insert(name.clone(),value.into_owned());
                 }
-                Ok(Some(Cow::Owned(Value::Struct(struct_name.clone(), fields))))
+                Ok(Some(Reference::Owned(Value::Struct(struct_name.clone(), fields))))
             },
             Expression::ArrayCall(expr, expr_index) => {
                 let index = self.execute_expression_and_expect_value(None, &expr_index, context, state)?.as_u64()? as usize;
 
                 let v = self.execute_expression_and_expect_value(on_value, &expr, context, state)?;
                 match v {
-                    Cow::Owned(v) => Ok(match v.to_vec()?.get(index) {
-                        Some(v) => Some(Cow::Owned(v.clone())),
+                    Reference::Owned(v) => Ok(match v.to_vec()?.get(index) {
+                        Some(v) => Some(Reference::Owned(v.clone())),
                         None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
                     }),
-                    Cow::Borrowed(v) => {
+                    Reference::Borrowed(v) => {
                         let values = v.as_vec()?;
                         Ok(match values.get(index) {
-                            Some(v) => Some(Cow::Borrowed(v)),
+                            Some(v) => Some(Reference::Borrowed(v)),
                             None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
                         })
+                    },
+                    Reference::Ref(origin) => {
+                        // TODO: https://github.com/rust-lang/rust/pull/118087
+                        let value = Ref::filter_map(origin, |origin| {
+                            let values = origin.as_vec().ok()?;
+                            values.get(index)
+                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64))?;
+                        Ok(Some(Reference::Ref(value)))
                     }
                 }
             },
             Expression::IsNot(expr) => {
                 let val = self.execute_expression_and_expect_value(None, &expr, context, state)?.as_bool()?;
-                Ok(Some(Cow::Owned(Value::Boolean(!val))))
+                Ok(Some(Reference::Owned(Value::Boolean(!val))))
             }
             Expression::SubExpression(expr) => self.execute_expression(None, expr, context, state),
             Expression::Ternary(condition, left, right) => {
@@ -278,18 +289,18 @@ impl<'a> Interpreter<'a> {
                     Ok(Some(self.execute_expression_and_expect_value(None, &right, context, state)?))
                 }
             }
-            Expression::Value(v) => Ok(Some(Cow::Borrowed(v))),
+            Expression::Value(v) => Ok(Some(Reference::Borrowed(v))),
             Expression::Variable(var) =>  match on_value {
                 Some(instance) => {
                     match instance.as_map()?.get(var) {
-                        Some(value) => Ok(Some(Cow::Borrowed(value))),
+                        Some(value) => Ok(Some(Reference::Borrowed(value))),
                         None => return Err(InterpreterError::VariableNotFound(var.clone()))
                     }
                 },
-                None => match context.get_variable(var) {
-                    Ok(v) => todo!(), //Ok(Some(Cow::Borrowed(v.as_value()))),
+                None => match context.get_variable_as_value(var) {
+                    Ok(v) => Ok(Some(Reference::Ref(v))),
                     Err(_) => self.constants.as_ref()
-                        .and_then(|c| c.get(var)).map(|v| Some(Cow::Borrowed(v)))
+                        .and_then(|c| c.get(var)).map(|v| Some(Reference::Borrowed(v)))
                         .ok_or_else(|| InterpreterError::VariableNotFound(var.clone())),
                 }
             },
@@ -314,7 +325,7 @@ impl<'a> Interpreter<'a> {
 
                     if op.is_and_or_or() {
                         match op {
-                            Operator::And => Ok(Some(Cow::Owned(Value::Boolean({
+                            Operator::And => Ok(Some(Reference::Owned(Value::Boolean({
                                 let left = left.as_bool()?;
                                 if !left {
                                     false
@@ -323,7 +334,7 @@ impl<'a> Interpreter<'a> {
                                     right.as_bool()?
                                 }
                             })))),
-                            Operator::Or => Ok(Some(Cow::Owned(Value::Boolean({
+                            Operator::Or => Ok(Some(Reference::Owned(Value::Boolean({
                                 let left = left.as_bool()?;
                                 if !left {
                                     let right = self.execute_expression_and_expect_value(None, &expr_right, context, state)?;
@@ -336,7 +347,7 @@ impl<'a> Interpreter<'a> {
                         }
                     } else {
                         let right = self.execute_expression_and_expect_value(None, &expr_right, context, state)?;
-                        self.execute_operator(op, &left, &right).map(Cow::Owned).map(Some)
+                        self.execute_operator(op, &left, &right).map(Reference::Owned).map(Some)
                     }
                 }
             },
@@ -346,7 +357,7 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Cast(expr, cast_type) => {
                 let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?.into_owned();
-                Ok(Some(Cow::Owned(match cast_type {
+                Ok(Some(Reference::Owned(match cast_type {
                     Type::U8 => Value::U8(value.cast_to_u8()?),
                     Type::U16 => Value::U16(value.cast_to_u16()?),
                     Type::U32 => Value::U32(value.cast_to_u32()?),
@@ -359,18 +370,27 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn map_to_cow_vec<'b>(v: Cow<'b, Value>) -> Result<impl Iterator<Item=Cow<'b, Value>>, InterpreterError> {
+    fn map_to_cow_vec<'b>(v: Reference<'b>) -> Result<impl Iterator<Item=Reference<'b>>, InterpreterError> {
         Ok(match v {
-            Cow::Borrowed(borrowed_value) => {
-                Either::Left(borrowed_value.as_vec()?.iter().map(|val| Cow::Borrowed(val)))
+            Reference::Borrowed(v) => {
+                Either::Left(v.as_vec()?.iter().map(|val| Reference::Borrowed(val)))
             }
-            Cow::Owned(owned_value) => {
-                Either::Right(owned_value.to_vec()?.into_iter().map(|val| Cow::Owned(val)))
+            Reference::Owned(v) => {
+                Either::Right(v.to_vec()?.into_iter().map(|val| Reference::Owned(val)))
+            },
+            Reference::Ref(origin) => {
+                // let v: Ref<'b, Vec<Value>> = Ref::filter_map(origin, |origin| {
+                //     let values = origin.as_vec().ok()?;
+                //     Some(values)
+                // }).unwrap();
+
+                // Either::Right(v.into_iter().map(Reference::Owned))
+                todo!()
             }
         })
     }
 
-    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &'b Context<'b>, state: &mut State) -> Result<Option<Cow<'b, Value>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &'b Context<'b>, state: &mut State) -> Result<Option<Reference<'b>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if state.get_loop_break() || state.get_loop_continue() {
@@ -530,7 +550,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Cow<'a, Value>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Reference<'a>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         let context = Context::new();
         context.begin_scope();
         if let Some((instance, instance_name)) = type_instance {
@@ -541,11 +561,11 @@ impl<'a> Interpreter<'a> {
             context.register_variable(param.get_name().clone(), value)?;
         }
 
-        self.execute_statements(statements, &context, state).map(|v| v.map(Cow::into_owned))
+        self.execute_statements(statements, &context, state).map(|v| v.map(Reference::into_owned))
     }
 
     // Execute the selected function
-    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Cow<'a, Value>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Reference<'a>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         match func {
             FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
             FunctionType::Declared(ref f) => {
@@ -561,7 +581,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function(&mut self, function_name: &IdentifierType, parameters: Vec<Cow<'_, Value>>, state: &mut State) -> Result<u64, InterpreterError> {
+    pub fn call_entry_function(&mut self, function_name: &IdentifierType, parameters: Vec<Reference<'_>>, state: &mut State) -> Result<u64, InterpreterError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
             let context = Context::new();
