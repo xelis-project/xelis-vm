@@ -31,7 +31,7 @@ fn main() {
     println!("Parser: {:?}", start.elapsed());
 
     // Create the VM instance
-    let vm = Interpreter::new(&program, builder.environment()).unwrap();
+    let mut vm = Interpreter::new(&program, builder.environment()).unwrap();
     let mut state = State::new(None, Some(100));
     start = Instant::now();
     let signature = Signature::new("main".to_owned(), None, Vec::new());

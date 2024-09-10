@@ -141,7 +141,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Get a mutable reference to a value so we can update its content
-    fn get_from_path(&'a self, ref_value: Option<&'a mut Value>, path: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<&'a mut Value, InterpreterError> {
+    fn get_from_path(&'a self, ref_value: Option<&'a mut Value>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<&'a mut Value, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let v = self.execute_expression_and_expect_value(None, expr_index, context, state)?;
@@ -203,7 +203,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<Cow<'a, Value>, InterpreterError> {
+    fn execute_expression_and_expect_value(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Cow<'a, Value>, InterpreterError> {
         match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
@@ -212,7 +212,7 @@ impl<'a> Interpreter<'a> {
 
     // Execute the selected expression
     // Do not give any mutable value, on reference or owned
-    fn execute_expression(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
+    fn execute_expression(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
@@ -228,7 +228,7 @@ impl<'a> Interpreter<'a> {
 
                 state.decrease_recursive_depth();
 
-                Ok(res)
+                Ok(res.map(Cow::Owned))
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = Vec::with_capacity(expressions.len());
@@ -370,7 +370,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    fn execute_statements(&'a self, statements: &'a Vec<Statement>, context: &mut Context<'a>, state: &mut State) -> Result<Option<Cow<'a, Value>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &'b Context<'b>, state: &mut State) -> Result<Option<Cow<'b, Value>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if state.get_loop_break() || state.get_loop_continue() {
@@ -530,8 +530,8 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Cow<'a, Value>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
-        let mut context = Context::new();
+    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Cow<'a, Value>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+        let context = Context::new();
         context.begin_scope();
         if let Some((instance, instance_name)) = type_instance {
             context.register_variable(instance_name, instance)?;
@@ -541,13 +541,13 @@ impl<'a> Interpreter<'a> {
             context.register_variable(param.get_name().clone(), value)?;
         }
 
-        self.execute_statements(statements, &mut context, state)
+        self.execute_statements(statements, &context, state).map(|v| v.map(Cow::into_owned))
     }
 
     // Execute the selected function
-    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Cow<'a, Value>>, state: &mut State) -> Result<Option<Cow<'_, Value>>, InterpreterError> {
+    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Cow<'a, Value>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
         match func {
-            FunctionType::Native(ref f) => f.call_function(type_instance, values, state).map(|v| v.map(Cow::Owned)),
+            FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
             FunctionType::Declared(ref f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
@@ -564,10 +564,10 @@ impl<'a> Interpreter<'a> {
     pub fn call_entry_function(&mut self, function_name: &IdentifierType, parameters: Vec<Cow<'_, Value>>, state: &mut State) -> Result<u64, InterpreterError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
-            let mut context = Context::new();
+            let context = Context::new();
 
             for constant in self.program.constants.iter() {
-                let value = self.execute_expression_and_expect_value(None, &constant.value, &mut context, state)?
+                let value = self.execute_expression_and_expect_value(None, &constant.value, &context, state)?
                     .into_owned();
                 constants.insert(constant.id.clone(), value);
             }
@@ -583,7 +583,7 @@ impl<'a> Interpreter<'a> {
         }
 
         match self.execute_function(func, None, parameters, state)? {
-            Some(val) => Ok(val.into_owned().to_u64()?),
+            Some(val) => Ok(val.to_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
     }
@@ -608,7 +608,7 @@ mod tests {
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();
         let result = interpreter.execute_function(func, None, Vec::new(), &mut state).unwrap();
-        result.unwrap().into_owned()
+        result.unwrap()
     }
 
     #[track_caller]
