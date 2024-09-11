@@ -61,7 +61,7 @@ impl<'a> From<Reference<'a>> for Variable<'a> {
         match reference {
             Reference::Owned(v) => Self::Owned(v),
             Reference::Borrowed(v) => Self::Borrowed(v),
-            Reference::Ref(v) => todo!()
+            Reference::Ref(v) => Self::Owned(v.clone())
         }
     }
 }
@@ -155,12 +155,12 @@ impl<'a> Context<'a> {
         self.get_variable(name).map(|variable| Ref::map(variable, |v| v.as_value()))
     }
 
-    pub fn get_mut_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<RefMut<'b, Variable<'a>>, InterpreterError> {
+    pub fn get_variable_as_mut<'b>(&'b self, name: &'b IdentifierType) -> Result<RefMut<'b, Value>, InterpreterError> {
         let borrow = self.scopes.borrow_mut();
         RefMut::filter_map(borrow, |scopes| {
             for scope in scopes.iter_mut().rev() {
                 if let Some(v) = scope.get_mut(name) {
-                    return Some(v)
+                    return Some(v.as_mut())
                 }
             }
 
