@@ -146,6 +146,73 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    fn get_immutable_from_path(&'a self, ref_value: Option<Reference<'a>>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
+        match path {
+            Expression::ArrayCall(expr, expr_index) => {
+                let v = self.execute_expression_and_expect_value(None, expr_index, context, state)?;
+                let index = v.as_u64()? as usize;
+                let array = self.get_immutable_from_path(ref_value, expr, context, state)?;
+                match array {
+                    Reference::Owned(v) => Ok(match v.to_vec()?.get(index) {
+                        Some(v) => Reference::Owned(v.clone()),
+                        None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
+                    }),
+                    Reference::Borrowed(v) => {
+                        let values = v.as_vec()?;
+                        Ok(match values.get(index) {
+                            Some(v) => Reference::Borrowed(v),
+                            None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
+                        })
+                    },
+                    Reference::Ref(origin) => {
+                        Ref::filter_map(origin, |origin| {
+                            let values = origin.as_vec().ok()?;
+                            values.get(index)
+                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64)).map(Reference::Ref)
+                    },
+                    Reference::RefMut(origin) => {
+                        RefMut::filter_map(origin, |origin| {
+                            let values = origin.as_mut_vec().ok()?;
+                            values.get_mut(index)
+                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64)).map(Reference::RefMut)
+                    }
+                }
+            },
+            Expression::Path(left, right) => {
+                let left_value = self.get_immutable_from_path(ref_value, left, context, state)?;
+                self.get_immutable_from_path(Some(left_value), right, context, state)
+            },
+            Expression::Variable(name) => Ok(match ref_value {
+                Some(v) => match v {
+                    Reference::Owned(v) => Reference::Owned(v.to_map()?.remove(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?),
+                    Reference::Borrowed(v) => Reference::Borrowed(v.as_map()?.get(name).ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?),
+                    Reference::Ref(origin) => {
+                        let value = Ref::filter_map(origin, |origin| {
+                            let map = origin.as_map().ok()?;
+                            map.get(name)
+                        }).map_err(|_| InterpreterError::VariableNotFound(name.clone()))?;
+                        Reference::Ref(value)
+                    },
+                    Reference::RefMut(origin) => {
+                        let value = RefMut::filter_map(origin, |origin| {
+                            let map = origin.as_mut_map().ok()?;
+                            map.get_mut(name)
+                        }).map_err(|_| InterpreterError::VariableNotFound(name.clone()))?;
+                        Reference::RefMut(value)
+                    }
+                },
+                None => context.get_variable_as_value(name)
+                    .map(Reference::Ref)
+                    .or_else(|_| {
+                        self.constants.as_ref()
+                            .and_then(|c| c.get(name)).map(Reference::Borrowed)
+                            .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
+                })?
+            }),
+            _ => Err(InterpreterError::ExpectedPath)
+        }
+    }
+
     // Get a mutable reference to a value so we can update its content
     fn get_from_path(&'a self, ref_value: Option<VariablePath<'a>>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<VariablePath<'a>, InterpreterError> {
         match path {
@@ -159,12 +226,10 @@ impl<'a> Interpreter<'a> {
                 let left_value = self.get_from_path(ref_value, left, context, state)?;
                 self.get_from_path(Some(left_value), right, context, state)
             },
-            Expression::Variable(name) => {
-                Ok(match ref_value {
-                    Some(v) => v.get_sub_variable(name)?,
-                    None => VariablePath::RefMut(context.get_variable_as_mut(name)?)
-                })
-            },
+            Expression::Variable(name) => Ok(match ref_value {
+                Some(v) => v.get_sub_variable(name)?,
+                None => VariablePath::RefMut(context.get_variable_as_mut(name)?)
+            }),
             _ => Err(InterpreterError::ExpectedPath)
         }
     }
@@ -244,39 +309,6 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Some(Reference::Owned(Value::Struct(struct_name.clone(), fields))))
             },
-            Expression::ArrayCall(expr, expr_index) => {
-                let index = self.execute_expression_and_expect_value(None, &expr_index, context, state)?.as_u64()? as usize;
-
-                let v = self.execute_expression_and_expect_value(on_value, &expr, context, state)?;
-                match v {
-                    Reference::Owned(v) => Ok(match v.to_vec()?.get(index) {
-                        Some(v) => Some(Reference::Owned(v.clone())),
-                        None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
-                    }),
-                    Reference::Borrowed(v) => {
-                        let values = v.as_vec()?;
-                        Ok(match values.get(index) {
-                            Some(v) => Some(Reference::Borrowed(v)),
-                            None => return Err(InterpreterError::NoValueFoundAtIndex(index as u64))
-                        })
-                    },
-                    Reference::Ref(origin) => {
-                        // TODO: https://github.com/rust-lang/rust/pull/118087
-                        let value = Ref::filter_map(origin, |origin| {
-                            let values = origin.as_vec().ok()?;
-                            values.get(index)
-                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64))?;
-                        Ok(Some(Reference::Ref(value)))
-                    },
-                    Reference::RefMut(origin) => {
-                        let value = RefMut::filter_map(origin, |origin| {
-                            let values = origin.as_mut_vec().ok()?;
-                            values.get_mut(index)
-                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64))?;
-                        Ok(Some(Reference::RefMut(value)))
-                    }
-                }
-            },
             Expression::IsNot(expr) => {
                 let val = self.execute_expression_and_expect_value(None, &expr, context, state)?.as_bool()?;
                 Ok(Some(Reference::Owned(Value::Boolean(!val))))
@@ -290,15 +322,6 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Value(v) => Ok(Some(Reference::Borrowed(v))),
-            Expression::Variable(var) =>  match on_value {
-                Some(instance) => instance.get_reference_sub_variable(var).map(Some),
-                None => match context.get_variable_as_value(var) {
-                    Ok(v) => Ok(Some(Reference::Ref(v))),
-                    Err(_) => self.constants.as_ref()
-                        .and_then(|c| c.get(var)).map(|v| Some(Reference::Borrowed(v)))
-                        .ok_or_else(|| InterpreterError::VariableNotFound(var.clone())),
-                }
-            },
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let value = self.execute_expression_and_expect_value(None, expr_right, context, state)?;
@@ -346,10 +369,6 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             },
-            Expression::Path(left, right) => {
-                let path = self.get_from_path(on_value, left, context, state)?;
-                self.execute_expression(Some(path), right, context, state)
-            },
             Expression::Cast(expr, cast_type) => {
                 let value = self.execute_expression_and_expect_value(on_value, expr, context, state)?.into_owned();
                 Ok(Some(Reference::Owned(match cast_type {
@@ -361,7 +380,8 @@ impl<'a> Interpreter<'a> {
                     Type::String => Value::String(value.cast_to_string()?),
                     _ => return Err(InterpreterError::InvalidType(cast_type.clone()))
                 })))
-            }
+            },
+            expr => Ok(Some(self.get_immutable_from_path(None, expr, context, state)?)),
         }
     }
 
