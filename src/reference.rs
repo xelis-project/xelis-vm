@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cell::Ref, fmt::{Display, Formatter}, ops::Deref};
+use std::{borrow::Borrow, cell::{Ref, RefMut}, fmt::{Display, Formatter}, ops::Deref};
 
 use crate::values::Value;
 
@@ -6,6 +6,7 @@ pub enum Reference<'a> {
     Owned(Value),
     Borrowed(&'a Value),
     Ref(Ref<'a, Value>),
+    RefMut(RefMut<'a, Value>),
 }
 
 impl<'a> Reference<'a> {
@@ -38,7 +39,8 @@ impl<'a> Reference<'a> {
                     Self::Owned(v) => v,
                     _ => unreachable!(),
                 }
-            }
+            },
+            Self::RefMut(v) => v,
         }
     }
 
@@ -48,6 +50,7 @@ impl<'a> Reference<'a> {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
             Self::Ref(v) => v.clone(),
+            Self::RefMut(v) => v.clone(),
         }
     }
 }
@@ -58,6 +61,7 @@ impl AsRef<Value> for Reference<'_> {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v,
             Self::Ref(v) => v,
+            Self::RefMut(v) => v,
         }
     }
 }

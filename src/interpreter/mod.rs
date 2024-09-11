@@ -1,5 +1,6 @@
 mod context;
 mod state;
+mod variable;
 
 use crate::{
     environment::Environment,
@@ -16,8 +17,9 @@ use crate::{
 use context::Context;
 use itertools::Either;
 pub use state::State;
+use variable::VariablePath;
 use std::{
-    cell::Ref,
+    cell::{Ref, RefMut},
     hash::BuildHasherDefault
 };
 
@@ -73,6 +75,7 @@ macro_rules! op_bool {
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    Unknown,
     NoReturnValue,
     OptionalIsNull,
     NoMatchingFunction,
@@ -144,18 +147,13 @@ impl<'a> Interpreter<'a> {
     }
 
     // Get a mutable reference to a value so we can update its content
-    fn get_from_path(&'a self, ref_value: Option<&'a mut Value>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<&'a mut Value, InterpreterError> {
+    fn get_from_path(&'a self, ref_value: Option<VariablePath<'a>>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<VariablePath<'a>, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let v = self.execute_expression_and_expect_value(None, expr_index, context, state)?;
                 let index = v.as_u64()? as usize;
                 let array = self.get_from_path(ref_value, expr, context, state)?;
-                let values = array.as_mut_vec()?;
-                let size = values.len();
-                match values.get_mut(index as usize) {
-                    Some(v) => Ok(v),
-                    None => return Err(InterpreterError::OutOfBounds(size, index))
-                }
+                array.get_index_at(index)
             },
             Expression::Path(left, right) => {
                 let left_value = self.get_from_path(ref_value, left, context, state)?;
@@ -163,13 +161,8 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Variable(name) => {
                 Ok(match ref_value {
-                    Some(v) => {
-                        match v.as_mut_map()?.get_mut(name) {
-                            Some(value) => value,
-                            None => return Err(InterpreterError::VariableNotFound(name.clone()))
-                        }
-                    },
-                    None => todo!(),//context.get_mut_variable(name)?.as_mut()
+                    Some(v) => v.get_sub_variable(name)?,
+                    None => VariablePath::RefMut(context.get_variable_as_mut(name)?)
                 })
             },
             _ => Err(InterpreterError::ExpectedPath)
@@ -206,7 +199,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
+    fn execute_expression_and_expect_value(&'a self, on_value: Option<VariablePath<'a>>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
         match self.execute_expression(on_value, expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
@@ -215,7 +208,7 @@ impl<'a> Interpreter<'a> {
 
     // Execute the selected expression
     // Do not give any mutable value, on reference or owned
-    fn execute_expression(&'a self, on_value: Option<&'a mut Value>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
+    fn execute_expression(&'a self, mut on_value: Option<VariablePath<'a>>, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(name, parameters) => {
@@ -227,7 +220,7 @@ impl<'a> Interpreter<'a> {
                 state.increase_recursive_depth()?;
 
                 let func = self.get_function(name)?;
-                let res = self.execute_function(&func, on_value, values, state)?;
+                let res = self.execute_function(&func, on_value.as_deref_mut(), values, state)?;
 
                 state.decrease_recursive_depth();
 
@@ -274,6 +267,13 @@ impl<'a> Interpreter<'a> {
                             values.get(index)
                         }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64))?;
                         Ok(Some(Reference::Ref(value)))
+                    },
+                    Reference::RefMut(origin) => {
+                        let value = RefMut::filter_map(origin, |origin| {
+                            let values = origin.as_mut_vec().ok()?;
+                            values.get_mut(index)
+                        }).map_err(|_| InterpreterError::NoValueFoundAtIndex(index as u64))?;
+                        Ok(Some(Reference::RefMut(value)))
                     }
                 }
             },
@@ -291,12 +291,7 @@ impl<'a> Interpreter<'a> {
             }
             Expression::Value(v) => Ok(Some(Reference::Borrowed(v))),
             Expression::Variable(var) =>  match on_value {
-                Some(instance) => {
-                    match instance.as_map()?.get(var) {
-                        Some(value) => Ok(Some(Reference::Borrowed(value))),
-                        None => return Err(InterpreterError::VariableNotFound(var.clone()))
-                    }
-                },
+                Some(instance) => instance.get_reference_sub_variable(var).map(Some),
                 None => match context.get_variable_as_value(var) {
                     Ok(v) => Ok(Some(Reference::Ref(v))),
                     Err(_) => self.constants.as_ref()
@@ -307,7 +302,7 @@ impl<'a> Interpreter<'a> {
             Expression::Operator(op, expr_left, expr_right) => {
                 if op.is_assignation() {
                     let value = self.execute_expression_and_expect_value(None, expr_right, context, state)?;
-                    let path = self.get_from_path(None, expr_left, context, state)?;
+                    let mut path = self.get_from_path(None, expr_left, context, state)?;
 
                     match op {
                         Operator::Assign(op) => {
@@ -379,12 +374,9 @@ impl<'a> Interpreter<'a> {
                 Either::Right(v.to_vec()?.into_iter().map(|val| Reference::Owned(val)))
             },
             Reference::Ref(origin) => {
-                // let v: Ref<'b, Vec<Value>> = Ref::filter_map(origin, |origin| {
-                //     let values = origin.as_vec().ok()?;
-                //     Some(values)
-                // }).unwrap();
-
-                // Either::Right(v.into_iter().map(Reference::Owned))
+                todo!()
+            },
+            Reference::RefMut(origin) => {
                 todo!()
             }
         })
