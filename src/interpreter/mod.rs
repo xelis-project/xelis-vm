@@ -393,15 +393,25 @@ impl<'a> Interpreter<'a> {
     fn map_to_cow_vec<'b>(v: Reference<'b>) -> Result<impl Iterator<Item=Reference<'b>>, InterpreterError> {
         Ok(match v {
             Reference::Borrowed(v) => {
-                Either::Left(v.as_vec()?.iter().map(|val| Reference::Borrowed(val)))
+                Either::Left(Either::Left(v.as_vec()?.iter().map(|val| Reference::Borrowed(val))))
             }
             Reference::Owned(v) => {
-                Either::Right(v.to_vec()?.into_iter().map(|val| Reference::Owned(val)))
+                Either::Left(Either::Right(v.to_vec()?.into_iter().map(|val| Reference::Owned(val))))
             },
-            Reference::Ref(origin) => {
-                todo!()
+            Reference::Ref(mut origin) => {
+                let values = origin.as_vec()?;
+                let mut test = Vec::new();
+                for i in 0..values.len() {
+                    let (first, left) = Ref::map_split(origin, |origin| {
+                        let values = origin.as_vec().unwrap();
+                        (values.get(i).unwrap(), origin)
+                    });
+                    origin = left;
+                    test.push(first);
+                }
+                Either::Right(test.into_iter().map(Reference::Ref))
             },
-            Reference::RefMut(origin) => {
+            Reference::RefMut(_) => {
                 todo!()
             }
         })
@@ -493,11 +503,10 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::ForEach(var, expr, statements) => {
                     let v = self.execute_expression_and_expect_value(expr, context, state)?;
-                    // let values = Self::map_to_cow_vec(v)?;
+                    let values = Self::map_to_cow_vec(v)?;
                     context.begin_scope();
-                    let vec = v.as_vec()?;
-                    for val in vec.iter() {
-                        // context.register_variable(var.clone(), val)?;
+                    for val in values {
+                        context.register_variable(var.clone(), val)?;
                         match self.execute_statements(&statements, context, state)? {
                             Some(v) => {
                                 context.end_scope()?;
