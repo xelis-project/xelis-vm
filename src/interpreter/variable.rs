@@ -32,27 +32,6 @@ impl<'a> VariablePath<'a> {
         }
     }
 
-    pub fn get_reference_sub_variable(self, name: &IdentifierType) -> Result<Reference<'a>, InterpreterError> {
-        match self {
-            Self::Mut(v) => {
-                let values = v.as_mut_map()?;
-                let at_index = values
-                    .get_mut(name)
-                    .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?;
-
-                Ok(Reference::Borrowed(at_index))
-            },
-            Self::RefMut(v) => {
-                RefMut::filter_map(v, |origin| {
-                    let values = origin.as_mut_map().ok()?;
-                    values
-                        .get_mut(name)
-                }).map(Reference::RefMut)
-                .map_err(|_| InterpreterError::Unknown)
-            }
-        }
-    }
-
     pub fn get_sub_variable(self, name: &IdentifierType) -> Result<VariablePath<'a>, InterpreterError> {
         match self {
             Self::Mut(v) => {
