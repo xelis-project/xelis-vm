@@ -146,7 +146,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn get_immutable_from_path(&'a self, ref_value: Option<Reference<'a>>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
+    fn get_immutable_from_path(&'a self, ref_value: Option<Reference<'a>>, path: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let v = self.execute_expression_and_expect_value(expr_index, context, state)?;
@@ -201,20 +201,21 @@ impl<'a> Interpreter<'a> {
                         Reference::RefMut(value)
                     }
                 },
-                None => context.get_variable_as_value(name)
-                    .map(Reference::Ref)
-                    .or_else(|_| {
-                        self.constants.as_ref()
-                            .and_then(|c| c.get(name)).map(Reference::Borrowed)
-                            .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
-                })?
+                None => todo!("Get variable from context")
+                // None => context.get_variable_as_value(name)
+                //     .map(Reference::Ref)
+                //     .or_else(|_| {
+                //         self.constants.as_ref()
+                //             .and_then(|c| c.get(name)).map(Reference::Borrowed)
+                //             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
+                // })?
             }),
             e => Err(InterpreterError::ExpectedPath(e.clone()))
         }
     }
 
     // Get a mutable reference to a value so we can update its content
-    fn get_from_path(&'a self, ref_value: Option<VariablePath<'a>>, path: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<VariablePath<'a>, InterpreterError> {
+    fn get_from_path(&'a self, ref_value: Option<VariablePath<'a>>, path: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<VariablePath<'a>, InterpreterError> {
         match path {
             Expression::ArrayCall(expr, expr_index) => {
                 let v = self.execute_expression_and_expect_value(expr_index, context, state)?;
@@ -228,7 +229,7 @@ impl<'a> Interpreter<'a> {
             },
             Expression::Variable(name) => Ok(match ref_value {
                 Some(v) => v.get_sub_variable(name)?,
-                None => VariablePath::RefMut(context.get_variable_as_mut(name)?)
+                None => todo!("get mut variable from context"), // VariablePath::RefMut(context.get_variable_as_mut(name)?)
             }),
             e => Err(InterpreterError::ExpectedPath(e.clone()))
         }
@@ -264,7 +265,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_expression_and_expect_value(&'a self, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
+    fn execute_expression_and_expect_value(&'a self, expr: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<Reference<'a>, InterpreterError> {
         match self.execute_expression(expr, context, state)? {
             Some(val) => Ok(val),
             None => Err(InterpreterError::ExpectedValue)
@@ -273,7 +274,7 @@ impl<'a> Interpreter<'a> {
 
     // Execute the selected expression
     // Do not give any mutable value, on reference or owned
-    fn execute_expression(&'a self, expr: &'a Expression, context: &'a Context<'a>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
+    fn execute_expression(&'a self, expr: &'a Expression, context: &mut Context<'a>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
         state.increase_expressions_executed()?;
         match expr {
             Expression::FunctionCall(path, name, parameters) => {
@@ -294,7 +295,7 @@ impl<'a> Interpreter<'a> {
 
                 state.decrease_recursive_depth();
 
-                Ok(res.map(Reference::Owned))
+                Ok(res.map(|v| Reference::Owned(v.into_owned())))
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values = Vec::with_capacity(expressions.len());
@@ -417,7 +418,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &'b Context<'b>, state: &mut State) -> Result<Option<Reference<'b>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &mut Context<'b>, state: &mut State) -> Result<Option<Reference<'b>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if state.get_loop_break() || state.get_loop_continue() {
@@ -577,8 +578,8 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_function_internal(&self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Reference<'a>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
-        let context = Context::new();
+    fn execute_function_internal(&'a self, type_instance: Option<(&'a mut Value, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Reference<'a>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
+        let mut context = Context::new();
         context.begin_scope();
         if let Some((instance, instance_name)) = type_instance {
             context.register_variable(instance_name, instance)?;
@@ -588,13 +589,13 @@ impl<'a> Interpreter<'a> {
             context.register_variable(param.get_name().clone(), value)?;
         }
 
-        self.execute_statements(statements, &context, state).map(|v| v.map(Reference::into_owned))
+        self.execute_statements(statements, &mut context, state)
     }
 
     // Execute the selected function
-    fn execute_function(&self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Reference<'a>>, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    fn execute_function(&'a self, func: &'a FunctionType, type_instance: Option<&'a mut Value>, values: Vec<Reference<'a>>, state: &mut State) -> Result<Option<Reference<'a>>, InterpreterError> {
         match func {
-            FunctionType::Native(ref f) => f.call_function(type_instance, values, state),
+            FunctionType::Native(ref f) => f.call_function(type_instance, values, state).map(|v| v.map(Reference::Owned)),
             FunctionType::Declared(ref f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
@@ -611,10 +612,10 @@ impl<'a> Interpreter<'a> {
     pub fn call_entry_function(&mut self, function_name: &IdentifierType, parameters: Vec<Reference<'_>>, state: &mut State) -> Result<u64, InterpreterError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
-            let context = Context::new();
+            let mut context = Context::new();
 
             for constant in self.program.constants.iter() {
-                let value = self.execute_expression_and_expect_value(&constant.value, &context, state)?
+                let value = self.execute_expression_and_expect_value(&constant.value, &mut context, state)?
                     .into_owned();
                 constants.insert(constant.id.clone(), value);
             }
@@ -630,7 +631,7 @@ impl<'a> Interpreter<'a> {
         }
 
         match self.execute_function(func, None, parameters, state)? {
-            Some(val) => Ok(val.to_u64()?),
+            Some(val) => Ok(val.as_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
     }
@@ -655,7 +656,7 @@ mod tests {
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();
         let result = interpreter.execute_function(func, None, Vec::new(), &mut state).unwrap();
-        result.unwrap()
+        result.unwrap().into_owned()
     }
 
     #[track_caller]
