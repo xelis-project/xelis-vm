@@ -57,27 +57,19 @@ impl<'a> Context<'a> {
     // Remove a variable from the context
     pub fn remove_variable(&self, name: &IdentifierType) -> Result<Variable<'a>, InterpreterError> {
         let mut borrow = self.scopes.borrow_mut();
-        for scope in borrow.iter_mut().rev() {
-            if let Some(v) = scope.remove(name) {
-                return Ok(v)
-            }
-        }
 
-        Err(InterpreterError::VariableNotFound(name.clone()))
+        borrow.iter_mut()
+            .rev()
+            .find_map(|scope| scope.remove(name))
+            .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
     // Get a variable from the context
     pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<Ref<'b, Variable<'a>>, InterpreterError> {
-        let borrow = self.scopes.borrow();
-        Ref::filter_map(borrow, |scopes| {
-            for scope in scopes.iter().rev() {
-                if let Some(v) = scope.get(name) {
-                    return Some(v)
-                }
-            }
-
-            None
-        }).map_err(|_| InterpreterError::VariableNotFound(name.clone()))
+        Ref::filter_map(
+            self.scopes.borrow(),
+            |scopes| scopes.iter().rev().find_map(|scope| scope.get(name))
+        ).map_err(|_| InterpreterError::VariableNotFound(name.clone()))
     }
 
     // Get a variable from the context as a value
@@ -87,15 +79,10 @@ impl<'a> Context<'a> {
 
     pub fn get_variable_as_mut<'b>(&'b self, name: &'b IdentifierType) -> Result<RefMut<'b, Value>, InterpreterError> {
         let borrow = self.scopes.borrow_mut();
-        RefMut::filter_map(borrow, |scopes| {
-            for scope in scopes.iter_mut().rev() {
-                if let Some(v) = scope.get_mut(name) {
-                    return Some(v.as_mut())
-                }
-            }
-
-            None
-        }).map_err(|_| InterpreterError::VariableNotFound(name.clone()))
+        RefMut::filter_map(
+            borrow,
+            |scopes| scopes.iter_mut().rev().find_map(|scope| scope.get_mut(name).map(Variable::as_mut))
+        ).map_err(|_| InterpreterError::VariableNotFound(name.clone()))
     }
 
     pub fn has_variable(&self, name: &IdentifierType) -> bool {
