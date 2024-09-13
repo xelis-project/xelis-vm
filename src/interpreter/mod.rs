@@ -162,6 +162,7 @@ impl<'a> Interpreter<'a> {
                 Some(v) => v.get_sub_variable(name)?,
                 None => context.get_variable_reference(name)?
             }),
+            Expression::FunctionCall(_, _, _) => self.execute_expression_and_expect_value(path, context, state),
             e => Err(InterpreterError::ExpectedPath(e.clone()))
         }
     }
