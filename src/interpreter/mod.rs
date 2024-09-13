@@ -72,6 +72,24 @@ macro_rules! op_bool {
     }};
 }
 
+macro_rules! execute_foreach {
+    ($self: expr, $statements: expr, $var: expr, $val: expr, $context: expr, $state: expr) => {
+        match $self.execute_for_each_statements($statements, $var, $val, $context, $state)? {
+            Either::Left(Some(v)) => {
+                $context.end_scope()?;
+                return Ok(Some(v))
+            },
+            Either::Right(v) => {
+                if v {
+                    break;
+                }
+            },
+            _ => {}
+        };
+        $context.clear_last_scope()?;
+    };
+}
+
 #[derive(Debug)]
 pub enum InterpreterError {
     Unknown,
@@ -325,22 +343,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn map_to_cow_vec<'b>(v: Path<'b>) -> Result<impl Iterator<Item=Path<'b>>, InterpreterError> {
-        Ok(match v {
-            Path::Borrowed(v) => {
-                Either::Left(Either::Left(v.as_vec()?.iter().map(|val| Path::Wrapper(val.clone()))))
-            }
-            Path::Owned(v) => {
-                Either::Left(Either::Right(v.to_vec()?.into_iter().map(|val| Path::Wrapper(val))))
-            },
-            Path::Wrapper(v) => {
-                let v = v.borrow();
-                Either::Right(v.as_vec()?.clone().into_iter().map(|val| Path::Wrapper(val.clone())))
-            }
-        })
-    }
-
-    fn execute_statements<'b>(&'b self, statements: &'b Vec<Statement>, context: &mut Context<'b>, state: &mut State) -> Result<Option<Path<'b>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b [Statement], context: &mut Context<'b>, state: &mut State) -> Result<Option<Path<'b>>, InterpreterError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if context.get_loop_break() || context.get_loop_continue() {
@@ -426,28 +429,24 @@ impl<'a> Interpreter<'a> {
                 },
                 Statement::ForEach(var, expr, statements) => {
                     let v = self.execute_expression_and_expect_value(expr, context, state)?;
-                    let values = Self::map_to_cow_vec(v)?;
                     context.begin_scope();
-                    for val in values {
-                        context.register_variable(var.clone(), val)?;
-                        match self.execute_statements(&statements, context, state)? {
-                            Some(v) => {
-                                context.end_scope()?;
-                                return Ok(Some(v))
-                            },
-                            None => {}
-                        };
-
-                        if context.get_loop_break() {
-                            context.set_loop_break(false);
-                            break;
+                    match v {
+                        Path::Owned(v) => {
+                            for value in v.to_vec()? {
+                                execute_foreach!(self, statements, var.clone(), Path::Wrapper(value), context, state);
+                            }
+                        },
+                        Path::Borrowed(v) => {
+                            for value in v.as_vec()? {
+                                execute_foreach!(self, statements, var.clone(), Path::Wrapper(value.clone()), context, state);
+                            }
+                        },
+                        Path::Wrapper(v) => {
+                            let v = v.borrow();
+                            for value in v.as_vec()? {
+                                execute_foreach!(self, statements, var.clone(), Path::Wrapper(value.clone()), context, state);
+                            }
                         }
-
-                        if context.get_loop_continue() {
-                            context.set_loop_continue(false);
-                        }
-
-                        context.clear_last_scope()?;
                     }
                     context.end_scope()?;
                 },
@@ -498,6 +497,29 @@ impl<'a> Interpreter<'a> {
             };
         }
         Ok(None)
+    }
+
+    fn execute_for_each_statements(&'a self, statements: &'a [Statement], var: IdentifierType, val: Path<'a>, context: &mut Context<'a>, state: &mut State) -> Result<Either<Option<Path<'a>>, bool>, InterpreterError> {
+        context.register_variable(var, val)?;
+        match self.execute_statements(statements, context, state)? {
+            Some(v) => {
+                context.end_scope()?;
+                return Ok(Either::Left(Some(v)))
+            },
+            None => {}
+        };
+
+        if context.get_loop_break() {
+            context.set_loop_break(false);
+            return Ok(Either::Right(true))
+        }
+
+        if context.get_loop_continue() {
+            context.set_loop_continue(false);
+        }
+
+        context.clear_last_scope()?;
+        Ok(Either::Left(None))
     }
 
     fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {

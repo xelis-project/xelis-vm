@@ -16,14 +16,17 @@ pub enum Path<'a> {
 }
 
 impl<'a> Path<'a> {
+    #[inline(always)]
     pub fn wrap(value: &Rc<RefCell<Value>>) -> Self {
         Self::Wrapper(value.clone())
     }
 
+    #[inline(always)]
     pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, InterpreterError> {
         self.as_ref().as_bool()
     }
 
+    #[inline(always)]
     pub fn as_u64(&'a self) -> Result<u64, InterpreterError> {
         self.as_ref().as_u64()
     }
