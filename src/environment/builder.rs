@@ -69,7 +69,7 @@ impl Default for EnvironmentBuilder<'_> {
 
 fn println(_: FnInstance, parameters: FnParams) -> FnReturnType {
     let param = &parameters[0];
-    println!("{}", param);
+    println!("{}", param.as_ref().as_value());
 
     Ok(None)
 }

@@ -1,13 +1,16 @@
-use crate::{values::*, IdentifierType, InterpreterError, NoHashMap};
-use super::variable::Variable;
+use crate::{IdentifierType, InterpreterError, NoHashMap, variable::Path};
 
-pub type Scope<'a> = NoHashMap<Variable<'a>>;
+pub type Scope<'a> = NoHashMap<Path<'a>>;
 
 #[derive(Debug)]
 pub struct Context<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
     scopes: Vec<Scope<'a>>,
+    // Flags to break a loop
+    loop_break: bool,
+    // Flags to continue in loop
+    loop_continue: bool,
 }
 
 impl<'a> Context<'a> {
@@ -15,6 +18,8 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             scopes: Vec::new(),
+            loop_break: false,
+            loop_continue: false,
         }
     }
 
@@ -48,7 +53,7 @@ impl<'a> Context<'a> {
     }
 
     // Remove a variable from the context
-    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<Variable<'a>, InterpreterError> {
+    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.scopes.iter_mut()
             .rev()
             .find_map(|scope| scope.remove(name))
@@ -56,21 +61,16 @@ impl<'a> Context<'a> {
     }
 
     // Get a variable from the context
-    pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Variable<'a>, InterpreterError> {
+    pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Path<'a>, InterpreterError> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    // Get a variable from the context as a value
-    pub fn get_variable_as_value<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Value, InterpreterError> {
-        self.get_variable(name).map(Variable::as_value)
-    }
-
-    pub fn get_variable_as_mut<'b>(&'b mut self, name: &'b IdentifierType) -> Result<&'b mut Value, InterpreterError> {
+    pub fn get_variable_reference<'b>(&'b mut self, name: &'b IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.scopes
             .iter_mut()
             .rev()
-            .find_map(|scope| scope.get_mut(name).map(Variable::as_mut))
+            .find_map(|scope| scope.get_mut(name).map(Path::shareable))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
@@ -78,14 +78,34 @@ impl<'a> Context<'a> {
         self.get_variable(name).is_ok()
     }
 
-    pub fn register_variable<V: Into<Variable<'a>>>(&mut self, name: IdentifierType, value: V) -> Result<(), InterpreterError> {
+    pub fn register_variable(&mut self, name: IdentifierType, value: Path<'a>) -> Result<(), InterpreterError> {
         if self.has_variable(&name) {
             return Err(InterpreterError::VariableAlreadyExists(name))
         }
 
         let scope = self.get_last_scope()?;
-        scope.insert(name, value.into());
+        scope.insert(name, value);
 
         Ok(())
+    }
+
+    // Get the loop break flag
+    pub fn get_loop_break(&self) -> bool {
+        self.loop_break
+    }
+
+    // Set the loop break flag
+    pub fn set_loop_break(&mut self, value: bool) {
+        self.loop_break = value;
+    }
+
+    // Get the loop continue flag
+    pub fn get_loop_continue(&self) -> bool {
+        self.loop_continue
+    }
+
+    // Set the loop continue flag
+    pub fn set_loop_continue(&mut self, value: bool) {
+        self.loop_continue = value;
     }
 }

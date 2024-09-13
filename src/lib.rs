@@ -5,7 +5,8 @@ mod lexer;
 mod types;
 mod mapper;
 mod values;
-mod reference;
+mod handle;
+mod variable;
 
 pub mod ast;
 
@@ -16,8 +17,7 @@ pub use crate::{
     types::Type,
     interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
-    lexer::{Lexer, LexerError},
-    reference::Reference,
+    lexer::{Lexer, LexerError}
 };
 
 // Variable identifier used in the parser and interpreter

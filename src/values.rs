@@ -1,4 +1,8 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{types::Type, IdentifierType, InterpreterError, NoHashMap};
+
+pub type InnerValue = Rc<RefCell<Value>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
@@ -12,8 +16,8 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(IdentifierType, NoHashMap<Value>),
-    Array(Vec<Value>),
+    Struct(IdentifierType, NoHashMap<InnerValue>),
+    Array(Vec<InnerValue>),
     Optional(Option<Box<Value>>)
 }
 
@@ -91,7 +95,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&NoHashMap<Value>, InterpreterError> {
+    pub fn as_map(&self) -> Result<&NoHashMap<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -99,7 +103,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut NoHashMap<Value>, InterpreterError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut NoHashMap<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -107,7 +111,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<Value>, InterpreterError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -115,7 +119,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<Value>, InterpreterError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -204,7 +208,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<NoHashMap<Value>, InterpreterError> {
+    pub fn to_map(self) -> Result<NoHashMap<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
             v => Err(InterpreterError::InvalidStructValue(v.clone()))
@@ -212,7 +216,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<Value>, InterpreterError> {
+    pub fn to_vec(self) -> Result<Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -326,11 +330,11 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
-                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
                 write!(f, "[{}]", s.join(", "))
             },
             Value::Optional(value) => match value.as_ref() {

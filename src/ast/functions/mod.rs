@@ -4,13 +4,13 @@ mod declared;
 pub use declared::{DeclaredFunction, EntryFunction};
 pub use native::NativeFunction;
 
-use crate::{types::Type, values::Value, IdentifierType, Reference, InterpreterError};
+use crate::{types::Type, values::Value, variable::Path, IdentifierType, InterpreterError};
 
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType = Result<Option<Value>, InterpreterError>;
 pub type FnInstance<'a> = Result<&'a mut Value, InterpreterError>;
-pub type FnParams<'a> = Vec<Reference<'a>>;
+pub type FnParams<'a> = Vec<Path<'a>>;
 pub type OnCallFn = fn(FnInstance, FnParams) -> FnReturnType;
 
 // Function parameter

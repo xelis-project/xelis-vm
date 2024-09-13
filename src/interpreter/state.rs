@@ -11,10 +11,6 @@ pub struct State {
     max_expr: Option<u64>,
     // Maximum number of recursive calls
     max_recursive: Option<u16>,
-    // Flags to break a loop
-    loop_break: bool,
-    // Flags to continue in loop
-    loop_continue: bool,
 }
 
 impl State {
@@ -25,8 +21,6 @@ impl State {
             recursive: 0,
             max_expr,
             max_recursive,
-            loop_break: false,
-            loop_continue: false,
         }
     }
 
@@ -76,31 +70,9 @@ impl State {
         self.recursive -= 1;
     }
 
-    // Get the loop break flag
-    pub fn get_loop_break(&self) -> bool {
-        self.loop_break
-    }
-
-    // Set the loop break flag
-    pub fn set_loop_break(&mut self, value: bool) {
-        self.loop_break = value;
-    }
-
-    // Get the loop continue flag
-    pub fn get_loop_continue(&self) -> bool {
-        self.loop_continue
-    }
-
-    // Set the loop continue flag
-    pub fn set_loop_continue(&mut self, value: bool) {
-        self.loop_continue = value;
-    }
-
     // Reset the state
     pub fn reset(&mut self) {
         self.count_expr = 0;
         self.recursive = 0;
-        self.loop_break = false;
-        self.loop_continue = false;
     }
 }

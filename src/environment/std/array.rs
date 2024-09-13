@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     ast::{FnInstance, FnParams, FnReturnType},
     values::Value,
@@ -26,7 +28,7 @@ fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(param.into_owned());
+    zelf?.as_mut_vec()?.push(Rc::new(RefCell::new(param.into_owned())));
     Ok(None)
 }
 
@@ -38,13 +40,13 @@ fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
         return Err(InterpreterError::OutOfBounds(index, array.len()))
     }
 
-    Ok(Some(array.remove(index)))
+    Ok(Some(array.remove(index).borrow().clone()))
 }
 
 fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value))
+        Ok(Some(value.borrow().clone()))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -75,15 +77,17 @@ fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 
 fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let value = parameters.remove(0);
+    let handle = value.as_ref();
+    let expected = handle.as_value();
     let vec = zelf?.as_vec()?;
-    Ok(Some(Value::Boolean(vec.contains(&value))))
+    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.borrow() == *expected).is_some())))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let index = parameters.remove(0).as_u64()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -92,7 +96,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -101,7 +105,7 @@ fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
 fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(Value::Optional(Some(Box::new(value.clone())))))
+        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
