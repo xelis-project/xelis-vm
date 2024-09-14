@@ -3,7 +3,7 @@ use crate::{IdentifierType, InterpreterError, NoHashMap, variable::Path};
 pub type Scope<'a> = NoHashMap<Path<'a>>;
 
 #[derive(Debug)]
-pub struct Context<'a> {
+pub struct Stack<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
     scopes: Vec<Scope<'a>>,
@@ -13,8 +13,8 @@ pub struct Context<'a> {
     loop_continue: bool,
 }
 
-impl<'a> Context<'a> {
-    // Create a new context
+impl<'a> Stack<'a> {
+    // Create a new stack
     pub fn new() -> Self {
         Self {
             scopes: Vec::with_capacity(4),
@@ -56,7 +56,7 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    // Remove a variable from the context
+    // Remove a variable from the stack
     #[inline(always)]
     pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.scopes.iter_mut()
@@ -65,15 +65,16 @@ impl<'a> Context<'a> {
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
-    // Get a variable from the context
+    // Get a variable from the stack
     #[inline(always)]
     pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Path<'a>, InterpreterError> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
+    // Get a path access to a variable from the stack
     #[inline(always)]
-    pub fn get_variable_reference<'b>(&'b mut self, name: &'b IdentifierType) -> Result<Path<'a>, InterpreterError> {
+    pub fn get_variable_path<'b>(&'b mut self, name: &'b IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.scopes
             .iter_mut()
             .rev()
@@ -81,15 +82,19 @@ impl<'a> Context<'a> {
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
     }
 
+    // Check if a variable exists in the stack
     #[inline(always)]
     pub fn has_variable(&self, name: &IdentifierType) -> bool {
         self.get_variable(name).is_ok()
     }
 
+    // Register a variable in the stack
     pub fn register_variable(&mut self, name: IdentifierType, value: Path<'a>) -> Result<(), InterpreterError> {
-        if self.has_variable(&name) {
-            return Err(InterpreterError::VariableAlreadyExists(name))
-        }
+        // We don't verify if the variable already exists
+        // Parser should take care of that
+        // if self.has_variable(&name) {
+        //     return Err(InterpreterError::VariableAlreadyExists(name))
+        // }
 
         let scope = self.get_last_scope()?;
         scope.insert(name, value);
@@ -119,5 +124,25 @@ impl<'a> Context<'a> {
     #[inline(always)]
     pub fn set_loop_continue(&mut self, value: bool) {
         self.loop_continue = value;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::values::Value;
+    use super::*;
+
+    #[test]
+    fn test_variable_exists() {
+        let mut stack = Stack::new();
+        stack.begin_scope();
+        stack.register_variable(0, Path::Owned(Value::U64(42))).unwrap();
+
+        assert!(stack.has_variable(&0));
+        assert!(!stack.has_variable(&1));
+
+        stack.end_scope().unwrap();
+
+        assert!(!stack.has_variable(&0));
     }
 }
