@@ -67,6 +67,7 @@ impl<'a> Stack<'a> {
 
     // Get a variable from the stack
     #[inline(always)]
+    #[cfg(test)]
     pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Path<'a>, InterpreterError> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
             .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))
@@ -84,6 +85,7 @@ impl<'a> Stack<'a> {
 
     // Check if a variable exists in the stack
     #[inline(always)]
+    #[cfg(test)]
     pub fn has_variable(&self, name: &IdentifierType) -> bool {
         self.get_variable(name).is_ok()
     }
