@@ -495,7 +495,9 @@ impl<'a> Parser<'a> {
                             required_operator = !required_operator;
 
                             if let Expression::FunctionCall(path, name, params) = right_expr {
-                                assert!(path.is_none());
+                                if path.is_some() {
+                                    return Err(ParserError::UnexpectedPathInFunctionCall)
+                                }
                                 Expression::FunctionCall(Some(Box::new(value)), name, params)
                             } else {
                                 Expression::Path(Box::new(value), Box::new(right_expr))

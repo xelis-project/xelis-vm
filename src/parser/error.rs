@@ -7,6 +7,7 @@ use crate::{
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
+    UnexpectedPathInFunctionCall,
     InvalidImport,
     InvalidImportPath(String),
     ImportNotFound(String),
