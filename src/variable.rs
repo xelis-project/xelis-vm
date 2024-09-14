@@ -17,11 +17,6 @@ pub enum Path<'a> {
 
 impl<'a> Path<'a> {
     #[inline(always)]
-    pub fn wrap(value: &Rc<RefCell<Value>>) -> Self {
-        Self::Wrapper(value.clone())
-    }
-
-    #[inline(always)]
     pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, InterpreterError> {
         self.as_ref().as_bool()
     }
@@ -36,12 +31,12 @@ impl<'a> Path<'a> {
             Self::Owned(v) => {
                 let dst = std::mem::replace(v, Value::Null);
                 let shared = Rc::new(RefCell::new(dst));
-                *self = Self::wrap(&shared);
+                *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
                 let shared = Rc::new(RefCell::new(v.clone()));
-                *self = Self::wrap(&shared);
+                *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Wrapper(v) => Self::Wrapper(v.clone())
