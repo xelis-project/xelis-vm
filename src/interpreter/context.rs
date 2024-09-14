@@ -7,9 +7,9 @@ pub struct Context<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
     scopes: Vec<Scope<'a>>,
-    // Flags to break a loop
+    // Flag to break a loop
     loop_break: bool,
-    // Flags to continue in loop
+    // Flag to continue in loop
     loop_continue: bool,
 }
 
@@ -98,21 +98,25 @@ impl<'a> Context<'a> {
     }
 
     // Get the loop break flag
+    #[inline(always)]
     pub fn get_loop_break(&self) -> bool {
         self.loop_break
     }
 
     // Set the loop break flag
+    #[inline(always)]
     pub fn set_loop_break(&mut self, value: bool) {
         self.loop_break = value;
     }
 
     // Get the loop continue flag
+    #[inline(always)]
     pub fn get_loop_continue(&self) -> bool {
         self.loop_continue
     }
 
     // Set the loop continue flag
+    #[inline(always)]
     pub fn set_loop_continue(&mut self, value: bool) {
         self.loop_continue = value;
     }
