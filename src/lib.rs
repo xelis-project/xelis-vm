@@ -6,7 +6,7 @@ mod types;
 mod mapper;
 mod values;
 mod handle;
-mod variable;
+mod path;
 
 pub mod ast;
 

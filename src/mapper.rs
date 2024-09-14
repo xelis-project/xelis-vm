@@ -78,6 +78,10 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
         self.next_id += 1;
         Ok(id)
     }
+
+    pub fn count(&self) -> usize {
+        self.mappings.len()
+    }
 }
 
 impl<'a> FunctionMapper<'a> {

@@ -11,17 +11,19 @@ pub struct DeclaredFunction {
     instance_name: Option<IdentifierType>,
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
-    return_type: Option<Type>
+    return_type: Option<Type>,
+    variables_count: u16,
 }
 
 impl DeclaredFunction {
-    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>) -> Self {
+    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
         DeclaredFunction {
             for_type,
             instance_name,
             parameters,
             statements,
-            return_type
+            return_type,
+            variables_count
         }
     }
 
@@ -44,20 +46,26 @@ impl DeclaredFunction {
     pub fn get_return_type(&self) -> &Option<Type> {
         &self.return_type
     }
+
+    pub fn get_variables_count(&self) -> u16 {
+        self.variables_count
+    }
 }
 
 #[derive(Debug)]
 pub struct EntryFunction {
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
+    variables_count: u16,
 }
 
 impl EntryFunction {
     // Create a new entry function
-    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>) -> Self {
+    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>, variables_count: u16) -> Self {
         EntryFunction {
             parameters,
-            statements
+            statements,
+            variables_count
         }
     }
 
@@ -69,5 +77,9 @@ impl EntryFunction {
     // Get the statements of the function
     pub fn get_statements(&self) -> &Vec<Statement> {
         &self.statements
+    }
+
+    pub fn get_variables_count(&self) -> u16 {
+        self.variables_count
     }
 }

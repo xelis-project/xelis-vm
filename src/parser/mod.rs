@@ -969,13 +969,14 @@ impl<'a> Parser<'a> {
         }
 
         let function = match entry {
-            true => FunctionType::Entry(EntryFunction::new(parameters, statements)),
+            true => FunctionType::Entry(EntryFunction::new(parameters, statements, mapper.count() as u16)),
             false => FunctionType::Declared(DeclaredFunction::new(
                 for_type,
                 instance_name,
                 parameters,
                 statements,
                 return_type,
+                mapper.count() as u16
             ))
         };
 

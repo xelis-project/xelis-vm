@@ -7,7 +7,7 @@ use crate::{
 };
 use super::InterpreterError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Path<'a> {
     Owned(Value),
     // Used for constants

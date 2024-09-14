@@ -10,7 +10,7 @@ use crate::{
         Parameter,
         FunctionType
     },
-    variable::Path,
+    path::Path,
     parser::Program,
     types::*,
     values::Value,
@@ -80,10 +80,7 @@ macro_rules! op_bool {
 macro_rules! execute_foreach {
     ($self: expr, $statements: expr, $var: expr, $val: expr, $stack: expr, $state: expr) => {
         match $self.execute_for_each_statements($statements, $var, $val, $stack, $state)? {
-            Either::Left(Some(v)) => {
-                $stack.end_scope()?;
-                return Ok(Some(v))
-            },
+            Either::Left(Some(v)) => return Ok(Some(v)),
             Either::Right(v) => {
                 if v {
                     break;
@@ -91,12 +88,12 @@ macro_rules! execute_foreach {
             },
             _ => {}
         };
-        $stack.clear_last_scope()?;
     };
 }
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    StackError,
     Unknown,
     NoReturnValue,
     OptionalIsNull,
@@ -397,7 +394,6 @@ impl<'a> Interpreter<'a> {
                     let value = self.execute_expression_and_expect_value(&var.value, stack, state)?;
                     stack.register_variable(var.id.clone(), value)?;
 
-                    stack.begin_scope();
                     loop {
                         // check the condition
                         if !self.execute_expression_and_expect_value(condition, stack, state)?.as_bool()? {
@@ -406,10 +402,7 @@ impl<'a> Interpreter<'a> {
 
                         // execute the statements
                         match self.execute_statements(&statements, stack, state)? {
-                            Some(v) => {
-                                stack.end_scope()?;
-                                return Ok(Some(v))
-                            },
+                            Some(v) => return Ok(Some(v)),
                             None => {}
                         };
 
@@ -427,19 +420,15 @@ impl<'a> Interpreter<'a> {
 
                         // We clear the last scope to avoid keeping the variables
                         // as we may register them again in next iteration
-                        stack.clear_last_scope()?;
                     }
 
                     // Before ending the loop, we remove the variable
                     // Because we registered outside of the newly created scope
                     // as we clear this scope each time
                     stack.remove_variable(&var.id)?;
-
-                    stack.end_scope()?;
                 },
                 Statement::ForEach(var, expr, statements) => {
                     let v = self.execute_expression_and_expect_value(expr, stack, state)?;
-                    stack.begin_scope();
                     match v {
                         Path::Owned(v) => {
                             for value in v.to_vec()? {
@@ -458,16 +447,11 @@ impl<'a> Interpreter<'a> {
                             }
                         }
                     }
-                    stack.end_scope()?;
                 },
                 Statement::While(condition, statements) => {
-                    stack.begin_scope();
                     while self.execute_expression_and_expect_value(&condition, stack, state)?.as_bool()? {
                         match self.execute_statements(&statements, stack, state)? {
-                            Some(v) => {
-                                stack.end_scope()?;
-                                return Ok(Some(v))
-                            },
+                            Some(v) => return Ok(Some(v)),
                             None => {}
                         };
 
@@ -479,9 +463,7 @@ impl<'a> Interpreter<'a> {
                         if stack.get_loop_continue() {
                             stack.set_loop_continue(false);
                         }
-                        stack.clear_last_scope()?;
                     }
-                    stack.end_scope()?;
                 },
                 Statement::Return(opt) => {
                     return Ok(match opt {
@@ -490,15 +472,9 @@ impl<'a> Interpreter<'a> {
                     })
                 },
                 Statement::Scope(statements) => {
-                    stack.begin_scope();
                     match self.execute_statements(&statements, stack, state)? {
-                        Some(v) => {
-                            stack.end_scope()?;
-                            return Ok(Some(v))
-                        },
-                        None => {
-                            stack.end_scope()?;
-                        }
+                        Some(v) => return Ok(Some(v)),
+                        None => ()
                     };
                 },
                 Statement::Expression(expr) => {
@@ -512,10 +488,7 @@ impl<'a> Interpreter<'a> {
     fn execute_for_each_statements(&'a self, statements: &'a [Statement], var: IdentifierType, val: Path<'a>, stack: &mut Stack<'a>, state: &mut State) -> Result<Either<Option<Path<'a>>, bool>, InterpreterError> {
         stack.register_variable(var, val)?;
         match self.execute_statements(statements, stack, state)? {
-            Some(v) => {
-                stack.end_scope()?;
-                return Ok(Either::Left(Some(v)))
-            },
+            Some(v) => return Ok(Either::Left(Some(v))),
             None => {}
         };
 
@@ -528,13 +501,11 @@ impl<'a> Interpreter<'a> {
             stack.set_loop_continue(false);
         }
 
-        stack.clear_last_scope()?;
         Ok(Either::Left(None))
     }
 
-    fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
-        let mut stack = Stack::new();
-        stack.begin_scope();
+    fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, variables_count: u16, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
+        let mut stack = Stack::new(variables_count);
         if let Some((instance, instance_name)) = type_instance {
             stack.register_variable(instance_name, instance)?;
         }
@@ -566,9 +537,9 @@ impl<'a> Interpreter<'a> {
                     (None, None) => None,
                     _ => return Err(InterpreterError::NativeFunctionExpectedInstance)
                 };
-                self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), state)
+                self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
             },
-            FunctionType::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), state)
+            FunctionType::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
         }
     }
 
@@ -576,7 +547,7 @@ impl<'a> Interpreter<'a> {
     pub fn compute_constants(&mut self, state: &mut State) -> Result<(), InterpreterError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
-            let mut stack = Stack::new();
+            let mut stack = Stack::new(self.program.constants.len() as u16);
 
             for constant in self.program.constants.iter() {
                 let value = self.execute_expression_and_expect_value(&constant.value, &mut stack, state)?
