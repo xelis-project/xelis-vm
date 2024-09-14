@@ -19,9 +19,14 @@ use crate::{
     NoOpHasher
 };
 use stack::Stack;
-use itertools::Either;
 pub use state::State;
 use std::{cell::RefCell, hash::BuildHasherDefault, rc::Rc};
+
+// Enum helper for the execute_for_each_statements function
+enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{

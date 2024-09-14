@@ -14,4 +14,3 @@ name = "bench"
 harness = false
 
 [dependencies]
-itertools = "0.13.0"
