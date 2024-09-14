@@ -129,6 +129,7 @@ pub enum InterpreterError {
     OperationNotBooleanType,
     CastNumberError,
     RecursiveLimitReached,
+    GasLimitReached,
     InvalidCastType(Type),
 }
 
@@ -186,7 +187,11 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value) -> Result<Value, InterpreterError> {
+    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, state: &mut State) -> Result<Value, InterpreterError> {
+        if let Some(cost) = self.env.get_operator_cost(op) {
+            state.increase_gas_usage(cost)?;
+        }
+
         match op {
             Operator::Equals => Ok(Value::Boolean(left ==right)),
             Operator::NotEquals => Ok(Value::Boolean(left != right)),
@@ -286,7 +291,7 @@ impl<'a> Interpreter<'a> {
                     match op {
                         Operator::Assign(op) => {
                             if let Some(op) = op {
-                                let result = self.execute_operator(&op, &path.as_ref(), &value.as_ref())?;
+                                let result = self.execute_operator(&op, &path.as_ref(), &value.as_ref(), state)?;
                                 *path.as_mut() = result;
                             } else {
                                 *path.as_mut() = value.into_owned();
@@ -323,7 +328,7 @@ impl<'a> Interpreter<'a> {
                     } else {
                         let right = self.execute_expression_and_expect_value(&expr_right, context, state)?;
                         let handle = right.as_ref();
-                        self.execute_operator(op, &left.as_ref(), &handle).map(Path::Owned).map(Some)
+                        self.execute_operator(op, &left.as_ref(), &handle, state).map(Path::Owned).map(Some)
                     }
                 }
             },
@@ -609,7 +614,7 @@ mod tests {
         let parser = Parser::new(None, tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
 
-        let mut state = State::new(None, None);
+        let mut state = State::new(None, None, None);
         let interpreter = Interpreter::new(&program, builder.environment()).unwrap();
 
         let mapped_name = mapper.get(&key).unwrap();

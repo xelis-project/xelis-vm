@@ -34,7 +34,7 @@ impl NativeFunction {
             return Err(InterpreterError::InvalidNativeFunctionCall)
         }
 
-        state.increase_expressions_executed_by(self.cost)?;
+        state.increase_gas_usage(self.cost)?;
 
         let instance = match instance_value {
             Some(v) => Ok(v),

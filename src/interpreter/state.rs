@@ -1,26 +1,31 @@
 use crate::InterpreterError;
 
 // State is used to store the number of expressions executed and the number of recursive calls
-// 
 pub struct State {
     // Count the number of expressions executed
     count_expr: u64,
-    // Count the number of recursive calls
-    recursive: u16,
     // Maximum number of expressions that can be executed
     max_expr: Option<u64>,
+    // Count the number of recursive calls
+    recursive: u16,
     // Maximum number of recursive calls
     max_recursive: Option<u16>,
+    // Current cost of the program
+    gas_usage: u64,
+    // Program execution shouldn't exceed this limit
+    max_gas_usage: Option<u64>,
 }
 
 impl State {
     // Create a new state with the given limits
-    pub fn new(max_expr: Option<u64>, max_recursive: Option<u16>) -> Self {
+    pub fn new(max_expr: Option<u64>, max_recursive: Option<u16>, max_cost: Option<u64>) -> Self {
         Self {
             count_expr: 0,
-            recursive: 0,
             max_expr,
+            recursive: 0,
             max_recursive,
+            gas_usage: 0,
+            max_gas_usage: max_cost,
         }
     }
 
@@ -65,6 +70,24 @@ impl State {
         Ok(())
     }
 
+    // Increase the gas usage
+    pub fn increase_gas_usage(&mut self, value: u64) -> Result<(), InterpreterError> {
+        self.gas_usage += value;
+
+        if let Some(max) = self.max_gas_usage {
+            if self.gas_usage >= max {
+                return Err(InterpreterError::GasLimitReached)
+            }
+        }
+
+        Ok(())
+    }
+
+    // Get the total gas used by the program
+    pub fn get_gas_usage(&self) -> u64 {
+        self.gas_usage
+    }
+
     // decrement the number of recursive calls
     pub fn decrease_recursive_depth(&mut self) {
         self.recursive -= 1;
@@ -74,5 +97,6 @@ impl State {
     pub fn reset(&mut self) {
         self.count_expr = 0;
         self.recursive = 0;
+        self.gas_usage = 0;
     }
 }

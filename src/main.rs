@@ -32,11 +32,11 @@ fn main() {
 
     // Create the VM instance
     let mut vm = Interpreter::new(&program, builder.environment()).unwrap();
-    let mut state = State::new(None, Some(100));
+    let mut state = State::new(None, Some(100), None);
     vm.compute_constants(&mut state).unwrap();
 
     start = Instant::now();
     let signature = Signature::new("main".to_owned(), None, Vec::new());
     let exit = vm.call_entry_function(&mapper.get(&signature).unwrap(), Vec::new(), &mut state).unwrap();
-    println!("Exit code: {} | {} expressions executed in {:?}", exit, state.get_expressions_executed(), start.elapsed());
+    println!("Exit code: {} | gas: {} | {} expressions executed in {:?}", exit, state.get_gas_usage(), state.get_expressions_executed(), start.elapsed());
 }

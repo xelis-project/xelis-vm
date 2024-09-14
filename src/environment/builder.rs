@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FnInstance, FnParams, FnReturnType, FunctionType, NativeFunction, OnCallFn, Signature},
+    ast::{FnInstance, FnParams, FnReturnType, FunctionType, NativeFunction, OnCallFn, Operator, Signature},
     mapper::FunctionMapper,
     types::Type,
     NoHashMap,
@@ -22,6 +22,12 @@ impl<'a> EnvironmentBuilder<'a> {
             functions_mapper: FunctionMapper::new(),
             env: Environment::new()
         }
+    }
+
+    // Set the cost of an operator
+    // Example, setting the cost of the Plus operator to 1
+    pub fn register_operator(&mut self, operator: Operator, cost: u64) {
+        self.env.operators.insert(operator, cost);
     }
 
     // Register a native function

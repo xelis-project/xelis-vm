@@ -1,6 +1,6 @@
 use super::Token;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum Operator {
     Equals, // ==
     NotEquals, // !=
