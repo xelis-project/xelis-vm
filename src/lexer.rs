@@ -56,6 +56,20 @@ impl<'a> Lexer<'a> {
             .ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
     }
 
+    // advance by n characters
+    fn advance_by(&mut self, n: usize) -> Result<(), LexerError> {
+        let drain = self.chars.drain(0..n);
+
+        if drain.len() != n {
+            return Err(LexerError::EndOfFile);
+        }
+
+        self.pos += n;
+        self.column += n;
+
+        Ok(())
+    }
+
     // consume the next character
     fn advance(&mut self) -> Result<char, LexerError> {
         self.next_char()
@@ -324,8 +338,12 @@ impl<'a> Lexer<'a> {
                 c if c.is_digit(10) => self.read_number(c)?,
                 c if c.is_alphabetic() => self.read_token(1)?,
                 _ => {
+                    // TODO: refactor this part
                     // We must check token with the next character because of operations with assignations
-                    if let Some(token) = self.try_token_with(1) {
+                    if let Some(token) = self.try_token_with(2) {
+                        self.advance_by(2)?;
+                        token
+                    } else if let Some(token) = self.try_token_with(1) {
                         self.advance()?;
                         token
                     } else if let Some(token) = self.try_token_with(0) {
