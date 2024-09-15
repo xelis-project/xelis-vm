@@ -258,7 +258,7 @@ impl<'a> Lexer<'a> {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
 
-        if value == "optional" && self.peek()? == '<' {
+        let token = if value == "optional" && self.peek()? == '<' {
             self.advance()?;
             let inner = self.read_token(0)?;
             if '>' != self.advance()? {
@@ -268,28 +268,24 @@ impl<'a> Lexer<'a> {
             if !inner.token.is_type() {
                 return Err(LexerError::ExpectedType);
             }
-
-            Ok(TokenResult {
-                token: Token::Optional(Box::new(inner.token)),
-                line: self.line,
-                column_start,
-                column_end: self.column
-            })
+            Token::Optional(Box::new(inner.token))
         } else {
-            Ok(TokenResult {
-                token: Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value)),
-                line: self.line,
-                column_start,
-                column_end: self.column
-            })
-        }
+            Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value))
+        };
+
+        Ok(TokenResult {
+            token,
+            line: self.line,
+            column_start,
+            column_end: self.column
+        })
     }
 
     // retrieve the next token available
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
-                '\n' | '\t' => {
+                '\n' | '\r' | '\t' => {
                     self.line += 1;
                     self.column = 0;
                     continue;
@@ -370,6 +366,51 @@ impl<'a> Iterator for Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_operators() {
+        let code = "+ - * / % ^ | & << >> == != > < >= <=";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::OperatorPlus,
+            Token::OperatorMinus,
+            Token::OperatorMultiply,
+            Token::OperatorDivide,
+            Token::OperatorModulo,
+            Token::OperatorBitwiseXor,
+            Token::OperatorBitwiseOr,
+            Token::OperatorBitwiseAnd,
+            Token::OperatorBitwiseLeft,
+            Token::OperatorBitwiseRight,
+            Token::OperatorEquals,
+            Token::OperatorNotEquals,
+            Token::OperatorGreaterThan,
+            Token::OperatorLessThan,
+            Token::OperatorGreaterOrEqual,
+            Token::OperatorLessOrEqual
+        ]);
+    }
+
+    #[test]
+    fn test_assign_operators() {
+        let code = "= += -= *= /= %= ^= |= &= <<= >>=";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::OperatorAssign,
+            Token::OperatorPlusAssign,
+            Token::OperatorMinusAssign,
+            Token::OperatorMultiplyAssign,
+            Token::OperatorDivideAssign,
+            Token::OperatorModuloAssign,
+            Token::OperatorBitwiseXorAssign,
+            Token::OperatorBitwiseOrAssign,
+            Token::OperatorBitwiseAndAssign,
+            Token::OperatorBitwiseLeftAssign,
+            Token::OperatorBitwiseRightAssign
+        ]);
+    }
 
     #[test]
     fn test_assign() {
