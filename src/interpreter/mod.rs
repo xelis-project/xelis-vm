@@ -77,6 +77,20 @@ macro_rules! op_bool {
     }};
 }
 
+macro_rules! op_num_with_bool {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a, $b) {
+            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            _ => return Err(InterpreterError::OperationNotBooleanType)
+        }
+    }};
+}
+
 macro_rules! execute_foreach {
     ($self: expr, $statements: expr, $var: expr, $val: expr, $stack: expr, $state: expr) => {
         match $self.execute_for_each_statements($statements, $var, $val, $stack, $state)? {
@@ -209,8 +223,8 @@ impl<'a> Interpreter<'a> {
             Operator::Multiply => Ok(op!(left, right, *)),
             Operator::Rem => Ok(op!(left, right, %)),
             Operator::BitwiseXor => Ok(op!(left, right, ^)),
-            Operator::BitwiseAnd => Ok(op!(left, right, &)),
-            Operator::BitwiseOr => Ok(op!(left, right, |)),
+            Operator::BitwiseAnd => Ok(op_num_with_bool!(left, right, &)),
+            Operator::BitwiseOr => Ok(op_num_with_bool!(left, right, |)),
             Operator::BitwiseLeft => Ok(op!(left, right, <<)),
             Operator::BitwiseRight => Ok(op!(left, right, >>)),
             Operator::GreaterOrEqual => Ok(op_bool!(left, right, >=)),
@@ -615,6 +629,20 @@ mod tests {
         test_code_expect_return("entry main() { let a: u64 = 10; a ^= 10; return a; }", 0);
         test_code_expect_return("entry main() { let a: u64 = 10; a <<= 10; return a; }", 10240);
         test_code_expect_return("entry main() { let a: u64 = 10; a >>= 10; return a; }", 0);
+    }
+
+    #[test]
+    fn test_op_bool_assignation() {
+        test_code_expect_return("entry main() { let a: bool = true; a = a && true; return a as u64; }", 1);
+        test_code_expect_return("entry main() { let a: bool = true; a = a && false; return a as u64; }", 0);
+        test_code_expect_return("entry main() { let a: bool = true; a = a || false; return a as u64; }", 1);
+        test_code_expect_return("entry main() { let a: bool = true; a = a || true; return a as u64; }", 1);
+        // |=
+        test_code_expect_return("entry main() { let a: bool = false; a |= true; return a as u64; }", 1);
+        test_code_expect_return("entry main() { let a: bool = false; a |= false; return a as u64; }", 0);
+        // &=
+        test_code_expect_return("entry main() { let a: bool = true; a &= true; return a as u64; }", 1);
+        test_code_expect_return("entry main() { let a: bool = true; a &= false; return a as u64; }", 0);
     }
 
     #[test]
