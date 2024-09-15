@@ -441,6 +441,22 @@ mod tests {
     }
 
     #[test]
+    fn test_assign_operator_without_whitespace() {
+        let code = "a>>=10+7*3";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorBitwiseRightAssign,
+            Token::U64Value(10),
+            Token::OperatorPlus,
+            Token::U64Value(7),
+            Token::OperatorMultiply,
+            Token::U64Value(3)
+        ]);
+    }
+
+    #[test]
     fn test_assign_operators() {
         let code = "= += -= *= /= %= ^= |= &= <<= >>=";
         let lexer = Lexer::new(code);
