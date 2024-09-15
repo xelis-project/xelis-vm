@@ -286,51 +286,43 @@ impl<'a> Interpreter<'a> {
             }
             Expression::Value(v) => Ok(Some(Path::Borrowed(v))),
             Expression::Operator(op, expr_left, expr_right) => {
-                if op.is_assignation() {
-                    let value = self.execute_expression_and_expect_value(expr_right, stack, state)?;
-                    let mut path = self.get_from_path(None, expr_left, stack, state)?;
+                match op {
+                    Operator::Assign(op) => {
+                        let value = self.execute_expression_and_expect_value(expr_right, stack, state)?;
+                        let mut path = self.get_from_path(None, expr_left, stack, state)?;
 
-                    match op {
-                        Operator::Assign(op) => {
-                            if let Some(op) = op {
-                                let result = self.execute_operator(&op, &path.as_ref(), &value.as_ref(), state)?;
-                                *path.as_mut() = result;
-                            } else {
-                                *path.as_mut() = value.into_owned();
-                            }
-                        },
-                        _ => return Err(InterpreterError::NotImplemented) 
-                    };
-                    Ok(None)
-                } else {
-                    let left = self.execute_expression_and_expect_value(&expr_left, stack, state)?;
-
-                    if op.is_and_or_or() {
-                        match op {
-                            Operator::And => Ok(Some(Path::Owned(Value::Boolean({
-                                let left = left.as_bool()?;
-                                if !left {
-                                    false
-                                } else {
-                                    let right = self.execute_expression_and_expect_value(&expr_right, stack, state)?;
-                                    right.as_bool()?
-                                }
-                            })))),
-                            Operator::Or => Ok(Some(Path::Owned(Value::Boolean({
-                                let left = left.as_bool()?;
-                                if !left {
-                                    let right = self.execute_expression_and_expect_value(&expr_right, stack, state)?;
-                                    right.as_bool()?
-                                } else {
-                                    true
-                                }
-                            })))),
-                            _ => return Err(InterpreterError::UnexpectedOperator)
+                        if let Some(op) = op {
+                            let result = self.execute_operator(&op, &path.as_ref(), &value.as_ref(), state)?;
+                            *path.as_mut() = result;
+                        } else {
+                            *path.as_mut() = value.into_owned();
                         }
-                    } else {
+                        Ok(None)
+                    },
+                    Operator::And => Ok(Some(Path::Owned(Value::Boolean({
+                        let left = self.execute_expression_and_expect_value(&expr_left, stack, state)?.as_bool()?;
+                        if !left {
+                            false
+                        } else {
+                            let right = self.execute_expression_and_expect_value(&expr_right, stack, state)?;
+                            right.as_bool()?
+                        }
+                    })))),
+                    Operator::Or => Ok(Some(Path::Owned(Value::Boolean({
+                        let left = self.execute_expression_and_expect_value(&expr_left, stack, state)?.as_bool()?;
+                        if !left {
+                            let right = self.execute_expression_and_expect_value(&expr_right, stack, state)?;
+                            right.as_bool()?
+                        } else {
+                            true
+                        }
+                    })))),
+                    _ => {
+                        let left = self.execute_expression_and_expect_value(&expr_left, stack, state)?;
+                        let left_handle = left.as_ref();
                         let right = self.execute_expression_and_expect_value(&expr_right, stack, state)?;
-                        let handle = right.as_ref();
-                        self.execute_operator(op, &left.as_ref(), &handle, state).map(Path::Owned).map(Some)
+                        let right_handle = right.as_ref();
+                        self.execute_operator(op, &left_handle, &right_handle, state).map(Path::Owned).map(Some)
                     }
                 }
             },
@@ -602,6 +594,27 @@ mod tests {
     #[track_caller]
     fn test_code_expect_return(code: &str, expected: u64) {
         assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
+    }
+
+    #[test]
+    fn test_self_assign() {
+        // For mutability check, we must be sure to be able to use the same variable
+        test_code_expect_return("entry main() { let a: u64 = 10; a = a; return a; }", 10);
+        test_code_expect_return("entry main() { let a: u64 = 10; a = a + a; return a; }", 20);
+    }
+
+    #[test]
+    fn test_op_assignation() {
+        test_code_expect_return("entry main() { let a: u64 = 10; a += 10; return a; }", 20);
+        test_code_expect_return("entry main() { let a: u64 = 10; a -= 10; return a; }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; a *= 10; return a; }", 100);
+        test_code_expect_return("entry main() { let a: u64 = 10; a /= 10; return a; }", 1);
+        test_code_expect_return("entry main() { let a: u64 = 10; a %= 10; return a; }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; a &= 10; return a; }", 10);
+        test_code_expect_return("entry main() { let a: u64 = 10; a |= 10; return a; }", 10);
+        test_code_expect_return("entry main() { let a: u64 = 10; a ^= 10; return a; }", 0);
+        test_code_expect_return("entry main() { let a: u64 = 10; a <<= 10; return a; }", 10240);
+        test_code_expect_return("entry main() { let a: u64 = 10; a >>= 10; return a; }", 0);
     }
 
     #[test]
