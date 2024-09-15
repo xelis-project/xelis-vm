@@ -104,15 +104,50 @@ impl<'a> Lexer<'a> {
     }
 
     // try to parse a slice of string as a token using n+1 characters
-    fn try_token_with(&self, n: usize) -> Option<TokenResult<'a>> {
-        let slice = self.input.get(self.pos - 1..self.pos + n)?;
+    fn find_potential_token(&self) -> Option<(TokenResult<'a>, usize)> {
+        let slice = self.input.get(self.pos - 1..)?;
+        let alone_special_chars = &[':', '(', ')', '[', ']', '{', '}', ',', ';', '.', '?'];
+
+        let mut is_alphanumeric = true;
+        let mut is_special = true;
+        let mut end_index = 0;
+        for (i, s) in slice.chars().enumerate() {
+            if alone_special_chars.contains(&s) {
+                break;
+            }
+
+            if is_alphanumeric {
+                is_alphanumeric = s.is_alphanumeric();
+            }
+
+            if is_special {
+                if is_alphanumeric {
+                    is_special = false;
+                } else {
+                    is_special = !s.is_alphanumeric();
+                }
+            }
+
+            if s.is_whitespace() {
+                break;
+            }
+
+            if !is_alphanumeric && !is_special {    
+                break;
+            }
+
+            end_index = i;
+        }
+
+        let slice = slice.get(..=end_index)?;
+
         let token = Token::value_of(slice);
-        token.map(|t| TokenResult {
+        token.map(|t| (TokenResult {
             token: t,
             line: self.line,
             column_start: self.column,
-            column_end: self.column + n
-        })
+            column_end: self.column + end_index
+        }, end_index))
     }
 
     // read characters while the delimiter is true
@@ -340,13 +375,8 @@ impl<'a> Lexer<'a> {
                 _ => {
                     // TODO: refactor this part
                     // We must check token with the next character because of operations with assignations
-                    if let Some(token) = self.try_token_with(2) {
-                        self.advance_by(2)?;
-                        token
-                    } else if let Some(token) = self.try_token_with(1) {
-                        self.advance()?;
-                        token
-                    } else if let Some(token) = self.try_token_with(0) {
+                    if let Some((token, diff)) = self.find_potential_token() {
+                        self.advance_by(diff)?;
                         token
                     } else {
                         return Err(LexerError::NoTokenFound(self.line, self.column));
