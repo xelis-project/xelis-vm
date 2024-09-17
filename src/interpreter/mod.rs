@@ -107,6 +107,7 @@ macro_rules! execute_foreach {
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    MissingValueOnStack,
     StackError,
     Unknown,
     NoReturnValue,
@@ -149,6 +150,12 @@ pub enum InterpreterError {
     InvalidCastType(Type),
 }
 
+enum ExprHelper<'a> {
+    Expr(&'a Expression),
+    // Index
+    ArrayCall(&'a Expression)
+}
+
 // The interpreter structure can be reused to execute multiple times the program
 pub struct Interpreter<'a> {
     // Program to execute
@@ -181,25 +188,44 @@ impl<'a> Interpreter<'a> {
     }
 
     // Get a mutable reference to a value so we can update its content
-    fn get_from_path(&'a self, ref_value: Option<Path<'a>>, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
-        match path {
-            Expression::ArrayCall(expr, expr_index) => {
-                let v = self.execute_expression_and_expect_value(expr_index, stack, state)?;
-                let index = v.as_u64()? as usize;
-                let array = self.get_from_path(ref_value, expr, stack, state)?;
-                array.get_index_at(index)
-            },
-            Expression::Path(left, right) => {
-                let left_value = self.get_from_path(ref_value, left, stack, state)?;
-                self.get_from_path(Some(left_value), right, stack, state)
-            },
-            Expression::Variable(name) => Ok(match ref_value {
-                Some(v) => v.get_sub_variable(name)?,
-                None => stack.get_variable_path(name)?
-            }),
-            Expression::FunctionCall(_, _, _) => self.execute_expression_and_expect_value(path, stack, state),
-            e => Err(InterpreterError::ExpectedPath(e.clone()))
+    fn get_from_path(&'a self, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
+        let mut local_stack: Vec<ExprHelper<'a>> = vec![ExprHelper::Expr(path)];
+        let mut local_result: Vec<Path<'a>> = Vec::new();
+
+        while let Some(h) = local_stack.pop() {
+            match h {
+                ExprHelper::Expr(expr) => match expr {
+                    Expression::Path(left, right) => {
+                        local_stack.push(ExprHelper::Expr(right));
+                        local_stack.push(ExprHelper::Expr(left));
+                    },
+                    Expression::ArrayCall(expr, expr_index) => {
+                        local_stack.push(ExprHelper::ArrayCall(expr_index));
+                        local_stack.push(ExprHelper::Expr(expr));
+                    },
+                    Expression::Variable(name) => {
+                        let inner_value = match local_result.pop() {
+                            Some(v) => v.get_sub_variable(name)?,
+                            None => stack.get_variable_path(name)?
+                        };
+    
+                        local_result.push(inner_value);
+                    },
+                    Expression::FunctionCall(_, _, _) => {
+                        let value = self.execute_expression_and_expect_value(expr, stack, state)?;
+                        local_result.push(value);
+                    },
+                    e => return Err(InterpreterError::ExpectedPath(e.clone()))
+                },
+                ExprHelper::ArrayCall(index) => {
+                    let index = self.execute_expression_and_expect_value(index, stack, state)?.as_u64()?;
+                    let on_value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
+                    local_result.push(on_value.get_index_at(index as usize)?);
+                }
+            }
         }
+
+        local_result.pop().ok_or(InterpreterError::MissingValueOnStack)
     }
 
     // Execute the selected operator
@@ -251,7 +277,7 @@ impl<'a> Interpreter<'a> {
             Expression::FunctionCall(path, name, parameters) => {
                 let mut values = Vec::with_capacity(parameters.len());
                 let on_value = match path {
-                    Some(path) => Some(self.get_from_path(None, path, stack, state)?),
+                    Some(path) => Some(self.get_from_path(path, stack, state)?),
                     None => None,
                 };
 
@@ -303,7 +329,7 @@ impl<'a> Interpreter<'a> {
                 match op {
                     Operator::Assign(op) => {
                         let value = self.execute_expression_and_expect_value(expr_right, stack, state)?;
-                        let mut path = self.get_from_path(None, expr_left, stack, state)?;
+                        let mut path = self.get_from_path(expr_left, stack, state)?;
 
                         if let Some(op) = op {
                             let result = self.execute_operator(&op, &path.as_ref(), &value.as_ref(), state)?;
@@ -352,7 +378,7 @@ impl<'a> Interpreter<'a> {
                     _ => return Err(InterpreterError::InvalidType(cast_type.clone()))
                 })))
             },
-            expr => Ok(Some(self.get_from_path(None, expr, stack, state)?)),
+            expr => Ok(Some(self.get_from_path(expr, stack, state)?)),
         }
     }
 
@@ -682,6 +708,7 @@ mod tests {
 
     #[test]
     fn test_array() {
+        test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u64 = 0; return a[b]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[2]; }", 3);
