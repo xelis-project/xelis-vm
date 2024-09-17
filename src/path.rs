@@ -107,6 +107,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn into_owned(self) -> Value {
         match self {
             Self::Owned(v) => v,
@@ -115,6 +116,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn as_ref<'b>(&'b self) -> ValueHandle<'b> {
         match self {
             Self::Owned(v) => ValueHandle::Borrowed(v),
@@ -123,6 +125,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn as_mut<'b: 'a>(&'b mut self) -> ValueHandleMut<'b> {
         match self {
             Self::Owned(v) => ValueHandleMut::Borrowed(v),
