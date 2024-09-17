@@ -43,16 +43,19 @@ impl State {
     }
 
     // increment the number of expressions executed
+    #[inline(always)]
     pub fn increase_expressions_executed(&mut self) -> Result<(), InterpreterError> {
         self.increase_expressions_executed_by(1)
     }
 
     // decrement the number of expressions executed
+    #[inline(always)]
     pub fn decrease_expressions_executed(&mut self) {
         self.count_expr -= 1;
     }
 
     // get the number of expressions executed
+    #[inline(always)]
     pub fn get_expressions_executed(&self) -> u64 {
         self.count_expr
     }
@@ -84,16 +87,19 @@ impl State {
     }
 
     // Get the total gas used by the program
+    #[inline(always)]
     pub fn get_gas_usage(&self) -> u64 {
         self.gas_usage
     }
 
     // decrement the number of recursive calls
+    #[inline(always)]
     pub fn decrease_recursive_depth(&mut self) {
         self.recursive -= 1;
     }
 
     // Reset the state
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.count_expr = 0;
         self.recursive = 0;

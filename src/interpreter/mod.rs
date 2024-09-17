@@ -273,6 +273,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    #[inline(always)]
     fn execute_expression_and_expect_value(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
         match self.execute_expression(expr, stack, state)? {
             Some(val) => Ok(val),
