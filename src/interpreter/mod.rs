@@ -189,6 +189,14 @@ impl<'a> Interpreter<'a> {
 
     // Get a mutable reference to a value so we can update its content
     fn get_from_path(&'a self, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
+        // Fast path on no-depth expressions       
+        match path {
+            Expression::Variable(name) => return stack.get_variable_path(name),
+            Expression::Value(v) => return Ok(Path::Borrowed(v)),
+            Expression::FunctionCall(_, _, _) => return self.execute_expression_and_expect_value(path, stack, state),
+            _ => ()
+        };
+
         let mut local_stack: Vec<ExprHelper<'a>> = vec![ExprHelper::Expr(path)];
         let mut local_result: Option<Path<'a>> = None;
 
@@ -210,6 +218,9 @@ impl<'a> Interpreter<'a> {
                         };
     
                         local_result = Some(inner_value);
+                    },
+                    Expression::Value(v) => {
+                        local_result = Some(Path::Borrowed(v));
                     },
                     Expression::FunctionCall(_, _, _) => {
                         let value = self.execute_expression_and_expect_value(expr, stack, state)?;
