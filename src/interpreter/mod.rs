@@ -709,6 +709,8 @@ mod tests {
     #[test]
     fn test_array() {
         test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u64 = 0; return a[b]; }", 1);
+        test_code_expect_return("func test(): u64[] { return [0, 1, 2]; } entry main() { let b: u64 = 0; return test()[b]; }", 0);
+
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[2]; }", 3);
