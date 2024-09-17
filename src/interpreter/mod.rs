@@ -190,7 +190,7 @@ impl<'a> Interpreter<'a> {
     // Get a mutable reference to a value so we can update its content
     fn get_from_path(&'a self, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
         let mut local_stack: Vec<ExprHelper<'a>> = vec![ExprHelper::Expr(path)];
-        let mut local_result: Vec<Path<'a>> = Vec::new();
+        let mut local_result: Option<Path<'a>> = None;
 
         while let Some(h) = local_stack.pop() {
             match h {
@@ -204,28 +204,28 @@ impl<'a> Interpreter<'a> {
                         local_stack.push(ExprHelper::Expr(expr));
                     },
                     Expression::Variable(name) => {
-                        let inner_value = match local_result.pop() {
+                        let inner_value = match local_result.take() {
                             Some(v) => v.get_sub_variable(name)?,
                             None => stack.get_variable_path(name)?
                         };
     
-                        local_result.push(inner_value);
+                        local_result = Some(inner_value);
                     },
                     Expression::FunctionCall(_, _, _) => {
                         let value = self.execute_expression_and_expect_value(expr, stack, state)?;
-                        local_result.push(value);
+                        local_result = Some(value);
                     },
                     e => return Err(InterpreterError::ExpectedPath(e.clone()))
                 },
                 ExprHelper::ArrayCall(index) => {
                     let index = self.execute_expression_and_expect_value(index, stack, state)?.as_u64()?;
-                    let on_value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-                    local_result.push(on_value.get_index_at(index as usize)?);
+                    let on_value = local_result.take().ok_or(InterpreterError::MissingValueOnStack)?;
+                    local_result = Some(on_value.get_index_at(index as usize)?);
                 }
             }
         }
 
-        local_result.pop().ok_or(InterpreterError::MissingValueOnStack)
+        local_result.take().ok_or(InterpreterError::MissingValueOnStack)
     }
 
     // Execute the selected operator
