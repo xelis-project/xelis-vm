@@ -13,6 +13,7 @@ pub enum ValueHandleMut<'a> {
 }
 
 impl<'a> ValueHandle<'a> {
+    #[inline(always)]
     pub fn as_value(&self) -> &Value {
         match self {
             Self::Borrowed(v) => v,
@@ -22,6 +23,7 @@ impl<'a> ValueHandle<'a> {
 }
 
 impl<'a> ValueHandleMut<'a> {
+    #[inline(always)]
     pub fn as_value(&self) -> &Value {
         match self {
             Self::Borrowed(v) => v,
@@ -29,6 +31,7 @@ impl<'a> ValueHandleMut<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn as_value_mut(&mut self) -> &mut Value {
         match self {
             Self::Borrowed(v) => v,
