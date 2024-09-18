@@ -1,8 +1,7 @@
 mod stack;
 mod state;
 mod error;
-
-pub use error::InterpreterError;
+mod path;
 
 use crate::{
     environment::Environment,
@@ -13,7 +12,6 @@ use crate::{
         Parameter,
         FunctionType
     },
-    path::Path,
     parser::Program,
     types::*,
     values::Value,
@@ -22,7 +20,9 @@ use crate::{
     NoOpHasher
 };
 use stack::Stack;
+pub use path::Path;
 pub use state::State;
+pub use error::InterpreterError;
 use std::{cell::RefCell, hash::BuildHasherDefault, rc::Rc};
 
 // Enum helper for the execute_for_each_statements function

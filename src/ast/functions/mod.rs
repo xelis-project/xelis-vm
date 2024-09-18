@@ -4,7 +4,7 @@ mod declared;
 pub use declared::{DeclaredFunction, EntryFunction};
 pub use native::NativeFunction;
 
-use crate::{types::Type, values::Value, path::Path, IdentifierType, InterpreterError};
+use crate::{types::Type, values::Value, interpreter::Path, IdentifierType, InterpreterError};
 
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call

@@ -5,7 +5,6 @@ mod lexer;
 mod types;
 mod values;
 mod handle;
-mod path;
 
 pub mod ast;
 

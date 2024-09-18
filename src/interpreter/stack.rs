@@ -1,4 +1,5 @@
-use crate::{IdentifierType, InterpreterError, path::Path};
+use crate::IdentifierType;
+use super::{InterpreterError, Path};
 
 #[derive(Debug)]
 pub struct Stack<'a> {
