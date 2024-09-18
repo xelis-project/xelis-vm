@@ -16,7 +16,8 @@ pub use crate::{
     types::Type,
     interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
-    lexer::{Lexer, LexerError}
+    lexer::{Lexer, LexerError},
+    values::Value,
 };
 
 // Variable identifier used in the parser and interpreter
