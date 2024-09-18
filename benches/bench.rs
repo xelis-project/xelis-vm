@@ -17,13 +17,13 @@ fn bench_lexer(c: &mut Criterion) {
 fn bench_parser(c: &mut Criterion) {
     let tokens = Lexer::new(CODE).get().unwrap();
     let env = EnvironmentBuilder::new();
-    c.bench_function("parser", |b| b.iter(|| Parser::new(None, tokens.clone(), &env).parse().unwrap()));
+    c.bench_function("parser", |b| b.iter(|| Parser::new(tokens.clone(), &env).parse().unwrap()));
 }
 
 fn bench_vm(c: &mut Criterion) {
     let tokens = Lexer::new(CODE).get().unwrap();
     let env = EnvironmentBuilder::new();
-    let (program, mapper) = Parser::new(None, tokens, &env).parse().unwrap();
+    let (program, mapper) = Parser::new(tokens, &env).parse().unwrap();
     let vm = VM::new(&program, env.environment()).unwrap();
     let mut state = State::new(None, Some(100), None);
     let signature = Signature::new("main".to_owned(), None, Vec::new());

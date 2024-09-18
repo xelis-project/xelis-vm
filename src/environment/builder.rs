@@ -1,6 +1,8 @@
+use std::borrow::Cow;
+
 use crate::{
     ast::{NativeFunction, OnCallFn, Operator, Signature},
-    parser::FunctionMapper,
+    parser::{FunctionMapper, IdMapper, Mapper, StructBuilder, StructManager},
     types::Type,
     NoHashMap,
 };
@@ -12,6 +14,7 @@ use super::{std as xstd, Environment};
 // and import files by the user
 pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
+    struct_manager: StructManager<'a>,
     env: Environment
 }
 
@@ -20,6 +23,7 @@ impl<'a> EnvironmentBuilder<'a> {
     pub fn new() -> Self {
         Self {
             functions_mapper: FunctionMapper::new(),
+            struct_manager: StructManager::new(),
             env: Environment::new()
         }
     }
@@ -36,9 +40,32 @@ impl<'a> EnvironmentBuilder<'a> {
         self.env.functions.insert(id, NativeFunction::new(for_type, parameters, on_call, cost, return_type));
     }
 
+    // Register a structure in the environment
+    pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
+        let mut mapper: Mapper<'a, Cow<'a, str>> = IdMapper::new();
+        let mut types = Vec::with_capacity(fields.len());
+        for (field_name, field_type) in fields {
+            mapper.register(Cow::Borrowed(field_name)).unwrap();
+            types.push(field_type);
+        }
+
+        let builder = StructBuilder {
+            fields: types,
+            mapper
+        };
+
+        let (id, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();
+        self.env.structures.insert(id, s);
+    }
+
     // functions mapper, used to find the function id
     pub fn get_functions_mapper(&self) -> &FunctionMapper {
         &self.functions_mapper
+    }
+
+    // struct manager, used to find the struct id
+    pub fn get_struct_manager(&self) -> &StructManager {
+        &self.struct_manager
     }
 
     // all registered functions

@@ -68,7 +68,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub(crate) fn from_token(s: Token, struct_manager: &StructManager) -> Option<Self> {
+    pub(crate) fn from_token(s: &Token, struct_manager: &StructManager) -> Option<Self> {
         let value: Self = match s {
             Token::U8 => Type::U8,
             Token::U16 => Type::U16,
@@ -77,7 +77,7 @@ impl Type {
             Token::U128 => Type::U128,
             Token::Bool => Type::Bool,
             Token::String => Type::String,
-            Token::Optional(token) => Type::Optional(Box::new(Type::from_token(*token, struct_manager)?)),
+            Token::Optional(token) => Type::Optional(Box::new(Type::from_token(token, struct_manager)?)),
             Token::Identifier(s) => {
                 if let Ok(id) = struct_manager.get_mapping(&s) {
                     Type::Struct(id)

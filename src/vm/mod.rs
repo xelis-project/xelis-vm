@@ -681,7 +681,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         let builder = EnvironmentBuilder::default();
-        let parser = Parser::new(None, tokens, &builder);
+        let parser = Parser::new(tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
 
         let mut state = State::new(None, None, None);
@@ -696,6 +696,17 @@ mod tests {
     #[track_caller]
     fn test_code_expect_return(code: &str, expected: u64) {
         assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
+    }
+
+    #[test]
+    fn test_no_stackoverflow() {
+        // let code = "entry main() { let a: u64 = 0; for i: u64 = 0; i < 100000; i += 1 { a += i; } return a; }";
+        // test_code_expect_return(code, 4999950000);
+
+        let mut code = "entry main() { let a: u64 = 1; return ".to_string();
+        code.push_str("a + a + ".repeat(10000).as_str());
+        code.push_str("a; }");
+        test_code_expect_return(code.as_str(), 4999950000);
     }
 
     #[test]

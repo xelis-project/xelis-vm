@@ -2,7 +2,9 @@ use xelis_vm::{
     ast::Signature, EnvironmentBuilder, VM, Lexer, Parser, State
 };
 use std::{
-    env, fs, path::Path, time::Instant
+    env,
+    fs,
+    time::Instant
 };
 
 fn main() {
@@ -26,8 +28,8 @@ fn main() {
 
     // Build the program
     start = Instant::now();
-    let path = Path::new(file).parent().map(|p| p.to_str()).flatten();
-    let (program, mapper) = Parser::new(path, tokens, &builder).parse().unwrap();
+    // let path = Path::new(file).parent().map(|p| p.to_str()).flatten();
+    let (program, mapper) = Parser::new(tokens, &builder).parse().unwrap();
     println!("Parser: {:?}", start.elapsed());
 
     // Create the VM instance

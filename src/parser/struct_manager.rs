@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use crate::{types::{Struct, Type}, IdentifierType, NoHashMap, ParserError};
+use crate::{types::{HasKey, Struct, Type}, IdentifierType, NoHashMap, ParserError};
 use super::IdMapper;
 
 #[derive(Debug, Clone)]
@@ -10,6 +10,7 @@ pub struct StructBuilder<'a> {
 }
 
 pub struct StructManager<'a> {
+    parent: Option<&'a StructManager<'a>>,
     // All structs registered in the manager
     structures: NoHashMap<StructBuilder<'a>>,
     // mapper to map each string name into a unique identifier
@@ -20,19 +21,22 @@ impl<'a> StructManager<'a> {
     // Create a new struct manager
     pub fn new() -> Self {
         StructManager {
+            parent: None,
             structures: HashMap::default(),
             mapper: IdMapper::new()
         }
     }
 
-    // Get all the names of the structures
-    pub fn inner(&self) -> &NoHashMap<StructBuilder> {
-        &self.structures
+    pub fn with_parent(parent: &'a StructManager<'a>) -> Self {
+        StructManager {
+            parent: Some(parent),
+            structures: HashMap::default(),
+            mapper: IdMapper::with_parent(&parent.mapper)
+        }
     }
 
     // register a new struct in the manager
-    pub fn add(&mut self, name: String, builder: StructBuilder<'a>) -> Result<(), ParserError<'a>> {
-        let name = Cow::Owned(name);
+    pub fn add(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(), ParserError<'a>> {
         if self.mapper.has_variable(&name) {
             return Err(ParserError::StructNameAlreadyUsed(name.into_owned()));
         }
@@ -43,13 +47,27 @@ impl<'a> StructManager<'a> {
         Ok(())
     }
 
-    // Check if a struct exists
-    pub fn has(&self, name: &IdentifierType) -> bool {
-        self.structures.contains_key(name)
+    // Same as `add` but returns its identifier and the final struct
+    pub fn build_struct(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(IdentifierType, Struct), ParserError<'a>> {
+        if self.mapper.has_variable(&name) {
+            return Err(ParserError::StructNameAlreadyUsed(name.into_owned()));
+        }
+
+        let id = self.mapper.register(name)?;
+        let s = Struct { fields: builder.fields.clone() };
+        self.structures.insert(id, builder);
+
+        Ok((id, s))
     }
 
     // Get the mapping of a struct by name
     pub fn get_mapping(&self, name: &str) -> Result<IdentifierType, ParserError<'a>> {
+        if let Some(parent) = self.parent {
+            if let Ok(id) = parent.get_mapping(name) {
+                return Ok(id);
+            }
+        }
+
         self.mapper.get(name)
     }
 
@@ -61,5 +79,17 @@ impl<'a> StructManager<'a> {
     // Convert the struct manager into a hashmap of structs
     pub fn finalize(self) -> NoHashMap<Struct> {
         self.structures.into_iter().map(|(k, v)| (k, Struct { fields: v.fields })).collect()
+    }
+}
+
+impl HasKey<IdentifierType> for StructManager<'_> {
+    fn has(&self, key: &IdentifierType) -> bool {
+        if let Some(parent) = self.parent {
+            if parent.has(key) {
+                return true;
+            }
+        }
+
+        self.structures.contains_key(key)
     }
 }

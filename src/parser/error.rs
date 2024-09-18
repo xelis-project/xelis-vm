@@ -24,7 +24,7 @@ pub enum ParserError<'a> {
     ExpectedIdentifierToken(Token<'a>),
     UnexpectedToken(Token<'a>),
     InvalidToken(Token<'a>, Token<'a>),
-    TypeNotFound,
+    TypeNotFound(Token<'a>),
     NoIfBeforeElse,
     StructNameAlreadyUsed(String),
     VariableNameAlreadyUsed(String),

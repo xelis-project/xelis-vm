@@ -13,7 +13,7 @@ pub use mapper::{FunctionMapper, IdMapper, Mapper};
 
 use crate::{
     ast::*,
-    types::{Struct, Type},
+    types::{HasKey, Struct, Type},
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
@@ -58,11 +58,11 @@ pub struct Parser<'a> {
     // Environment contains all the library linked to the program
     env: &'a EnvironmentBuilder<'a>,
     // TODO: Path to use to import files
-    _path: Option<&'a str>
+    // _path: Option<&'a str>
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(path: Option<&'a str>, tokens: VecDeque<Token<'a>>, env: &'a EnvironmentBuilder) -> Self {
+    pub fn new(tokens: VecDeque<Token<'a>>, env: &'a EnvironmentBuilder) -> Self {
         let functions_mapper = FunctionMapper::with_parent(env.get_functions_mapper());
 
         Parser {
@@ -70,9 +70,8 @@ impl<'a> Parser<'a> {
             constants: HashSet::new(),
             functions: NoHashMap::default(),
             functions_mapper,
-            struct_manager: StructManager::new(),
-            env,
-            _path: path
+            struct_manager: StructManager::with_parent(env.get_struct_manager()),
+            env
         }
     }
 
@@ -130,9 +129,9 @@ impl<'a> Parser<'a> {
      */
     fn read_type(&mut self) -> Result<Type, ParserError<'a>> {
         let token = self.advance()?;
-        let mut _type = match Type::from_token(token, &self.struct_manager) {
+        let mut _type = match Type::from_token(&token, &self.struct_manager) {
             Some(v) => v,
-            None => return Err(ParserError::TypeNotFound)
+            None => return Err(ParserError::TypeNotFound(token))
         };
 
         // support multi dimensional arrays
@@ -218,7 +217,7 @@ impl<'a> Parser<'a> {
                 }
             },
             // we have to clone everything due to this
-            Expression::Value(ref val) => match Type::from_value(val, self.struct_manager.inner()) {
+            Expression::Value(ref val) => match Type::from_value(val, &self.struct_manager) {
                 Some(v) => Cow::Owned(v),
                 None => return Ok(None)
             },
@@ -1123,7 +1122,7 @@ impl<'a> Parser<'a> {
                 Token::Entry => self.read_function(true, &mut context, &constants_mapper)?,
                 Token::Struct => {
                     let (name, builder) = self.read_struct()?;
-                    self.struct_manager.add(name.to_owned(), builder)?;
+                    self.struct_manager.add(Cow::Borrowed(name), builder)?;
                 },
                 token => return Err(ParserError::UnexpectedToken(token))
             };
@@ -1134,5 +1133,78 @@ impl<'a> Parser<'a> {
             structures: self.struct_manager.finalize(),
             functions: self.functions,
         }, self.functions_mapper))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[track_caller]
+    fn test_parser(tokens: Vec<Token>) -> Program {
+        let env = EnvironmentBuilder::new();
+        test_parser_with_env(tokens, &env)
+    }
+    
+    #[track_caller]
+    fn test_parser_with_env(tokens: Vec<Token>, env: &EnvironmentBuilder) -> Program {
+        let parser = Parser::new(VecDeque::from(tokens), env);
+        let (program, _) = parser.parse().unwrap();
+        program
+    }
+
+    #[test]
+    fn test_function() {
+        let tokens = vec![
+            Token::Function,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Return,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_entry_function() {
+        let tokens = vec![
+            Token::Entry,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Return,
+            Token::U64Value(0),
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_function_on_type() {
+        // func (f Foo) bar() {}
+        let tokens = vec![
+            Token::Function,
+            Token::ParenthesisOpen,
+            Token::Identifier("f"),
+            Token::Identifier("Foo"),
+            Token::ParenthesisClose,
+            Token::Identifier("bar"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let mut env = EnvironmentBuilder::new();
+        env.register_structure("Foo", Vec::new());
+        let program = test_parser_with_env(tokens, &env);
+        assert_eq!(program.functions.len(), 1);
     }
 }
