@@ -2,7 +2,6 @@ use crate::{
     parser::StructManager,
     values::Value,
     IdentifierType,
-    NoHashMap,
     ast::Token
 };
 use std::{
@@ -13,7 +12,7 @@ use std::{
 // Represents a struct in the language
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
-    pub fields: NoHashMap<Type>
+    pub fields: Vec<Type>
 }
 
 pub struct RefMap<'a, K, V, S = RandomState> {

@@ -4,7 +4,7 @@ use crate::{mapper::IdMapper, types::{Struct, Type}, IdentifierType, NoHashMap, 
 
 #[derive(Debug, Clone)]
 pub struct StructBuilder<'a> {
-    pub fields: NoHashMap<Type>,
+    pub fields: Vec<Type>,
     pub mapper: IdMapper<'a>
 }
 

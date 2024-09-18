@@ -2,8 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     handle::{ValueHandle, ValueHandleMut},
-    values::Value,
-    IdentifierType
+    values::Value
 };
 use super::InterpreterError;
 
@@ -43,10 +42,11 @@ impl<'a> Path<'a> {
         }
     }
 
-    pub fn get_index_at(self, index: usize) -> Result<Path<'a>, InterpreterError> {
+    // Get the sub value of the path
+    pub fn get_sub_variable(self, index: usize) -> Result<Path<'a>, InterpreterError> {
         match self {
             Self::Owned(v) => {
-                let mut values = v.to_vec()?;
+                let mut values = v.to_sub_vec()?;
                 let len = values.len();
                 if index >= len {
                     return Err(InterpreterError::OutOfBounds(index, len))
@@ -56,7 +56,7 @@ impl<'a> Path<'a> {
                 Ok(Path::Wrapper(at_index))
             },
             Self::Borrowed(v) => {
-                let values = v.as_vec()?;
+                let values = v.as_sub_vec()?;
                 let len = values.len();
                 let at_index = values
                     .get(index)
@@ -66,43 +66,13 @@ impl<'a> Path<'a> {
             },
             Self::Wrapper(v) => {
                 let mut values = v.borrow_mut();
-                let values = values.as_mut_vec()?;
+                let values = values.as_mut_sub_vec()?;
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)
                     .ok_or_else(|| InterpreterError::OutOfBounds(index, len))?;
 
                 Ok(Path::Wrapper(at_index.clone()))
-            }
-        }
-    }
-
-    pub fn get_sub_variable(self, name: &IdentifierType) -> Result<Path<'a>, InterpreterError> {
-        match self {
-            Self::Owned(v) => {
-                let mut values = v.to_map()?;
-                let sub_value = values
-                    .remove(name)
-                    .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?;
-
-                Ok(Path::Wrapper(sub_value.clone()))
-            },
-            Self::Borrowed(v) => {
-                let values = v.as_map()?;
-                let sub_value = values
-                    .get(name)
-                    .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?;
-
-                Ok(Path::Wrapper(sub_value.clone()))
-            },
-            Self::Wrapper(v) => {
-                let mut values = v.borrow_mut();
-                let values = values.as_mut_map()?;
-                let sub_value = values
-                    .get_mut(name)
-                    .ok_or_else(|| InterpreterError::VariableNotFound(name.clone()))?;
-
-                Ok(Path::Wrapper(sub_value.clone()))
             }
         }
     }

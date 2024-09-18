@@ -171,8 +171,9 @@ impl<'a> Parser<'a> {
                 Some(t) => {
                     if let Type::Struct(struct_name) = t {
                         let structure = self.struct_manager.get(struct_name)?;
-                        if structure.fields.contains_key(var_name) {
-                            Cow::Borrowed(structure.fields.get(var_name).ok_or_else(|| ParserError::UnexpectedMappedVariableId(*var_name))?)
+                        let index = *var_name as usize;
+                        if let Some(value) = structure.fields.get(index) {
+                            Cow::Borrowed(value)
                         } else {
                             return Err(ParserError::UnexpectedMappedVariableId(var_name.clone()))
                         }
@@ -326,8 +327,8 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_name: IdentifierType, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
         self.expect_token(Token::BraceOpen)?;
         let structure = self.struct_manager.get(&struct_name)?.clone();
-        let mut fields = NoHashMap::default();
-        for (id, t) in structure.fields.iter() {
+        let mut fields = Vec::with_capacity(structure.fields.len());
+        for t in structure.fields.iter() {
             let field_name = self.next_identifier()?;
             let field_value = match self.advance()? {
                 Token::Comma => {
@@ -352,8 +353,9 @@ impl<'a> Parser<'a> {
                 return Err(ParserError::InvalidValueType(field_type.into_owned(), t.clone()))
             }
 
-            fields.insert(id.clone(), field_value);
+            fields.push(field_value);
         }
+
         self.expect_token(Token::BraceClose)?;
         Ok(Expression::StructConstructor(struct_name, fields))
     }
@@ -1061,10 +1063,15 @@ impl<'a> Parser<'a> {
 
         let mut mapper: Mapper<'a, Cow<str>> = IdMapper::new();
         self.expect_token(Token::BraceOpen)?;
-        let mut fields: NoHashMap<Type> = NoHashMap::default();
-        for param in self.read_parameters(&mut mapper)? {
-            let (name, value_type) = param.consume();
-            fields.insert(name, value_type);
+        let params = self.read_parameters(&mut mapper)?;
+        let mut fields: Vec<Type> = Vec::with_capacity(params.len());
+        for (i, param) in params.into_iter().enumerate() {
+            let (id, value_type) = param.consume();
+            if i != id as usize {
+                return Err(ParserError::InvalidStructFieldOrder)
+            }
+
+            fields.push(value_type);
         }
 
         self.expect_token(Token::BraceClose)?;
