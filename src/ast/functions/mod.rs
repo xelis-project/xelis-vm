@@ -79,26 +79,48 @@ impl Signature {
 }
 
 #[derive(Debug)]
-pub enum FunctionType {
+pub enum Function {
     Native(NativeFunction),
     Declared(DeclaredFunction),
     Entry(EntryFunction)
 }
 
-impl FunctionType {
+#[derive(Debug)]
+pub enum DeclaredFunctionType {
+    Declared(DeclaredFunction),
+    Entry(EntryFunction)
+}
+
+impl DeclaredFunctionType {
+    pub fn is_entry(&self) -> bool {
+        match &self {
+            DeclaredFunctionType::Entry(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn return_type(&self) -> &Option<Type> {
+        match &self {
+            DeclaredFunctionType::Declared(f) => f.get_return_type(),
+            DeclaredFunctionType::Entry(_) => &None
+        }
+    }
+}
+
+impl Function {
     // Get the returned type of the function
     pub fn return_type(&self) -> &Option<Type> {
         match &self {
-            FunctionType::Native(ref f) => &f.get_return_type(),
-            FunctionType::Declared(ref f) => &f.get_return_type() ,
-            FunctionType::Entry(_) => &None
+            Function::Native(ref f) => &f.get_return_type(),
+            Function::Declared(ref f) => &f.get_return_type() ,
+            Function::Entry(_) => &None
         }
     }
 
     // Is this function an entry function
     pub fn is_entry(&self) -> bool {
         match &self {
-            FunctionType::Entry(_) => true,
+            Function::Entry(_) => true,
             _ => false
         }
     }

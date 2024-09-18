@@ -41,7 +41,7 @@ pub struct Program {
     // All structures declared
     pub structures: NoHashMap<Struct>,
     // All functions declared
-    pub functions: NoHashMap<FunctionType>
+    pub functions: NoHashMap<DeclaredFunctionType>
 }
 
 pub struct Parser<'a> {
@@ -50,7 +50,7 @@ pub struct Parser<'a> {
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
-    functions: NoHashMap<FunctionType>,
+    functions: NoHashMap<DeclaredFunctionType>,
     // Functions mapper
     functions_mapper: FunctionMapper<'a>,
     // Struct manager
@@ -192,8 +192,8 @@ impl<'a> Parser<'a> {
                 }
             },
             Expression::FunctionCall(path, name, _) => {
-                let func = self.get_function(name)?;
-                match &func.return_type() {
+                let return_type = self.get_function_return_type(name)?;
+                match return_type {
                     Some(ref v) => match v {
                         Type::T => match on_type {
                             Some(t) => Cow::Owned(t.get_inner_type().clone()),
@@ -312,9 +312,9 @@ impl<'a> Parser<'a> {
         }
 
         let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types))?;
-        let func = self.get_function(&id)?;
+
         // Entry are only callable by external
-        if func.is_entry() {
+        if self.is_entry_function(&id)? {
             return Err(ParserError::FunctionNotFound(id))
         }
 
@@ -973,8 +973,8 @@ impl<'a> Parser<'a> {
         }
 
         let function = match entry {
-            true => FunctionType::Entry(EntryFunction::new(parameters, statements, mapper.count() as u16)),
-            false => FunctionType::Declared(DeclaredFunction::new(
+            true => DeclaredFunctionType::Entry(EntryFunction::new(parameters, statements, mapper.count() as u16)),
+            false => DeclaredFunctionType::Declared(DeclaredFunction::new(
                 for_type,
                 instance_name,
                 parameters,
@@ -1029,14 +1029,31 @@ impl<'a> Parser<'a> {
 
     // check if a function with the same signature exists
     fn has_function(&self, name: &IdentifierType) -> bool {
-        self.get_function(name).is_ok()
+        self.is_entry_function(name).is_ok()
     }
 
-    // get a function exist based on signature (name + params)
-    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, ParserError<'a>> {
-        match self.env.get_functions().get(name) {
-            Some(func) => Ok(func),
-            None => self.functions.get(name).ok_or(ParserError::FunctionNotFound(name.clone()))
+    // verify if a function is an entry function
+    fn is_entry_function(&self, name: &IdentifierType) -> Result<bool, ParserError<'a>> {
+        if let Some(f) = self.functions.get(name) {
+            Ok(f.is_entry())
+        } else {
+            // native functions can't be entry
+            match self.env.get_functions().get(name) {
+                Some(_) => Ok(false),
+                None => Err(ParserError::FunctionNotFound(name.clone()))
+            }
+        }
+    }
+
+    // get a function return type using its identifier
+    fn get_function_return_type(&self, name: &IdentifierType) -> Result<&Option<Type>, ParserError<'a>> {
+        if let Some(native) = self.env.get_functions().get(name) {
+            return Ok(native.return_type())
+        }
+
+        match self.functions.get(name) {
+            Some(func) => Ok(func.return_type()),
+            None => Err(ParserError::FunctionNotFound(name.clone()))
         }
     }
 

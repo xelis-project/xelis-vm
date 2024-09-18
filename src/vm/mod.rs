@@ -11,7 +11,7 @@ use crate::{
         Operator,
         Statement,
         Parameter,
-        FunctionType
+        Function
     },
     parser::Program,
     types::*,
@@ -151,11 +151,11 @@ impl<'a> VM<'a> {
             constants: None
         };
 
-        interpreter.ref_structures.link_maps(vec![interpreter.env.get_structures(), &interpreter.program.structures]);
+        interpreter.ref_structures.link_maps(&[env.get_structures(), &interpreter.program.structures]);
         Ok(interpreter)
     }
 
-    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, VMError> {
+    fn get_function(&self, name: &IdentifierType) -> Result<&Function, VMError> {
         match self.env.get_functions().get(name) {
             Some(func) => Ok(func),
             None => self.program.functions.get(name).ok_or_else(|| VMError::NoMatchingFunction)
@@ -612,9 +612,9 @@ impl<'a> VM<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&'a self, func: &'a FunctionType, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
+    fn execute_function(&'a self, func: &'a Function, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
         match func {
-            FunctionType::Native(ref f) => {
+            Function::Native(ref f) => {
                 match type_instance {
                     Some(mut v) => {
                         let mut instance = v.as_mut();
@@ -625,7 +625,7 @@ impl<'a> VM<'a> {
                     }
                 }
             },
-            FunctionType::Declared(ref f) => {
+            Function::Declared(ref f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
                     (None, None) => None,
@@ -633,7 +633,7 @@ impl<'a> VM<'a> {
                 };
                 self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
             },
-            FunctionType::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
+            Function::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
         }
     }
 

@@ -38,7 +38,7 @@ impl<'a, K, V, S: BuildHasher> RefMap<'a, K, V, S> {
         None
     }
 
-    pub fn link_maps(&mut self, maps: Vec<&'a HashMap<K, V, S>>) {
+    pub fn link_maps(&mut self, maps: &[&'a HashMap<K, V, S>]) {
         for map in maps {
             self.link_map(map);
         }

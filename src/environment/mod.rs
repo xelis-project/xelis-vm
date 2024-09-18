@@ -5,10 +5,10 @@ use ::std::{collections::HashMap, hash::BuildHasherDefault};
 
 pub use builder::EnvironmentBuilder;
 
-use crate::{ast::{FunctionType, Operator}, types::Struct, NoHashMap, NoOpHasher};
+use crate::{ast::{Function, Operator}, types::Struct, NoHashMap, NoOpHasher};
 
 pub struct Environment {
-    functions: NoHashMap<FunctionType>,
+    functions: NoHashMap<Function>,
     structures: NoHashMap<Struct>,
     operators: HashMap<Operator, u64, BuildHasherDefault<NoOpHasher>>
 }
@@ -29,7 +29,7 @@ impl Environment {
         }
     }
 
-    pub fn get_functions(&self) -> &NoHashMap<FunctionType> {
+    pub fn get_functions(&self) -> &NoHashMap<Function> {
         &self.functions
     }
 

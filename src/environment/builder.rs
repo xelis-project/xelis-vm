@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FunctionType, NativeFunction, OnCallFn, Operator, Signature},
+    ast::{Function, NativeFunction, OnCallFn, Operator, Signature},
     parser::FunctionMapper,
     types::Type,
     NoHashMap,
@@ -33,7 +33,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a native function
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
-        self.env.functions.insert(id, FunctionType::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
+        self.env.functions.insert(id, Function::Native(NativeFunction::new(for_type, parameters, on_call, cost, return_type)));
     }
 
     // functions mapper, used to find the function id
@@ -42,7 +42,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // all registered functions
-    pub fn get_functions(&self) -> &NoHashMap<FunctionType> {
+    pub fn get_functions(&self) -> &NoHashMap<Function> {
         &self.env.functions
     }
 

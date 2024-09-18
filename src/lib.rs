@@ -1,9 +1,10 @@
-mod environment;
-mod vm;
-mod parser;
 mod lexer;
 mod types;
 mod values;
+mod parser;
+mod environment;
+mod compiler;
+mod vm;
 
 pub mod ast;
 
