@@ -1,5 +1,5 @@
 use crate::{
-    interpreter::{InterpreterError, State},
+    vm::{VMError, State},
     types::Type,
     values::Value,
 };
@@ -29,16 +29,16 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, VMError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
-            return Err(InterpreterError::InvalidNativeFunctionCall)
+            return Err(VMError::InvalidNativeFunctionCall)
         }
 
         state.increase_gas_usage(self.cost)?;
 
         let instance = match instance_value {
             Some(v) => Ok(v),
-            None => Err(InterpreterError::NativeFunctionExpectedInstance)
+            None => Err(VMError::NativeFunctionExpectedInstance)
         };
         (self.on_call)(instance, parameters)
     }

@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub enum InterpreterError {
+pub enum VMError {
     SubValue,
     Panic(Value),
     MissingValueOnStack,

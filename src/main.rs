@@ -1,5 +1,5 @@
 use xelis_vm::{
-    ast::Signature, EnvironmentBuilder, Interpreter, Lexer, Parser, State
+    ast::Signature, EnvironmentBuilder, VM, Lexer, Parser, State
 };
 use std::{
     env, fs, path::Path, time::Instant
@@ -31,7 +31,7 @@ fn main() {
     println!("Parser: {:?}", start.elapsed());
 
     // Create the VM instance
-    let mut vm = Interpreter::new(&program, builder.environment()).unwrap();
+    let mut vm = VM::new(&program, builder.environment()).unwrap();
     let mut state = State::new(None, Some(100), None);
     vm.compute_constants(&mut state).unwrap();
 

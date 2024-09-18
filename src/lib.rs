@@ -1,5 +1,5 @@
 mod environment;
-mod interpreter;
+mod vm;
 mod parser;
 mod lexer;
 mod types;
@@ -12,7 +12,7 @@ use std::{collections::HashMap, hash::{BuildHasherDefault, Hasher}};
 pub use crate::{
     environment::{Environment, EnvironmentBuilder},
     types::Type,
-    interpreter::{Interpreter, InterpreterError, State},
+    vm::{VM, VMError, State},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError},
     values::Value,

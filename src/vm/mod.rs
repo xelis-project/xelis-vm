@@ -23,7 +23,7 @@ use crate::{
 use stack::Stack;
 pub use path::Path;
 pub use state::State;
-pub use error::InterpreterError;
+pub use error::VMError;
 use std::{cell::RefCell, hash::BuildHasherDefault, rc::Rc};
 
 // Enum helper for the execute_for_each_statements function
@@ -40,7 +40,7 @@ macro_rules! op {
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            _ => return Err(InterpreterError::OperationNotNumberType)
+            _ => return Err(VMError::OperationNotNumberType)
         }
     }};
 }
@@ -49,7 +49,7 @@ macro_rules! op_div {
     ($t: ident, $a: expr, $b: expr) => {
         {
             if *$b == 0 {
-                return Err(InterpreterError::DivByZero)
+                return Err(VMError::DivByZero)
             }
     
             Value::$t($a / $b)
@@ -62,7 +62,7 @@ macro_rules! op_div {
             (Value::U32(a), Value::U32(b)) => op_div!(U32, a, b),
             (Value::U64(a), Value::U64(b)) => op_div!(U64, a, b),
             (Value::U128(a), Value::U128(b)) => op_div!(U128, a, b),
-            _ => return Err(InterpreterError::OperationNotNumberType)
+            _ => return Err(VMError::OperationNotNumberType)
         }
     };
 }
@@ -76,7 +76,7 @@ macro_rules! op_bool {
             (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
-            _ => return Err(InterpreterError::OperationNotBooleanType)
+            _ => return Err(VMError::OperationNotBooleanType)
         }
     }};
 }
@@ -90,7 +90,7 @@ macro_rules! op_num_with_bool {
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            _ => return Err(InterpreterError::OperationNotBooleanType)
+            _ => return Err(VMError::OperationNotBooleanType)
         }
     }};
 }
@@ -132,7 +132,7 @@ enum ExprHelper<'a> {
 }
 
 // The interpreter structure can be reused to execute multiple times the program
-pub struct Interpreter<'a> {
+pub struct VM<'a> {
     // Program to execute
     program: &'a Program,
     // Environment linked to execute the program
@@ -142,8 +142,8 @@ pub struct Interpreter<'a> {
     constants: Option<NoHashMap<Value>>
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, InterpreterError> {
+impl<'a> VM<'a> {
+    pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, VMError> {
         let mut interpreter = Self {
             program,
             env,
@@ -155,15 +155,15 @@ impl<'a> Interpreter<'a> {
         Ok(interpreter)
     }
 
-    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, InterpreterError> {
+    fn get_function(&self, name: &IdentifierType) -> Result<&FunctionType, VMError> {
         match self.env.get_functions().get(name) {
             Some(func) => Ok(func),
-            None => self.program.functions.get(name).ok_or_else(|| InterpreterError::NoMatchingFunction)
+            None => self.program.functions.get(name).ok_or_else(|| VMError::NoMatchingFunction)
         }
     }
 
     // Get a mutable reference to a value so we can update its content
-    fn get_from_path(&'a self, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
+    fn get_from_path(&'a self, path: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, VMError> {
         // Fast path on no-depth expressions       
         match path {
             Expression::Variable(name) => return stack.get_variable_path(name),
@@ -202,23 +202,23 @@ impl<'a> Interpreter<'a> {
                         let value = self.execute_expression_and_expect_value(expr, stack, state)?;
                         local_result = Some(value);
                     },
-                    e => return Err(InterpreterError::ExpectedPath(e.clone()))
+                    e => return Err(VMError::ExpectedPath(e.clone()))
                 },
                 ExprHelper::ArrayCall => {
-                    let index = local_result.take().ok_or(InterpreterError::MissingValueOnStack).unwrap()
+                    let index = local_result.take().ok_or(VMError::MissingValueOnStack).unwrap()
                         .as_u64()?;
-                    let on_value = local_result.take().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let on_value = local_result.take().ok_or(VMError::MissingValueOnStack).unwrap();
                     local_result = Some(on_value.get_sub_variable(index as usize)?);
                 },
                 _ => {}
             }
         }
 
-        local_result.take().ok_or(InterpreterError::MissingValueOnStack)
+        local_result.take().ok_or(VMError::MissingValueOnStack)
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, state: &mut State) -> Result<Value, InterpreterError> {
+    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, state: &mut State) -> Result<Value, VMError> {
         if let Some(cost) = self.env.get_operator_cost(op) {
             state.increase_gas_usage(cost)?;
         }
@@ -247,21 +247,21 @@ impl<'a> Interpreter<'a> {
             Operator::LessOrEqual => Ok(op_bool!(left, right, <=)),
             Operator::LessThan => Ok(op_bool!(left, right, <)),
             // Those are handled in the execute_expression function
-            Operator::And | Operator::Or | Operator::Assign(_) => return Err(InterpreterError::UnexpectedOperator)
+            Operator::And | Operator::Or | Operator::Assign(_) => return Err(VMError::UnexpectedOperator)
         }
     }
 
     #[inline(always)]
-    fn execute_expression_and_expect_value(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, InterpreterError> {
+    fn execute_expression_and_expect_value(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Path<'a>, VMError> {
         match self.execute_expression(expr, stack, state)? {
             Some(val) => Ok(val),
-            None => Err(InterpreterError::ExpectedValue)
+            None => Err(VMError::ExpectedValue)
         }
     }
 
     // Execute the selected expression
     // Do not give any mutable value, on reference or owned
-    fn execute_expression(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
+    fn execute_expression(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
         let mut local_stack = vec![ExprHelper::Expr(expr)];
         let mut local_result: Vec<Path<'a>> = Vec::new();
 
@@ -344,7 +344,7 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::Ternary { left, right } => {
-                    let condition = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let condition = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     if condition.as_bool()? {
                         local_stack.push(ExprHelper::Expr(left));
                     } else {
@@ -352,8 +352,8 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::Operator(op) => {
-                    let right = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
-                    let mut left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let right = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
+                    let mut left = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     match op {
                         Operator::Assign(inner_op) => {
                             if let Some(op) = inner_op {
@@ -369,7 +369,7 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::OpAnd(right) => {
-                    let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let left = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     if left.as_bool()? {
                         local_stack.push(ExprHelper::Expr(right));
                     } else {
@@ -377,7 +377,7 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::OpOr(right) => {
-                    let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let left = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     if left.as_bool()? {
                         local_result.push(Path::Owned(Value::Boolean(true)));
                     } else {
@@ -385,11 +385,11 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::Not => {
-                    let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     local_result.push(Path::Owned(Value::Boolean(!value.as_bool()?)));
                 },
                 ExprHelper::Cast(cast_type) => {
-                    let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     let value = value.into_owned();
                     local_result.push(Path::Owned(match cast_type {
                         Type::U8 => Value::U8(value.cast_to_u8()?),
@@ -398,18 +398,18 @@ impl<'a> Interpreter<'a> {
                         Type::U64 => Value::U64(value.cast_to_u64()?),
                         Type::U128 => Value::U128(value.cast_to_u128()?),
                         Type::String => Value::String(value.cast_to_string()?),
-                        _ => return Err(InterpreterError::InvalidCastType(cast_type.clone()))
+                        _ => return Err(VMError::InvalidCastType(cast_type.clone()))
                     }));
                 },
                 ExprHelper::FunctionCall { args, on_value, name } => {
                     let mut values = Vec::with_capacity(args);
                     for _ in 0..args {
-                        let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                        let value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                         values.push(value);
                     }
 
                     let on_value = if on_value {
-                        let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                        let value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                         Some(value)
                     } else {
                         None
@@ -424,15 +424,15 @@ impl<'a> Interpreter<'a> {
                     }
                 },
                 ExprHelper::ArrayCall => {
-                    let index = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
-                    let on_value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    let index = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
+                    let on_value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                     let index = index.as_u64()?;
                     local_result.push(on_value.get_sub_variable(index as usize)?);
                 },
                 ExprHelper::Array(len) => {
                     let mut values = Vec::with_capacity(len);
                     for _ in 0..len {
-                        let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                        let value = local_result.pop().ok_or(VMError::MissingValueOnStack).unwrap();
                         values.push(Rc::new(RefCell::new(value.into_owned())));
                     }
 
@@ -444,7 +444,7 @@ impl<'a> Interpreter<'a> {
         Ok(local_result.pop())
     }
 
-    fn execute_statements<'b>(&'b self, statements: &'b [Statement], stack: &mut Stack<'b>, state: &mut State) -> Result<Option<Path<'b>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b [Statement], stack: &mut Stack<'b>, state: &mut State) -> Result<Option<Path<'b>>, VMError> {
         for statement in statements {
             // In case some inner statement has a break or continue, we stop the loop
             if stack.get_loop_break() || stack.get_loop_continue() {
@@ -579,7 +579,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    fn execute_for_each_statements(&'a self, statements: &'a [Statement], var: IdentifierType, val: Path<'a>, stack: &mut Stack<'a>, state: &mut State) -> Result<Either<Option<Path<'a>>, bool>, InterpreterError> {
+    fn execute_for_each_statements(&'a self, statements: &'a [Statement], var: IdentifierType, val: Path<'a>, stack: &mut Stack<'a>, state: &mut State) -> Result<Either<Option<Path<'a>>, bool>, VMError> {
         stack.register_variable(var, val)?;
         match self.execute_statements(statements, stack, state)? {
             Some(v) => return Ok(Either::Left(Some(v))),
@@ -598,7 +598,7 @@ impl<'a> Interpreter<'a> {
         Ok(Either::Left(None))
     }
 
-    fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, variables_count: u16, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
+    fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, variables_count: u16, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
         let mut stack = Stack::new(variables_count);
         if let Some((instance, instance_name)) = type_instance {
             stack.register_variable(instance_name, instance)?;
@@ -612,7 +612,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&'a self, func: &'a FunctionType, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
+    fn execute_function(&'a self, func: &'a FunctionType, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
         match func {
             FunctionType::Native(ref f) => {
                 match type_instance {
@@ -629,7 +629,7 @@ impl<'a> Interpreter<'a> {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
                     (None, None) => None,
-                    _ => return Err(InterpreterError::NativeFunctionExpectedInstance)
+                    _ => return Err(VMError::NativeFunctionExpectedInstance)
                 };
                 self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
             },
@@ -638,7 +638,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Compute the constants defined in the program
-    pub fn compute_constants(&mut self, state: &mut State) -> Result<(), InterpreterError> {
+    pub fn compute_constants(&mut self, state: &mut State) -> Result<(), VMError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
             let mut stack = Stack::new(self.program.constants.len() as u16);
@@ -656,17 +656,17 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the program by calling an available entry function
-    pub fn call_entry_function(&'a self, function_name: &IdentifierType, parameters: Vec<Path<'a>>, state: &mut State) -> Result<u64, InterpreterError> {
+    pub fn call_entry_function(&'a self, function_name: &IdentifierType, parameters: Vec<Path<'a>>, state: &mut State) -> Result<u64, VMError> {
         let func = self.get_function(function_name)?;
 
         // only function marked as entry can be called from external
         if !func.is_entry() {
-            return Err(InterpreterError::FunctionEntry(true, false))
+            return Err(VMError::FunctionEntry(true, false))
         }
 
         match self.execute_function(func, None, parameters, state)? {
             Some(val) => Ok(val.as_u64()?),
-            None => return Err(InterpreterError::NoExitCode)
+            None => return Err(VMError::NoExitCode)
         }
     }
 }
@@ -685,7 +685,7 @@ mod tests {
         let (program, mapper) = parser.parse().unwrap();
 
         let mut state = State::new(None, None, None);
-        let interpreter = Interpreter::new(&program, builder.environment()).unwrap();
+        let interpreter = VM::new(&program, builder.environment()).unwrap();
 
         let mapped_name = mapper.get(&key).unwrap();
         let func = interpreter.get_function(&mapped_name).unwrap();

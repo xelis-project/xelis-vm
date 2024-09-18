@@ -4,7 +4,7 @@ use crate::{
     ast::{FnInstance, FnParams, FnReturnType},
     values::Value,
     EnvironmentBuilder,
-    InterpreterError,
+    VMError,
     Type
 };
 
@@ -37,7 +37,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 
     let array = zelf?.as_mut_vec()?;
     if index >= array.len() {
-        return Err(InterpreterError::OutOfBounds(index, array.len()))
+        return Err(VMError::OutOfBounds(index, array.len()))
     }
 
     Ok(Some(array.remove(index).borrow().clone()))
@@ -59,7 +59,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     let len_u64 = vec.len() as u64;
     if start >= len_u64 || end >= len_u64 || start >= end {
-        return Err(InterpreterError::InvalidRange(start, end))
+        return Err(VMError::InvalidRange(start, end))
     }
 
     let mut slice = Vec::new();
@@ -67,7 +67,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
         // due to SharedValue, slice are connected.
         let value = match vec.get(i as usize) {
             Some(v) => v.clone(),
-            None => return Err(InterpreterError::NoValueFoundAtIndex(i))
+            None => return Err(VMError::NoValueFoundAtIndex(i))
         };
         slice.push(value);
     }

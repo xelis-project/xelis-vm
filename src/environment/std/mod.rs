@@ -3,7 +3,7 @@ mod optional;
 mod string;
 
 use crate::{
-    ast::{FnInstance, FnParams, FnReturnType}, InterpreterError, Type
+    ast::{FnInstance, FnParams, FnReturnType}, VMError, Type
 };
 use super::EnvironmentBuilder;
 
@@ -27,5 +27,5 @@ fn panic(_: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
     let value = param.into_owned();
 
-    Err(InterpreterError::Panic(value))
+    Err(VMError::Panic(value))
 }
