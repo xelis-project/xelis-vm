@@ -348,7 +348,7 @@ impl<'a> Parser<'a> {
             };
 
             let field_type = self.get_type_from_expression(on_type, &field_value, context)?;
-            if t.is_compatible_with(&field_type) {
+            if !t.is_compatible_with(&field_type) {
                 return Err(ParserError::InvalidValueType(field_type.into_owned(), t.clone()))
             }
 
