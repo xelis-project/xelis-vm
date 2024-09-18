@@ -155,10 +155,10 @@ impl<'a> VM<'a> {
         Ok(interpreter)
     }
 
-    fn get_function(&self, name: &IdentifierType) -> Result<&Function, VMError> {
+    fn get_function(&self, name: &IdentifierType) -> Result<Function, VMError> {
         match self.env.get_functions().get(name) {
-            Some(func) => Ok(func),
-            None => self.program.functions.get(name).ok_or_else(|| VMError::NoMatchingFunction)
+            Some(func) => Ok(Function::Native(func)),
+            None => self.program.functions.get(name).map(|v | v.as_function()).ok_or_else(|| VMError::NoMatchingFunction)
         }
     }
 
@@ -417,7 +417,7 @@ impl<'a> VM<'a> {
 
                     state.increase_recursive_depth()?;
                     let func = self.get_function(name)?;
-                    let res = self.execute_function(&func, on_value, values, state)?;
+                    let res = self.execute_function(func, on_value, values, state)?;
                     state.decrease_recursive_depth();
                     if let Some(res) = res {
                         local_result.push(res);
@@ -612,9 +612,9 @@ impl<'a> VM<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&'a self, func: &'a Function, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
+    fn execute_function(&'a self, func: Function<'a>, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, VMError> {
         match func {
-            Function::Native(ref f) => {
+            Function::Native(f) => {
                 match type_instance {
                     Some(mut v) => {
                         let mut instance = v.as_mut();
@@ -625,7 +625,7 @@ impl<'a> VM<'a> {
                     }
                 }
             },
-            Function::Declared(ref f) => {
+            Function::Declared(f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
                     (None, None) => None,
@@ -633,7 +633,7 @@ impl<'a> VM<'a> {
                 };
                 self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
             },
-            Function::Entry(ref f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
+            Function::Entry(f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
         }
     }
 

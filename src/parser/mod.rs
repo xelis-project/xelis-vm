@@ -1048,7 +1048,7 @@ impl<'a> Parser<'a> {
     // get a function return type using its identifier
     fn get_function_return_type(&self, name: &IdentifierType) -> Result<&Option<Type>, ParserError<'a>> {
         if let Some(native) = self.env.get_functions().get(name) {
-            return Ok(native.return_type())
+            return Ok(native.get_return_type())
         }
 
         match self.functions.get(name) {

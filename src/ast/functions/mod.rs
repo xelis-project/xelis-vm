@@ -79,10 +79,10 @@ impl Signature {
 }
 
 #[derive(Debug)]
-pub enum Function {
-    Native(NativeFunction),
-    Declared(DeclaredFunction),
-    Entry(EntryFunction)
+pub enum Function<'a> {
+    Native(&'a NativeFunction),
+    Declared(&'a DeclaredFunction),
+    Entry(&'a EntryFunction)
 }
 
 #[derive(Debug)]
@@ -105,9 +105,16 @@ impl DeclaredFunctionType {
             DeclaredFunctionType::Entry(_) => &None
         }
     }
+
+    pub fn as_function(&self) -> Function {
+        match &self {
+            DeclaredFunctionType::Declared(f) => Function::Declared(f),
+            DeclaredFunctionType::Entry(f) => Function::Entry(f)
+        }
+    }
 }
 
-impl Function {
+impl<'a> Function<'a> {
     // Get the returned type of the function
     pub fn return_type(&self) -> &Option<Type> {
         match &self {
