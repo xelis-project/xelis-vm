@@ -2,15 +2,17 @@ mod scope;
 mod context;
 mod error;
 mod struct_manager;
+mod mapper;
 
 pub(crate) use struct_manager::{StructBuilder, StructManager};
 
 pub use self::error::ParserError;
 use self::context::Context;
 
+pub use mapper::{FunctionMapper, IdMapper, Mapper};
+
 use crate::{
     ast::*,
-    mapper::{FunctionMapper, IdMapper, Mapper},
     types::{Struct, Type},
     values::Value,
     EnvironmentBuilder,

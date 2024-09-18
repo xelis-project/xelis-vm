@@ -3,7 +3,6 @@ mod interpreter;
 mod parser;
 mod lexer;
 mod types;
-mod mapper;
 mod values;
 mod handle;
 mod path;

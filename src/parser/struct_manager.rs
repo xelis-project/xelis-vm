@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use crate::{mapper::IdMapper, types::{Struct, Type}, IdentifierType, NoHashMap, ParserError};
+use crate::{types::{Struct, Type}, IdentifierType, NoHashMap, ParserError};
+use super::IdMapper;
 
 #[derive(Debug, Clone)]
 pub struct StructBuilder<'a> {

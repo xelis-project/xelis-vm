@@ -1,6 +1,6 @@
 use crate::{
     ast::{FunctionType, NativeFunction, OnCallFn, Operator, Signature},
-    mapper::FunctionMapper,
+    parser::FunctionMapper,
     types::Type,
     NoHashMap,
 };
