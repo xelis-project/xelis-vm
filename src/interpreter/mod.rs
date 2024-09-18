@@ -2,6 +2,7 @@ mod stack;
 mod state;
 mod error;
 mod path;
+mod handle;
 
 use crate::{
     environment::Environment,

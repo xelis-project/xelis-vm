@@ -1,10 +1,14 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    handle::{ValueHandle, ValueHandleMut},
-    values::Value
+use crate::values::Value;
+
+use super::{
+    InterpreterError,
+    handle::{
+        ValueHandle,
+        ValueHandleMut
+    }
 };
-use super::InterpreterError;
 
 #[derive(Debug, Clone)]
 pub enum Path<'a> {
