@@ -76,21 +76,25 @@ impl<'a> Parser<'a> {
     }
 
     // Consume the next token
+    #[inline(always)]
     fn advance(&mut self) -> Result<Token<'a>, ParserError<'a>> {
         self.tokens.pop_front().ok_or(ParserError::ExpectedToken)
     }
 
     // Consume the next token without error
+    #[inline(always)]
     fn next(&mut self) -> Option<Token<'a>> {
         self.tokens.pop_front()
     }
 
     // Peek the next token without consuming it
+    #[inline(always)]
     fn peek(&self) -> Result<&Token<'a>, ParserError<'a>> {
         self.tokens.front().ok_or(ParserError::ExpectedToken)
     }
 
     // Limited to 32 characters
+    #[inline(always)]
     fn next_identifier(&mut self) -> Result<&'a str, ParserError<'a>> {
         match self.advance()? {
             Token::Identifier(id) => Ok(id),
@@ -98,7 +102,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Check if the next token is a specific token
+    #[inline(always)]
+    fn peek_is(&self, token: Token<'a>) -> bool {
+        self.tokens.front().filter(|t| **t == token).is_some()
+    }
+
+    // Check if the next token is not a specific token
+    #[inline(always)]
+    fn peek_is_not(&self, token: Token<'a>) -> bool {
+        self.tokens.front().filter(|t| **t != token).is_some()
+    }
+
     // Check if the next token is an identifier
+    #[inline(always)]
     fn peek_is_identifier(&self) -> bool {
         self.peek().ok().filter(|t| match t {
             Token::Identifier(_) => true,
@@ -298,14 +315,14 @@ impl<'a> Parser<'a> {
         let mut types: Vec<Type> = Vec::new();
 
         // read parameters for function call
-        while *self.peek()? != Token::ParenthesisClose {
+        while self.peek_is_not(Token::ParenthesisClose) {
             let expr = self.read_expression(context, mapper)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
             types.push(self.get_type_from_expression(None, &expr, context)?.into_owned());
             parameters.push(expr);
 
-            if *self.peek()? == Token::Comma {
+            if self.peek_is(Token::Comma) {
                 self.expect_token(Token::Comma)?;
             }
         }
@@ -341,7 +358,7 @@ impl<'a> Parser<'a> {
                 }
                 Token::Colon => {
                     let value = self.read_expr(on_type, true, Some(t), context, mapper)?;
-                    if *self.peek()? == Token::Comma {
+                    if self.peek_is(Token::Comma) {
                         self.advance()?;
                     }
                     value
@@ -371,10 +388,16 @@ impl<'a> Parser<'a> {
     fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
-        while {
-            let peek = self.peek()?;
-            !peek.should_stop() && ((required_operator == peek.is_operator()) || (*peek == Token::BracketOpen && last_expression.is_none()))
-        } {
+        while self.peek()
+            .ok()
+            .filter(|peek| {
+                !peek.should_stop()
+                && (
+                    (required_operator == peek.is_operator())
+                    || (**peek == Token::BracketOpen && last_expression.is_none())
+                )
+            }).is_some()
+        {
             if !accept_operator && required_operator {
                 break;
             }
@@ -401,7 +424,7 @@ impl<'a> Parser<'a> {
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
-                            while *self.peek()? != Token::BracketClose {
+                            while self.peek_is_not(Token::BracketClose) {
                                 let expr = self.read_expr(on_type, true, expected_type.map(|t| t.get_inner_type()), context, mapper)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
@@ -416,7 +439,7 @@ impl<'a> Parser<'a> {
                                 };
                                 expressions.push(expr);
 
-                                if *self.peek()? == Token::Comma {
+                                if self.peek_is(Token::Comma) {
                                     self.expect_token(Token::Comma)?;
                                 }
                             }
@@ -656,7 +679,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
-        let value: Expression = if *self.peek()? == Token::OperatorAssign {
+        let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(None, true, Some(&value_type), context, mapper)?;
 
@@ -773,10 +796,9 @@ impl<'a> Parser<'a> {
                     }
 
                     let body = self.read_body(context, return_type, true, mapper)?;
-
-                    let else_statement = if *self.peek()? == Token::Else {
+                    let else_statement = if self.peek_is(Token::Else) {
                         self.advance()?;
-                        Some(if *self.peek()? == Token::If {
+                        Some(if self.peek_is(Token::If) {
                             self.read_statements(context, return_type, false, mapper)?
                         } else {
                             self.read_body(context, return_type, true, mapper)?
@@ -802,7 +824,7 @@ impl<'a> Parser<'a> {
                     };
 
                     // we can't have anything after a return
-                    if *self.peek()? != Token::BraceClose {
+                    if self.peek_is_not(Token::BraceClose) {
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -814,7 +836,7 @@ impl<'a> Parser<'a> {
                     }
 
                     // we can't have anything after a continue
-                    if *self.peek()? != Token::BraceClose {
+                    if self.peek_is_not(Token::BraceClose) {
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -826,7 +848,7 @@ impl<'a> Parser<'a> {
                     }
 
                     // we can't have anything after a break
-                    if *self.peek()? != Token::BraceClose {
+                    if self.peek_is_not(Token::BraceClose) {
                         return Err(ParserError::DeadCodeNotAllowed);
                     }
 
@@ -853,7 +875,7 @@ impl<'a> Parser<'a> {
 
             parameters.push(Parameter::new(mapper.register(Cow::Borrowed(name))?, value_type));
 
-            if *self.peek()? != Token::Comma {
+            if self.peek_is_not(Token::Comma) {
                 break;
             }
 
@@ -943,7 +965,7 @@ impl<'a> Parser<'a> {
             }
 
             Some(Type::U64)
-        } else if *self.peek()? == Token::Colon { // read returned type
+        } else if self.peek_is(Token::Colon) { // read returned type
             self.advance()?;
             Some(self.read_type()?)
         } else {
@@ -1145,12 +1167,27 @@ mod tests {
         let env = EnvironmentBuilder::new();
         test_parser_with_env(tokens, &env)
     }
-    
+
     #[track_caller]
     fn test_parser_with_env(tokens: Vec<Token>, env: &EnvironmentBuilder) -> Program {
         let parser = Parser::new(VecDeque::from(tokens), env);
         let (program, _) = parser.parse().unwrap();
         program
+    }
+
+    #[track_caller]
+    fn test_parser_statement(tokens: Vec<Token>, variables: Vec<(&str, Type)>) -> Vec<Statement> {
+        let env = EnvironmentBuilder::new();
+        let mut parser = Parser::new(VecDeque::from(tokens), &env);
+        let mut mapper = IdMapper::new();
+        let mut context = Context::new();
+        context.begin_scope();
+        for (name, t) in variables {
+            let id = mapper.register(Cow::Borrowed(name)).unwrap();
+            context.register_variable(id, t).unwrap();
+        }
+
+        parser.read_statements(&mut context, &None, false, &mut mapper).unwrap()
     }
 
     #[test]
@@ -1206,5 +1243,183 @@ mod tests {
         env.register_structure("Foo", Vec::new());
         let program = test_parser_with_env(tokens, &env);
         assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_function_with_parameters() {
+        let tokens = vec![
+            Token::Function,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::U64,
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::U64,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Return,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_function_with_return_type() {
+        let tokens = vec![
+            Token::Function,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::Colon,
+            Token::U64,
+            Token::BraceOpen,
+            Token::Return,
+            Token::U64Value(0),
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.functions.len(), 1);
+    }
+
+    #[test]
+    fn test_foreach() {
+        // foreach a in array {}
+        let tokens = vec![
+            Token::ForEach,
+            Token::Identifier("a"),
+            Token::In,
+            Token::Identifier("array"),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(
+            tokens,
+            vec![
+                ("array", Type::Array(Box::new(Type::U64)))
+            ]
+        );
+
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_for() {
+        // for i: u64 = 0; i < 10; i += 1 {}
+        let tokens = vec![
+            Token::For,
+            Token::Identifier("i"),
+            Token::Colon,
+            Token::U64,
+            Token::OperatorAssign,
+            Token::U64Value(0),
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::Identifier("i"),
+            Token::OperatorPlusAssign,
+            Token::U64Value(1),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_while() {
+        // while i < 10 {}
+        let tokens = vec![
+            Token::While,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_if() {
+        // if i < 10 {}
+        let tokens = vec![
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_if_else() {
+        // if i < 10 {} else {}
+        let tokens = vec![
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Else,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_if_else_if() {
+        // if i < 10 {} else if i < 20 {}
+        let tokens = vec![
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Else,
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(20),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_variable() {
+        // let hello: string = "hello";
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("hello"),
+            Token::Colon,
+            Token::String,
+            Token::OperatorAssign,
+            Token::StringValue(Cow::Borrowed("world")),
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
     }
 }
