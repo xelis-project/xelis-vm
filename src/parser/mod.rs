@@ -348,7 +348,7 @@ impl<'a> Parser<'a> {
             };
 
             let field_type = self.get_type_from_expression(on_type, &field_value, context)?;
-            if *t != *field_type {
+            if t.is_compatible_with(&field_type) {
                 return Err(ParserError::InvalidValueType(field_type.into_owned(), t.clone()))
             }
 
@@ -790,7 +790,7 @@ impl<'a> Parser<'a> {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, true, Some(return_type), context, mapper)?;
                         let expr_type = self.get_type_from_expression(None, &expr, context)?;
-                        if *expr_type != *return_type {
+                        if !expr_type.is_compatible_with(return_type) {
                             return Err(ParserError::InvalidValueType(expr_type.into_owned(), return_type.clone()))
                         }
                         Some(expr)

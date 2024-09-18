@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FnInstance, FnParams, FnReturnType, FunctionType, NativeFunction, OnCallFn, Operator, Signature},
+    ast::{FunctionType, NativeFunction, OnCallFn, Operator, Signature},
     mapper::FunctionMapper,
     types::Type,
     NoHashMap,
@@ -65,17 +65,8 @@ impl Default for EnvironmentBuilder<'_> {
     fn default() -> Self {
         let mut env = Self::new();
 
-        env.register_native_function("println", None, vec![Type::Any], println, 1, None);
-
         xstd::register(&mut env);
 
         env
     }
-}
-
-fn println(_: FnInstance, parameters: FnParams) -> FnReturnType {
-    let param = &parameters[0];
-    println!("{}", param.as_ref().as_value());
-
-    Ok(None)
 }

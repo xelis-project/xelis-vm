@@ -107,6 +107,7 @@ macro_rules! execute_foreach {
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    Panic(Value),
     MissingValueOnStack,
     StackError,
     Unknown,
@@ -163,6 +164,8 @@ enum ExprHelper<'a> {
     Cast(&'a Type),
     Not,
     Operator(&'a Operator),
+    OpAnd(&'a Expression),
+    OpOr(&'a Expression),
     Ternary {
         left: &'a Expression,
         right: &'a Expression
@@ -351,9 +354,22 @@ impl<'a> Interpreter<'a> {
                         local_stack.push(ExprHelper::Expr(expr));
                     },
                     Expression::Operator(op, left, right) => {
-                        local_stack.push(ExprHelper::Operator(op));
-                        local_stack.push(ExprHelper::Expr(right));
-                        local_stack.push(ExprHelper::Expr(left));
+                        // Special case to prevent the second expr to be executed
+                        match op {
+                            Operator::And => {
+                                local_stack.push(ExprHelper::OpAnd(right));
+                                local_stack.push(ExprHelper::Expr(left));
+                            },
+                            Operator::Or => {
+                                local_stack.push(ExprHelper::OpOr(right));
+                                local_stack.push(ExprHelper::Expr(left));
+                            },
+                            _ => {
+                                local_stack.push(ExprHelper::Operator(op));
+                                local_stack.push(ExprHelper::Expr(right));
+                                local_stack.push(ExprHelper::Expr(left));
+                            }
+                        };
                     },
                     Expression::Ternary(condition, left, right) => {
                         local_stack.push(ExprHelper::Ternary { left, right });
@@ -394,7 +410,23 @@ impl<'a> Interpreter<'a> {
                             local_result.push(Path::Owned(self.execute_operator(op, &left.as_ref(), &right.as_ref(), state)?));
                         }
                     }
-                }
+                },
+                ExprHelper::OpAnd(right) => {
+                    let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    if left.as_bool()? {
+                        local_stack.push(ExprHelper::Expr(right));
+                    } else {
+                        local_result.push(Path::Owned(Value::Boolean(false)));
+                    }
+                },
+                ExprHelper::OpOr(right) => {
+                    let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
+                    if left.as_bool()? {
+                        local_result.push(Path::Owned(Value::Boolean(true)));
+                    } else {
+                        local_stack.push(ExprHelper::Expr(right));
+                    }
+                },
                 ExprHelper::Not => {
                     let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack).unwrap();
                     local_result.push(Path::Owned(Value::Boolean(!value.as_bool()?)));
@@ -850,6 +882,25 @@ mod tests {
         // &=
         test_code_expect_return("entry main() { let a: bool = true; a &= true; return a as u64; }", 1);
         test_code_expect_return("entry main() { let a: bool = true; a &= false; return a as u64; }", 0);
+    }
+
+    #[test]
+    fn test_op_and() {
+        // No call shouldn't be called
+        test_code_expect_return("func no_call(): bool { return panic('should not call') } entry main() { return (false && no_call()) as u64; }", 0);
+        // Both should be called
+        test_code_expect_return("entry main() { return (true && true) as u64; }", 1);
+        test_code_expect_return("entry main() { return (false && false) as u64; }", 0);
+    }
+
+    #[test]
+    fn test_op_or() {
+        // No call shouldn't be called
+        test_code_expect_return("func no_call(): bool { return panic('should not call') } entry main() { return (true || no_call()) as u64; }", 1);
+        // Both are called
+        test_code_expect_return("entry main() { return (false || true) as u64; }", 1);
+        // Both are called but none are true
+        test_code_expect_return("entry main() { return (false || false) as u64; }", 0);
     }
 
     #[test]
