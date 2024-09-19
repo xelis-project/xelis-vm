@@ -643,9 +643,9 @@ impl<'a> Parser<'a> {
      *     ...
      * }
      */
-    fn read_body(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
+    fn read_body(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
         context.begin_scope();
-        let statements = self.read_statements(context, return_type, consume_brace, mapper)?;
+        let statements = self.read_statements(context, return_type, mapper)?;
         context.end_scope();
         Ok(statements)
     }
@@ -720,7 +720,8 @@ impl<'a> Parser<'a> {
     fn read_loop_body(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
         let old_value = context.is_in_a_loop(); // support loop in loop
         context.set_in_a_loop(true);
-        let statements = self.read_body(context, return_type, true, mapper)?;
+        self.expect_token(Token::BraceOpen)?;
+        let statements = self.read_body(context, return_type, mapper)?;
         context.set_in_a_loop(old_value);
 
         Ok(statements)
@@ -729,11 +730,7 @@ impl<'a> Parser<'a> {
     // Read all statements in a block
     // return type is used to verify that the last statement is a return with a valid value type
     // consume_brace is used to know if we should consume the open brace
-    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, consume_brace: bool, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
-        if consume_brace {
-            self.expect_token(Token::BraceOpen)?;
-        }
-
+    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
         let mut statements: Vec<Statement> = Vec::new();
         while let Some(token) = self.next() {
             let statement: Statement = match token {
@@ -795,13 +792,15 @@ impl<'a> Parser<'a> {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
-                    let body = self.read_body(context, return_type, true, mapper)?;
+                    self.expect_token(Token::BraceOpen)?;
+                    let body = self.read_body(context, return_type, mapper)?;
                     let else_statement = if self.peek_is(Token::Else) {
                         self.advance()?;
                         Some(if self.peek_is(Token::If) {
-                            self.read_statements(context, return_type, false, mapper)?
+                            self.read_statements(context, return_type, mapper)?
                         } else {
-                            self.read_body(context, return_type, true, mapper)?
+                            self.expect_token(Token::BraceOpen)?;
+                            self.read_body(context, return_type, mapper)?
                         })
                     } else {
                         None
@@ -809,7 +808,7 @@ impl<'a> Parser<'a> {
 
                     Statement::If(condition, body, else_statement)
                 },
-                Token::BraceOpen => Statement::Scope(self.read_body(context, return_type, false, mapper)?),
+                Token::BraceOpen => Statement::Scope(self.read_body(context, return_type, mapper)?),
                 Token::Let => Statement::Variable(self.read_variable(context, mapper, false)?),
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
@@ -984,7 +983,8 @@ impl<'a> Parser<'a> {
             context.register_variable(param.get_name().clone(), param.get_type().clone())?;
         }
 
-        let statements = self.read_body(context, &return_type, true, &mut mapper)?;
+        self.expect_token(Token::BraceOpen)?;
+        let statements = self.read_body(context, &return_type, &mut mapper)?;
 
         context.end_scope();
 
@@ -1187,7 +1187,7 @@ mod tests {
             context.register_variable(id, t).unwrap();
         }
 
-        parser.read_statements(&mut context, &None, false, &mut mapper).unwrap()
+        parser.read_statements(&mut context, &None, &mut mapper).unwrap()
     }
 
     #[test]
