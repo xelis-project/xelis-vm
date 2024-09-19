@@ -1422,4 +1422,21 @@ mod tests {
         let statements = test_parser_statement(tokens, Vec::new());
         assert_eq!(statements.len(), 1);
     }
+
+    #[test]
+    fn test_ternary() {
+        // i < 10 ? 1 : 0
+        let tokens = vec![
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::OperatorTernary,
+            Token::U64Value(1),
+            Token::Colon,
+            Token::U64Value(0),
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
 }
