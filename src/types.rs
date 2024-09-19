@@ -68,7 +68,6 @@ pub enum Type {
 }
 
 impl Type {
-
     pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
         match byte {
             0 => Some(Type::U8),
