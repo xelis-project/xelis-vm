@@ -75,6 +75,12 @@ impl Chunk {
     }
 
     #[inline]
+    pub fn write_u32(&mut self, byte: u32) {
+        let bytes = byte.to_be_bytes();
+        self.instructions.extend_from_slice(&bytes);
+    }
+
+    #[inline]
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.instructions.extend_from_slice(bytes);
     }

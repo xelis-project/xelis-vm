@@ -259,6 +259,17 @@ impl Value {
         }
     }
 
+    pub fn increment(&mut self) -> Result<(), VMError> {
+        Ok(match self {
+            Value::U8(n) => *n += 1,
+            Value::U16(n) => *n += 1,
+            Value::U32(n) => *n += 1,
+            Value::U64(n) => *n += 1,
+            Value::U128(n) => *n += 1,
+            _ => return Err(VMError::OperationNotNumberType)
+        })
+    }
+
     // Cast value to string
     #[inline]
     pub fn cast_to_string(self) -> Result<String, VMError> {

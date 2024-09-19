@@ -68,6 +68,14 @@ impl<'a> ChunkReader<'a> {
         u16::from_be_bytes([bytes[0], bytes[1]])
     }
 
+    // Read a u32 from the instructions
+    #[inline]
+    pub fn read_u32(&mut self) -> u32 {
+        let bytes = &self.chunk.instructions[self.ip..self.ip + 4];
+        self.ip += 4;
+        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+
     // Read a &[u8] from the instructions
     #[inline]
     pub fn read_bytes(&mut self, length: usize) -> &[u8] {

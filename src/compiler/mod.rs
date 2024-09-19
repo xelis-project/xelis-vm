@@ -21,6 +21,20 @@ macro_rules! op {
     }};
 }
 
+macro_rules! op_bool {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a, $b) {
+            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+            (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
+            (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
+            (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
+            (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
+            (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
+            _ => panic!("aaaa")
+        }
+    }};
+}
+
 pub enum CompilerError {
     NotImplemented
 }
@@ -56,7 +70,7 @@ pub struct Compiler;
 // Simple example of how the bytecode VM would works with ArrayCall, FunctionCall and struct values
 pub fn run(module: &Module, start: usize) -> Option<Value> {
     let mut chunks = Vec::new();
-    chunks.push(ChunkManager::new(module.chunks.get(start)?));
+    chunks.push(ChunkManager::new(module.chunks.get(start).unwrap()));
 
     let mut final_result = None;
     'main: while let Some(mut manager) = chunks.pop() {
@@ -67,29 +81,38 @@ pub fn run(module: &Module, start: usize) -> Option<Value> {
         while let Some(op_code) = manager.read_op_code() {
             match op_code {
                 OpCode::Constant => {
-                    let index = manager.read_u8()? as usize;
-                    let constant = manager.get_constant(index)?;
+                    let index = manager.read_u8().unwrap() as usize;
+                    let constant = manager.get_constant(index).unwrap();
                     manager.push_stack(constant.clone());
                 },
                 OpCode::MemoryLoad => {
                     let index = manager.read_u16();
-                    let value = manager.from_register(index as usize)?.clone();
+                    let value = manager.from_register(index as usize).unwrap().clone();
                     manager.push_stack(value);
                 },
                 OpCode::MemorySet => {
-                    let value = manager.pop_stack()?;
+                    let value = manager.pop_stack().unwrap();
                     manager.push_register(value);
                 },
+                OpCode::MemoryAssign => {
+                    let index = manager.read_u16();
+                    let value = manager.pop_stack().unwrap();
+                    manager.to_register(index as usize, value);
+                },
+                OpCode::Copy => {
+                    let value = manager.last_stack().unwrap();
+                    manager.push_stack(value.clone());
+                },
                 OpCode::Cast => {
-                    let _type = manager.read_type()?;
-                    let current = manager.pop_stack()?;
+                    let _type = manager.read_type().unwrap();
+                    let current = manager.pop_stack().unwrap();
                     let value = match _type {
-                        Type::U8 => Value::U8(current.cast_to_u8().ok()?),
-                        Type::U16 => Value::U16(current.cast_to_u16().ok()?),
-                        Type::U32 => Value::U32(current.cast_to_u32().ok()?),
-                        Type::U64 => Value::U64(current.cast_to_u64().ok()?),
-                        Type::U128 => Value::U128(current.cast_to_u128().ok()?),
-                        Type::String => Value::String(current.cast_to_string().ok()?),
+                        Type::U8 => Value::U8(current.cast_to_u8().ok().unwrap()),
+                        Type::U16 => Value::U16(current.cast_to_u16().ok().unwrap()),
+                        Type::U32 => Value::U32(current.cast_to_u32().ok().unwrap()),
+                        Type::U64 => Value::U64(current.cast_to_u64().ok().unwrap()),
+                        Type::U128 => Value::U128(current.cast_to_u128().ok().unwrap()),
+                        Type::String => Value::String(current.cast_to_string().ok().unwrap()),
                         _ => panic!("cast unnkown type")
                     };
                     manager.push_stack(value);
@@ -98,30 +121,30 @@ pub fn run(module: &Module, start: usize) -> Option<Value> {
                     let length = manager.read_u16();
                     let mut array = VecDeque::with_capacity(length as usize);
                     for _ in 0..length {
-                        array.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
+                        array.push_front(Rc::new(RefCell::new(manager.pop_stack().unwrap())));
                     }
     
                     manager.push_stack(Value::Array(array.into()));
                 },
                 OpCode::ArrayCall => {
-                    let index = manager.pop_stack()?.cast_to_u32().ok()?;
-                    let value = manager.pop_stack()?;
-                    let array = value.as_sub_vec().ok()?;
+                    let index = manager.pop_stack().unwrap().cast_to_u32().ok().unwrap();
+                    let value = manager.pop_stack().unwrap();
+                    let array = value.as_sub_vec().ok().unwrap();
                     manager.push_stack(array[index as usize].borrow().clone());
                 },
                 OpCode::FunctionCall => {
-                    let args = manager.read_u8()?;
-                    let on_value = manager.read_bool()?;
+                    let args = manager.read_u8().unwrap();
+                    let on_value = manager.read_bool().unwrap();
                     let id = manager.read_u16();
-    
+
                     let mut arguments = VecDeque::with_capacity(args as usize);
                     for _ in 0..args {
-                        arguments.push_front(manager.pop_stack()?);
+                        arguments.push_front(manager.pop_stack().unwrap());
                     }
 
                     // TODO
                     let _on_value = if on_value {
-                        Some(manager.pop_stack()?)
+                        Some(manager.pop_stack().unwrap())
                     } else {
                         None
                     };
@@ -130,33 +153,67 @@ pub fn run(module: &Module, start: usize) -> Option<Value> {
                     chunks.push(manager);
 
                     // Find the chunk
-                    let new_manager = ChunkManager::new(module.chunks.get(id as usize)?);
+                    let new_manager = ChunkManager::new(module.chunks.get(id as usize).unwrap());
                     chunks.push(new_manager);
 
                     continue 'main;
                 },
                 OpCode::NewStruct => {
                     let id = manager.read_u16();
-                    let structure = module.structs.get(id as usize)?;
+                    let structure = module.structs.get(id as usize).unwrap();
                     let mut fields = VecDeque::new();
                     for _ in 0..structure.fields.len() {
-                        fields.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
+                        fields.push_front(Rc::new(RefCell::new(manager.pop_stack().unwrap())));
                     }
 
                     manager.push_stack(Value::Struct(id, fields.into()));
                 },
                 OpCode::Add => {
-                    let right = manager.pop_stack()?;
-                    let left = manager.pop_stack()?;
+                    let right = manager.pop_stack().unwrap();
+                    let left = manager.pop_stack().unwrap();
                     manager.push_stack(op!(left, right, +));
                 },
                 OpCode::SubLoad => {
                     let index = manager.read_u16();
-                    let value = manager.pop_stack()?;
-                    let sub_value = value.as_sub_vec().ok()?;
+                    let value = manager.pop_stack().unwrap();
+                    let sub_value = value.as_sub_vec().ok().unwrap();
                     manager.push_stack(sub_value[index as usize].borrow().clone());
                 },
-                OpCode::End => {
+                OpCode::Lte => {
+                    let right = manager.pop_stack().unwrap();
+                    let left = manager.pop_stack().unwrap();
+                    manager.push_stack(op_bool!(left, right, <=));
+                },
+                OpCode::Gt => {
+                    let right = manager.pop_stack().unwrap();
+                    let left = manager.pop_stack().unwrap();
+                    manager.push_stack(op_bool!(left, right, >));
+                },
+                OpCode::Gte => {
+                    let right = manager.pop_stack().unwrap();
+                    let left = manager.pop_stack().unwrap();
+                    manager.push_stack(op_bool!(left, right, >=));
+                },
+                OpCode::Jump => {
+                    let index = manager.read_u32();
+                    manager.set_index(index as usize);
+                },
+                OpCode::JumpIfFalse => {
+                    let index = manager.read_u32();
+                    let value = manager.pop_stack().unwrap();
+                    if !value.as_bool().ok().unwrap() {
+                        manager.set_index(index as usize);
+                    }
+                },
+                OpCode::IterableLength => {
+                    let value = manager.pop_stack().unwrap();
+                    let len = value.as_vec().ok().unwrap().len();
+                    manager.push_stack(Value::U32(len as u32));
+                },
+                OpCode::Inc => {
+                    manager.last_mut_stack().unwrap().increment().unwrap();
+                },
+                OpCode::Return => {
                     break;
                 },
                 _ => {
@@ -287,7 +344,7 @@ mod tests {
         // struct id
         chunk.write_u16(0);
 
-        chunk.emit_opcode(OpCode::End);
+        chunk.emit_opcode(OpCode::Return);
 
         module.add_chunk(chunk);
 
@@ -326,7 +383,7 @@ mod tests {
         // Sum the two fields
         chunk.emit_opcode(OpCode::Add);
 
-        chunk.emit_opcode(OpCode::End);
+        chunk.emit_opcode(OpCode::Return);
 
         assert_eq!(super::run(&module, 0).unwrap(), Value::U16(30));
     }
@@ -341,7 +398,7 @@ mod tests {
         bool_fn.emit_opcode(OpCode::Constant);
         bool_fn.write_u8(index as u8);
 
-        bool_fn.emit_opcode(OpCode::End);
+        bool_fn.emit_opcode(OpCode::Return);
 
         // This chunk should call the bool fn
         let mut first = Chunk::new();
@@ -354,11 +411,121 @@ mod tests {
         // Call the bool_fn which is at index 1 in chunks list
         first.write_u16(1);
         // return its value
-        first.emit_opcode(OpCode::End);
+        first.emit_opcode(OpCode::Return);
 
         module.add_chunk(first);
         module.add_chunk(bool_fn);
 
         assert_eq!(super::run(&module, 0).unwrap(), Value::Boolean(true));
+    }
+
+    #[test]
+    fn test_memory() {
+        let mut chunk = Chunk::new();
+
+        // Push element 1
+        let index = chunk.add_constant(Value::U8(10));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Store the value in the memory
+        chunk.emit_opcode(OpCode::MemorySet);
+
+        // Load the value from the memory
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        assert_eq!(run(chunk), Value::U8(10));
+    }
+
+    #[test]
+    fn test_for_each() {
+        let mut chunk = Chunk::new();
+
+        // Push element 1
+        let index = chunk.add_constant(Value::U8(10));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Push element 2
+        let index = chunk.add_constant(Value::U8(20));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Create a new array with 2 elements
+        chunk.emit_opcode(OpCode::NewArray);
+        chunk.write_u16(2);
+
+        // Store the array in the memory
+        chunk.emit_opcode(OpCode::MemorySet);
+
+        let sum_index = chunk.add_constant(Value::U8(0));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(sum_index as u8);
+
+        // Store sum in memory
+        chunk.emit_opcode(OpCode::MemorySet);
+
+        let index = chunk.add_constant(Value::U32(0));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Store in memory
+        chunk.emit_opcode(OpCode::MemorySet);
+
+        // Load the array
+        let jump_at = chunk.index();
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        // load the index
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(2);
+
+        // Load element
+        chunk.emit_opcode(OpCode::ArrayCall);
+
+        // Load the sum
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(1);
+
+        chunk.emit_opcode(OpCode::Add);
+
+        // Store the sum
+        chunk.emit_opcode(OpCode::MemoryAssign);
+        chunk.write_u16(1);
+
+        // Load the index again
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(2);
+
+        
+        // Increment the index
+        chunk.emit_opcode(OpCode::Inc);
+
+        // Copy the value
+        chunk.emit_opcode(OpCode::Copy);
+
+        // Store the index
+        chunk.emit_opcode(OpCode::MemoryAssign);
+        chunk.write_u16(2);
+
+        // Load the array
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        chunk.emit_opcode(OpCode::IterableLength);
+
+        // pop len, pop index, push index >= len
+        chunk.emit_opcode(OpCode::Gte);
+
+        // jump to beginning if we are less than len
+        chunk.emit_opcode(OpCode::JumpIfFalse);
+        chunk.write_u32(jump_at as u32);
+
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(1);
+
+        assert_eq!(run(chunk), Value::U8(30));
     }
 }

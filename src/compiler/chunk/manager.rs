@@ -28,6 +28,18 @@ impl<'a> ChunkManager<'a> {
         }
     }
 
+    // Get the stack
+    #[inline]
+    pub fn get_stack(&self) -> &Vec<Value> {
+        &self.stack
+    }
+
+    // Get the registers
+    #[inline]
+    pub fn get_registers(&self) -> &Vec<Value> {
+        &self.registers
+    }
+
     // Push a value to the stack
     #[inline]
     pub fn push_stack(&mut self, value: Value) {
@@ -40,6 +52,18 @@ impl<'a> ChunkManager<'a> {
         self.stack.pop()
     }
 
+    // Get the last value from the stack
+    #[inline]
+    pub fn last_stack(&self) -> Option<&Value> {
+        self.stack.last()
+    }
+
+    // Get the last mutable value from the stack
+    #[inline]
+    pub fn last_mut_stack(&mut self) -> Option<&mut Value> {
+        self.stack.last_mut()
+    }
+
     // Push a new value into the registers
     pub fn push_register(&mut self, value: Value) {
         self.registers.push(value);
@@ -49,6 +73,14 @@ impl<'a> ChunkManager<'a> {
     #[inline]
     pub fn from_register(&mut self, index: usize) -> Option<&Value> {
         self.registers.get(index)
+    }
+
+    // Set a value in the registers
+    #[inline]
+    pub fn to_register(&mut self, index: usize, value: Value) {
+        if index < self.registers.len() {
+            self.registers[index] = value;
+        }
     }
 
     // Pop a value from the registers
