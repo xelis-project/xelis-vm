@@ -68,6 +68,33 @@ pub enum Type {
 }
 
 impl Type {
+
+    pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Type::U8),
+            1 => Some(Type::U16),
+            2 => Some(Type::U32),
+            3 => Some(Type::U64),
+            4 => Some(Type::U128),
+            5 => Some(Type::Bool),
+            6 => Some(Type::String),
+            _ => None
+        }
+    }
+
+    pub fn primitive_byte(&self) -> Option<u8> {
+        match self {
+            Type::U8 => Some(0),
+            Type::U16 => Some(1),
+            Type::U32 => Some(2),
+            Type::U64 => Some(3),
+            Type::U128 => Some(4),
+            Type::Bool => Some(5),
+            Type::String => Some(6),
+            _ => None
+        }
+    }
+
     pub(crate) fn from_token(s: &Token, struct_manager: &StructManager) -> Option<Self> {
         let value: Self = match s {
             Token::U8 => Type::U8,

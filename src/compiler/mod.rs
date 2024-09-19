@@ -1,123 +1,156 @@
-use crate::{IdentifierType, Program, Type, Value};
+mod chunk;
+mod opcode;
+
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+
+use chunk::{Chunk, ChunkReader};
+use opcode::OpCode;
+
+use crate::{Type, Value};
 
 pub enum CompilerError {
     NotImplemented
 }
 
-pub struct Binary {
+// Its main purpose is to compile the program into a bytecode version
+// that can be executed by the VM
+pub struct Compiler;
 
-}
+pub fn run(chunk: Chunk) -> Value {
+    let mut stack: Vec<Value> = Vec::new();
+    let mut registers: Vec<Value> = Vec::new();
 
-pub enum Operator {
-    Equals, // ==
-    NotEquals, // !=
-    And, // &&
-    Or, // ||
-    GreaterThan, // >
-    LessThan, // <
-    GreaterOrEqual, // >=
-    LessOrEqual, // <=
-    Plus, // +
-    Minus, // -
-    Multiply, // *
-    Divide, // /
-    Rem, // %
+    let mut reader = ChunkReader::new(&chunk);
 
-    BitwiseXor, // ^
-    BitwiseAnd, // &
-    BitwiseOr, // |
-    BitwiseLeft, // <<
-    BitwiseRight, // >>
-}
+    while let Some(op_code) = reader.next_op_code() {
+        match op_code {
+            OpCode::Constant => {
+                let constant = chunk.get_constant(reader.read_u8().unwrap() as usize).unwrap();
+                stack.push(constant.clone());
+            },
+            OpCode::Load => {
+            },
+            OpCode::Register => {
+                let value = stack.pop().unwrap();
+                registers.push(value);
+            },
+            OpCode::Cast => {
+                let _type = reader.read_type().unwrap();
+                let current = stack.pop().unwrap();
+                let value = match _type {
+                    Type::U8 => Value::U8(current.cast_to_u8().unwrap()),
+                    Type::U16 => Value::U16(current.cast_to_u16().unwrap()),
+                    Type::U32 => Value::U32(current.cast_to_u32().unwrap()),
+                    Type::U64 => Value::U64(current.cast_to_u64().unwrap()),
+                    Type::U128 => Value::U128(current.cast_to_u128().unwrap()),
+                    Type::String => Value::String(current.cast_to_string().unwrap()),
+                    _ => panic!("cast unnkown type")
+                };
+                stack.push(value);
+            },
+            OpCode::NewArray => {
+                let length = reader.read_u16();
+                let mut array = VecDeque::with_capacity(length as usize);
+                for _ in 0..length {
+                    array.push_front(Rc::new(RefCell::new(stack.pop().unwrap())));
+                }
 
-pub enum OpCode {
-    // push value
-    Value(Value),
-    // load from stack, push
-    Get(IdentifierType),
-    // pop, store in stack
-    Set(IdentifierType),
-    // pop last => get_sub_value => push
-    On(Box<OpCode>),
-    // pop value => push value
-    Cast(Type),
-    // pop value => push !value
-    Not,
-    // left = right
-    Assign,
-    // pop both, execute op, push
-    Op(Operator),
-    // pop condition => true => add opcode
-    OpAnd(Box<OpCode>),
-    // pop condition => false => add opcode
-    OpOr(Box<OpCode>),
-    // pop condition => execute one branch => push
-    Ternary {
-        left: Box<OpCode>,
-        right: Box<OpCode>
-    },
-    // pop args, pop on_value => call function
-    FunctionCall {
-        args: usize,
-        on_value: bool,
-        id: IdentifierType
-    },
-    // pop 2 values => left.get_sub_value(right)
-    ArrayCall,
-    // pop N values => create array 
-    Array {
-        args: usize
-    },
-    // pop N values => create struct
-    Struct {
-        args: usize,
-        id: IdentifierType
-    },
-    // pop => condition => add opcode
-    IfElse {
-        if_body: Vec<OpCode>,
-        else_body: Vec<OpCode>
-    }
-}
-
-pub struct Chunk {
-    op_codes: Vec<OpCode>
-}
-
-impl Chunk {
-    pub fn new() -> Self {
-        Chunk {
-            op_codes: Vec::new()
+                stack.push(Value::Array(array.into()));
+            },
+            OpCode::ArrayCall => {
+                let index = stack.pop().unwrap().cast_to_u32().unwrap();
+                let value = stack.pop().unwrap();
+                let array = value.as_sub_vec().unwrap();
+                stack.push(array[index as usize].borrow().clone());
+            },
+            _ => {
+                println!("Not implemented");
+                break;
+            }
         }
     }
 
-    pub fn push(&mut self, op_code: OpCode) {
-        self.op_codes.push(op_code);
-    }
+    stack.pop().unwrap()
 }
 
-// Its main purpose is to compile the program
-pub struct Compiler {
-    program: Program,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Compiler {
-    pub fn new(program: Program) -> Self {
-        Compiler {
-            program
-        }
+    #[test]
+    fn test_casting() {
+        let mut chunk = Chunk::new();
+        let index = chunk.add_constant(Value::U8(10));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        chunk.emit_opcode(OpCode::Cast);
+        chunk.write_u8(Type::String.primitive_byte().unwrap());
+
+        assert_eq!(run(chunk), Value::String("10".to_string()));
     }
 
-    pub fn compile(&self) -> Result<Binary, CompilerError> {
-        let mut chunks: Vec<Chunk> = Vec::new();
+    #[test]
+    fn test_array_call() {
+        let mut chunk = Chunk::new();
 
-        for (id, function) in &self.program.functions {
-            let mut chunk = Chunk::new();
-            // function.get_statemnet
-            chunks.push(chunk);
-        }
-        Ok(Binary {
+        // Push element 1
+        let index = chunk.add_constant(Value::U8(10));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
 
-        })
+        // Push element 2
+        let index = chunk.add_constant(Value::U8(20));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Create a new array with 2 elements
+        chunk.emit_opcode(OpCode::NewArray);
+        chunk.write_u16(2);
+
+        // Load the first element
+        let index = chunk.add_constant(Value::U16(0));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        chunk.emit_opcode(OpCode::ArrayCall);
+
+        assert_eq!(run(chunk), Value::U8(10));
+    }
+
+    #[test]
+    fn test_multi_depth_array_call() {
+        let mut chunk = Chunk::new();
+
+        let values = vec![
+            Value::U8(10),
+            Value::U8(20),
+            Value::U8(30),
+        ].into_iter().map(|v| Rc::new(RefCell::new(v))).collect();
+
+        // Push element 1
+        let index = chunk.add_constant(Value::Array(values));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        // Create a new array with 2 elements
+        chunk.emit_opcode(OpCode::NewArray);
+        chunk.write_u16(1);
+
+        // Load the first element of the first array
+        let index = chunk.add_constant(Value::U16(0));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        chunk.emit_opcode(OpCode::ArrayCall);
+
+        // Load the last element
+        let index = chunk.add_constant(Value::U16(2));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u8(index as u8);
+
+        chunk.emit_opcode(OpCode::ArrayCall);
+
+        assert_eq!(run(chunk), Value::U8(30));
     }
 }
