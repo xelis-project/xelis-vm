@@ -47,7 +47,6 @@ pub struct VM<'a> {
     module: &'a Module,
     // The call stack of the VM
     call_stack: Vec<ChunkManager<'a>>,
-
 }
 
 impl<'a> VM<'a> {
@@ -94,7 +93,6 @@ impl<'a> VM<'a> {
         let mut final_result = None;
 
         'main: while let Some(mut manager) = self.call_stack.pop() {
-            println!("Running chunk {:?}", manager);
             if let Some(value) = final_result.take() {
                 manager.push_stack(value);
             }
@@ -103,7 +101,7 @@ impl<'a> VM<'a> {
                 match op_code {
                     OpCode::Constant => {
                         let index = manager.read_u8()? as usize;
-                        let constant = manager.get_constant(index)?;
+                        let constant = self.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
                         manager.push_stack(constant.clone());
                     },
                     OpCode::MemoryLoad => {
@@ -262,10 +260,7 @@ mod tests {
 
     use super::*;
 
-    fn run(chunk: Chunk) -> Value {
-        let mut module = Module::new();
-        module.add_chunk(chunk);
-
+    fn run(module: Module) -> Value {
         let mut vm = VM::new(&module);
         vm.invoke_chunk_id(0).unwrap();
         vm.run().unwrap()
@@ -273,28 +268,32 @@ mod tests {
 
     #[test]
     fn test_casting() {
+        let mut module = Module::new();
         let mut chunk = Chunk::new();
-        let index = chunk.add_constant(Value::U8(10));
+        let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         chunk.emit_opcode(OpCode::Cast);
         chunk.write_u8(Type::String.primitive_byte().unwrap());
 
-        assert_eq!(run(chunk), Value::String("10".to_string()));
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::String("10".to_string()));
     }
 
     #[test]
     fn test_array_call() {
+        let mut module = Module::new();
         let mut chunk = Chunk::new();
 
         // Push element 1
-        let index = chunk.add_constant(Value::U8(10));
+        let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         // Push element 2
-        let index = chunk.add_constant(Value::U8(20));
+        let index = module.add_constant(Value::U8(20));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -303,17 +302,19 @@ mod tests {
         chunk.write_u32(2);
 
         // Load the first element
-        let index = chunk.add_constant(Value::U16(0));
+        let index = module.add_constant(Value::U16(0));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         chunk.emit_opcode(OpCode::ArrayCall);
+        module.add_chunk(chunk);
 
-        assert_eq!(run(chunk), Value::U8(10));
+        assert_eq!(run(module), Value::U8(10));
     }
 
     #[test]
     fn test_multi_depth_array_call() {
+        let mut module = Module::new();
         let mut chunk = Chunk::new();
 
         let values = vec![
@@ -323,7 +324,7 @@ mod tests {
         ].into_iter().map(|v| Rc::new(RefCell::new(v))).collect();
 
         // Push element 1
-        let index = chunk.add_constant(Value::Array(values));
+        let index = module.add_constant(Value::Array(values));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -332,20 +333,22 @@ mod tests {
         chunk.write_u32(1);
 
         // Load the first element of the first array
-        let index = chunk.add_constant(Value::U16(0));
+        let index = module.add_constant(Value::U16(0));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         chunk.emit_opcode(OpCode::ArrayCall);
 
         // Load the last element
-        let index = chunk.add_constant(Value::U16(2));
+        let index = module.add_constant(Value::U16(2));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         chunk.emit_opcode(OpCode::ArrayCall);
 
-        assert_eq!(run(chunk), Value::U8(30));
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::U8(30));
     }
 
     #[test]
@@ -363,12 +366,12 @@ mod tests {
 
         let mut chunk = Chunk::new();
         // Push the first field
-        let index = chunk.add_constant(Value::U8(10));
+        let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         // Push the second field
-        let index = chunk.add_constant(Value::U16(20));
+        let index = module.add_constant(Value::U16(20));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -430,7 +433,7 @@ mod tests {
 
         // First function should return "true"
         let mut bool_fn = Chunk::new();
-        let index = bool_fn.add_constant(Value::Boolean(true));
+        let index = module.add_constant(Value::Boolean(true));
         bool_fn.emit_opcode(OpCode::Constant);
         bool_fn.write_u8(index as u8);
 
@@ -480,7 +483,7 @@ mod tests {
         // Main function
         let mut main = Chunk::new();
         // Create a struct
-        let index = main.add_constant(Value::Struct(0, vec![
+        let index = module.add_constant(Value::Struct(0, vec![
             Rc::new(RefCell::new(Value::U64(10)))
         ].into()));
 
@@ -503,10 +506,11 @@ mod tests {
 
     #[test]
     fn test_memory() {
+        let mut module = Module::new();
         let mut chunk = Chunk::new();
 
         // Push element 1
-        let index = chunk.add_constant(Value::U8(10));
+        let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -517,20 +521,23 @@ mod tests {
         chunk.emit_opcode(OpCode::MemoryLoad);
         chunk.write_u16(0);
 
-        assert_eq!(run(chunk), Value::U8(10));
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::U8(10));
     }
 
     #[test]
     fn test_for_each() {
+        let mut module = Module::new();
         let mut chunk = Chunk::new();
 
         // Push element 1
-        let index = chunk.add_constant(Value::U8(10));
+        let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
         // Push element 2
-        let index = chunk.add_constant(Value::U8(20));
+        let index = module.add_constant(Value::U8(20));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -541,14 +548,14 @@ mod tests {
         // Store the array in the memory
         chunk.emit_opcode(OpCode::MemorySet);
 
-        let sum_index = chunk.add_constant(Value::U8(0));
+        let sum_index = module.add_constant(Value::U8(0));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(sum_index as u8);
 
         // Store sum in memory
         chunk.emit_opcode(OpCode::MemorySet);
 
-        let index = chunk.add_constant(Value::U32(0));
+        let index = module.add_constant(Value::U32(0));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u8(index as u8);
 
@@ -608,6 +615,8 @@ mod tests {
         chunk.emit_opcode(OpCode::MemoryLoad);
         chunk.write_u16(1);
 
-        assert_eq!(run(chunk), Value::U8(30));
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::U8(30));
     }
 }

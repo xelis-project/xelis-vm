@@ -1,7 +1,6 @@
 use crate::{
     bytecode::{opcode::OpCode, vm::VMError},
     Type,
-    Value
 };
 
 use super::Chunk;
@@ -20,12 +19,6 @@ impl<'a> ChunkReader<'a> {
             chunk,
             ip: 0
         }
-    }
-
-    // Get the constant at the given index
-    #[inline]
-    pub fn get_constant(&self, index: usize) -> Result<&Value, VMError> {
-        self.chunk.get_constant(index).ok_or(VMError::MissingConstant)
     }
 
     // Get the current index in our reader

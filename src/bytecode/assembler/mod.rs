@@ -1,5 +1,7 @@
 use opcode::OpCodeWithArgs;
 
+use crate::Value;
+
 use super::{Chunk, Module};
 
 mod opcode;
@@ -19,6 +21,7 @@ pub struct Assembler<'a> {
 }
 
 impl<'a> Assembler<'a> {
+    // Create a new assembler with the given source code
     pub fn new(source: &'a str) -> Self {
         Assembler {
             module: Module::new(),
@@ -26,6 +29,11 @@ impl<'a> Assembler<'a> {
             chunks_labels: Vec::new(),
             jump_labels: Vec::new(),
         }
+    }
+
+    // Add a constant to the module and return its index
+    pub fn add_constant(&mut self, value: Value) -> usize {
+        self.module.add_constant(value)
     }
 
     // Assemble the source code into bytecode

@@ -7,13 +7,13 @@ pub mod assembler;
 pub use chunk::Chunk;
 pub use opcode::OpCode;
 
-use crate::types::Struct;
+use crate::{types::Struct, Value};
 
 // A module is a collection of declared chunks, constants and structs
 // It represents a program compiled in bytecode
 pub struct Module {
-    // TODO: have a central IndexSet of all the constants
-
+    // TODO use a IndexSet
+    constants: Vec<Value>,
     // Available chunks
     chunks: Vec<Chunk>,
     // registered structs
@@ -24,9 +24,27 @@ impl Module {
     // Create a new module
     pub fn new() -> Self {
         Module {
+            constants: Vec::new(),
             chunks: Vec::new(),
             structs: Vec::new()
         }
+    }
+
+    // Add a constant to the module
+    #[inline]
+    pub fn add_constant(&mut self, value: Value) -> usize {
+        if let Some(index) = self.constants.iter().position(|v| v == &value) {
+            index
+        } else {
+            self.constants.push(value);
+            self.constants.len() - 1
+        }
+    }
+
+    // Get a constant at a specific index
+    #[inline]
+    pub fn get_constant_at(&self, index: usize) -> Option<&Value> {
+        self.constants.get(index)
     }
 
     // Add a chunk to the module

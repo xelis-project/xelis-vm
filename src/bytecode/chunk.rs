@@ -1,13 +1,9 @@
-use crate::Value;
-
 use super::OpCode;
 
 // Each chunk is a collection of opcodes and constants
 // It represent a function or a block of code
 #[derive(Debug)]
 pub struct Chunk {
-    // All the constants used in the chunk
-    constants: Vec<Value>,
     // All the opcodes defined in the chunk
     instructions: Vec<u8>
 }
@@ -17,28 +13,14 @@ impl Chunk {
     #[inline]
     pub fn new() -> Self {
         Chunk {
-            constants: Vec::new(),
             instructions: Vec::new()
         }
-    }
-
-    // Get the constant at the given index
-    #[inline]
-    pub fn get_constant(&self, index: usize) -> Option<&Value> {
-        self.constants.get(index)
     }
 
     // Get the opcodes length
     #[inline]
     pub fn index(&self) -> usize {
         self.instructions.len()
-    }
-
-    // Add a constant and retrieve its index
-    #[inline]
-    pub fn add_constant(&mut self, value: Value) -> usize {
-        self.constants.push(value);
-        self.constants.len() - 1
     }
 
     // Pop the latest instruction
