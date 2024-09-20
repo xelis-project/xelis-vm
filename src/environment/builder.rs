@@ -3,8 +3,7 @@ use std::borrow::Cow;
 use crate::{
     ast::{NativeFunction, OnCallFn, Operator, Signature},
     parser::{FunctionMapper, IdMapper, Mapper, StructBuilder, StructManager},
-    types::Type,
-    NoHashMap,
+    types::Type
 };
 
 use super::{std as xstd, Environment};
@@ -37,7 +36,8 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a native function
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
-        self.env.functions.insert(id, NativeFunction::new(for_type, parameters, on_call, cost, return_type));
+        assert_eq!(id as usize, self.env.functions.len());
+        self.env.functions.push(NativeFunction::new(for_type, parameters, on_call, cost, return_type));
     }
 
     // Register a structure in the environment
@@ -55,7 +55,8 @@ impl<'a> EnvironmentBuilder<'a> {
         };
 
         let (id, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();
-        self.env.structures.insert(id, s);
+        assert_eq!(id as usize, self.env.structures.len());
+        self.env.structures.push(s);
     }
 
     // functions mapper, used to find the function id
@@ -69,7 +70,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // all registered functions
-    pub fn get_functions(&self) -> &NoHashMap<NativeFunction> {
+    pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.env.functions
     }
 

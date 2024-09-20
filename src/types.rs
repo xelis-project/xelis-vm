@@ -5,7 +5,7 @@ use crate::{
     ast::Token
 };
 use std::{
-    collections::{hash_map::RandomState, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     hash::{BuildHasher, Hash}
 };
 
@@ -13,40 +13,6 @@ use std::{
 #[derive(Clone, PartialEq, Debug)]
 pub struct Struct {
     pub fields: Vec<Type>
-}
-
-pub struct RefMap<'a, K, V, S = RandomState> {
-    maps: Vec<&'a HashMap<K, V, S>>
-}
-
-// link multiple maps in one struct for read-only
-impl<'a, K, V, S: BuildHasher> RefMap<'a, K, V, S> {
-    pub fn new() -> Self {
-        RefMap {
-            maps: vec![]
-        }
-    }
-
-    pub fn get(&self, key: &K) -> Option<&V>
-    where K: Hash + Eq {
-        for map in &self.maps {
-            match map.get(key) {
-                Some(v) => return Some(v),
-                None => {}
-            }
-        }
-        None
-    }
-
-    pub fn link_maps(&mut self, maps: &[&'a HashMap<K, V, S>]) {
-        for map in maps {
-            self.link_map(map);
-        }
-    }
-
-    pub fn link_map(&mut self, map: &'a HashMap<K, V, S>) {
-        self.maps.push(map);
-    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
@@ -242,11 +208,5 @@ impl<K: Hash + Eq> HasKey<K> for HashSet<K> {
 impl<K: Hash + Eq, V, S: BuildHasher> HasKey<K> for HashMap<K, V, S> {
     fn has(&self, key: &K) -> bool {
         self.contains_key(key)
-    }
-}
-
-impl<K: Hash + Eq, V> HasKey<K> for RefMap<'_, K, V> {
-    fn has(&self, key: &K) -> bool {
-        self.get(key).is_some()
     }
 }

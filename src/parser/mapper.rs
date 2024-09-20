@@ -38,14 +38,6 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
         }
     }
 
-    pub fn without_parent(self) -> Self {
-        Self {
-            next_id: self.get_next_id(),
-            parent: None,
-            mappings: HashMap::new()
-        }
-    }
-
     pub fn get_next_id(&self) -> IdentifierType {
         self.next_id
     }
@@ -56,6 +48,12 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
         T: Borrow<K>,
         K: Eq + Hash
     {
+        if let Some(parent) = self.parent {
+            if let Ok(id) = parent.get(name) {
+                return Ok(id);
+            }
+        }
+
         self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound(format!("{:?}", name)))
     }
 
@@ -65,11 +63,20 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
         T: Borrow<K>,
         K: Eq + Hash
     {
+        if let Some(parent) = self.parent {
+            if parent.has_variable(name) {
+                return true;
+            }
+        }
         self.mappings.contains_key(name)
     }
 
     // Register a new variable name
     pub fn register(&mut self, name: T) -> Result<IdentifierType, ParserError<'a>> {
+        if let Ok(name) = self.get(&name) {
+            return Err(ParserError::MappingExists(name));
+        }
+
         let id = self.next_id;
         if let Some(v) = self.mappings.insert(name, id) {
             return Err(ParserError::MappingExists(v));
@@ -80,7 +87,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     pub fn count(&self) -> usize {
-        self.mappings.len()
+        self.parent.map_or(0, |p| p.count()) + self.mappings.len()
     }
 }
 

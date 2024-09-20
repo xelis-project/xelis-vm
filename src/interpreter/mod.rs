@@ -17,14 +17,13 @@ use crate::{
     types::*,
     values::Value,
     IdentifierType,
-    NoHashMap,
-    NoOpHasher
+    NoHashMap
 };
 use stack::Stack;
 pub use path::Path;
 pub use state::State;
 pub use error::InterpreterError;
-use std::{cell::RefCell, hash::BuildHasherDefault, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 // Enum helper for the execute_for_each_statements function
 enum Either<L, R> {
@@ -137,28 +136,29 @@ pub struct Interpreter<'a> {
     program: &'a Program,
     // Environment linked to execute the program
     env: &'a Environment,
-    ref_structures: RefMap<'a, IdentifierType, Struct, BuildHasherDefault<NoOpHasher>>,
     // All the constants defined in the program
     constants: Option<NoHashMap<Value>>
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new(program: &'a Program, env: &'a Environment) -> Result<Self, InterpreterError> {
-        let mut interpreter = Self {
+        Ok(Self {
             program,
             env,
-            ref_structures: RefMap::new(),
             constants: None
-        };
-
-        interpreter.ref_structures.link_maps(&[env.get_structures(), &interpreter.program.structures]);
-        Ok(interpreter)
+        })
     }
 
+    // Get the function from the environment or the program based on the index
     fn get_function(&self, name: &IdentifierType) -> Result<Function, InterpreterError> {
-        match self.env.get_functions().get(name) {
-            Some(func) => Ok(Function::Native(func)),
-            None => self.program.functions.get(name).map(|v | v.as_function()).ok_or_else(|| InterpreterError::NoMatchingFunction)
+        let index = *name as usize;
+        let len = self.env.get_functions().len();
+        if index < len {
+            Ok(Function::Native(&self.env.get_functions()[index]))
+        } else {
+            self.program.functions.get(index - len)
+                .map(|v | v.as_function())
+                .ok_or(InterpreterError::NoMatchingFunction)
         }
     }
 
@@ -788,9 +788,13 @@ mod tests {
 
     #[track_caller]
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {
+        test_code_expect_value_with_env(EnvironmentBuilder::default(), key, code)
+    }
+
+    #[track_caller]
+    fn test_code_expect_value_with_env(builder: EnvironmentBuilder, key: &Signature, code: &str) -> Value {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
-        let builder = EnvironmentBuilder::default();
         let parser = Parser::new(tokens, &builder);
         let (program, mapper) = parser.parse().unwrap();
 
@@ -806,6 +810,11 @@ mod tests {
     #[track_caller]
     fn test_code_expect_return(code: &str, expected: u64) {
         assert_eq!(test_code_expect_value(&Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
+    }
+
+    #[track_caller]
+    fn test_code_expect_return_with_env(code: &str, expected: u64, env: EnvironmentBuilder) {
+        assert_eq!(test_code_expect_value_with_env(env, &Signature::new("main".to_string(), None, Vec::new()), code).to_u64().unwrap(), expected);
     }
 
     #[test]
@@ -1076,5 +1085,18 @@ mod tests {
         test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 10);
         test_code_expect_return("entry main() { let a: u64 = 0; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 0);
         test_code_expect_return("entry main() { let a: u64 = 1; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", 1);
+    }
+
+    #[test]
+    fn test_struct_from_env() {
+        let mut env = EnvironmentBuilder::default();
+        env.register_structure("Test", vec![("a", Type::U64)]);
+        test_code_expect_return_with_env("entry main() { let t: Test = Test { a: 10 }; return t.a; }", 10, env);
+    }
+
+    #[test]
+    fn test_struct() {
+        test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; return t.a; }", 10);
+        test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; t.a = 20; return t.a; }", 20);
     }
 }

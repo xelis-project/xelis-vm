@@ -8,13 +8,12 @@ pub use builder::EnvironmentBuilder;
 use crate::{
     ast::{NativeFunction, Operator},
     types::Struct,
-    NoHashMap,
     NoOpHasher
 };
 
 pub struct Environment {
-    functions: NoHashMap<NativeFunction>,
-    structures: NoHashMap<Struct>,
+    functions: Vec<NativeFunction>,
+    structures: Vec<Struct>,
     operators: HashMap<Operator, u64, BuildHasherDefault<NoOpHasher>>
 }
 
@@ -26,23 +25,29 @@ impl Default for Environment {
 }
 
 impl Environment {
+    // Create a new environment
     pub fn new() -> Self {
         Environment {
-            functions: NoHashMap::default(),
-            structures: NoHashMap::default(),
+            functions: Vec::new(),
+            structures: Vec::new(),
             operators: HashMap::with_hasher(BuildHasherDefault::default())
         }
     }
 
-    pub fn get_functions(&self) -> &NoHashMap<NativeFunction> {
+    // Get all the registered functions
+    #[inline(always)]
+    pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.functions
     }
 
-    pub fn get_structures(&self) -> &NoHashMap<Struct> {
+    // Get all the registered structures
+    #[inline(always)]
+    pub fn get_structures(&self) -> &Vec<Struct> {
         &self.structures
     }
 
     // Get the gas used of an operator
+    #[inline(always)]
     pub fn get_operator_cost(&self, operator: &Operator) -> Option<u64> {
         self.operators.get(operator).copied()
     }

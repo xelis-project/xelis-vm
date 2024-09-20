@@ -9,6 +9,7 @@ pub struct StructBuilder<'a> {
     pub mapper: IdMapper<'a>
 }
 
+#[derive(Debug)]
 pub struct StructManager<'a> {
     parent: Option<&'a StructManager<'a>>,
     // All structs registered in the manager
@@ -73,12 +74,18 @@ impl<'a> StructManager<'a> {
 
     // Get a struct by name
     pub fn get(&self, name: &IdentifierType) -> Result<&StructBuilder<'a>, ParserError<'a>> {
+        if let Some(parent) = self.parent {
+            if let Ok(s) = parent.get(name) {
+                return Ok(s);
+            }
+        }
+
         self.structures.get(name).ok_or_else(|| ParserError::StructNotFound(name.clone()))
     }
 
     // Convert the struct manager into a hashmap of structs
-    pub fn finalize(self) -> NoHashMap<Struct> {
-        self.structures.into_iter().map(|(k, v)| (k, Struct { fields: v.fields })).collect()
+    pub fn finalize(self) -> Vec<Struct> {
+        self.structures.into_iter().map(|(_, v)| Struct { fields: v.fields }).collect()
     }
 }
 

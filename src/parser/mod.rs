@@ -17,7 +17,6 @@ use crate::{
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
-    NoHashMap,
 };
 use std::{
     borrow::Cow,
@@ -39,9 +38,9 @@ pub struct Program {
     // All constants declared
     pub constants: HashSet<DeclarationStatement>,
     // All structures declared
-    pub structures: NoHashMap<Struct>,
+    pub structures: Vec<Struct>,
     // All functions declared
-    pub functions: NoHashMap<DeclaredFunctionType>
+    pub functions: Vec<DeclaredFunctionType>
 }
 
 pub struct Parser<'a> {
@@ -50,7 +49,7 @@ pub struct Parser<'a> {
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
-    functions: NoHashMap<DeclaredFunctionType>,
+    functions: Vec<DeclaredFunctionType>,
     // Functions mapper
     functions_mapper: FunctionMapper<'a>,
     // Struct manager
@@ -68,7 +67,7 @@ impl<'a> Parser<'a> {
         Parser {
             tokens,
             constants: HashSet::new(),
-            functions: NoHashMap::default(),
+            functions: Vec::new(),
             functions_mapper,
             struct_manager: StructManager::with_parent(env.get_struct_manager()),
             env
@@ -208,7 +207,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Expression::FunctionCall(path, name, _) => {
-                let return_type = self.get_function_return_type(name)?;
+                let return_type = self.get_function_return_type(*name as usize)?;
                 match return_type {
                     Some(ref v) => match v {
                         Type::T => match on_type {
@@ -330,8 +329,8 @@ impl<'a> Parser<'a> {
         let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types))?;
 
         // Entry are only callable by external
-        if self.is_entry_function(&id)? {
-            return Err(ParserError::FunctionNotFound(id))
+        if self.is_entry_function(id as usize)? {
+            return Err(ParserError::FunctionNotFound)
         }
 
         self.expect_token(Token::ParenthesisClose)?;
@@ -973,7 +972,7 @@ impl<'a> Parser<'a> {
 
         let types: Vec<Type> = parameters.iter().map(|p| p.get_type().clone()).collect();
         let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), types))?;
-        if self.has_function(&id) {
+        if self.has_function(id as usize) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }
 
@@ -1006,7 +1005,7 @@ impl<'a> Parser<'a> {
         };
 
         // push function before reading statements to allow recursive calls
-        self.functions.insert(id, function);
+        self.functions.push(function);
 
         Ok(())
     }
@@ -1049,33 +1048,36 @@ impl<'a> Parser<'a> {
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, name: &IdentifierType) -> bool {
-        self.is_entry_function(name).is_ok()
+    fn has_function(&self, id: usize) -> bool {
+        self.is_entry_function(id).is_ok()
     }
 
     // verify if a function is an entry function
-    fn is_entry_function(&self, name: &IdentifierType) -> Result<bool, ParserError<'a>> {
-        if let Some(f) = self.functions.get(name) {
-            Ok(f.is_entry())
+    fn is_entry_function(&self, index: usize) -> Result<bool, ParserError<'a>> {
+        let len = self.env.get_functions().len();
+        if index < len {
+            Ok(false)
         } else {
-            // native functions can't be entry
-            match self.env.get_functions().get(name) {
-                Some(_) => Ok(false),
-                None => Err(ParserError::FunctionNotFound(name.clone()))
+            match self.functions.get(index - len) {
+                Some(func) => Ok(func.is_entry()),
+                None => Err(ParserError::FunctionNotFound)
             }
         }
     }
 
     // get a function return type using its identifier
-    fn get_function_return_type(&self, name: &IdentifierType) -> Result<&Option<Type>, ParserError<'a>> {
-        if let Some(native) = self.env.get_functions().get(name) {
-            return Ok(native.get_return_type())
+    fn get_function_return_type(&self, index: usize) -> Result<&Option<Type>, ParserError<'a>> {
+        let len = self.env.get_functions().len();
+        if index < len {
+            let f = &self.env.get_functions()[index];
+            Ok(f.get_return_type())
+        } else {
+            match self.functions.get(index - len) {
+                Some(func) => Ok(func.return_type()),
+                None => Err(ParserError::FunctionNotFound)
+            }
         }
 
-        match self.functions.get(name) {
-            Some(func) => Ok(func.return_type()),
-            None => Err(ParserError::FunctionNotFound(name.clone()))
-        }
     }
 
     /**
@@ -1178,6 +1180,11 @@ mod tests {
     #[track_caller]
     fn test_parser_statement(tokens: Vec<Token>, variables: Vec<(&str, Type)>) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
+        test_parser_statement_with_env(tokens, variables, env)
+    }
+
+    #[track_caller]
+    fn test_parser_statement_with_env(tokens: Vec<Token>, variables: Vec<(&str, Type)>, env: EnvironmentBuilder) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut mapper = IdMapper::new();
         let mut context = Context::new();
@@ -1437,6 +1444,56 @@ mod tests {
         ];
 
         let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_struct() {
+        // Message { message_id: u64, message: string }
+        let tokens = vec![
+            Token::Struct,
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("aaa_message_id"),
+            Token::Colon,
+            Token::U64,
+            Token::Comma,
+            Token::Identifier("aaa_message"),
+            Token::Colon,
+            Token::String,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens.clone());
+        assert_eq!(program.structures.len(), 1);
+
+        // Also test with a environment
+        let mut env = EnvironmentBuilder::new();
+        env.register_structure("Message", vec![
+            ("message_id", Type::U64),
+            ("message", Type::String)
+        ]);
+
+        // Create a struct instance
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Identifier("Message"),
+            Token::OperatorAssign,
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("message_id"),
+            Token::Colon,
+            Token::U64Value(0),
+            Token::Comma,
+            Token::Identifier("message"),
+            Token::Colon,
+            Token::StringValue(Cow::Borrowed("hello")),
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement_with_env(tokens, Vec::new(), env);
         assert_eq!(statements.len(), 1);
     }
 }

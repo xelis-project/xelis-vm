@@ -6,7 +6,7 @@ use crate::{
 
 use super::Operator;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
@@ -22,7 +22,7 @@ pub enum Expression {
     Cast(Box<Expression>, Type), // expr, type
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Statement {
     If(Expression, Vec<Statement>, Option<Vec<Statement>>),
     While(Expression, Vec<Statement>),

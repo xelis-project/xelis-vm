@@ -36,7 +36,7 @@ pub enum ParserError<'a> {
     UnexpectedType(Type),
     InvalidStructField(String),
     InvalidStructureName(String),
-    FunctionNotFound(IdentifierType),
+    FunctionNotFound,
     LastFunction,
     FunctionNoReturnType,
     InvalidTypeT,
