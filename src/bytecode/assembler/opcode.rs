@@ -79,6 +79,15 @@ pub enum OpCodeWithArgs {
         // Args count
         args_count: u8
     },
+    // Same as InvokeChunk, but for system calls
+    SysCall {
+        // System call id
+        sys_call_id: u16,
+        // On value
+        on_value: bool,
+        // Args count
+        args_count: u8
+    },
     // pop length, pop N values => create array
     NewArray {
         // Array length
@@ -152,6 +161,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::ArrayCall { .. } => OpCode::ArrayCall,
             OpCodeWithArgs::Cast { .. } => OpCode::Cast,
             OpCodeWithArgs::InvokeChunk { .. } => OpCode::InvokeChunk,
+            OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
             OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
             OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
             OpCodeWithArgs::Add => OpCode::Add,
@@ -196,6 +206,11 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Cast { primitive_type_id } => chunk.write_u8(*primitive_type_id),
             OpCodeWithArgs::InvokeChunk { chunk_id, on_value, args_count } => {
                 chunk.write_u16(*chunk_id);
+                chunk.write_bool(*on_value);
+                chunk.write_u8(*args_count);
+            },
+            OpCodeWithArgs::SysCall { sys_call_id, on_value, args_count } => {
+                chunk.write_u16(*sys_call_id);
                 chunk.write_bool(*on_value);
                 chunk.write_u8(*args_count);
             },
@@ -381,6 +396,17 @@ impl OpCodeWithArgs {
                     args_count: args[2].parse().map_err(|_| "Invalid args count")?
                 }
             },
+            "SYSCALL" => {
+                if args.len() != 3 {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::SysCall {
+                    sys_call_id: args[0].parse().map_err(|_| "Invalid sys call id")?,
+                    on_value: args[1].parse().map_err(|_| "Invalid on value bool")?,
+                    args_count: args[2].parse().map_err(|_| "Invalid args count")?
+                }
+            }
             "NEWARRAY" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
