@@ -38,7 +38,7 @@ pub enum OpCode {
     // pop value => push value
     Cast,
     // pop args u8 count, on_value bool, fn id
-    FunctionCall,
+    InvokeChunk,
     // pop length, pop N values => create array
     NewArray,
     // pop type id, pop N values => create struct
@@ -106,7 +106,7 @@ impl OpCode {
             OpCode::Return => 13,
             OpCode::ArrayCall => 14,
             OpCode::Cast => 15,
-            OpCode::FunctionCall => 16,
+            OpCode::InvokeChunk => 16,
             OpCode::NewArray => 17,
             OpCode::NewStruct => 18,
             OpCode::Add => 19,
@@ -151,7 +151,7 @@ impl OpCode {
             13 => OpCode::Return,
             14 => OpCode::ArrayCall,
             15 => OpCode::Cast,
-            16 => OpCode::FunctionCall,
+            16 => OpCode::InvokeChunk,
             17 => OpCode::NewArray,
             18 => OpCode::NewStruct,
             19 => OpCode::Add,

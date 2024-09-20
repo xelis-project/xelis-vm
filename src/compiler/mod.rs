@@ -132,7 +132,7 @@ pub fn run(module: &Module, start: usize) -> Option<Value> {
                     let array = value.as_sub_vec().ok().unwrap();
                     manager.push_stack(array[index as usize].borrow().clone());
                 },
-                OpCode::FunctionCall => {
+                OpCode::InvokeChunk => {
                     let args = manager.read_u8().unwrap();
                     let on_value = manager.read_bool().unwrap();
                     let id = manager.read_u16();
@@ -402,7 +402,7 @@ mod tests {
 
         // This chunk should call the bool fn
         let mut first = Chunk::new();
-        first.emit_opcode(OpCode::FunctionCall);
+        first.emit_opcode(OpCode::InvokeChunk);
         // 0 args
         first.write_u8(0);
         // not on a value
