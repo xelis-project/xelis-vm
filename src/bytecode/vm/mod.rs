@@ -543,7 +543,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u16(2);
+        chunk.write_u32(2);
 
         // Store the array in the memory
         chunk.emit_opcode(OpCode::MemorySet);
