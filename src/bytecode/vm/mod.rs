@@ -85,7 +85,6 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
@@ -142,7 +141,7 @@ impl<'a> VM<'a> {
                         for _ in 0..length {
                             array.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
                         }
-        
+
                         manager.push_stack(Value::Array(array.into()));
                     },
                     OpCode::ArrayCall => {

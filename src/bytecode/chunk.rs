@@ -24,11 +24,13 @@ impl Chunk {
     }
 
     // Pop the latest instruction
+    #[inline]
     pub fn pop_instruction(&mut self) {
         self.instructions.pop();
     }
 
     // Get the instructions
+    #[inline]
     pub fn get_instructions(&self) -> &[u8] {
         &self.instructions
     }
@@ -51,28 +53,34 @@ impl Chunk {
         self.instructions.push(op_code.as_byte());
     }
 
+    // Write a byte in the instructions
     #[inline]
     pub fn write_u8(&mut self, byte: u8) {
         self.instructions.push(byte);
     }
 
+    // Write a bool in the instructions
+    // A bool is represented as a byte
     #[inline]
     pub fn write_bool(&mut self, byte: bool) {
         self.instructions.push(byte as u8);
     }
 
+    // Write a u16 in the instructions
     #[inline]
     pub fn write_u16(&mut self, byte: u16) {
         let bytes = byte.to_be_bytes();
-        self.instructions.extend_from_slice(&bytes);
+        self.write_bytes(&bytes);
     }
 
+    // Write a u32 in the instructions
     #[inline]
     pub fn write_u32(&mut self, byte: u32) {
         let bytes = byte.to_be_bytes();
-        self.instructions.extend_from_slice(&bytes);
+        self.write_bytes(&bytes);
     }
 
+    // Write bytes in the instructions
     #[inline]
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.instructions.extend_from_slice(bytes);
