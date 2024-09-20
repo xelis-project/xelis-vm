@@ -139,7 +139,7 @@ impl<'a> VM<'a> {
                         manager.push_stack(value);
                     },
                     OpCode::NewArray => {
-                        let length = manager.read_u16()?;
+                        let length = manager.read_u32()?;
                         let mut array = VecDeque::with_capacity(length as usize);
                         for _ in 0..length {
                             array.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
@@ -300,7 +300,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u16(2);
+        chunk.write_u32(2);
 
         // Load the first element
         let index = chunk.add_constant(Value::U16(0));
@@ -329,7 +329,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u16(1);
+        chunk.write_u32(1);
 
         // Load the first element of the first array
         let index = chunk.add_constant(Value::U16(0));

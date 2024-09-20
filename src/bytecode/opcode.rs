@@ -37,7 +37,7 @@ pub enum OpCode {
     ArrayCall,
     // pop value => push value
     Cast,
-    // pop args u8 count, on_value bool, fn id
+    // pop args u8 count, on_value bool, fn id u16
     InvokeChunk,
     // pop length, pop N values => create array
     NewArray,

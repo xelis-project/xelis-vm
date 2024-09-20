@@ -2,6 +2,7 @@ mod chunk;
 mod opcode;
 pub mod vm;
 pub mod compiler;
+pub mod assembler;
 
 pub use chunk::Chunk;
 pub use opcode::OpCode;
