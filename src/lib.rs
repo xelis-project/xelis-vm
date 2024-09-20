@@ -3,8 +3,8 @@ mod types;
 mod values;
 mod parser;
 mod environment;
-mod compiler;
 mod interpreter;
+pub mod bytecode;
 
 pub mod ast;
 

@@ -1,9 +1,3 @@
-mod manager;
-mod reader;
-
-pub use manager::ChunkManager;
-pub use reader::ChunkReader;
-
 use crate::Value;
 
 use super::OpCode;
@@ -50,6 +44,23 @@ impl Chunk {
     // Pop the latest instruction
     pub fn pop_instruction(&mut self) {
         self.instructions.pop();
+    }
+
+    // Get the instructions
+    pub fn get_instructions(&self) -> &[u8] {
+        &self.instructions
+    }
+
+    // Get the instruction at a specific index
+    #[inline]
+    pub fn get_instruction_at(&self, index: usize) -> Option<&u8> {
+        self.instructions.get(index)
+    }
+
+    // Get the instructions at a specific index
+    #[inline]
+    pub fn get_instructions_at(&self, index: usize, size: usize) -> Option<&[u8]> {
+        self.instructions.get(index..index + size)
     }
 
     // Emit an opcode

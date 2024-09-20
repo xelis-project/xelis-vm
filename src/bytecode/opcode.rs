@@ -29,7 +29,7 @@ pub enum OpCode {
     JumpIfFalse,
     // pop value, get iterable length, push
     IterableLength,
-    // Return at the end of chunk
+    // Return will stop processing the opcodes of a chunk
     Return,
 
     // pop index, pop array => push array[index]

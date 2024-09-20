@@ -1,8 +1,12 @@
+mod reader;
+
 use std::ops::{Deref, DerefMut};
 
-use crate::Value;
+pub use reader::ChunkReader;
 
-use super::{Chunk, ChunkReader};
+use crate::{bytecode::Chunk, Value};
+
+use super::VMError;
 
 // Manager for a chunk
 // It contains the reader and the stack
@@ -46,22 +50,28 @@ impl<'a> ChunkManager<'a> {
         self.stack.push(value);
     }
 
-    // Get the last value from the stack
+    // Push multiple values to the stack
     #[inline]
-    pub fn pop_stack(&mut self) -> Option<Value> {
-        self.stack.pop()
+    pub fn extend_stack<I: IntoIterator<Item = Value>>(&mut self, values: I) {
+        self.stack.extend(values);
     }
 
     // Get the last value from the stack
     #[inline]
-    pub fn last_stack(&self) -> Option<&Value> {
-        self.stack.last()
+    pub fn pop_stack(&mut self) -> Result<Value, VMError> {
+        self.stack.pop().ok_or(VMError::EmptyStack)
+    }
+
+    // Get the last value from the stack
+    #[inline]
+    pub fn last_stack(&self) -> Result<&Value, VMError> {
+        self.stack.last().ok_or(VMError::EmptyStack)
     }
 
     // Get the last mutable value from the stack
     #[inline]
-    pub fn last_mut_stack(&mut self) -> Option<&mut Value> {
-        self.stack.last_mut()
+    pub fn last_mut_stack(&mut self) -> Result<&mut Value, VMError> {
+        self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
     // Push a new value into the registers
@@ -71,22 +81,25 @@ impl<'a> ChunkManager<'a> {
 
     // Get a value from the registers
     #[inline]
-    pub fn from_register(&mut self, index: usize) -> Option<&Value> {
-        self.registers.get(index)
+    pub fn from_register(&mut self, index: usize) -> Result<&Value, VMError> {
+        self.registers.get(index).ok_or(VMError::RegisterNotFound)
     }
 
     // Set a value in the registers
     #[inline]
-    pub fn to_register(&mut self, index: usize, value: Value) {
+    pub fn to_register(&mut self, index: usize, value: Value) -> Result<(), VMError> {
         if index < self.registers.len() {
             self.registers[index] = value;
+            Ok(())
+        } else {
+            Err(VMError::RegisterNotFound)
         }
     }
 
     // Pop a value from the registers
     #[inline]
-    pub fn pop_register(&mut self) -> Option<Value> {
-        self.registers.pop()
+    pub fn pop_register(&mut self) -> Result<Value, VMError> {
+        self.registers.pop().ok_or(VMError::EmptyRegister)
     }
 }
 
