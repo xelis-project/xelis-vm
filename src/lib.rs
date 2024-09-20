@@ -4,7 +4,7 @@ mod values;
 mod parser;
 mod environment;
 mod compiler;
-mod vm;
+mod interpreter;
 
 pub mod ast;
 
@@ -13,7 +13,7 @@ use std::{collections::HashMap, hash::{BuildHasherDefault, Hasher}};
 pub use crate::{
     environment::{Environment, EnvironmentBuilder},
     types::Type,
-    vm::{VM, VMError, State},
+    interpreter::{Interpreter, InterpreterError, State},
     parser::{Parser, ParserError, Program},
     lexer::{Lexer, LexerError},
     values::Value,

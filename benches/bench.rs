@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use xelis_vm::{ast::Signature, EnvironmentBuilder, VM, Lexer, Parser, State};
+use xelis_vm::{ast::Signature, EnvironmentBuilder, Interpreter, Lexer, Parser, State};
 
 const CODE: &str = "
 entry main() {
@@ -24,7 +24,7 @@ fn bench_vm(c: &mut Criterion) {
     let tokens = Lexer::new(CODE).get().unwrap();
     let env = EnvironmentBuilder::new();
     let (program, mapper) = Parser::new(tokens, &env).parse().unwrap();
-    let vm = VM::new(&program, env.environment()).unwrap();
+    let vm = Interpreter::new(&program, env.environment()).unwrap();
     let mut state = State::new(None, Some(100), None);
     let signature = Signature::new("main".to_owned(), None, Vec::new());
     c.bench_function("vm", |b| b.iter(|| vm.call_entry_function(&mapper.get(&signature).unwrap(), vec![], &mut state).unwrap()));

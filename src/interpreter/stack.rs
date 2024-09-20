@@ -1,5 +1,5 @@
 use crate::IdentifierType;
-use super::{VMError, Path};
+use super::{InterpreterError, Path};
 
 #[derive(Debug)]
 pub struct Stack<'a> {
@@ -24,27 +24,27 @@ impl<'a> Stack<'a> {
 
     // Remove a variable from the stack
     #[inline(always)]
-    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<Path<'a>, VMError> {
+    pub fn remove_variable(&mut self, name: &IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.stack.get_mut(*name as usize)
-            .ok_or_else(|| VMError::StackError)
-            .and_then(|value| value.take().ok_or_else(|| VMError::VariableNotFound(name.clone())))
+            .ok_or_else(|| InterpreterError::StackError)
+            .and_then(|value| value.take().ok_or_else(|| InterpreterError::VariableNotFound(name.clone())))
     }
 
     // Get a variable from the stack
     #[inline(always)]
     #[cfg(test)]
-    pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Path<'a>, VMError> {
+    pub fn get_variable<'b>(&'b self, name: &'b IdentifierType) -> Result<&'b Path<'a>, InterpreterError> {
         self.stack.get(*name as usize)
-            .ok_or_else(|| VMError::StackError)
-            .and_then(|value| value.as_ref().ok_or_else(|| VMError::VariableNotFound(name.clone())))
+            .ok_or_else(|| InterpreterError::StackError)
+            .and_then(|value| value.as_ref().ok_or_else(|| InterpreterError::VariableNotFound(name.clone())))
     }
 
     // Get a path access to a variable from the stack
     #[inline(always)]
-    pub fn get_variable_path<'b>(&'b mut self, name: &'b IdentifierType) -> Result<Path<'a>, VMError> {
+    pub fn get_variable_path<'b>(&'b mut self, name: &'b IdentifierType) -> Result<Path<'a>, InterpreterError> {
         self.stack.get_mut(*name as usize)
-            .ok_or_else(|| VMError::StackError)
-            .and_then(|value| value.as_mut().ok_or_else(|| VMError::VariableNotFound(name.clone())).map(Path::shareable))
+            .ok_or_else(|| InterpreterError::StackError)
+            .and_then(|value| value.as_mut().ok_or_else(|| InterpreterError::VariableNotFound(name.clone())).map(Path::shareable))
     }
 
     // Check if a variable exists in the stack
@@ -55,10 +55,10 @@ impl<'a> Stack<'a> {
     }
 
     // Register a variable in the stack
-    pub fn register_variable(&mut self, name: IdentifierType, value: Path<'a>) -> Result<(), VMError> {
+    pub fn register_variable(&mut self, name: IdentifierType, value: Path<'a>) -> Result<(), InterpreterError> {
         *self.stack
             .get_mut(name as usize)
-            .ok_or_else(|| VMError::StackError)? = Some(value);
+            .ok_or_else(|| InterpreterError::StackError)? = Some(value);
 
         Ok(())
     }

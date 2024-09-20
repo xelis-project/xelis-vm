@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::values::Value;
 
 use super::{
-    VMError,
+    InterpreterError,
     handle::{
         ValueHandle,
         ValueHandleMut
@@ -20,12 +20,12 @@ pub enum Path<'a> {
 
 impl<'a> Path<'a> {
     #[inline(always)]
-    pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, VMError> {
+    pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, InterpreterError> {
         self.as_ref().as_bool()
     }
 
     #[inline(always)]
-    pub fn as_u64(&'a self) -> Result<u64, VMError> {
+    pub fn as_u64(&'a self) -> Result<u64, InterpreterError> {
         self.as_ref().as_u64()
     }
 
@@ -47,13 +47,13 @@ impl<'a> Path<'a> {
     }
 
     // Get the sub value of the path
-    pub fn get_sub_variable(self, index: usize) -> Result<Path<'a>, VMError> {
+    pub fn get_sub_variable(self, index: usize) -> Result<Path<'a>, InterpreterError> {
         match self {
             Self::Owned(v) => {
                 let mut values = v.to_sub_vec()?;
                 let len = values.len();
                 if index >= len {
-                    return Err(VMError::OutOfBounds(index, len))
+                    return Err(InterpreterError::OutOfBounds(index, len))
                 }
 
                 let at_index = values.remove(index);
@@ -64,7 +64,7 @@ impl<'a> Path<'a> {
                 let len = values.len();
                 let at_index = values
                     .get(index)
-                    .ok_or_else(|| VMError::OutOfBounds(index, len))?;
+                    .ok_or_else(|| InterpreterError::OutOfBounds(index, len))?;
 
                 Ok(Path::Wrapper(at_index.clone()))
             },
@@ -74,7 +74,7 @@ impl<'a> Path<'a> {
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)
-                    .ok_or_else(|| VMError::OutOfBounds(index, len))?;
+                    .ok_or_else(|| InterpreterError::OutOfBounds(index, len))?;
 
                 Ok(Path::Wrapper(at_index.clone()))
             }

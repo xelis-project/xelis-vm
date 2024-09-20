@@ -1,4 +1,4 @@
-use crate::VMError;
+use crate::InterpreterError;
 
 // State is used to store the number of expressions executed and the number of recursive calls
 pub struct State {
@@ -30,12 +30,12 @@ impl State {
     }
 
     // increase the number of expressions executed
-    pub fn increase_expressions_executed_by(&mut self, value: u64) -> Result<(), VMError> {
+    pub fn increase_expressions_executed_by(&mut self, value: u64) -> Result<(), InterpreterError> {
         self.count_expr += value;
 
         if let Some(max_expr) = self.max_expr {
             if self.count_expr >= max_expr {
-                return Err(VMError::LimitReached)
+                return Err(InterpreterError::LimitReached)
             }
         }
 
@@ -44,7 +44,7 @@ impl State {
 
     // increment the number of expressions executed
     #[inline(always)]
-    pub fn increase_expressions_executed(&mut self) -> Result<(), VMError> {
+    pub fn increase_expressions_executed(&mut self) -> Result<(), InterpreterError> {
         self.increase_expressions_executed_by(1)
     }
 
@@ -61,12 +61,12 @@ impl State {
     }
 
     // increment the number of recursive calls
-    pub fn increase_recursive_depth(&mut self) -> Result<(), VMError> {
+    pub fn increase_recursive_depth(&mut self) -> Result<(), InterpreterError> {
         self.recursive += 1;
 
         if let Some(max_recursive) = self.max_recursive {
             if self.recursive >= max_recursive {
-                return Err(VMError::RecursiveLimitReached)
+                return Err(InterpreterError::RecursiveLimitReached)
             }
         }
 
@@ -74,12 +74,12 @@ impl State {
     }
 
     // Increase the gas usage
-    pub fn increase_gas_usage(&mut self, value: u64) -> Result<(), VMError> {
+    pub fn increase_gas_usage(&mut self, value: u64) -> Result<(), InterpreterError> {
         self.gas_usage += value;
 
         if let Some(max) = self.max_gas_usage {
             if self.gas_usage >= max {
-                return Err(VMError::GasLimitReached)
+                return Err(InterpreterError::GasLimitReached)
             }
         }
 

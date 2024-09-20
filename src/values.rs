@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{types::Type, IdentifierType, VMError};
+use crate::{types::Type, IdentifierType, InterpreterError};
 
 pub type InnerValue = Rc<RefCell<Value>>;
 
@@ -39,214 +39,214 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_u8(&self) -> Result<u8, VMError> {
+    pub fn as_u8(&self) -> Result<u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U8))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))
         }
     }
 
     #[inline]
-    pub fn as_u16(&self) -> Result<u16, VMError> {
+    pub fn as_u16(&self) -> Result<u16, InterpreterError> {
         match self {
             Value::U16(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U16))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
         }
     }
 
     #[inline]
-    pub fn as_u32(&self) -> Result<u32, VMError> {
+    pub fn as_u32(&self) -> Result<u32, InterpreterError> {
         match self {
             Value::U32(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U32))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U32))
         }
     }
 
     #[inline]
-    pub fn as_u64(&self) -> Result<u64, VMError> {
+    pub fn as_u64(&self) -> Result<u64, InterpreterError> {
         match self {
             Value::U64(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U64))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U64))
         }
     }
 
     #[inline]
-    pub fn as_u128(&self) -> Result<u128, VMError> {
+    pub fn as_u128(&self) -> Result<u128, InterpreterError> {
         match self {
             Value::U128(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U128))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U128))
         }
     }
 
     #[inline]
-    pub fn as_string(&self) -> Result<&String, VMError> {
+    pub fn as_string(&self) -> Result<&String, InterpreterError> {
         match self {
             Value::String(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::String))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::String))
         }
     }
 
     #[inline]
-    pub fn as_bool(&self) -> Result<bool, VMError> {
+    pub fn as_bool(&self) -> Result<bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(*n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Bool))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Bool))
         }
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&Vec<InnerValue>, VMError> {
+    pub fn as_map(&self) -> Result<&Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
-            v => Err(VMError::InvalidStructValue(v.clone()))
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut Vec<InnerValue>, VMError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
-            v => Err(VMError::InvalidStructValue(v.clone()))
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<InnerValue>, VMError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
         }
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<InnerValue>, VMError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
         }
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<&Option<Box<Value>>, VMError> {
+    pub fn as_optional(&self, expected: &Type) -> Result<&Option<Box<Value>>, InterpreterError> {
         match self {
             Value::Null => Ok(&None),
             Value::Optional(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
         }
     }
 
     #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<Value, VMError> {
+    pub fn take_from_optional(&mut self, expected: &Type) -> Result<Value, InterpreterError> {
         match self {
-            Value::Optional(opt) => Ok(*opt.take().ok_or(VMError::OptionalIsNull)?),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
+            Value::Optional(opt) => Ok(*opt.take().ok_or(InterpreterError::OptionalIsNull)?),
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
         }
     }
 
     #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<Box<Value>>, VMError> {
+    pub fn take_optional(&mut self) -> Result<Option<Box<Value>>, InterpreterError> {
         match self {
             Value::Optional(opt) => Ok(opt.take()),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
         }
     }
 
     #[inline]
-    pub fn to_u8(self) -> Result<u8, VMError> {
+    pub fn to_u8(self) -> Result<u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U8))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U8))
         }
     }
 
     #[inline]
-    pub fn to_u16(self) -> Result<u16, VMError> {
+    pub fn to_u16(self) -> Result<u16, InterpreterError> {
         match self {
             Value::U16(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U16))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U16))
         }
     }
 
     #[inline]
-    pub fn to_u32(self) -> Result<u32, VMError> {
+    pub fn to_u32(self) -> Result<u32, InterpreterError> {
         match self {
             Value::U32(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U32))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U32))
         }
     }
 
     #[inline]
-    pub fn to_u64(self) -> Result<u64, VMError> {
+    pub fn to_u64(self) -> Result<u64, InterpreterError> {
         match self {
             Value::U64(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U64))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U64))
         }
     }
 
     #[inline]
-    pub fn to_u128(self) -> Result<u128, VMError> {
+    pub fn to_u128(self) -> Result<u128, InterpreterError> {
         match self {
             Value::U128(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::U128))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::U128))
         }
     }
 
     #[inline]
-    pub fn to_string(self) -> Result<String, VMError> {
+    pub fn to_string(self) -> Result<String, InterpreterError> {
         match self {
             Value::String(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::String))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::String))
         }
     }
 
     #[inline]
-    pub fn to_bool(self) -> Result<bool, VMError> {
+    pub fn to_bool(self) -> Result<bool, InterpreterError> {
         match self {
             Value::Boolean(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Bool))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Bool))
         }
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<InnerValue>, VMError> {
+    pub fn to_map(self) -> Result<Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Struct(_, fields) => Ok(fields),
-            v => Err(VMError::InvalidStructValue(v.clone()))
+            v => Err(InterpreterError::InvalidStructValue(v.clone()))
         }
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<InnerValue>, VMError> {
+    pub fn to_vec(self) -> Result<Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(n) => Ok(n),
-            v => Err(VMError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
+            v => Err(InterpreterError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
         }
     }
     #[inline]
 
-    pub fn to_sub_vec(self) -> Result<Vec<InnerValue>, VMError> {
+    pub fn to_sub_vec(self) -> Result<Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(_, fields) => Ok(fields),
-            _ => Err(VMError::SubValue)
+            _ => Err(InterpreterError::SubValue)
         }
     }
 
     #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<InnerValue>, VMError> {
+    pub fn as_sub_vec(&self) -> Result<&Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(_, fields) => Ok(fields),
-            _ => Err(VMError::SubValue)
+            _ => Err(InterpreterError::SubValue)
         }
     }
 
     #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<InnerValue>, VMError> {
+    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<InnerValue>, InterpreterError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(_, fields) => Ok(fields),
-            _ => Err(VMError::SubValue)
+            _ => Err(InterpreterError::SubValue)
         }
     }
 
@@ -259,20 +259,20 @@ impl Value {
         }
     }
 
-    pub fn increment(&mut self) -> Result<(), VMError> {
+    pub fn increment(&mut self) -> Result<(), InterpreterError> {
         Ok(match self {
             Value::U8(n) => *n += 1,
             Value::U16(n) => *n += 1,
             Value::U32(n) => *n += 1,
             Value::U64(n) => *n += 1,
             Value::U128(n) => *n += 1,
-            _ => return Err(VMError::OperationNotNumberType)
+            _ => return Err(InterpreterError::OperationNotNumberType)
         })
     }
 
     // Cast value to string
     #[inline]
-    pub fn cast_to_string(self) -> Result<String, VMError> {
+    pub fn cast_to_string(self) -> Result<String, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n.to_string()),
             Value::U16(n) => Ok(n.to_string()),
@@ -281,13 +281,13 @@ impl Value {
             Value::U128(n) => Ok(n.to_string()),
             Value::String(s) => Ok(s),
             Value::Boolean(b) => Ok(b.to_string()),
-            _ => Err(VMError::InvalidCastType(Type::String))
+            _ => Err(InterpreterError::InvalidCastType(Type::String))
         }
     }
 
     // Cast value to u8
     #[inline]
-    pub fn cast_to_u8(self) -> Result<u8, VMError> {
+    pub fn cast_to_u8(self) -> Result<u8, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n),
             Value::U16(n) => Ok(n as u8),
@@ -295,13 +295,13 @@ impl Value {
             Value::U64(n) => Ok(n as u8),
             Value::U128(n) => Ok(n as u8),
             Value::Boolean(b) => Ok(b as u8),
-            _ => Err(VMError::InvalidCastType(Type::U8))
+            _ => Err(InterpreterError::InvalidCastType(Type::U8))
         }
     }
 
     // Cast value to u16
     #[inline]
-    pub fn cast_to_u16(self) -> Result<u16, VMError> {
+    pub fn cast_to_u16(self) -> Result<u16, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u16),
             Value::U16(n) => Ok(n),
@@ -309,13 +309,13 @@ impl Value {
             Value::U64(n) => Ok(n as u16),
             Value::U128(n) => Ok(n as u16),
             Value::Boolean(b) => Ok(b as u16),
-            _ => Err(VMError::InvalidCastType(Type::U16))
+            _ => Err(InterpreterError::InvalidCastType(Type::U16))
         }
     }
 
     // Cast value to u32
     #[inline]
-    pub fn cast_to_u32(self) -> Result<u32, VMError> {
+    pub fn cast_to_u32(self) -> Result<u32, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u32),
             Value::U16(n) => Ok(n as u32),
@@ -323,13 +323,13 @@ impl Value {
             Value::U64(n) => Ok(n as u32),
             Value::U128(n) => Ok(n as u32),
             Value::Boolean(b) => Ok(b as u32),
-            _ => Err(VMError::InvalidCastType(Type::U16))
+            _ => Err(InterpreterError::InvalidCastType(Type::U16))
         }
     }
 
     // Cast value to u64
     #[inline]
-    pub fn cast_to_u64(self) -> Result<u64, VMError> {
+    pub fn cast_to_u64(self) -> Result<u64, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u64),
             Value::U16(n) => Ok(n as u64),
@@ -337,13 +337,13 @@ impl Value {
             Value::U64(n) => Ok(n),
             Value::U128(n) => Ok(n as u64),
             Value::Boolean(b) => Ok(b as u64),
-            _ => Err(VMError::InvalidCastType(Type::U64))
+            _ => Err(InterpreterError::InvalidCastType(Type::U64))
         }
     }
 
     // Cast value to u128
     #[inline]
-    pub fn cast_to_u128(self) -> Result<u128, VMError> {
+    pub fn cast_to_u128(self) -> Result<u128, InterpreterError> {
         match self {
             Value::U8(n) => Ok(n as u128),
             Value::U16(n) => Ok(n as u128),
@@ -351,7 +351,7 @@ impl Value {
             Value::U64(n) => Ok(n as u128),
             Value::U128(n) => Ok(n),
             Value::Boolean(b) => Ok(b as u128),
-            _ => Err(VMError::InvalidCastType(Type::U128))
+            _ => Err(InterpreterError::InvalidCastType(Type::U128))
         }
     }
 }
