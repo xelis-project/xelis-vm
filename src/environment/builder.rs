@@ -1,12 +1,16 @@
 use std::borrow::Cow;
 
 use crate::{
-    ast::{NativeFunction, OnCallFn, Operator, Signature},
+    ast::{Operator, Signature},
+    environment::{NativeFunction, OnCallFn},
     parser::{FunctionMapper, IdMapper, Mapper, StructBuilder, StructManager},
     types::Type
 };
 
-use super::{std as xstd, Environment};
+use super::{
+    std as xstd,
+    Environment
+};
 
 // EnvironmentBuilder is used to create the environment for the Parser
 // it is used to register all the native functions and structures

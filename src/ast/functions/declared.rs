@@ -39,8 +39,8 @@ impl DeclaredFunction {
         &self.parameters
     }
 
-    pub fn get_instance_name(&self) -> &Option<IdentifierType> {
-        &self.instance_name
+    pub fn get_instance_name(&self) -> Option<&IdentifierType> {
+        self.instance_name.as_ref()
     }
 
     pub fn get_return_type(&self) -> &Option<Type> {
@@ -79,6 +79,7 @@ impl EntryFunction {
         &self.statements
     }
 
+    // Get the variables count of the function
     pub fn get_variables_count(&self) -> u16 {
         self.variables_count
     }

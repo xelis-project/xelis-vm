@@ -10,14 +10,14 @@ use crate::{
         Expression,
         Operator,
         Statement,
-        Parameter,
-        Function
+        Parameter
     },
     parser::Program,
     types::*,
     values::Value,
     IdentifierType,
-    NoHashMap
+    NoHashMap,
+    Function,
 };
 use stack::Stack;
 pub use path::Path;
@@ -728,14 +728,18 @@ impl<'a> Interpreter<'a> {
                 match type_instance {
                     Some(mut v) => {
                         let mut instance = v.as_mut();
-                        f.call_function(Some(instance.as_mut()), values, state).map(|v| v.map(Path::Owned))
+                        f.call_function(Some(instance.as_mut()), values, state)
+                            .map(|v| v.map(Path::Owned))
+                            .map_err(InterpreterError::EnvironmentError)
                     },
                     None => {
-                        f.call_function(None, values, state).map(|v| v.map(Path::Owned))
+                        f.call_function(None, values, state)
+                            .map(|v| v.map(Path::Owned))
+                            .map_err(InterpreterError::EnvironmentError)
                     }
                 }
             },
-            Function::Declared(f) => {
+            Function::Program(f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
                     (Some(v), Some(n)) => Some((v, *n)),
                     (None, None) => None,
@@ -743,7 +747,6 @@ impl<'a> Interpreter<'a> {
                 };
                 self.execute_function_internal(instance, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
             },
-            Function::Entry(f) => self.execute_function_internal(None, &f.get_parameters(), values, &f.get_statements(), f.get_variables_count(), state)
         }
     }
 

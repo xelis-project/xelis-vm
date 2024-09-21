@@ -1,10 +1,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    ast::{FnInstance, FnParams, FnReturnType},
     values::Value,
-    EnvironmentBuilder,
     Type
+};
+
+use super::{
+    FnInstance,
+    FnParams,
+    FnReturnType,
+    EnvironmentBuilder
 };
 
 pub fn register(env: &mut EnvironmentBuilder) {

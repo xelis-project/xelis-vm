@@ -1,12 +1,17 @@
 mod builder;
 pub mod std;
+mod error;
+mod function;
+
 
 use ::std::{collections::HashMap, hash::BuildHasherDefault};
 
 pub use builder::EnvironmentBuilder;
+pub use error::EnvironmentError;
+pub use function::*;
 
 use crate::{
-    ast::{NativeFunction, Operator},
+    ast::Operator,
     types::Struct,
     NoOpHasher
 };

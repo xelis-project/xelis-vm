@@ -2,10 +2,8 @@ mod array;
 mod optional;
 mod string;
 
-use crate::{
-    ast::{FnInstance, FnParams, FnReturnType}, InterpreterError, Type
-};
-use super::EnvironmentBuilder;
+use crate::Type;
+use super::*;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     array::register(env);
@@ -27,5 +25,5 @@ fn panic(_: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
     let value = param.into_owned();
 
-    Err(InterpreterError::Panic(value))
+    Err(EnvironmentError::Panic(value))
 }

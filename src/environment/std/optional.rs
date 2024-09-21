@@ -1,7 +1,11 @@
 use crate::{
-    ast::{FnInstance, FnParams, FnReturnType},
+    environment::{
+        FnInstance,
+        FnParams,
+        FnReturnType,
+        EnvironmentBuilder
+    },
     values::Value,
-    EnvironmentBuilder,
     Type
 };
 

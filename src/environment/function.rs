@@ -1,11 +1,17 @@
-use crate::{
-    interpreter::{InterpreterError, State},
-    types::Type,
-    values::Value,
-};
+use crate::{interpreter::Path, State, Type, Value};
 
-use super::{FnParams, OnCallFn};
+use super::EnvironmentError;
 
+// first parameter is the current value / instance
+// second is the list of all parameters for this function call
+pub type FnReturnType = Result<Option<Value>, EnvironmentError>;
+pub type FnInstance<'a> = Result<&'a mut Value, EnvironmentError>;
+pub type FnParams<'a> = Vec<Path<'a>>;
+pub type OnCallFn = fn(FnInstance, FnParams) -> FnReturnType;
+
+// Native function that is implemented in Rust
+// This is used to register functions in the environment
+#[derive(Debug)]
 pub struct NativeFunction {
     // function on type
     for_type: Option<Type>,
@@ -18,6 +24,7 @@ pub struct NativeFunction {
 }
 
 impl NativeFunction {
+    // Create a new instance of the NativeFunction
     pub fn new(for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
             for_type,
@@ -29,16 +36,17 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, InterpreterError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
-            return Err(InterpreterError::InvalidNativeFunctionCall)
+            return Err(EnvironmentError::InvalidFnCall)
         }
 
-        state.increase_gas_usage(self.cost)?;
+        // TODO
+        state.increase_gas_usage(self.cost).unwrap();
 
         let instance = match instance_value {
             Some(v) => Ok(v),
-            None => Err(InterpreterError::NativeFunctionExpectedInstance)
+            None => Err(EnvironmentError::FnExpectedInstance)
         };
         (self.on_call)(instance, parameters)
     }
@@ -49,18 +57,7 @@ impl NativeFunction {
     }
 
     // Get the expected type of the returned value
-    pub fn get_return_type(&self) -> &Option<Type> {
+    pub fn return_type(&self) -> &Option<Type> {
         &self.return_type
-    }
-}
-
-// we implement it ourself to prevent the printing of on_call param
-impl std::fmt::Debug for NativeFunction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NativeFunction")
-         .field("for_type", &self.for_type)
-         .field("parameters", &self.parameters)
-         .field("return_type", &self.return_type)
-         .finish()
     }
 }

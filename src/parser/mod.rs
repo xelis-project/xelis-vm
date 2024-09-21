@@ -17,6 +17,7 @@ use crate::{
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
+    Function,
 };
 use std::{
     borrow::Cow,
@@ -40,7 +41,7 @@ pub struct Program {
     // All structures declared
     pub structures: Vec<Struct>,
     // All functions declared
-    pub functions: Vec<DeclaredFunctionType>
+    pub functions: Vec<FunctionType>
 }
 
 pub struct Parser<'a> {
@@ -49,7 +50,7 @@ pub struct Parser<'a> {
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
-    functions: Vec<DeclaredFunctionType>,
+    functions: Vec<FunctionType>,
     // Functions mapper
     // It will contains all the functions declared in the program
     // with the matching id <-> function signature
@@ -996,8 +997,8 @@ impl<'a> Parser<'a> {
         }
 
         let function = match entry {
-            true => DeclaredFunctionType::Entry(EntryFunction::new(parameters, statements, mapper.count() as u16)),
-            false => DeclaredFunctionType::Declared(DeclaredFunction::new(
+            true => FunctionType::Entry(EntryFunction::new(parameters, statements, mapper.count() as u16)),
+            false => FunctionType::Declared(DeclaredFunction::new(
                 for_type,
                 instance_name,
                 parameters,

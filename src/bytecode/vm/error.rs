@@ -14,4 +14,5 @@ pub enum VMError {
     NoValue,
     ConstantNotFound,
     UnsupportedCastType,
+    UnknownSysCall,
 }

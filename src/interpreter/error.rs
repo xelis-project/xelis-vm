@@ -1,5 +1,6 @@
 use crate::{
     ast::Expression,
+    environment::EnvironmentError,
     IdentifierType,
     Type,
     Value
@@ -7,6 +8,7 @@ use crate::{
 
 #[derive(Debug)]
 pub enum InterpreterError {
+    EnvironmentError(EnvironmentError),
     SubValue,
     Panic(Value),
     MissingValueOnStack,
@@ -50,4 +52,10 @@ pub enum InterpreterError {
     RecursiveLimitReached,
     GasLimitReached,
     InvalidCastType(Type),
+}
+
+impl From<EnvironmentError> for InterpreterError {
+    fn from(error: EnvironmentError) -> Self {
+        InterpreterError::EnvironmentError(error)
+    }
 }
