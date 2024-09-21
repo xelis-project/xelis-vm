@@ -6,6 +6,11 @@ pub use native::NativeFunction;
 
 use crate::{types::Type, values::Value, interpreter::Path, IdentifierType, InterpreterError};
 
+// The return type of the entry function
+// This is hardcoded to u64 so people can't return anything else
+// except an exit code
+pub const ENTRY_FN_RETURN_TYPE: Type = Type::U64;
+
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType = Result<Option<Value>, InterpreterError>;
@@ -78,6 +83,9 @@ impl Signature {
     }
 }
 
+// Functions types supported
+// Native functions are functions that are implemented in Rust and registered in the environment
+// Declared functions are functions that are declared in the program
 #[derive(Debug)]
 pub enum Function<'a> {
     Native(&'a NativeFunction),
@@ -85,6 +93,8 @@ pub enum Function<'a> {
     Entry(&'a EntryFunction)
 }
 
+// Declared function type by a Program
+// They are separated in two types for better handling
 #[derive(Debug)]
 pub enum DeclaredFunctionType {
     Declared(DeclaredFunction),
@@ -92,6 +102,7 @@ pub enum DeclaredFunctionType {
 }
 
 impl DeclaredFunctionType {
+    // Is this function an entry function
     pub fn is_entry(&self) -> bool {
         match &self {
             DeclaredFunctionType::Entry(_) => true,
@@ -99,13 +110,15 @@ impl DeclaredFunctionType {
         }
     }
 
+    // Get the returned type of the function
     pub fn return_type(&self) -> &Option<Type> {
         match &self {
             DeclaredFunctionType::Declared(f) => f.get_return_type(),
-            DeclaredFunctionType::Entry(_) => &None
+            DeclaredFunctionType::Entry(_) => &Some(ENTRY_FN_RETURN_TYPE)
         }
     }
 
+    // Get the function as a function variant
     pub fn as_function(&self) -> Function {
         match &self {
             DeclaredFunctionType::Declared(f) => Function::Declared(f),
@@ -116,11 +129,11 @@ impl DeclaredFunctionType {
 
 impl<'a> Function<'a> {
     // Get the returned type of the function
-    pub fn return_type(&self) -> &Option<Type> {
-        match &self {
-            Function::Native(ref f) => &f.get_return_type(),
-            Function::Declared(ref f) => &f.get_return_type() ,
-            Function::Entry(_) => &None
+    pub fn return_type(self) -> &'a Option<Type> {
+        match self {
+            Function::Native(ref f) => f.get_return_type(),
+            Function::Declared(ref f) => f.get_return_type() ,
+            Function::Entry(_) => &Some(ENTRY_FN_RETURN_TYPE)
         }
     }
 

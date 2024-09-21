@@ -51,6 +51,8 @@ pub struct Parser<'a> {
     // All functions registered by the program
     functions: Vec<DeclaredFunctionType>,
     // Functions mapper
+    // It will contains all the functions declared in the program
+    // with the matching id <-> function signature
     functions_mapper: FunctionMapper<'a>,
     // Struct manager
     struct_manager: StructManager<'a>,
@@ -207,8 +209,8 @@ impl<'a> Parser<'a> {
                 }
             },
             Expression::FunctionCall(path, name, _) => {
-                let return_type = self.get_function_return_type(*name as usize)?;
-                match return_type {
+                let f = self.get_function(*name)?;
+                match f.return_type() {
                     Some(ref v) => match v {
                         Type::T => match on_type {
                             Some(t) => Cow::Owned(t.get_inner_type().clone()),
@@ -329,7 +331,8 @@ impl<'a> Parser<'a> {
         let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types))?;
 
         // Entry are only callable by external
-        if self.is_entry_function(id as usize)? {
+        let f = self.get_function(id)?;
+        if f.is_entry() {
             return Err(ParserError::FunctionNotFound)
         }
 
@@ -972,7 +975,7 @@ impl<'a> Parser<'a> {
 
         let types: Vec<Type> = parameters.iter().map(|p| p.get_type().clone()).collect();
         let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), types))?;
-        if self.has_function(id as usize) {
+        if self.has_function(id) {
             return Err(ParserError::FunctionSignatureAlreadyExist) 
         }
 
@@ -1048,36 +1051,23 @@ impl<'a> Parser<'a> {
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, id: usize) -> bool {
-        self.is_entry_function(id).is_ok()
+    fn has_function(&self, id: u16) -> bool {
+        self.get_function(id).is_ok()
     }
 
-    // verify if a function is an entry function
-    fn is_entry_function(&self, index: usize) -> Result<bool, ParserError<'a>> {
+    // get a function using its identifier
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
+        // the id is the index of the function in the functions array
+        let index = id as usize;
         let len = self.env.get_functions().len();
         if index < len {
-            Ok(false)
+            Ok(Function::Native(&self.env.get_functions()[index]))
         } else {
             match self.functions.get(index - len) {
-                Some(func) => Ok(func.is_entry()),
+                Some(func) => Ok(func.as_function()),
                 None => Err(ParserError::FunctionNotFound)
             }
         }
-    }
-
-    // get a function return type using its identifier
-    fn get_function_return_type(&self, index: usize) -> Result<&Option<Type>, ParserError<'a>> {
-        let len = self.env.get_functions().len();
-        if index < len {
-            let f = &self.env.get_functions()[index];
-            Ok(f.get_return_type())
-        } else {
-            match self.functions.get(index - len) {
-                Some(func) => Ok(func.return_type()),
-                None => Err(ParserError::FunctionNotFound)
-            }
-        }
-
     }
 
     /**
