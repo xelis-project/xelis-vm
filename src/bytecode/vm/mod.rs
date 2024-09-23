@@ -393,7 +393,7 @@ mod tests {
         };
 
         let mut module = Module::new();
-        module.structs.push(new_struct);
+        module.add_struct(new_struct);
 
         let mut chunk = Chunk::new();
         // Push the first field
@@ -422,7 +422,7 @@ mod tests {
             Rc::new(RefCell::new(Value::U16(20)))
         ].into()));
 
-        let chunk = module.chunks.get_mut(0).unwrap();
+        let chunk = module.get_chunk_at_mut(0).unwrap();
         chunk.pop_instruction();
 
         // Store the struct in the memory
