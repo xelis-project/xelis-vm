@@ -156,7 +156,7 @@ impl<'a> Interpreter<'a> {
         if index < len {
             Ok(Function::Native(&self.env.get_functions()[index]))
         } else {
-            self.program.functions.get(index - len)
+            self.program.functions().get(index - len)
                 .map(|v | v.as_function())
                 .ok_or(InterpreterError::NoMatchingFunction)
         }
@@ -754,9 +754,9 @@ impl<'a> Interpreter<'a> {
     pub fn compute_constants(&mut self, state: &mut State) -> Result<(), InterpreterError> {
         if self.constants.is_none() {
             let mut constants = NoHashMap::default();
-            let mut stack = Stack::new(self.program.constants.len() as u16);
+            let mut stack = Stack::new(self.program.constants().len() as u16);
 
-            for constant in self.program.constants.iter() {
+            for constant in self.program.constants().iter() {
                 let value = self.execute_expression_and_expect_value(&constant.value, &mut stack, state)?
                     .into_owned();
                 constants.insert(constant.id.clone(), value);
