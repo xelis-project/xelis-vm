@@ -34,6 +34,7 @@ pub enum Type {
 }
 
 impl Type {
+    // transform a byte into a primitive type
     pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
         match byte {
             0 => Some(Type::U8),
@@ -47,6 +48,7 @@ impl Type {
         }
     }
 
+    // get the byte representation of the primitive type
     pub fn primitive_byte(&self) -> Option<u8> {
         match self {
             Type::U8 => Some(0),
@@ -58,6 +60,11 @@ impl Type {
             Type::String => Some(6),
             _ => None
         }
+    }
+
+    // check if the type is a primitive type
+    pub fn is_primitive(&self) -> bool {
+        self.primitive_byte().is_some()
     }
 
     pub(crate) fn from_token(s: &Token, struct_manager: &StructManager) -> Option<Self> {
