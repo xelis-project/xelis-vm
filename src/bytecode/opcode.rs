@@ -5,7 +5,7 @@ pub enum OpCode {
     // load from registers, push in stack
     MemoryLoad,
     // pop, store in registers
-    MemorySet,
+    MemoryStore,
     // pop, store in registers[index]
     MemoryAssign,
     // load from stack, load u16, load sub value, push
@@ -81,6 +81,34 @@ pub enum OpCode {
     Gte,
     // <=
     Lte,
+
+    // Assign Operators
+    // =
+    // Useful for subload, array call, etc.. compatibility
+    Assign,
+    // +=
+    AssignAdd,
+    // -=
+    AssignSub,
+    // *=
+    AssignMul,
+    // /=
+    AssignDiv,
+    // %=
+    AssignMod,
+    // **=
+    AssignPow,
+    // &=
+    AssignAnd,
+    // |=
+    AssignOr,
+    // ^=
+    AssignXor,
+    // <<=
+    AssignShl,
+    // >>=
+    AssignShr,
+
     // ++
     Inc,
     // --
@@ -94,7 +122,7 @@ impl OpCode {
         match self {
             OpCode::Constant => 0,
             OpCode::MemoryLoad => 1,
-            OpCode::MemorySet => 2,
+            OpCode::MemoryStore => 2,
             OpCode::MemoryAssign => 3,
             OpCode::SubLoad => 4,
             OpCode::Pop => 5,
@@ -112,6 +140,8 @@ impl OpCode {
             OpCode::SysCall => 17,
             OpCode::NewArray => 18,
             OpCode::NewStruct => 19,
+
+            // Operators
             OpCode::Add => 20,
             OpCode::Sub => 21,
             OpCode::Mul => 22,
@@ -129,8 +159,24 @@ impl OpCode {
             OpCode::Lt => 34,
             OpCode::Gte => 35,
             OpCode::Lte => 36,
-            OpCode::Inc => 37,
-            OpCode::Dec => 38,
+
+            // Assign Operators
+            OpCode::Assign => 37,
+            OpCode::AssignAdd => 38,
+            OpCode::AssignSub => 39,
+            OpCode::AssignMul => 40,
+            OpCode::AssignDiv => 41,
+            OpCode::AssignMod => 42,
+            OpCode::AssignPow => 43,
+            OpCode::AssignAnd => 44,
+            OpCode::AssignOr => 45,
+            OpCode::AssignXor => 46,
+            OpCode::AssignShl => 47,
+            OpCode::AssignShr => 48,
+
+            // Extra
+            OpCode::Inc => 49,
+            OpCode::Dec => 50,
         }
     }
 
@@ -140,7 +186,7 @@ impl OpCode {
         Some(match byte {
             0 => OpCode::Constant,
             1 => OpCode::MemoryLoad,
-            2 => OpCode::MemorySet,
+            2 => OpCode::MemoryStore,
             3 => OpCode::MemoryAssign,
             4 => OpCode::SubLoad,
             5 => OpCode::Pop,
@@ -158,6 +204,7 @@ impl OpCode {
             17 => OpCode::SysCall,
             18 => OpCode::NewArray,
             19 => OpCode::NewStruct,
+
             20 => OpCode::Add,
             21 => OpCode::Sub,
             22 => OpCode::Mul,
@@ -175,9 +222,41 @@ impl OpCode {
             34 => OpCode::Lt,
             35 => OpCode::Gte,
             36 => OpCode::Lte,
-            37 => OpCode::Inc,
-            38 => OpCode::Dec,
+
+            37 => OpCode::Assign,
+            38 => OpCode::AssignAdd,
+            39 => OpCode::AssignSub,
+            40 => OpCode::AssignMul,
+            41 => OpCode::AssignDiv,
+            42 => OpCode::AssignMod,
+            43 => OpCode::AssignPow,
+            44 => OpCode::AssignAnd,
+            45 => OpCode::AssignOr,
+            46 => OpCode::AssignXor,
+            47 => OpCode::AssignShl,
+            48 => OpCode::AssignShr,
+
+            49 => OpCode::Inc,
+            50 => OpCode::Dec,
+
             _ => return None,
         })
     }
+
+    pub fn as_assign_operator(self) -> Option<Self> {
+        Some(match self {
+            OpCode::Add => OpCode::AssignAdd,
+            OpCode::Sub => OpCode::AssignSub,
+            OpCode::Mul => OpCode::AssignMul,
+            OpCode::Div => OpCode::AssignDiv,
+            OpCode::Mod => OpCode::AssignMod,
+            OpCode::Pow => OpCode::AssignPow,
+            OpCode::And => OpCode::AssignAnd,
+            OpCode::Or => OpCode::AssignOr,
+            OpCode::Xor => OpCode::AssignXor,
+            OpCode::Shl => OpCode::AssignShl,
+            OpCode::Shr => OpCode::AssignShr,
+            _ => return None,
+        })
+    } 
 }
