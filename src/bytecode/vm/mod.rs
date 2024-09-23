@@ -108,7 +108,8 @@ impl<'a> VM<'a> {
                     },
                     OpCode::MemoryLoad => {
                         let index = manager.read_u16()?;
-                        let value = manager.from_register(index as usize)?.clone();
+                        let value = manager.from_register(index as usize)?
+                            .shareable();
                         manager.push_stack(value);
                     },
                     OpCode::MemorySet => {
@@ -155,13 +156,13 @@ impl<'a> VM<'a> {
                         manager.push_stack(value.get_sub_variable(index as usize).unwrap());
                     },
                     OpCode::InvokeChunk => {
-                        let args = manager.read_u8()?;
+                        let id = manager.read_u16()?;
                         let on_value = if manager.read_bool()? {
                             Some(manager.pop_stack()?)
                         } else {
                             None
                         };
-                        let id = manager.read_u16()?;
+                        let args = manager.read_u8()?;
     
                         let mut arguments = VecDeque::with_capacity(args as usize);
                         for _ in 0..args {
@@ -172,7 +173,9 @@ impl<'a> VM<'a> {
                         self.call_stack.push(manager);
     
                         // Find the chunk
-                        let chunk = self.module.get_chunk_at(id as usize).ok_or(VMError::ChunkNotFound)?;
+                        let chunk = self.module.get_chunk_at(id as usize)
+                            .ok_or(VMError::ChunkNotFound)?;
+
                         let mut new_manager = ChunkManager::new(chunk);
                         
                         new_manager.extend_stack(arguments);
@@ -185,13 +188,14 @@ impl<'a> VM<'a> {
                         continue 'main;
                     },
                     OpCode::SysCall => {
-                        let args = manager.read_u8()?;
+                        let id = manager.read_u16()?;
                         let mut on_value = if manager.read_bool()? {
                             Some(manager.pop_stack()?)
                         } else {
                             None
                         };
-                        let id = manager.read_u16()?;
+                        let args = manager.read_u8()?;
+
                         let mut arguments = VecDeque::with_capacity(args as usize);
                         for _ in 0..args {
                             arguments.push_front(manager.pop_stack()?);
@@ -220,7 +224,6 @@ impl<'a> VM<'a> {
                     OpCode::Add => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
-                        println!("Add {:?} {:?}", left, right);
                         manager.push_stack(op!(left, right, +));
                     },
                     OpCode::SubLoad => {
@@ -472,13 +475,16 @@ mod tests {
         // This chunk should call the bool fn
         let mut first = Chunk::new();
         first.emit_opcode(OpCode::InvokeChunk);
-        // 0 args
-        first.write_u8(0);
+        // Call the bool_fn which is at index 1 in chunks list
+        first.write_u16(1);
+
         // not on a value
         first.write_bool(false);
 
-        // Call the bool_fn which is at index 1 in chunks list
-        first.write_u16(1);
+        // 0 args
+        first.write_u8(0);
+
+
         // return its value
         first.emit_opcode(OpCode::Return);
 

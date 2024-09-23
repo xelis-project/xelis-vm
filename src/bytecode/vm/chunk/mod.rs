@@ -81,8 +81,8 @@ impl<'a> ChunkManager<'a> {
 
     // Get a value from the registers
     #[inline]
-    pub fn from_register(&mut self, index: usize) -> Result<&Path<'a>, VMError> {
-        self.registers.get(index).ok_or(VMError::RegisterNotFound)
+    pub fn from_register(&mut self, index: usize) -> Result<&mut Path<'a>, VMError> {
+        self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
     }
 
     // Set a value in the registers
