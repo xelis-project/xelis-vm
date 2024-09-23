@@ -100,7 +100,7 @@ impl<'a> Path<'a> {
     }
 
     #[inline(always)]
-    pub fn as_mut<'b: 'a>(&'b mut self) -> ValueHandleMut<'b> {
+    pub fn as_mut<'b>(&'b mut self) -> ValueHandleMut<'b> {
         match self {
             Self::Owned(v) => ValueHandleMut::Borrowed(v),
             Self::Borrowed(v) => {
