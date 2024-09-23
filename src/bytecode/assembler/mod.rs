@@ -150,9 +150,9 @@ mod tests {
         let assembler = Assembler::new(source);
         let module = assembler.assemble().unwrap();
 
-        assert_eq!(module.chunks.len(), 2);
+        assert_eq!(module.chunks().len(), 2);
         assert_eq!(
-            module.chunks.last().unwrap().get_instructions(),
+            module.chunks().last().unwrap().get_instructions(),
             &[OpCode::InvokeChunk.as_byte(), 0, 0, 0, 0]
         );
     }
@@ -171,9 +171,9 @@ mod tests {
         let assembler = Assembler::new(source);
         let module = assembler.assemble().unwrap();
 
-        assert_eq!(module.chunks.len(), 1);
+        assert_eq!(module.chunks().len(), 1);
         assert_eq!(
-            module.chunks.last().unwrap().get_instructions(),
+            module.chunks().last().unwrap().get_instructions(),
             &[
                 OpCode::Constant.as_byte(),
                 0,
