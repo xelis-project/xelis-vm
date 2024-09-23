@@ -25,8 +25,14 @@ impl Chunk {
 
     // Pop the latest instruction
     #[inline]
-    pub fn pop_instruction(&mut self) {
-        self.instructions.pop();
+    pub fn pop_instruction(&mut self) -> Option<u8> {
+        self.instructions.pop()
+    }
+
+    // Last instruction present in the chunk
+    #[inline]
+    pub fn last_instruction(&self) -> Option<&u8> {
+        self.instructions.last()
     }
 
     // Get the instructions
@@ -57,7 +63,9 @@ impl Chunk {
     #[inline]
     pub fn patch_jump(&mut self, index: usize, addr: u32) {
         let bytes = addr.to_be_bytes();
-        self.instructions[index..index + 4].copy_from_slice(&bytes);
+        // addr are u32, so we need to copy 4 bytes
+        // index is the position of the latest byte written in instructions
+        self.instructions[index - 3..=index].copy_from_slice(&bytes);
     }
 
     // Write a byte in the instructions
