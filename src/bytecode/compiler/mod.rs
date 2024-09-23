@@ -30,6 +30,34 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    // Map the operator to the opcode
+    fn map_operator_to_opcode(op: &Operator) -> OpCode {
+        match op {
+            Operator::Plus => OpCode::Add,
+            Operator::Minus => OpCode::Sub,
+            Operator::Multiply => OpCode::Mul,
+            Operator::Divide => OpCode::Div,
+            Operator::Rem => OpCode::Mod,
+            Operator::And => OpCode::And,
+            Operator::Or => OpCode::Or,
+            Operator::BitwiseXor => OpCode::Xor,
+            Operator::BitwiseLeft => OpCode::Shl,
+            Operator::BitwiseRight => OpCode::Shr,
+            Operator::Equals => OpCode::Eq,
+            Operator::NotEquals => OpCode::Neg,
+            Operator::GreaterThan => OpCode::Gt,
+            Operator::GreaterOrEqual => OpCode::Gte,
+            Operator::LessThan => OpCode::Lt,
+            Operator::LessOrEqual => OpCode::Lte,
+
+            // Assigns
+            Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner).as_assign_operator().unwrap(),
+            _ => {
+                panic!("Operator {:?} not implemented", op);
+            }
+        }
+    }
+
     // Compile the expression
     fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) {
         match expr {
@@ -79,6 +107,7 @@ impl<'a> Compiler<'a> {
                 let jump_valid_index = chunk.index();
 
                 // Patch the jump if false
+                // we do + 1 so we are on the next instruction built below
                 let jump_false_addr = chunk.index() + 1;
                 chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
@@ -94,34 +123,38 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::Cast);
                 chunk.write_u8(primitive_type.primitive_byte().unwrap());
             },
+            Expression::FunctionCall(expr_on, id, params) => {
+                if let Some(expr_on) = expr_on {
+                    self.compile_expr(chunk, expr_on);
+                }
+
+                for param in params {
+                    self.compile_expr(chunk, param);
+                }
+
+                // Functions from the environment are system calls
+                if (*id as usize) < self.environment.get_functions().len() {
+                    chunk.emit_opcode(OpCode::SysCall);
+                } else {
+                    chunk.emit_opcode(OpCode::InvokeChunk);
+                }
+
+                chunk.write_u16(*id);
+                chunk.write_u8(params.len() as u8);
+                chunk.write_bool(expr_on.is_some());
+            },
             Expression::Operator(op, left, right) => {
                 self.compile_expr(chunk, left);
                 self.compile_expr(chunk, right);
-                let opcode = match op {
-                    Operator::Plus => OpCode::Add,
-                    Operator::Minus => OpCode::Sub,
-                    Operator::Multiply => OpCode::Mul,
-                    Operator::Divide => OpCode::Div,
-                    Operator::Rem => OpCode::Mod,
-                    Operator::And => OpCode::And,
-                    Operator::Or => OpCode::Or,
-                    Operator::BitwiseXor => OpCode::Xor,
-                    Operator::BitwiseLeft => OpCode::Shl,
-                    Operator::BitwiseRight => OpCode::Shr,
-                    // Operator::BitwiseAnd => OpCode::BitAnd,
-                    // Operator::BitwiseOr => OpCode::BitOr,
-                    Operator::Equals => OpCode::Eq,
-                    Operator::NotEquals => OpCode::Neg,
-                    Operator::GreaterThan => OpCode::Gt,
-                    Operator::GreaterOrEqual => OpCode::Gte,
-                    Operator::LessThan => OpCode::Lt,
-                    Operator::LessOrEqual => OpCode::Lte,
+                match op {
+                    Operator::Assign(None) => {
+                        chunk.emit_opcode(OpCode::Assign);
+                    },
                     _ => {
-                        panic!("Operator {:?} not implemented", op);
+                        let op = Self::map_operator_to_opcode(op);
+                        chunk.emit_opcode(op);
                     }
                 };
-
-                chunk.emit_opcode(opcode);
             },
             _ => {
 
@@ -143,9 +176,90 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::Variable(declaration) => {
                     self.compile_expr(chunk, &declaration.value);
-                    // chunk.emit_opcode(OpCode::MemoryStore);
-                    // chunk.write_u16(*id);
+                    chunk.emit_opcode(OpCode::MemoryStore);
                 },
+                Statement::Scope(statements) => self.compile_statements(chunk, statements),
+                Statement::If(condition, statements, else_statements) => {
+                    self.compile_expr(chunk, condition);
+
+                    // Emit the jump if false
+                    // We will overwrite the addr later
+                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.write_u32(INVALID_ADDR);
+                    let jump_addr = chunk.index();
+
+                    // Compile the valid condition
+                    self.compile_statements(chunk, statements);
+
+                    let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
+                    // Once finished, we must jump the false condition
+                    let jump_valid_index = if append_jump {
+                        chunk.emit_opcode(OpCode::Jump);
+                        chunk.write_u32(INVALID_ADDR);
+                        Some(chunk.index())
+                    } else {
+                        None
+                    };
+
+                    // Patch the jump if false
+                    let jump_false_addr = chunk.index() + 1;
+                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                    // Compile the else condition
+                    if let Some(else_statements) = else_statements {
+                        self.compile_statements(chunk, else_statements);
+                    }
+
+                    if let Some(jump_valid_index) = jump_valid_index {
+                        // Patch the jump if valid
+                        let jump_valid_addr = chunk.index() + 1;
+                        chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
+                    }
+                },
+                Statement::While(expr, statements) => {
+                    let start_index = chunk.index() + 1;
+                    self.compile_expr(chunk, expr);
+
+                    // Emit the jump if false
+                    // We will overwrite the addr later
+                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.write_u32(INVALID_ADDR);
+                    let jump_addr = chunk.index();
+
+                    // Compile the valid condition
+                    self.compile_statements(chunk, statements);
+
+                    // Jump back to the start
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(start_index as u32);
+
+                    // Patch the jump if false
+                    let jump_false_addr = chunk.index() + 1;
+                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
+                },
+                Statement::ForEach(_, expr_values, statements) => {
+                    // Compile the expression
+                    self.compile_expr(chunk, expr_values);
+
+                    // TODO fixme
+
+                    // Emit the jump if false
+                    // We will overwrite the addr later
+                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.write_u32(INVALID_ADDR);
+                    let jump_addr = chunk.index();
+
+                    // Compile the valid condition
+                    self.compile_statements(chunk, statements);
+
+                    // Jump back to the start
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(jump_addr as u32);
+
+                    // Patch the jump if false
+                    let jump_false_addr = chunk.index() + 1;
+                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
+                }
                 _ => {}
             }
         }
@@ -193,17 +307,16 @@ mod tests {
     }
 
     #[track_caller]
-    fn prepare_program(code: &str) -> Program {
+    fn prepare_program(code: &str) -> (Program, Environment) {
         let tokens = Lexer::new(code).get().unwrap();
         let environment = EnvironmentBuilder::new();
         let (program, _) = Parser::new(tokens, &environment).parse().unwrap();
-        program
+        (program, environment.build())
     }
 
     #[test]
     fn test_simple_program() {
-        let program = prepare_program("func main() {}");
-        let environment = Environment::new();
+        let (program, environment) = prepare_program("func main() {}");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
         assert_eq!(module.chunks().len(), 1);
@@ -213,8 +326,7 @@ mod tests {
 
     #[test]
     fn test_entry_program() {
-        let program = prepare_program("entry main() { return 0 }");
-        let environment = Environment::new();
+        let (program, environment) = prepare_program("entry main() { return 0 }");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
         assert_eq!(module.chunks().len(), 1);
@@ -230,6 +342,125 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[OpCode::Constant.as_byte(), 0, OpCode::Return.as_byte()]
+        );
+    }
+
+    #[test]
+    fn test_simple_expression() {
+        let (program, environment) = prepare_program("entry main() { return 1 + 2 }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+        assert_eq!(module.chunks().len(), 1);
+        assert!(module.is_entry_chunk(0));
+        assert_eq!(module.constants().len(), 2);
+
+        assert_eq!(
+            module.get_constant_at(0),
+            Some(&Value::U64(1))
+        );
+
+        assert_eq!(
+            module.get_constant_at(1),
+            Some(&Value::U64(2))
+        );
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Add.as_byte(),
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_if() {
+        let (program, environment) = prepare_program("entry main() { if true { return 0 } return 1 }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+    
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Return.as_byte(),
+                OpCode::Constant.as_byte(), 2,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_if_else() {
+        let (program, environment) = prepare_program("entry main() { if true { return 0 } else { return 1 } }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Return.as_byte(),
+                OpCode::Constant.as_byte(), 2,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_while() {
+        let (program, environment) = prepare_program("entry main() { let i: u64 = 0; while i < 10 { i += 1; } return i }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Lt.as_byte(),
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 25,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 2,
+                OpCode::AssignAdd.as_byte(),
+                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_for_each() {
+        let (program, environment) = prepare_program("entry main() { foreach i in [1, 2, 3] { return i } return 1 }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Return.as_byte(),
+                OpCode::Constant.as_byte(), 2,
+                OpCode::Return.as_byte(),
+                OpCode::Constant.as_byte(), 3,
+                OpCode::Return.as_byte()
+            ]
         );
     }
 }
