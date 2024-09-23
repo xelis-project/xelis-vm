@@ -16,7 +16,7 @@ pub enum OpCodeWithArgs {
         register_index: u16
     },
     // pop, store in registers
-    MemorySet,
+    MemoryStore,
     // pop, store in registers[index]
     MemoryAssign {
         register_index: u16
@@ -134,6 +134,33 @@ pub enum OpCodeWithArgs {
     Gte,
     // <=
     Lte,
+
+    // Assign Operators
+    // =
+    Assign,
+    // +=
+    AssignAdd,
+    // -=
+    AssignSub,
+    // *=
+    AssignMul,
+    // /=
+    AssignDiv,
+    // %=
+    AssignMod,
+    // **=
+    AssignPow,
+    // &=
+    AssignAnd,
+    // |=
+    AssignOr,
+    // ^=
+    AssignXor,
+    // <<=
+    AssignShl,
+    // >>=
+    AssignShr,
+
     // ++
     Inc,
     // --
@@ -146,7 +173,7 @@ impl OpCodeWithArgs {
         match self {
             OpCodeWithArgs::Constant { .. } => OpCode::Constant,
             OpCodeWithArgs::MemoryLoad { .. } => OpCode::MemoryLoad,
-            OpCodeWithArgs::MemorySet => OpCode::MemorySet,
+            OpCodeWithArgs::MemoryStore => OpCode::MemoryStore,
             OpCodeWithArgs::MemoryAssign { .. } => OpCode::MemoryAssign,
             OpCodeWithArgs::SubLoad { .. } => OpCode::SubLoad,
             OpCodeWithArgs::Pop => OpCode::Pop,
@@ -164,6 +191,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
             OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
             OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
+
             OpCodeWithArgs::Add => OpCode::Add,
             OpCodeWithArgs::Sub => OpCode::Sub,
             OpCodeWithArgs::Mul => OpCode::Mul,
@@ -181,6 +209,21 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Lt => OpCode::Lt,
             OpCodeWithArgs::Gte => OpCode::Gte,
             OpCodeWithArgs::Lte => OpCode::Lte,
+
+            OpCodeWithArgs::Assign => OpCode::Assign,
+            OpCodeWithArgs::AssignAdd => OpCode::AssignAdd,
+            OpCodeWithArgs::AssignSub => OpCode::AssignSub,
+            OpCodeWithArgs::AssignMul => OpCode::AssignMul,
+            OpCodeWithArgs::AssignDiv => OpCode::AssignDiv,
+            OpCodeWithArgs::AssignMod => OpCode::AssignMod,
+            OpCodeWithArgs::AssignPow => OpCode::AssignPow,
+            OpCodeWithArgs::AssignAnd => OpCode::AssignAnd,
+            OpCodeWithArgs::AssignOr => OpCode::AssignOr,
+            OpCodeWithArgs::AssignXor => OpCode::AssignXor,
+            OpCodeWithArgs::AssignShl => OpCode::AssignShl,
+            OpCodeWithArgs::AssignShr => OpCode::AssignShr,
+            
+
             OpCodeWithArgs::Inc => OpCode::Inc,
             OpCodeWithArgs::Dec => OpCode::Dec,
         }
@@ -244,12 +287,12 @@ impl OpCodeWithArgs {
                     register_index: args[0].parse().map_err(|_| "Invalid register index")?
                 }
             }
-            "MEMORYSET" => {
+            "MEMORYSTORE" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::MemorySet
+                OpCodeWithArgs::MemoryStore
             }
             "MEMORYASSIGN" => {
                 if args.len() != 1 {
@@ -543,6 +586,90 @@ impl OpCodeWithArgs {
                 }
 
                 OpCodeWithArgs::Lte
+            },
+            "ASSIGN" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::Assign
+            },
+            "ASSIGNADD" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignAdd
+            },
+            "ASSIGNSUB" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignSub
+            },
+            "ASSIGNMUL" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignMul
+            },
+            "ASSIGNDIV" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignDiv
+            },
+            "ASSIGNMOD" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignMod
+            },
+            "ASSIGNPOW" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignPow
+            },
+            "ASSIGNAND" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignAnd
+            },
+            "ASSIGNOR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignOr
+            },
+            "ASSIGNXOR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignXor
+            },
+            "ASSIGNSHL" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignShl
+            },
+            "ASSIGNSHR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::AssignShr
             },
             "INC" => {
                 if !args.is_empty() {
