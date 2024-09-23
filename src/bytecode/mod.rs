@@ -7,6 +7,7 @@ pub mod assembler;
 pub use chunk::Chunk;
 pub use opcode::OpCode;
 
+use std::collections::HashSet;
 use crate::{types::Struct, Value};
 
 // A module is a collection of declared chunks, constants and structs
@@ -16,6 +17,8 @@ pub struct Module {
     constants: Vec<Value>,
     // Available chunks
     chunks: Vec<Chunk>,
+    // Chunks callable from external programs
+    entry_chunk_ids: HashSet<usize>,
     // registered structs
     structs: Vec<Struct>
 }
@@ -26,8 +29,15 @@ impl Module {
         Module {
             constants: Vec::new(),
             chunks: Vec::new(),
+            entry_chunk_ids: HashSet::new(),
             structs: Vec::new()
         }
+    }
+
+    // Get the constants declared in the module
+    #[inline]
+    pub fn constants(&self) -> &[Value] {
+        &self.constants
     }
 
     // Add a constant to the module
@@ -47,10 +57,31 @@ impl Module {
         self.constants.get(index)
     }
 
+    // Get the chunks declared in the module
+    #[inline]
+    pub fn chunks(&self) -> &[Chunk] {
+        &self.chunks
+    }
+
     // Add a chunk to the module
     #[inline]
     pub fn add_chunk(&mut self, chunk: Chunk) {
         self.chunks.push(chunk);
+    }
+
+    // Add a chunk to the module
+    // and mark it as callable from externals (entry)
+    #[inline]
+    pub fn add_entry_chunk(&mut self, chunk: Chunk) {
+        let index = self.chunks.len();
+        self.chunks.push(chunk);
+        self.entry_chunk_ids.insert(index);
+    }
+
+    // Is chunk callable from externals
+    #[inline]
+    pub fn is_entry_chunk(&self, index: usize) -> bool {
+        self.entry_chunk_ids.contains(&index)
     }
 
     // Get a chunk at a specific index

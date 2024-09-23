@@ -20,7 +20,7 @@ impl Chunk {
     // Get the opcodes length
     #[inline]
     pub fn index(&self) -> usize {
-        self.instructions.len()
+        self.instructions.len() - 1
     }
 
     // Pop the latest instruction
@@ -51,6 +51,13 @@ impl Chunk {
     #[inline]
     pub fn emit_opcode(&mut self, op_code: OpCode) {
         self.instructions.push(op_code.as_byte());
+    }
+
+    // Patch a jump instruction
+    #[inline]
+    pub fn patch_jump(&mut self, index: usize, addr: u32) {
+        let bytes = addr.to_be_bytes();
+        self.instructions[index..index + 4].copy_from_slice(&bytes);
     }
 
     // Write a byte in the instructions
