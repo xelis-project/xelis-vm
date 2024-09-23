@@ -16,11 +16,11 @@ pub enum OpCodeWithArgs {
         register_index: u16
     },
     // pop, store in registers
-    MemorySet {
+    MemorySet,
+    // pop, store in registers[index]
+    MemoryAssign {
         register_index: u16
     },
-    // pop, store in registers[index]
-    MemoryAssign,
     // load from stack, load u16, load sub value, push
     // used as array call and struct field access
     SubLoad {
@@ -146,8 +146,8 @@ impl OpCodeWithArgs {
         match self {
             OpCodeWithArgs::Constant { .. } => OpCode::Constant,
             OpCodeWithArgs::MemoryLoad { .. } => OpCode::MemoryLoad,
-            OpCodeWithArgs::MemorySet { .. } => OpCode::MemorySet,
-            OpCodeWithArgs::MemoryAssign => OpCode::MemoryAssign,
+            OpCodeWithArgs::MemorySet => OpCode::MemorySet,
+            OpCodeWithArgs::MemoryAssign { .. } => OpCode::MemoryAssign,
             OpCodeWithArgs::SubLoad { .. } => OpCode::SubLoad,
             OpCodeWithArgs::Pop => OpCode::Pop,
             OpCodeWithArgs::Copy => OpCode::Copy,
@@ -192,7 +192,7 @@ impl OpCodeWithArgs {
         match self {
             OpCodeWithArgs::Constant { index } => chunk.write_u16(*index),
             OpCodeWithArgs::MemoryLoad { register_index } => chunk.write_u16(*register_index),
-            OpCodeWithArgs::MemorySet { register_index } => chunk.write_u16(*register_index),
+            OpCodeWithArgs::MemoryAssign { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::SubLoad { index } => chunk.write_u16(*index),
             OpCodeWithArgs::Copy2 { stack_index } => chunk.write_u16(*stack_index),
             OpCodeWithArgs::Swap { stack_index } => chunk.write_u16(*stack_index),
@@ -245,20 +245,20 @@ impl OpCodeWithArgs {
                 }
             }
             "MEMORYSET" => {
-                if args.len() != 1 {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::MemorySet {
-                    register_index: args[0].parse().map_err(|_| "Invalid register index")?
-                }
-            }
-            "MEMORYASSIGN" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::MemoryAssign
+                OpCodeWithArgs::MemorySet
+            }
+            "MEMORYASSIGN" => {
+                if args.len() != 1 {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::MemoryAssign {
+                    register_index: args[0].parse().map_err(|_| "Invalid register index")?
+                }
             }
             "SUBLOAD" => {
                 if args.len() != 1 {
