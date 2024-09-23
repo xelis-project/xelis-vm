@@ -6,27 +6,27 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 pub use error::VMError;
 pub use chunk::*;
 
-use crate::{types::Struct, Type, Value};
+use crate::{interpreter::Path, types::Struct, Environment, Type, Value};
 
 use super::{opcode::OpCode, Module};
 
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a, $b) {
+        Path::Owned(match ($a.into_owned(), $b.into_owned()) {
             (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
             (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
             _ => return Err(VMError::IncompatibleValues)
-        }
+        })
     }};
 }
 
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a, $b) {
+        Path::Owned(match ($a.into_owned(), $b.into_owned()) {
             (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
             (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
             (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
@@ -34,7 +34,7 @@ macro_rules! op_bool {
             (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
             _ => return Err(VMError::IncompatibleValues)
-        }
+        })
     }};
 }
 
@@ -45,15 +45,18 @@ macro_rules! op_bool {
 pub struct VM<'a> {
     // The module to execute
     module: &'a Module,
+    // The environment of the VM
+    environment: &'a Environment,
     // The call stack of the VM
     call_stack: Vec<ChunkManager<'a>>,
 }
 
 impl<'a> VM<'a> {
     // Create a new VM
-    pub fn new(module: &'a Module) -> Self {
+    pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
         VM {
             module,
+            environment,
             call_stack: Vec::new(),
         }
     }
@@ -75,7 +78,7 @@ impl<'a> VM<'a> {
     }
 
     // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args(&mut self, id: u16, args: Vec<Value>) -> Result<(), VMError> {
+    pub fn invoke_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
         let chunk = self.module.get_chunk_at(id as usize)
             .ok_or(VMError::ChunkNotFound)?;
 
@@ -95,13 +98,13 @@ impl<'a> VM<'a> {
             if let Some(value) = final_result.take() {
                 manager.push_stack(value);
             }
-    
+
             while let Ok(op_code) = manager.read_op_code() {
                 match op_code {
                     OpCode::Constant => {
                         let index = manager.read_u8()? as usize;
                         let constant = self.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
-                        manager.push_stack(constant.clone());
+                        manager.push_stack(Path::Borrowed(constant));
                     },
                     OpCode::MemoryLoad => {
                         let index = manager.read_u16()?;
@@ -123,7 +126,9 @@ impl<'a> VM<'a> {
                     },
                     OpCode::Cast => {
                         let _type = manager.read_type()?;
-                        let current = manager.pop_stack()?;
+                        let current = manager.pop_stack()?
+                            .into_owned();
+
                         let value = match _type {
                             Type::U8 => Value::U8(current.cast_to_u8().unwrap()),
                             Type::U16 => Value::U16(current.cast_to_u16().unwrap()),
@@ -133,22 +138,21 @@ impl<'a> VM<'a> {
                             Type::String => Value::String(current.cast_to_string().unwrap()),
                             _ => return Err(VMError::UnsupportedCastType)
                         };
-                        manager.push_stack(value);
+                        manager.push_stack(Path::Owned(value));
                     },
                     OpCode::NewArray => {
                         let length = manager.read_u32()?;
                         let mut array = VecDeque::with_capacity(length as usize);
                         for _ in 0..length {
-                            array.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
+                            array.push_front(Rc::new(RefCell::new(manager.pop_stack()?.into_owned())));
                         }
 
-                        manager.push_stack(Value::Array(array.into()));
+                        manager.push_stack(Path::Owned(Value::Array(array.into())));
                     },
                     OpCode::ArrayCall => {
-                        let index = manager.pop_stack()?.cast_to_u32().unwrap();
+                        let index = manager.pop_stack()?.into_owned().cast_to_u32().unwrap();
                         let value = manager.pop_stack()?;
-                        let array = value.as_sub_vec().unwrap();
-                        manager.push_stack(array[index as usize].borrow().clone());
+                        manager.push_stack(value.get_sub_variable(index as usize).unwrap());
                     },
                     OpCode::InvokeChunk => {
                         let args = manager.read_u8()?;
@@ -180,26 +184,49 @@ impl<'a> VM<'a> {
     
                         continue 'main;
                     },
+                    OpCode::SysCall => {
+                        let args = manager.read_u8()?;
+                        let mut on_value = if manager.read_bool()? {
+                            Some(manager.pop_stack()?)
+                        } else {
+                            None
+                        };
+                        let id = manager.read_u16()?;
+                        let mut arguments = VecDeque::with_capacity(args as usize);
+                        for _ in 0..args {
+                            arguments.push_front(manager.pop_stack()?);
+                        }
+
+                        let func = self.environment.get_functions().get(id as usize)
+                            .ok_or(VMError::UnknownSysCall)?;
+
+                        let mut instance = match on_value.as_mut() {
+                            Some(v) => Some(v.as_mut()),
+                            None => None,
+                        };
+
+                        func.call_function(instance.as_deref_mut(), arguments.into(), todo!())?;
+                    },
                     OpCode::NewStruct => {
                         let id = manager.read_u16()?;
                         let structure = self.get_struct_with_id(id)?;
                         let mut fields = VecDeque::new();
                         for _ in 0..structure.fields.len() {
-                            fields.push_front(Rc::new(RefCell::new(manager.pop_stack()?)));
+                            fields.push_front(Rc::new(RefCell::new(manager.pop_stack()?.into_owned())));
                         }
     
-                        manager.push_stack(Value::Struct(id, fields.into()));
+                        manager.push_stack(Path::Owned(Value::Struct(id, fields.into())));
                     },
                     OpCode::Add => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
+                        println!("Add {:?} {:?}", left, right);
                         manager.push_stack(op!(left, right, +));
                     },
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
-                        let value = manager.pop_stack()?;
-                        let sub_value = value.as_sub_vec().unwrap();
-                        manager.push_stack(sub_value[index as usize].borrow().clone());
+                        let path = manager.pop_stack()?;
+                        manager.push_stack(path.get_sub_variable(index as usize).unwrap());
                     },
                     OpCode::Lte => {
                         let right = manager.pop_stack()?;
@@ -229,11 +256,12 @@ impl<'a> VM<'a> {
                     },
                     OpCode::IterableLength => {
                         let value = manager.pop_stack()?;
-                        let len = value.as_vec().unwrap().len();
-                        manager.push_stack(Value::U32(len as u32));
+                        let len = value.as_ref().as_vec().unwrap().len();
+                        manager.push_stack(Path::Owned(Value::U32(len as u32)));
                     },
                     OpCode::Inc => {
-                        manager.last_mut_stack()?.increment().unwrap();
+                        let v = manager.last_mut_stack()?;
+                        v.as_mut().increment().unwrap();
                     },
                     OpCode::Return => {
                         break;
@@ -248,7 +276,7 @@ impl<'a> VM<'a> {
             final_result = manager.pop_stack().ok();
         }
 
-        Ok(final_result.ok_or(VMError::NoValue)?)
+        Ok(final_result.ok_or(VMError::NoValue)?.into_owned())
     }
 }
 
@@ -260,7 +288,8 @@ mod tests {
     use super::*;
 
     fn run(module: Module) -> Value {
-        let mut vm = VM::new(&module);
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         vm.run().unwrap()
     }
@@ -382,7 +411,8 @@ mod tests {
 
         module.add_chunk(chunk);
 
-        let mut vm = VM::new(&module);
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::Struct(0, vec![
             Rc::new(RefCell::new(Value::U8(10))),
@@ -421,7 +451,8 @@ mod tests {
 
         chunk.emit_opcode(OpCode::Return);
 
-        let mut vm = VM::new(&module);
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::U16(30));
     }
@@ -454,7 +485,8 @@ mod tests {
         module.add_chunk(first);
         module.add_chunk(bool_fn);
 
-        let mut vm = VM::new(&module);
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::Boolean(true));
     }
@@ -498,7 +530,8 @@ mod tests {
         module.add_chunk(main);
         module.add_chunk(struct_fn);
 
-        let mut vm = VM::new(&module);
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::U64(10));
     }
@@ -562,8 +595,8 @@ mod tests {
         chunk.emit_opcode(OpCode::MemorySet);
 
         // Load the array
-        let jump_at = chunk.index();
         chunk.emit_opcode(OpCode::MemoryLoad);
+        let jump_at = chunk.index();
         chunk.write_u16(0);
 
         // load the index

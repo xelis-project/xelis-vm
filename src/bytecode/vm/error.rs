@@ -18,6 +18,7 @@ pub enum VMError {
     UnsupportedCastType,
     UnknownSysCall,
     EnvironmentError(EnvironmentError),
+    IncrementError,
 }
 
 impl From<EnvironmentError> for VMError {
