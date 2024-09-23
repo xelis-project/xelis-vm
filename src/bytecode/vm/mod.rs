@@ -13,20 +13,20 @@ use super::{opcode::OpCode, Module};
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
-        Path::Owned(match ($a.into_owned(), $b.into_owned()) {
+        match ($a.as_value(), $b.as_value()) {
             (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
             (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
             _ => return Err(VMError::IncompatibleValues)
-        })
+        }
     }};
 }
 
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
-        Path::Owned(match ($a.into_owned(), $b.into_owned()) {
+        match ($a.as_value(), $b.as_value()) {
             (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
             (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
             (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
@@ -34,7 +34,7 @@ macro_rules! op_bool {
             (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
             _ => return Err(VMError::IncompatibleValues)
-        })
+        }
     }};
 }
 
@@ -224,27 +224,32 @@ impl<'a> VM<'a> {
                     OpCode::Add => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
-                        manager.push_stack(op!(left, right, +));
+                        manager.push_stack(Path::Owned(op!(left.as_ref(), right.as_ref(), +)));
                     },
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
                         let path = manager.pop_stack()?;
                         manager.push_stack(path.get_sub_variable(index as usize).unwrap());
                     },
+                    OpCode::Lt => {
+                        let right = manager.pop_stack()?;
+                        let left = manager.pop_stack()?;
+                        manager.push_stack(Path::Owned(op_bool!(left.as_ref(), right.as_ref(), <)));
+                    },
                     OpCode::Lte => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
-                        manager.push_stack(op_bool!(left, right, <=));
+                        manager.push_stack(Path::Owned(op_bool!(left.as_ref(), right.as_ref(), <=)));
                     },
                     OpCode::Gt => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
-                        manager.push_stack(op_bool!(left, right, >));
+                        manager.push_stack(Path::Owned(op_bool!(left.as_ref(), right.as_ref(), >)));
                     },
                     OpCode::Gte => {
                         let right = manager.pop_stack()?;
                         let left = manager.pop_stack()?;
-                        manager.push_stack(op_bool!(left, right, >=));
+                        manager.push_stack(Path::Owned(op_bool!(left.as_ref(), right.as_ref(), >=)));
                     },
                     OpCode::Jump => {
                         let index = manager.read_u32()?;
@@ -268,6 +273,17 @@ impl<'a> VM<'a> {
                     },
                     OpCode::Return => {
                         break;
+                    },
+                    OpCode::Assign => {
+                        let right = manager.pop_stack()?.into_owned();
+                        let mut left = manager.pop_stack()?;
+                        *left.as_mut() = right;
+                    },
+                    OpCode::AssignAdd => {
+                        let right = manager.pop_stack()?;
+                        let mut left = manager.pop_stack()?;
+                        let result = op!(left.as_ref(), right.as_ref(), +);
+                        *left.as_mut() = result;
                     },
                     _ => {
                         println!("Not implemented {:?}", op_code);
