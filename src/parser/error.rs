@@ -56,6 +56,7 @@ pub enum ParserError<'a> {
     InvalidCondition(Type, Expression),
     InvalidOperationNotSameType(Type, Type),
     CastError(Type, Type),
+    CastPrimitiveError(Type, Type),
     InvalidArrayCallIndexType(Type),
     InvalidTypeInArray(Type, Type),
     InvalidValueType(Type, Type),

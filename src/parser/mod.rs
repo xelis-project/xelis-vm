@@ -3,17 +3,20 @@ mod context;
 mod error;
 mod struct_manager;
 mod mapper;
+mod program;
 
 pub(crate) use struct_manager::{StructBuilder, StructManager};
 
-pub use self::error::ParserError;
+pub use error::ParserError;
+pub use program::Program;
+
 use self::context::Context;
 
 pub use mapper::{FunctionMapper, IdMapper, Mapper};
 
 use crate::{
     ast::*,
-    types::{HasKey, Struct, Type},
+    types::{HasKey, Type},
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
@@ -34,16 +37,6 @@ macro_rules! convert {
     }};
 }
 
-#[derive(Debug)]
-pub struct Program {
-    // All constants declared
-    pub constants: HashSet<DeclarationStatement>,
-    // All structures declared
-    pub structures: Vec<Struct>,
-    // All functions declared
-    pub functions: Vec<FunctionType>
-}
-
 pub struct Parser<'a> {
     // Tokens to process
     tokens: VecDeque<Token<'a>>,
@@ -58,22 +51,22 @@ pub struct Parser<'a> {
     // Struct manager
     struct_manager: StructManager<'a>,
     // Environment contains all the library linked to the program
-    env: &'a EnvironmentBuilder<'a>,
+    environment: &'a EnvironmentBuilder<'a>,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: VecDeque<Token<'a>>, env: &'a EnvironmentBuilder) -> Self {
-        let functions_mapper = FunctionMapper::with_parent(env.get_functions_mapper());
+    pub fn new(tokens: VecDeque<Token<'a>>, environment: &'a EnvironmentBuilder) -> Self {
+        let functions_mapper = FunctionMapper::with_parent(environment.get_functions_mapper());
 
         Parser {
             tokens,
             constants: HashSet::new(),
             functions: Vec::new(),
             functions_mapper,
-            struct_manager: StructManager::with_parent(env.get_struct_manager()),
-            env
+            struct_manager: StructManager::with_parent(environment.get_struct_manager()),
+            environment
         }
     }
 
@@ -572,6 +565,11 @@ impl<'a> Parser<'a> {
                     if !left_type.is_castable_to(&right_type) {
                         return Err(ParserError::CastError(left_type, right_type))
                     }
+
+                    if !right_type.is_primitive() {
+                        return Err(ParserError::CastPrimitiveError(left_type, right_type))
+                    }
+
                     required_operator = !required_operator;
                     Expression::Cast(Box::new(previous_expr), right_type)
                 },
@@ -1060,9 +1058,9 @@ impl<'a> Parser<'a> {
     fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
-        let len = self.env.get_functions().len();
+        let len = self.environment.get_functions().len();
         if index < len {
-            Ok(Function::Native(&self.env.get_functions()[index]))
+            Ok(Function::Native(&self.environment.get_functions()[index]))
         } else {
             match self.functions.get(index - len) {
                 Some(func) => Ok(func.as_function()),
@@ -1143,11 +1141,8 @@ impl<'a> Parser<'a> {
             };
         }
 
-        Ok((Program {
-            constants: self.constants,
-            structures: self.struct_manager.finalize(),
-            functions: self.functions,
-        }, self.functions_mapper))
+        let program = Program::with(self.constants, self.struct_manager.finalize(), self.functions);
+        Ok((program, self.functions_mapper))
     }
 }
 
@@ -1201,7 +1196,7 @@ mod tests {
         ];
 
         let program = test_parser(tokens);
-        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions().len(), 1);
     }
 
     #[test]
@@ -1218,7 +1213,7 @@ mod tests {
         ];
 
         let program = test_parser(tokens);
-        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions().len(), 1);
     }
 
     #[test]
@@ -1240,7 +1235,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         env.register_structure("Foo", Vec::new());
         let program = test_parser_with_env(tokens, &env);
-        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions().len(), 1);
     }
 
     #[test]
@@ -1263,7 +1258,7 @@ mod tests {
         ];
 
         let program = test_parser(tokens);
-        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions().len(), 1);
     }
 
     #[test]
@@ -1282,7 +1277,7 @@ mod tests {
         ];
 
         let program = test_parser(tokens);
-        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions().len(), 1);
     }
 
     #[test]
@@ -1456,7 +1451,7 @@ mod tests {
         ];
 
         let program = test_parser(tokens.clone());
-        assert_eq!(program.structures.len(), 1);
+        assert_eq!(program.structures().len(), 1);
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
