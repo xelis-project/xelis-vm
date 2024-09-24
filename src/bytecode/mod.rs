@@ -69,4 +69,26 @@ mod tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(10));
     }
+
+    #[test]
+    fn test_struct_access() {
+        let code = r#"
+            struct Test {
+                x: u64,
+                y: u64
+            }
+
+            entry main() {
+                let t: Test = Test { x: 10, y: 20 };
+                return t.x + t.y
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(30));
+    }
 }
