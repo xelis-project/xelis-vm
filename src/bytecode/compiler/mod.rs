@@ -566,4 +566,29 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_function_call() {
+        let (program, environment) = prepare_program("func test(): u64 { return 1 } entry main() { return test() }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+
+        let chunk = module.get_chunk_at(1).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::InvokeChunk.as_byte(), 0, 0, 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
 }
