@@ -49,4 +49,24 @@ mod tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(10));
     }
+
+    #[test]
+    fn test_for() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 0;
+                for i: u64 = 0; i < 10; i += 1 {
+                    x = x + 1;
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
+    }
 }
