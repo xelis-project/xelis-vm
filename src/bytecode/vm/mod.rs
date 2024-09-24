@@ -163,25 +163,21 @@ impl<'a> VM<'a> {
                             None
                         };
                         let args = manager.read_u8()?;
-    
-                        let mut arguments = VecDeque::with_capacity(args as usize);
-                        for _ in 0..args {
-                            arguments.push_front(manager.pop_stack()?);
-                        }
-    
-                        // Add back our current state to the stack
-                        self.call_stack.push(manager);
-    
+
                         // Find the chunk
                         let chunk = self.module.get_chunk_at(id as usize)
                             .ok_or(VMError::ChunkNotFound)?;
 
                         let mut new_manager = ChunkManager::new(chunk);
-                        
-                        new_manager.extend_stack(arguments);
+
+                        // Take the arguments from the stack
+                        new_manager.extend_stack(manager.take_from_stack(args as usize));
                         if let Some(value) = on_value {
                             new_manager.push_stack(value);
                         }
+
+                        // Add back our current state to the stack
+                        self.call_stack.push(manager);
 
                         self.call_stack.push(new_manager);
     

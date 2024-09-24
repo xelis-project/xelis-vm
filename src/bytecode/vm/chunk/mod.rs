@@ -1,6 +1,6 @@
 mod reader;
 
-use std::ops::{Deref, DerefMut};
+use std::{ops::{Deref, DerefMut}, vec::Drain};
 
 pub use reader::ChunkReader;
 
@@ -50,6 +50,9 @@ impl<'a> ChunkManager<'a> {
         self.stack.push(value);
     }
 
+    pub fn take_from_stack<'b>(&'b mut self, count: usize) -> Drain<'b, Path<'a>> {
+        self.stack.drain(self.stack.len() - count..)
+    }
     // Push multiple values to the stack
     #[inline]
     pub fn extend_stack<I: IntoIterator<Item = Path<'a>>>(&mut self, values: I) {
