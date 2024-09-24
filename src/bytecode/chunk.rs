@@ -20,6 +20,12 @@ impl Chunk {
     // Get the opcodes length
     #[inline]
     pub fn index(&self) -> usize {
+        self.instructions.len()
+    }
+
+    // Get the index of the last instruction
+    #[inline]
+    pub fn last_index(&self) -> usize {
         self.instructions.len() - 1
     }
 

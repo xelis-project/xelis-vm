@@ -18,6 +18,10 @@ pub struct Compiler<'a> {
     environment: &'a Environment,
     // Final module to return
     module: Module,
+    // Used for continue
+    loop_index_start: Vec<usize>,
+    // Index of jump to patch
+    loop_break_patch: Vec<usize>,
 }
 
 impl<'a> Compiler<'a> {
@@ -27,6 +31,8 @@ impl<'a> Compiler<'a> {
             program,
             environment,
             module: Module::new(),
+            loop_index_start: Vec::new(),
+            loop_break_patch: Vec::new(),
         }
     }
 
@@ -116,7 +122,7 @@ impl<'a> Compiler<'a> {
                 // We will overwrite the addr later
                 chunk.emit_opcode(OpCode::JumpIfFalse);
                 chunk.write_u32(INVALID_ADDR);
-                let jump_addr = chunk.index();
+                let jump_addr = chunk.last_index();
 
                 // Compile the valid condition
                 self.compile_expr(chunk, valid);
@@ -124,18 +130,17 @@ impl<'a> Compiler<'a> {
                 // Once finished, we must jump the false condition
                 chunk.emit_opcode(OpCode::Jump);
                 chunk.write_u32(INVALID_ADDR);
-                let jump_valid_index = chunk.index();
+                let jump_valid_index = chunk.last_index();
 
                 // Patch the jump if false
-                // we do + 1 so we are on the next instruction built below
-                let jump_false_addr = chunk.index() + 1;
+                let jump_false_addr = chunk.index();
                 chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
                 // Compile the invalid condition
                 self.compile_expr(chunk, invalid);
 
                 // Patch the jump if valid
-                let jump_valid_addr = chunk.index() + 1;
+                let jump_valid_addr = chunk.index();
                 chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
             },
             Expression::Cast(expr, primitive_type) => {
@@ -175,9 +180,6 @@ impl<'a> Compiler<'a> {
                         chunk.emit_opcode(op);
                     }
                 };
-            },
-            _ => {
-
             }
         }
     }
@@ -206,7 +208,7 @@ impl<'a> Compiler<'a> {
                     // We will overwrite the addr later
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.index();
+                    let jump_addr = chunk.last_index();
 
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
@@ -216,13 +218,13 @@ impl<'a> Compiler<'a> {
                     let jump_valid_index = if append_jump {
                         chunk.emit_opcode(OpCode::Jump);
                         chunk.write_u32(INVALID_ADDR);
-                        Some(chunk.index())
+                        Some(chunk.last_index())
                     } else {
                         None
                     };
 
                     // Patch the jump if false
-                    let jump_false_addr = chunk.index() + 1;
+                    let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
                     // Compile the else condition
@@ -232,19 +234,22 @@ impl<'a> Compiler<'a> {
 
                     if let Some(jump_valid_index) = jump_valid_index {
                         // Patch the jump if valid
-                        let jump_valid_addr = chunk.index() + 1;
+                        let jump_valid_addr = chunk.index();
                         chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
                     }
                 },
                 Statement::While(expr, statements) => {
-                    let start_index = chunk.index() + 1;
+                    let start_index = chunk.index();
                     self.compile_expr(chunk, expr);
 
                     // Emit the jump if false
                     // We will overwrite the addr later
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.index();
+                    let jump_addr = chunk.last_index();
+
+                    // Compile the valid condition
+                    self.loop_index_start.push(start_index);
 
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
@@ -253,11 +258,20 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(start_index as u32);
 
+                    // Pop the loop index
+                    self.loop_index_start.pop();
+
                     // Patch the jump if false
-                    let jump_false_addr = chunk.index() + 1;
+                    let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                    // Patch the break
+                    if let Some(jump) = self.loop_break_patch.pop() {
+                        chunk.patch_jump(jump, jump_false_addr as u32);
+                    }
                 },
                 Statement::ForEach(_, expr_values, statements) => {
+                    let start_index = chunk.index();
                     // Compile the expression
                     self.compile_expr(chunk, expr_values);
 
@@ -267,7 +281,9 @@ impl<'a> Compiler<'a> {
                     // We will overwrite the addr later
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.index();
+                    let jump_addr = chunk.last_index();
+
+                    self.loop_index_start.push(start_index);
 
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
@@ -276,9 +292,17 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(jump_addr as u32);
 
+                    // Pop the loop index
+                    self.loop_index_start.pop();
+
                     // Patch the jump if false
-                    let jump_false_addr = chunk.index() + 1;
+                    let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                    // Patch the break
+                    if let Some(jump) = self.loop_break_patch.pop() {
+                        chunk.patch_jump(jump, jump_false_addr as u32);
+                    }
                 }
                 Statement::For(var, expr_condition, expr_op, statements) => {
                     // Compile the variable
@@ -286,30 +310,49 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::MemoryStore);
 
                     // Compile the condition
-                    let start_index = chunk.index() + 1;
+                    let start_index = chunk.index();
                     self.compile_expr(chunk, expr_condition);
 
                     // Emit the jump if false
                     // We will overwrite the addr later
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.index();
-
+                    let jump_addr = chunk.last_index();
+                    
+                    // Register the loop index
+                    self.loop_index_start.push(start_index);
+                    
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
-
+                    
                     // Compile the operation
                     self.compile_expr(chunk, expr_op);
+
+                    // Pop the loop index
+                    self.loop_index_start.pop();
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(start_index as u32);
 
                     // Patch the jump if false
-                    let jump_false_addr = chunk.index() + 1;
+                    let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                    // Patch the break
+                    if let Some(jump) = self.loop_break_patch.pop() {
+                        chunk.patch_jump(jump, jump_false_addr as u32);
+                    }
                 },
-                _ => {}
+                Statement::Break => {
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(INVALID_ADDR);
+                    self.loop_break_patch.push(chunk.last_index());
+                },
+                Statement::Continue => {
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(*self.loop_index_start.last().unwrap() as u32);
+                }
             }
         }
     }
@@ -347,6 +390,9 @@ impl<'a> Compiler<'a> {
         for function in self.program.functions() {
             self.compile_function(function);
         }
+
+        assert!(self.loop_index_start.is_empty(), "Loop index start is not empty: {:?}", self.loop_index_start);
+        assert!(self.loop_break_patch.is_empty(), "Loop break patch is not empty: {:?}", self.loop_break_patch);
 
         // Return the module
         Ok(self.module)
@@ -596,6 +642,59 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::InvokeChunk.as_byte(), 0, 0, 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_break() {
+        let (program, environment) = prepare_program("entry main() { while true { break } return 1 }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 17,
+                // Jump by the break
+                OpCode::Jump.as_byte(), 0, 0, 0, 17,
+                // Jump by the while to go back
+                OpCode::Jump.as_byte(), 0, 0, 0, 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_continue() {
+        let (program, environment) = prepare_program("entry main() { let i: u64 = 0; while i < 10 { i += 1; if i == 3 { continue; } } return i }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Lt.as_byte(),
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 41,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 2,
+                OpCode::AssignAdd.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 3,
+                OpCode::Eq.as_byte(),
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 36,
+                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
         );

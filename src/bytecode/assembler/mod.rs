@@ -54,7 +54,7 @@ impl<'a> Assembler<'a> {
             } else if line.starts_with(":") {
                 // Register a jump label for the next instruction
                 let c = chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?;
-                self.jump_labels.push((&line[1..], (c.index() + 1) as u32));
+                self.jump_labels.push((&line[1..], c.index() as u32));
             } else {
                 let op = OpCodeWithArgs::from_str_with_labels(line, &self.chunks_labels, &self.jump_labels)
                     .map_err(AssemblerError::OpCode)?;
