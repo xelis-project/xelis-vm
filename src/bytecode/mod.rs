@@ -111,4 +111,42 @@ mod tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(30));
     }
+
+    #[test]
+    fn test_array() {
+        let code = r#"
+            entry main() {
+                let arr: u64[] = [10, 20, 30];
+                return arr[0] + arr[1] + arr[2]
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(60));
+    }
+
+    #[test]
+    fn test_array_in_struct() {
+        let code = r#"
+            struct Test {
+                arr: u64[]
+            }
+
+            entry main() {
+                let t: Test = Test { arr: [10, 20, 30] };
+                return t.arr[0] + t.arr[1] + t.arr[2]
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(60));
+    }
 }
