@@ -67,11 +67,31 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::Constant);
                 chunk.write_u8(index as u8);
             },
+            Expression::ArrayConstructor(exprs) => {
+                for expr in exprs {
+                    self.compile_expr(chunk, expr);
+                }
+                chunk.emit_opcode(OpCode::NewArray);
+                chunk.write_u32(exprs.len() as u32);
+            },
+            Expression::StructConstructor(id, exprs) => {
+                for expr in exprs {
+                    self.compile_expr(chunk, expr);
+                }
+
+                // We don't verify the struct ID, the parser should have done it
+                chunk.emit_opcode(OpCode::NewStruct);
+                chunk.write_u16(*id);
+            },
             Expression::Path(left, right) => {
                 // Compile the path
                 self.compile_expr(chunk, left);
-                chunk.emit_opcode(OpCode::SubLoad);
-                self.compile_expr(chunk, right);
+                if let Expression::Variable(id) = right.as_ref() {
+                    chunk.emit_opcode(OpCode::SubLoad);
+                    chunk.write_u16(*id);
+                } else {
+                    panic!("Right side of the path is not a variable, got {:?}", right);
+                }
             },
             Expression::Variable(id) => {
                 chunk.emit_opcode(OpCode::MemoryLoad);
@@ -309,6 +329,11 @@ impl<'a> Compiler<'a> {
 
     // Compile the program
     pub fn compile(mut self) -> Result<Module, CompilerError> {
+        // Include the structs created
+        for struct_type in self.program.structures() {
+            self.module.add_struct(struct_type.clone());
+        }
+
         // Compile the program
         for function in self.program.functions() {
             self.compile_function(function);
@@ -516,6 +541,27 @@ mod tests {
                 OpCode::AssignAdd.as_byte(),
                 OpCode::Jump.as_byte(), 0, 0, 0, 3,
                 OpCode::Constant.as_byte(), 2,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_struct() {
+        let (program, environment) = prepare_program("struct Test { a: u64, b: u64 } entry main() { let t: Test = Test { a: 1, b: 2 }; return t.a }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::NewStruct.as_byte(), 0, 0,
+                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::SubLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
         );
