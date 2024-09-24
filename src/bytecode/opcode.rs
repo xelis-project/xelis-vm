@@ -118,7 +118,7 @@ pub enum OpCode {
 impl OpCode {
     // Convert the OpCode to a byte
     #[inline]
-    pub fn as_byte(&self) -> u8 {
+    pub const fn as_byte(&self) -> u8 {
         match self {
             OpCode::Constant => 0,
             OpCode::MemoryLoad => 1,
@@ -182,7 +182,7 @@ impl OpCode {
 
     // Convert a byte to an OpCode
     #[inline]
-    pub fn from_byte(byte: u8) -> Option<OpCode> {
+    pub const fn from_byte(byte: u8) -> Option<OpCode> {
         Some(match byte {
             0 => OpCode::Constant,
             1 => OpCode::MemoryLoad,
@@ -243,7 +243,8 @@ impl OpCode {
         })
     }
 
-    pub fn as_assign_operator(self) -> Option<Self> {
+    #[inline]
+    pub const fn as_assign_operator(self) -> Option<Self> {
         Some(match self {
             OpCode::Add => OpCode::AssignAdd,
             OpCode::Sub => OpCode::AssignSub,
