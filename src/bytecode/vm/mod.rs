@@ -152,12 +152,12 @@ impl<'a> VM<'a> {
                             .into_owned();
 
                         let value = match _type {
-                            Type::U8 => Value::U8(current.cast_to_u8().unwrap()),
-                            Type::U16 => Value::U16(current.cast_to_u16().unwrap()),
-                            Type::U32 => Value::U32(current.cast_to_u32().unwrap()),
-                            Type::U64 => Value::U64(current.cast_to_u64().unwrap()),
-                            Type::U128 => Value::U128(current.cast_to_u128().unwrap()),
-                            Type::String => Value::String(current.cast_to_string().unwrap()),
+                            Type::U8 => Value::U8(current.cast_to_u8()?),
+                            Type::U16 => Value::U16(current.cast_to_u16()?),
+                            Type::U32 => Value::U32(current.cast_to_u32()?),
+                            Type::U64 => Value::U64(current.cast_to_u64()?),
+                            Type::U128 => Value::U128(current.cast_to_u128()?),
+                            Type::String => Value::String(current.cast_to_string()?),
                             _ => return Err(VMError::UnsupportedCastType)
                         };
                         manager.push_stack(Path::Owned(value));
@@ -172,9 +172,9 @@ impl<'a> VM<'a> {
                         manager.push_stack(Path::Owned(Value::Array(array.into())));
                     },
                     OpCode::ArrayCall => {
-                        let index = manager.pop_stack()?.into_owned().cast_to_u32().unwrap();
+                        let index = manager.pop_stack()?.into_owned().cast_to_u32()?;
                         let value = manager.pop_stack()?;
-                        manager.push_stack(value.get_sub_variable(index as usize).unwrap());
+                        manager.push_stack(value.get_sub_variable(index as usize)?);
                     },
                     OpCode::InvokeChunk => {
                         let id = manager.read_u16()?;
@@ -255,7 +255,7 @@ impl<'a> VM<'a> {
                     OpCode::Lte => opcode_op!(manager, op_bool, <=),
                     OpCode::Neg => {
                         let value = manager.pop_stack()?;
-                        manager.push_stack(Path::Owned(Value::Boolean(!value.as_bool().unwrap())));
+                        manager.push_stack(Path::Owned(Value::Boolean(!value.as_bool()?)));
                     },
                     OpCode::Assign => {
                         let right = manager.pop_stack()?.into_owned();
@@ -276,7 +276,7 @@ impl<'a> VM<'a> {
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
                         let path = manager.pop_stack()?;
-                        manager.push_stack(path.get_sub_variable(index as usize).unwrap());
+                        manager.push_stack(path.get_sub_variable(index as usize)?);
                     },
                     OpCode::Jump => {
                         let index = manager.read_u32()?;
@@ -285,18 +285,18 @@ impl<'a> VM<'a> {
                     OpCode::JumpIfFalse => {
                         let index = manager.read_u32()?;
                         let value = manager.pop_stack()?;
-                        if !value.as_bool().unwrap() {
+                        if !value.as_bool()? {
                             manager.set_index(index as usize);
                         }
                     },
                     OpCode::IterableLength => {
                         let value = manager.pop_stack()?;
-                        let len = value.as_ref().as_vec().unwrap().len();
+                        let len = value.as_ref().as_vec()?.len();
                         manager.push_stack(Path::Owned(Value::U32(len as u32)));
                     },
                     OpCode::Inc => {
                         let v = manager.last_mut_stack()?;
-                        v.as_mut().increment().unwrap();
+                        v.as_mut().increment()?;
                     },
                     OpCode::Return => {
                         break;

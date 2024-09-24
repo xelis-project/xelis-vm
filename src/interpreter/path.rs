@@ -1,13 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::values::Value;
+use crate::values::{Value, ValueError};
 
-use super::{
-    InterpreterError,
-    handle::{
-        ValueHandle,
-        ValueHandleMut
-    }
+use super::handle::{
+    ValueHandle,
+    ValueHandleMut
 };
 
 #[derive(Debug, Clone)]
@@ -20,12 +17,12 @@ pub enum Path<'a> {
 
 impl<'a> Path<'a> {
     #[inline(always)]
-    pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, InterpreterError> {
+    pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, ValueError> {
         self.as_ref().as_bool()
     }
 
     #[inline(always)]
-    pub fn as_u64(&'a self) -> Result<u64, InterpreterError> {
+    pub fn as_u64(&'a self) -> Result<u64, ValueError> {
         self.as_ref().as_u64()
     }
 
@@ -47,13 +44,13 @@ impl<'a> Path<'a> {
     }
 
     // Get the sub value of the path
-    pub fn get_sub_variable(self, index: usize) -> Result<Path<'a>, InterpreterError> {
+    pub fn get_sub_variable(self, index: usize) -> Result<Path<'a>, ValueError> {
         match self {
             Self::Owned(v) => {
                 let mut values = v.to_sub_vec()?;
                 let len = values.len();
                 if index >= len {
-                    return Err(InterpreterError::OutOfBounds(index, len))
+                    return Err(ValueError::OutOfBounds(index, len))
                 }
 
                 let at_index = values.remove(index);
@@ -64,7 +61,7 @@ impl<'a> Path<'a> {
                 let len = values.len();
                 let at_index = values
                     .get(index)
-                    .ok_or_else(|| InterpreterError::OutOfBounds(index, len))?;
+                    .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
                 Ok(Path::Wrapper(at_index.clone()))
             },
@@ -74,7 +71,7 @@ impl<'a> Path<'a> {
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)
-                    .ok_or_else(|| InterpreterError::OutOfBounds(index, len))?;
+                    .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
                 Ok(Path::Wrapper(at_index.clone()))
             }

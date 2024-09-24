@@ -1,14 +1,11 @@
 use crate::{
-    ast::Expression,
-    environment::EnvironmentError,
-    IdentifierType,
-    Type,
-    Value
+    ast::Expression, environment::EnvironmentError, values::ValueError, IdentifierType, Type, Value
 };
 
 #[derive(Debug)]
 pub enum InterpreterError {
     EnvironmentError(EnvironmentError),
+    ValueError(ValueError),
     SubValue,
     Panic(Value),
     MissingValueOnStack,
@@ -57,5 +54,11 @@ pub enum InterpreterError {
 impl From<EnvironmentError> for InterpreterError {
     fn from(error: EnvironmentError) -> Self {
         InterpreterError::EnvironmentError(error)
+    }
+}
+
+impl From<ValueError> for InterpreterError {
+    fn from(error: ValueError) -> Self {
+        InterpreterError::ValueError(error)
     }
 }
