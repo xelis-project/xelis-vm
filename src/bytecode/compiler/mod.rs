@@ -260,6 +260,35 @@ impl<'a> Compiler<'a> {
                     let jump_false_addr = chunk.index() + 1;
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
                 }
+                Statement::For(var, expr_condition, expr_op, statements) => {
+                    // Compile the variable
+                    self.compile_expr(chunk, &var.value);
+                    chunk.emit_opcode(OpCode::MemoryStore);
+
+                    // Compile the condition
+                    let start_index = chunk.index() + 1;
+                    self.compile_expr(chunk, expr_condition);
+
+                    // Emit the jump if false
+                    // We will overwrite the addr later
+                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.write_u32(INVALID_ADDR);
+                    let jump_addr = chunk.index();
+
+                    // Compile the valid condition
+                    self.compile_statements(chunk, statements);
+
+                    // Compile the operation
+                    self.compile_expr(chunk, expr_op);
+
+                    // Jump back to the start
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(start_index as u32);
+
+                    // Patch the jump if false
+                    let jump_false_addr = chunk.index() + 1;
+                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
+                },
                 _ => {}
             }
         }
@@ -459,6 +488,34 @@ mod tests {
                 OpCode::Constant.as_byte(), 2,
                 OpCode::Return.as_byte(),
                 OpCode::Constant.as_byte(), 3,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_for() {
+        let (program, environment) = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { return i } return 1 }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0,
+                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 1,
+                OpCode::Lt.as_byte(),
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 29,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Return.as_byte(),
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 2,
+                OpCode::AssignAdd.as_byte(),
+                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::Constant.as_byte(), 2,
                 OpCode::Return.as_byte()
             ]
         );
