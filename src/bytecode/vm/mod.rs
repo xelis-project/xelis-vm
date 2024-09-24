@@ -222,6 +222,16 @@ impl<'a> VM<'a> {
                         let left = manager.pop_stack()?;
                         manager.push_stack(Path::Owned(op!(left.as_ref(), right.as_ref(), +)));
                     },
+                    OpCode::Mod => {
+                        let right = manager.pop_stack()?;
+                        let left = manager.pop_stack()?;
+                        manager.push_stack(Path::Owned(op!(left.as_ref(), right.as_ref(), %)));
+                    },
+                    OpCode::Eq => {
+                        let right = manager.pop_stack()?;
+                        let left = manager.pop_stack()?;
+                        manager.push_stack(Path::Owned(op_bool!(left.as_ref(), right.as_ref(), ==)));
+                    },
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
                         let path = manager.pop_stack()?;
