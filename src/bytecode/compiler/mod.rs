@@ -18,10 +18,10 @@ pub struct Compiler<'a> {
     environment: &'a Environment,
     // Final module to return
     module: Module,
-    // Used for continue
-    loop_index_start: Vec<usize>,
-    // Index of jump to patch
+    // Index of break jump to patch
     loop_break_patch: Vec<usize>,
+    // Index of continue jump to patch
+    loop_continue_patch: Vec<usize>,
 }
 
 impl<'a> Compiler<'a> {
@@ -31,8 +31,8 @@ impl<'a> Compiler<'a> {
             program,
             environment,
             module: Module::new(),
-            loop_index_start: Vec::new(),
             loop_break_patch: Vec::new(),
+            loop_continue_patch: Vec::new(),
         }
     }
 
@@ -249,17 +249,11 @@ impl<'a> Compiler<'a> {
                     let jump_addr = chunk.last_index();
 
                     // Compile the valid condition
-                    self.loop_index_start.push(start_index);
-
-                    // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(start_index as u32);
-
-                    // Pop the loop index
-                    self.loop_index_start.pop();
 
                     // Patch the jump if false
                     let jump_false_addr = chunk.index();
@@ -268,6 +262,11 @@ impl<'a> Compiler<'a> {
                     // Patch the break
                     if let Some(jump) = self.loop_break_patch.pop() {
                         chunk.patch_jump(jump, jump_false_addr as u32);
+                    }
+
+                    // Patch the continue
+                    if let Some(jump) = self.loop_continue_patch.pop() {
+                        chunk.patch_jump(jump, start_index as u32);
                     }
                 },
                 Statement::ForEach(_, expr_values, statements) => {
@@ -283,17 +282,12 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
 
-                    self.loop_index_start.push(start_index);
-
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(jump_addr as u32);
-
-                    // Pop the loop index
-                    self.loop_index_start.pop();
 
                     // Patch the jump if false
                     let jump_false_addr = chunk.index();
@@ -302,6 +296,11 @@ impl<'a> Compiler<'a> {
                     // Patch the break
                     if let Some(jump) = self.loop_break_patch.pop() {
                         chunk.patch_jump(jump, jump_false_addr as u32);
+                    }
+
+                    // Patch the continue
+                    if let Some(jump) = self.loop_continue_patch.pop() {
+                        chunk.patch_jump(jump, start_index as u32);
                     }
                 }
                 Statement::For(var, expr_condition, expr_op, statements) => {
@@ -318,18 +317,13 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
-                    
-                    // Register the loop index
-                    self.loop_index_start.push(start_index);
-                    
+
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
-                    
-                    // Compile the operation
-                    self.compile_expr(chunk, expr_op);
 
-                    // Pop the loop index
-                    self.loop_index_start.pop();
+                    // Compile the operation
+                    let continue_index = chunk.index();
+                    self.compile_expr(chunk, expr_op);
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -343,6 +337,11 @@ impl<'a> Compiler<'a> {
                     if let Some(jump) = self.loop_break_patch.pop() {
                         chunk.patch_jump(jump, jump_false_addr as u32);
                     }
+
+                    // Patch the continue
+                    if let Some(jump) = self.loop_continue_patch.pop() {
+                        chunk.patch_jump(jump, continue_index as u32);
+                    }
                 },
                 Statement::Break => {
                     chunk.emit_opcode(OpCode::Jump);
@@ -351,7 +350,8 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::Continue => {
                     chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(*self.loop_index_start.last().unwrap() as u32);
+                    chunk.write_u32(INVALID_ADDR);
+                    self.loop_continue_patch.push(chunk.last_index());
                 }
             }
         }
@@ -391,8 +391,8 @@ impl<'a> Compiler<'a> {
             self.compile_function(function);
         }
 
-        assert!(self.loop_index_start.is_empty(), "Loop index start is not empty: {:?}", self.loop_index_start);
         assert!(self.loop_break_patch.is_empty(), "Loop break patch is not empty: {:?}", self.loop_break_patch);
+        assert!(self.loop_continue_patch.is_empty(), "Loop continue patch is not empty: {:?}", self.loop_continue_patch);
 
         // Return the module
         Ok(self.module)
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn test_continue() {
-        let (program, environment) = prepare_program("entry main() { let i: u64 = 0; while i < 10 { i += 1; if i == 3 { continue; } } return i }");
+        let (program, environment) = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { continue; } return 0 }");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
 
@@ -684,17 +684,15 @@ mod tests {
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 41,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 30,
+                // Jump by the continue
+                // It must jump to the increment instruction
+                OpCode::Jump.as_byte(), 0, 0, 0, 19,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 3,
-                OpCode::Eq.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 36,
                 OpCode::Jump.as_byte(), 0, 0, 0, 3,
-                OpCode::Jump.as_byte(), 0, 0, 0, 3,
-                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );
