@@ -91,4 +91,24 @@ mod tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(30));
     }
+
+    #[test]
+    fn test_function_call() {
+        let code = r#"
+            func add(a: u64, b: u64): u64 {
+                return a + b
+            }
+
+            entry main() {
+                return add(10, 20)
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(1).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(30));
+    }
 }
