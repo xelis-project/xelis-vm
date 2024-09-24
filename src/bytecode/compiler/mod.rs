@@ -160,8 +160,8 @@ impl<'a> Compiler<'a> {
                 }
 
                 chunk.write_u16(*id);
-                chunk.write_u8(params.len() as u8);
                 chunk.write_bool(expr_on.is_some());
+                chunk.write_u8(params.len() as u8);
             },
             Expression::Operator(op, left, right) => {
                 self.compile_expr(chunk, left);
@@ -317,6 +317,15 @@ impl<'a> Compiler<'a> {
     // Compile the function
     fn compile_function(&mut self, function: &FunctionType) {
         let mut chunk = Chunk::new();
+        if function.get_instance_name().is_some() {
+            chunk.emit_opcode(OpCode::MemoryStore);
+        }
+
+        // Store the parameters
+        for _ in function.get_parameters() {
+            chunk.emit_opcode(OpCode::MemoryStore);
+        }
+
         self.compile_statements(&mut chunk, function.get_statements());
 
         // Add the chunk to the module
