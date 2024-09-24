@@ -4,14 +4,18 @@ mod values;
 mod parser;
 mod environment;
 mod interpreter;
-pub mod bytecode;
+mod handle;
+mod path;
 
+pub mod bytecode;
 pub mod ast;
 
 use std::{collections::HashMap, hash::{BuildHasherDefault, Hasher}};
 
 use ast::FunctionType;
 use environment::NativeFunction;
+
+pub(crate) use path::Path;
 
 pub use crate::{
     environment::{Environment, EnvironmentBuilder},

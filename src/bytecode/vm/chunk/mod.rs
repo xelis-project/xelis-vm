@@ -4,7 +4,7 @@ use std::{ops::{Deref, DerefMut}, vec::Drain};
 
 pub use reader::ChunkReader;
 
-use crate::{bytecode::Chunk, interpreter::Path};
+use crate::{bytecode::Chunk, Path};
 
 use super::VMError;
 

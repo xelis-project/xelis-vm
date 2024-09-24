@@ -1,4 +1,4 @@
-use crate::{interpreter::Path, State, Type, Value};
+use crate::{Path, State, Type, Value};
 
 use super::EnvironmentError;
 

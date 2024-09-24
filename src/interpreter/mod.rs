@@ -1,10 +1,9 @@
 mod stack;
 mod state;
 mod error;
-mod path;
-mod handle;
 
 use crate::{
+    Path,
     environment::Environment,
     ast::{
         Expression,
@@ -20,7 +19,6 @@ use crate::{
     Function,
 };
 use stack::Stack;
-pub use path::Path;
 pub use state::State;
 pub use error::InterpreterError;
 use std::{cell::RefCell, rc::Rc};

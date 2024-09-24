@@ -6,7 +6,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 pub use error::VMError;
 pub use chunk::*;
 
-use crate::{interpreter::Path, types::Struct, Environment, Type, Value};
+use crate::{Path, types::Struct, Environment, Type, Value};
 
 use super::{opcode::OpCode, Module};
 
