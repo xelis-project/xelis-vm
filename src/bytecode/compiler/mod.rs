@@ -158,13 +158,15 @@ impl<'a> Compiler<'a> {
                 }
 
                 // Functions from the environment are system calls
-                if (*id as usize) < self.environment.get_functions().len() {
+                let len = self.environment.get_functions().len();
+                if (*id as usize) < len {
                     chunk.emit_opcode(OpCode::SysCall);
+                    chunk.write_u16(*id);
                 } else {
                     chunk.emit_opcode(OpCode::InvokeChunk);
+                    chunk.write_u16((*id as usize - len) as u16);
                 }
 
-                chunk.write_u16(*id);
                 chunk.write_bool(expr_on.is_some());
                 chunk.write_u8(params.len() as u8);
             },
