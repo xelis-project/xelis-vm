@@ -16,7 +16,7 @@ use super::Statement;
 pub const ENTRY_FN_RETURN_TYPE: Type = Type::U64;
 
 // Function parameter
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Parameter {
     name: IdentifierType,
     value_type: Type
@@ -82,7 +82,7 @@ impl Signature {
 
 // Declared function type by a Program
 // They are separated in two types for better handling
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FunctionType {
     Declared(DeclaredFunction),
     Entry(EntryFunction)

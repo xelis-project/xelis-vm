@@ -5,7 +5,7 @@ use crate::{
 };
 use super::Parameter;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DeclaredFunction {
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
@@ -52,7 +52,7 @@ impl DeclaredFunction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EntryFunction {
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,

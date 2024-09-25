@@ -4,6 +4,20 @@ use crate::{types::Type, IdentifierType};
 
 pub type InnerValue = Rc<RefCell<Value>>;
 
+macro_rules! checked_cast {
+    ($self: expr, $type: expr) => {
+        match $self {
+            Value::U8(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::U16(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::U32(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::U64(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::U128(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::Boolean(n) => n.try_into().map_err(|_| ValueError::CastError),
+            _ => Err(ValueError::InvalidCastType($type))
+        }
+    };
+}
+
 #[derive(Debug)]
 pub enum ValueError {
     InvalidValue(Value, Type),
@@ -12,7 +26,8 @@ pub enum ValueError {
     OperationNotNumberType,
     SubValue,
     OptionalIsNull,
-    OutOfBounds(usize, usize)
+    OutOfBounds(usize, usize),
+    CastError,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,6 +308,72 @@ impl Value {
             Value::String(s) => Ok(s),
             Value::Boolean(b) => Ok(b.to_string()),
             _ => Err(ValueError::InvalidCastType(Type::String))
+        }
+    }
+
+    // Cast without loss in the expected type
+    #[inline]
+    pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Value, ValueError> {
+        match expected {
+            Type::U8 => self.checked_cast_to_u8().map(Value::U8),
+            Type::U16 => self.checked_cast_to_u16().map(Value::U16),
+            Type::U32 => self.checked_cast_to_u32().map(Value::U32),
+            Type::U64 => self.checked_cast_to_u64().map(Value::U64),
+            Type::U128 => self.checked_cast_to_u128().map(Value::U128),
+            Type::String => self.cast_to_string().map(Value::String),
+            Type::Bool => self.cast_to_bool().map(Value::Boolean),
+            Type::Optional(inner) => {
+                if let Value::Null = self {
+                    Ok(Value::Optional(None))
+                } else {
+                    self.checked_cast_to_primitive_type(inner).map(|v| Value::Optional(Some(Box::new(v))))
+                }
+            }
+            _ => Err(ValueError::InvalidCastType(expected.clone()))
+        }
+    }
+
+    // Cast to u8, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u8(self) -> Result<u8, ValueError> {
+        checked_cast!(self, Type::U8)
+    }
+
+    // Cast to u16, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u16(self) -> Result<u16, ValueError> {
+        checked_cast!(self, Type::U16)
+    }
+
+    // Cast to u32, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u32(self) -> Result<u32, ValueError> {
+        checked_cast!(self, Type::U32)
+    }
+
+    // Cast to u64, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u64(self) -> Result<u64, ValueError> {
+        checked_cast!(self, Type::U64)
+    }
+
+    // Cast to u128, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u128(self) -> Result<u128, ValueError> {
+        checked_cast!(self, Type::U128)
+    }
+
+    // Cast value to bool
+    #[inline]
+    pub fn cast_to_bool(self) -> Result<bool, ValueError> {
+        match self {
+            Value::U8(n) => Ok(n != 0),
+            Value::U16(n) => Ok(n != 0),
+            Value::U32(n) => Ok(n != 0),
+            Value::U64(n) => Ok(n != 0),
+            Value::U128(n) => Ok(n != 0),
+            Value::Boolean(b) => Ok(b),
+            _ => Err(ValueError::InvalidCastType(Type::Bool))
         }
     }
 

@@ -24,18 +24,8 @@ use crate::{
 };
 use std::{
     borrow::Cow,
-    collections::{HashSet, VecDeque},
-    convert::TryInto
+    collections::{HashSet, VecDeque}
 };
-
-macro_rules! convert {
-    ($a: expr) => {{
-        match $a.try_into() {
-            Ok(v) => v,
-            Err(_) => return Err(ParserError::InvalidNumberValueForType)
-        }
-    }};
-}
 
 pub struct Parser<'a> {
     // Tokens to process
@@ -483,24 +473,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::U64Value(value) => Expression::Value(match expected_type {
-                    Some(t) => match t {
-                        Type::U8 => Value::U8(convert!(value)),
-                        Type::U16 => Value::U16(convert!(value)),
-                        Type::U32 => Value::U32(convert!(value)),
-                        Type::U64 => Value::U64(value),
-                        Type::U128 => Value::U128(convert!(value)),
-                        Type::Optional(inner) => Value::Optional(Some(Box::new(match inner.as_ref() {
-                            Type::U8 => Value::U8(convert!(value)),
-                            Type::U16 => Value::U16(convert!(value)),
-                            Type::U32 => Value::U32(convert!(value)),
-                            Type::U64 => Value::U64(value),
-                            Type::U128 => Value::U128(convert!(value)),
-                            Type::String => Value::String(value.to_string()),
-                            _ => return Err(ParserError::ExpectedNumberType)
-                        }))),
-                        Type::String => Value::String(value.to_string()),
-                        _ => return Err(ParserError::ExpectedNumberType)
-                    },
+                    Some(t) => Value::U64(value).checked_cast_to_primitive_type(t)?,
                     None => Value::U64(value)
                 }),
                 Token::U128Value(value) => Expression::Value(Value::U128(value)),
@@ -575,7 +548,7 @@ impl<'a> Parser<'a> {
                 },
                 token => {
                     match last_expression {
-                        Some(previous_expr) => {
+                        Some(mut previous_expr) => {
                             required_operator = !required_operator;
 
                             let left_type = self.get_type_from_expression(on_type, &previous_expr, context)?.into_owned();
@@ -585,7 +558,7 @@ impl<'a> Parser<'a> {
                                 None => return Err(ParserError::OperatorNotFound(token))
                             };
 
-                            let expr = self.read_expr(on_type, !op.is_bool_operator(), Some(&left_type), context, mapper)?;
+                            let mut expr = self.read_expr(on_type, true, Some(&left_type), context, mapper)?;
                             if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context)? {
                                 match &op {
                                     Operator::Minus | Operator::Rem | Operator::Divide | Operator::Multiply
@@ -593,7 +566,14 @@ impl<'a> Parser<'a> {
                                     | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
                                     | Operator::GreaterOrEqual => {
                                         if left_type != *right_type {
-                                            return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
+                                            // It is an hardcoded value, lets map it to the correct type
+                                            if let Expression::Value(value) = previous_expr {
+                                                previous_expr = Expression::Value(value.checked_cast_to_primitive_type(&right_type)?);
+                                            } else if let Expression::Value(value) = expr {
+                                                expr = Expression::Value(value.checked_cast_to_primitive_type(&left_type)?);
+                                            } else {
+                                                return Err(ParserError::InvalidOperationNotSameType(left_type, right_type.into_owned()))
+                                            }
                                         }
                                     },
                                     Operator::Plus => {
@@ -1152,7 +1132,7 @@ mod tests {
 
     #[track_caller]
     fn test_parser(tokens: Vec<Token>) -> Program {
-        let env = EnvironmentBuilder::new();
+        let env = EnvironmentBuilder::default();
         test_parser_with_env(tokens, &env)
     }
 
@@ -1197,6 +1177,79 @@ mod tests {
 
         let program = test_parser(tokens);
         assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_function_call_in_expr() {
+        /*
+        function foo(): bool {
+            let array: u64[] = [1, 2, 3];
+            return 0 > array.len()
+        }
+        */
+        let tokens = vec![
+            Token::Function,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::Colon,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("array"),
+            Token::Colon,
+            Token::U64,
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::OperatorAssign,
+            Token::BracketOpen,
+            Token::U64Value(1),
+            Token::Comma,
+            Token::U64Value(2),
+            Token::Comma,
+            Token::U64Value(3),
+            Token::BracketClose,
+            Token::Return,
+            Token::U64Value(0),
+            Token::OperatorGreaterThan,
+            Token::Identifier("array"),
+            Token::Dot,
+            Token::Identifier("len"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        let statements = vec![
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Array(Box::new(Type::U64)),
+                    value: Expression::ArrayConstructor(vec![
+                        Expression::Value(Value::U64(1)),
+                        Expression::Value(Value::U64(2)),
+                        Expression::Value(Value::U64(3))
+                    ])
+                }
+            ),
+            Statement::Return(Some(Expression::Operator(
+                Operator::GreaterThan,
+                Box::new(Expression::Value(Value::U32(0))),
+                Box::new(Expression::FunctionCall(
+                    Some(Box::new(Expression::Variable(0))),
+                    0,
+                    Vec::new()
+                ))
+            )))
+        ];
+
+        assert_eq!(
+            *program.functions().get(0).unwrap(),
+            FunctionType::Declared(
+                DeclaredFunction::new(None, None, Vec::new(), statements, Some(Type::Bool), 1)
+            )
+        );
     }
 
     #[test]
