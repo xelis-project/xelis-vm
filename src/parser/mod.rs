@@ -880,8 +880,8 @@ impl<'a> Parser<'a> {
                 Statement::If(_, statements, else_statements) => {
                     // if its the last statement
                     ok = self.ends_with_return(statements)?;
-                    if let Some(statements) = else_statements.as_ref().filter(|_| ok) {
-                        self.ends_with_return(statements)?;
+                    if let Some(statements) = else_statements.as_ref().filter(|_| !ok) {
+                        ok = self.ends_with_return(statements)?;
                     }
                 }
                 Statement::Return(_) => {
