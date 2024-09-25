@@ -175,11 +175,7 @@ impl<'a> VM<'a> {
                     OpCode::InvokeChunk => {
                         // TODO: fix on value
                         let id = manager.read_u16()?;
-                        let on_value = if manager.read_bool()? {
-                            Some(manager.pop_stack()?)
-                        } else {
-                            None
-                        };
+                        let on_value = manager.read_bool()?;
                         let args = manager.read_u8()?;
 
                         // Find the chunk
@@ -191,8 +187,8 @@ impl<'a> VM<'a> {
                         // Take the arguments from the stack
                         // Reverse it because we want to push them in the right order
                         new_manager.extend_stack(manager.take_from_stack(args as usize).rev());
-                        if let Some(value) = on_value {
-                            new_manager.push_stack(value);
+                        if on_value {
+                            new_manager.push_stack(manager.pop_stack()?);
                         }
 
                         // Add back our current state to the stack
