@@ -5,20 +5,14 @@ use super::{InterpreterError, Path};
 pub struct Stack<'a> {
     // Each scope is a HashMap storing variables
     // This is done to easily push/pop scopes
-    stack: Vec<Option<Path<'a>>>,
-    // Flag to break a loop
-    loop_break: bool,
-    // Flag to continue in loop
-    loop_continue: bool,
+    stack: Vec<Option<Path<'a>>>
 }
 
 impl<'a> Stack<'a> {
     // Create a new stack with a specific capacity to avoid reallocations
     pub fn new(capacity: u16) -> Self {
         Self {
-            stack: vec![None; capacity as usize],
-            loop_break: false,
-            loop_continue: false,
+            stack: vec![None; capacity as usize]
         }
     }
 
@@ -61,30 +55,6 @@ impl<'a> Stack<'a> {
             .ok_or_else(|| InterpreterError::StackError)? = Some(value);
 
         Ok(())
-    }
-
-    // Get the loop break flag
-    #[inline(always)]
-    pub fn get_loop_break(&self) -> bool {
-        self.loop_break
-    }
-
-    // Set the loop break flag
-    #[inline(always)]
-    pub fn set_loop_break(&mut self, value: bool) {
-        self.loop_break = value;
-    }
-
-    // Get the loop continue flag
-    #[inline(always)]
-    pub fn get_loop_continue(&self) -> bool {
-        self.loop_continue
-    }
-
-    // Set the loop continue flag
-    #[inline(always)]
-    pub fn set_loop_continue(&mut self, value: bool) {
-        self.loop_continue = value;
     }
 }
 

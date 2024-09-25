@@ -23,10 +23,11 @@ pub use state::State;
 pub use error::InterpreterError;
 use std::{cell::RefCell, rc::Rc};
 
-// Enum helper for the execute_for_each_statements function
-enum Either<L, R> {
-    Left(L),
-    Right(R),
+enum StatementResult<'a> {
+    Return(Option<Path<'a>>),
+    Break,
+    Continue,
+    None
 }
 
 macro_rules! op {
@@ -94,12 +95,11 @@ macro_rules! op_num_with_bool {
 
 macro_rules! execute_foreach {
     ($self: expr, $statements: expr, $var: expr, $val: expr, $stack: expr, $state: expr) => {
-        match $self.execute_for_each_statements($statements, $var, $val, $stack, $state)? {
-            Either::Left(Some(v)) => return Ok(Some(v)),
-            Either::Right(v) => {
-                if v {
-                    break;
-                }
+        $stack.register_variable($var, $val)?;
+        match $self.execute_statements($statements, $stack, $state)? {
+            StatementResult::Return(v) => return Ok(StatementResult::Return(v)),
+            StatementResult::Break => {
+                break;
             },
             _ => {}
         };
@@ -552,24 +552,17 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute_statements<'b>(&'b self, statements: &'b [Statement], stack: &mut Stack<'b>, state: &mut State) -> Result<Option<Path<'b>>, InterpreterError> {
+    fn execute_statements<'b>(&'b self, statements: &'b [Statement], stack: &mut Stack<'b>, state: &mut State) -> Result<StatementResult<'b>, InterpreterError> {
         for statement in statements {
-            // In case some inner statement has a break or continue, we stop the loop
-            if stack.get_loop_break() || stack.get_loop_continue() {
-                break;
-            }
-
             // Increase the number of executed expressions
             state.increase_expressions_executed()?;
 
             match statement {
                 Statement::Break => {
-                    stack.set_loop_break(true);
-                    break;
+                    return Ok(StatementResult::Break);
                 },
                 Statement::Continue => {
-                    stack.set_loop_continue(true);
-                    break;
+                    return Ok(StatementResult::Continue);
                 },
                 Statement::Variable(var) => {
                     let value = self.execute_expression_and_expect_value(&var.value, stack, state)?;
@@ -586,8 +579,10 @@ impl<'a> Interpreter<'a> {
 
                     if let Some(statements) = statements {
                         match self.execute_statements(&statements, stack, state)? {
-                            Some(v) => return Ok(Some(v)),
-                            None => {}
+                            StatementResult::Return(v) => return Ok(StatementResult::Return(v)),
+                            StatementResult::Break => return Ok(StatementResult::Break),
+                            StatementResult::Continue => return Ok(StatementResult::Continue),
+                            _ => {}
                         };
                     }
                 },
@@ -604,17 +599,10 @@ impl<'a> Interpreter<'a> {
 
                         // execute the statements
                         match self.execute_statements(&statements, stack, state)? {
-                            Some(v) => return Ok(Some(v)),
-                            None => {}
-                        };
-
-                        if stack.get_loop_break() {
-                            stack.set_loop_break(false);
-                            break;
-                        }
-
-                        if stack.get_loop_continue() {
-                            stack.set_loop_continue(false);
+                            StatementResult::Return(v) => return Ok(StatementResult::Return(v)),
+                            StatementResult::Break => break,
+                            StatementResult::Continue => continue,
+                            _ => {}
                         }
 
                         // increment once the iteration is done
@@ -653,30 +641,25 @@ impl<'a> Interpreter<'a> {
                 Statement::While(condition, statements) => {
                     while self.execute_expression_and_expect_value(&condition, stack, state)?.as_bool()? {
                         match self.execute_statements(&statements, stack, state)? {
-                            Some(v) => return Ok(Some(v)),
-                            None => {}
+                            StatementResult::Return(v) => return Ok(StatementResult::Return(v)),
+                            StatementResult::Break => break,
+                            StatementResult::Continue => continue,
+                            _ => {}
                         };
-
-                        if stack.get_loop_break() {
-                            stack.set_loop_break(false);
-                            break;
-                        }
-
-                        if stack.get_loop_continue() {
-                            stack.set_loop_continue(false);
-                        }
                     }
                 },
                 Statement::Return(opt) => {
-                    return Ok(match opt {
+                    return Ok(StatementResult::Return(match opt {
                         Some(v) => Some(self.execute_expression_and_expect_value(&v, stack, state)?),
                         None => None
-                    })
+                    }))
                 },
                 Statement::Scope(statements) => {
                     match self.execute_statements(&statements, stack, state)? {
-                        Some(v) => return Ok(Some(v)),
-                        None => ()
+                        StatementResult::Return(v) => return Ok(StatementResult::Return(v)),
+                        StatementResult::Break => return Ok(StatementResult::Break),
+                        StatementResult::Continue => return Ok(StatementResult::Continue),
+                        _ => {}
                     };
                 },
                 Statement::Expression(expr) => {
@@ -684,26 +667,7 @@ impl<'a> Interpreter<'a> {
                 }
             };
         }
-        Ok(None)
-    }
-
-    fn execute_for_each_statements(&'a self, statements: &'a [Statement], var: IdentifierType, val: Path<'a>, stack: &mut Stack<'a>, state: &mut State) -> Result<Either<Option<Path<'a>>, bool>, InterpreterError> {
-        stack.register_variable(var, val)?;
-        match self.execute_statements(statements, stack, state)? {
-            Some(v) => return Ok(Either::Left(Some(v))),
-            None => {}
-        };
-
-        if stack.get_loop_break() {
-            stack.set_loop_break(false);
-            return Ok(Either::Right(true))
-        }
-
-        if stack.get_loop_continue() {
-            stack.set_loop_continue(false);
-        }
-
-        Ok(Either::Left(None))
+        Ok(StatementResult::None)
     }
 
     fn execute_function_internal(&'a self, type_instance: Option<(Path<'a>, IdentifierType)>, parameters: &'a Vec<Parameter>, values: Vec<Path<'a>>, statements: &'a Vec<Statement>, variables_count: u16, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
@@ -716,7 +680,10 @@ impl<'a> Interpreter<'a> {
             stack.register_variable(param.get_name().clone(), value)?;
         }
 
-        self.execute_statements(statements, &mut stack, state)
+        match self.execute_statements(statements, &mut stack, state)? {
+            StatementResult::Return(v) => Ok(v),
+            _ => Ok(None)
+        }
     }
 
     // Execute the selected function
