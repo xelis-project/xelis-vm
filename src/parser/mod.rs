@@ -343,7 +343,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Token::Colon => {
-                    let value = self.read_expr(on_type, true, Some(t), context, mapper)?;
+                    let value = self.read_expr(on_type, true, true, Some(t), context, mapper)?;
                     if self.peek_is(Token::Comma) {
                         self.advance()?;
                     }
@@ -366,27 +366,32 @@ impl<'a> Parser<'a> {
 
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
-        self.read_expr(None, true, None, context, mapper)
+        self.read_expr(None, true, true, None, context, mapper)
     }
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
-    fn read_expr(&mut self, on_type: Option<&Type>, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
+    fn read_expr(&mut self, on_type: Option<&Type>, allow_ternary: bool, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context, mapper: &mut IdMapper) -> Result<Expression, ParserError<'a>> {
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while self.peek()
             .ok()
             .filter(|peek| {
+                if !allow_ternary && **peek == Token::OperatorTernary {
+                    return false
+                }
+
+                if !accept_operator && required_operator {
+                    return false
+                }
+
                 !peek.should_stop()
                 && (
-                    (required_operator == peek.is_operator())
+                    required_operator == peek.is_operator()
                     || (**peek == Token::BracketOpen && last_expression.is_none())
                 )
             }).is_some()
         {
-            if !accept_operator && required_operator {
-                break;
-            }
 
             let expr: Expression = match self.advance()? {
                 Token::BracketOpen => {
@@ -397,7 +402,7 @@ impl<'a> Parser<'a> {
                             }
 
                             // Index must be of type u64
-                            let index = self.read_expr(on_type, true, Some(&Type::U64), context, mapper)?;
+                            let index = self.read_expr(on_type, true, true, Some(&Type::U64), context, mapper)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context)?;
                             if *index_type != Type::U64 {
                                 return Err(ParserError::InvalidArrayCallIndexType(index_type.into_owned()))
@@ -411,7 +416,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while self.peek_is_not(Token::BracketClose) {
-                                let expr = self.read_expr(on_type, true, expected_type.map(|t| t.get_inner_type()), context, mapper)?;
+                                let expr = self.read_expr(on_type, true, true, expected_type.map(|t| t.get_inner_type()), context, mapper)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
@@ -436,7 +441,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::ParenthesisOpen => {
-                    let expr = self.read_expr(None, true, expected_type, context, mapper)?;
+                    let expr = self.read_expr(None, true, true, expected_type, context, mapper)?;
                     self.expect_token(Token::ParenthesisClose)?;
                     Expression::SubExpression(Box::new(expr))
                 },
@@ -485,7 +490,7 @@ impl<'a> Parser<'a> {
                     match last_expression {
                         Some(value) => {
                             let _type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
-                            let right_expr = self.read_expr(Some(&_type), false, expected_type, context, mapper)?;
+                            let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context, mapper)?;
                             // because we read operator DOT + right expression
                             required_operator = !required_operator;
 
@@ -516,10 +521,10 @@ impl<'a> Parser<'a> {
                             return Err(ParserError::InvalidCondition(Type::Bool, expr))
                         }
 
-                        let valid_expr = self.read_expr(on_type, true, expected_type, context, mapper)?;
+                        let valid_expr = self.read_expr(on_type, true, true, expected_type, context, mapper)?;
                         let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?.into_owned();
                         self.expect_token(Token::Colon)?;
-                        let else_expr = self.read_expr(on_type, true, expected_type, context, mapper)?;
+                        let else_expr = self.read_expr(on_type, true, true, expected_type, context, mapper)?;
                         let else_type = self.get_type_from_expression(on_type, &else_expr, context)?;
                         
                         if first_type != *else_type { // both expr should have the SAME type.
@@ -558,7 +563,7 @@ impl<'a> Parser<'a> {
                                 None => return Err(ParserError::OperatorNotFound(token))
                             };
 
-                            let mut expr = self.read_expr(on_type, true, Some(&left_type), context, mapper)?;
+                            let mut expr = self.read_expr(on_type, false, true, Some(&left_type), context, mapper)?;
                             if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context)? {
                                 match &op {
                                     Operator::Minus | Operator::Rem | Operator::Divide | Operator::Multiply
@@ -662,7 +667,7 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(None, true, Some(&value_type), context, mapper)?;
+            let expr = self.read_expr(None, true, true, Some(&value_type), context, mapper)?;
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -793,7 +798,7 @@ impl<'a> Parser<'a> {
                 Token::Let => Statement::Variable(self.read_variable(context, mapper, false)?),
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
-                        let expr = self.read_expr(None, true, Some(return_type), context, mapper)?;
+                        let expr = self.read_expr(None, true, true, Some(return_type), context, mapper)?;
                         let expr_type = self.get_type_from_expression(None, &expr, context)?;
                         if !expr_type.is_compatible_with(return_type) {
                             return Err(ParserError::InvalidValueType(expr_type.into_owned(), return_type.clone()))
