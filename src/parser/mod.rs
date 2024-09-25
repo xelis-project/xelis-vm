@@ -404,7 +404,7 @@ impl<'a> Parser<'a> {
                             // Index must be of type u64
                             let index = self.read_expr(on_type, true, true, Some(&Type::U64), context, mapper)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context)?;
-                            if *index_type != Type::U64 {
+                            if *index_type != Type::U32 {
                                 return Err(ParserError::InvalidArrayCallIndexType(index_type.into_owned()))
                             }
 

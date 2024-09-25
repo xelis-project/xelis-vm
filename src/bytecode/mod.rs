@@ -225,8 +225,8 @@ mod tests {
                 let arr: u64[] = [10, 20, 30];
                 let x: u64 = 0;
                 for i: u32 = 0; i < arr.len(); i += 1 {
-                    // let y = arr[i];
-                    // x = x + y
+                    let y: u64 = arr[i];
+                    x = x + y
                 }
                 return x
             }
