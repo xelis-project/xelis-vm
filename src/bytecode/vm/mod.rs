@@ -19,7 +19,7 @@ macro_rules! op {
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            _ => return Err(VMError::IncompatibleValues)
+            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
         }
     }};
 }
@@ -33,7 +33,7 @@ macro_rules! op_bool {
             (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
-            _ => return Err(VMError::IncompatibleValues)
+            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
         }
     }};
 }
@@ -189,7 +189,8 @@ impl<'a> VM<'a> {
                         let mut new_manager = ChunkManager::new(chunk);
 
                         // Take the arguments from the stack
-                        new_manager.extend_stack(manager.take_from_stack(args as usize));
+                        // Reverse it because we want to push them in the right order
+                        new_manager.extend_stack(manager.take_from_stack(args as usize).rev());
                         if let Some(value) = on_value {
                             new_manager.push_stack(value);
                         }

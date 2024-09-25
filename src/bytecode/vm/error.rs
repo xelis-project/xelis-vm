@@ -1,9 +1,9 @@
-use crate::{environment::EnvironmentError, values::ValueError};
+use crate::{environment::EnvironmentError, values::ValueError, Value};
 
 #[derive(Debug)]
 pub enum VMError {
     EmptyStack,
-    IncompatibleValues,
+    IncompatibleValues(Value, Value),
     ChunkNotFound,
     StructNotFound,
     MissingInstruction,
