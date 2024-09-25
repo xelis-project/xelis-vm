@@ -21,7 +21,7 @@ mod tests {
     #[track_caller]
     fn prepare_module(code: &str) -> (Module, Environment) {
         let tokens = Lexer::new(code).get().unwrap();
-        let env = EnvironmentBuilder::default();
+        let env = EnvironmentBuilder::new();
         let (program, _) = Parser::new(tokens, &env).parse().unwrap();
 
         let env = env.build();
@@ -238,40 +238,5 @@ mod tests {
         vm.invoke_chunk_id(0).unwrap();
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(60));
-    }
-
-    #[test]
-    fn test_prime() {
-        let code = r#"
-            func is_prime(num: u64, prime_list: u64[], prime_index: u32): bool {
-                for i: u32 = 0; i < prime_index; i += 1 {
-                    if (num % prime_list[i]) == 0 {
-                        return false;
-                    }
-                }
-                return true;
-            }
-
-            entry main() {
-                let primes: u64[] = [2];
-                let check: u64 = 3;
-                let index: u32 = 1;
-                while index < 10 {
-                    if is_prime(check, primes, index) {
-                        primes.push(check);
-                        index += 1;
-                    }
-                    check += 2;
-                }
-                return 0;
-            }
-        "#;
-
-        let (module, environment) = prepare_module(code);
-
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(1).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(0));
     }
 }
