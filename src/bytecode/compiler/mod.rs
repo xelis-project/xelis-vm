@@ -80,7 +80,7 @@ impl<'a> Compiler<'a> {
                 // Compile the value
                 let index = self.module.add_constant(v.clone());
                 chunk.emit_opcode(OpCode::Constant);
-                chunk.write_u8(index as u8);
+                chunk.write_u16(index as u16);
             },
             Expression::ArrayConstructor(exprs) => {
                 for expr in exprs {
@@ -463,7 +463,10 @@ mod tests {
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
             chunk.get_instructions(),
-            &[OpCode::Constant.as_byte(), 0, OpCode::Return.as_byte()]
+            &[
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
+            ]
         );
     }
 
@@ -490,8 +493,8 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Add.as_byte(),
                 OpCode::Return.as_byte()
             ]
@@ -508,11 +511,11 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 12,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::Return.as_byte()
             ]
         );
@@ -528,11 +531,11 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 12,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::Return.as_byte()
             ]
         );
@@ -548,16 +551,16 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 27,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 30,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 5,
+                OpCode::Jump.as_byte(), 0, 0, 0, 6,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
@@ -574,13 +577,13 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 3,
+                OpCode::Constant.as_byte(), 0, 3,
                 OpCode::Return.as_byte()
             ]
         );
@@ -596,19 +599,19 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 31,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 34,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 5,
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Jump.as_byte(), 0, 0, 0, 6,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::Return.as_byte()
             ]
         );
@@ -624,8 +627,8 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::NewStruct.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
@@ -645,7 +648,7 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -670,13 +673,13 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 17,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 18,
                 // Jump by the break
-                OpCode::Jump.as_byte(), 0, 0, 0, 17,
+                OpCode::Jump.as_byte(), 0, 0, 0, 18,
                 // Jump by the while to go back
                 OpCode::Jump.as_byte(), 0, 0, 0, 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Return.as_byte()
             ]
         );
@@ -692,20 +695,20 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 32,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 35,
                 // Jump by the continue
                 // It must jump to the increment instruction
-                OpCode::Jump.as_byte(), 0, 0, 0, 21,
+                OpCode::Jump.as_byte(), 0, 0, 0, 23,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 2,
+                OpCode::Constant.as_byte(), 0, 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 5,
-                OpCode::Constant.as_byte(), 0,
+                OpCode::Jump.as_byte(), 0, 0, 0, 6,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
         );

@@ -123,7 +123,7 @@ impl<'a> VM<'a> {
             while let Ok(op_code) = manager.read_op_code() {
                 match op_code {
                     OpCode::Constant => {
-                        let index = manager.read_u8()? as usize;
+                        let index = manager.read_u16()? as usize;
                         let constant = self.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
                         manager.push_stack(Path::Borrowed(constant));
                     },
@@ -337,7 +337,7 @@ mod tests {
         let mut chunk = Chunk::new();
         let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         chunk.emit_opcode(OpCode::Cast);
         chunk.write_u8(Type::String.primitive_byte().unwrap());
@@ -355,12 +355,12 @@ mod tests {
         // Push element 1
         let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Push element 2
         let index = module.add_constant(Value::U8(20));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
@@ -369,7 +369,7 @@ mod tests {
         // Load the first element
         let index = module.add_constant(Value::U16(0));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         chunk.emit_opcode(OpCode::ArrayCall);
         module.add_chunk(chunk);
@@ -391,7 +391,7 @@ mod tests {
         // Push element 1
         let index = module.add_constant(Value::Array(values));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
@@ -400,14 +400,14 @@ mod tests {
         // Load the first element of the first array
         let index = module.add_constant(Value::U16(0));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         chunk.emit_opcode(OpCode::ArrayCall);
 
         // Load the last element
         let index = module.add_constant(Value::U16(2));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         chunk.emit_opcode(OpCode::ArrayCall);
 
@@ -433,12 +433,12 @@ mod tests {
         // Push the first field
         let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Push the second field
         let index = module.add_constant(Value::U16(20));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         chunk.emit_opcode(OpCode::NewStruct);
         // struct id
@@ -503,7 +503,7 @@ mod tests {
         let mut bool_fn = Chunk::new();
         let index = module.add_constant(Value::Boolean(true));
         bool_fn.emit_opcode(OpCode::Constant);
-        bool_fn.write_u8(index as u8);
+        bool_fn.write_u16(index as u16);
 
         bool_fn.emit_opcode(OpCode::Return);
 
@@ -560,7 +560,7 @@ mod tests {
         ].into()));
 
         main.emit_opcode(OpCode::Constant);
-        main.write_u8(index as u8);
+        main.write_u16(index as u16);
 
         // Call the struct_fn which is at index 1 in chunks list
         main.emit_opcode(OpCode::InvokeChunk);
@@ -585,7 +585,7 @@ mod tests {
         // Push element 1
         let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Store the value in the memory
         chunk.emit_opcode(OpCode::MemorySet);
@@ -608,12 +608,12 @@ mod tests {
         // Push element 1
         let index = module.add_constant(Value::U8(10));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Push element 2
         let index = module.add_constant(Value::U8(20));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
@@ -625,7 +625,7 @@ mod tests {
 
         let sum_index = module.add_constant(Value::U8(0));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(sum_index as u8);
+        chunk.write_u16(sum_index as u16);
 
         // Store sum in memory
         chunk.emit_opcode(OpCode::MemorySet);
@@ -633,7 +633,7 @@ mod tests {
 
         let index = module.add_constant(Value::U32(0));
         chunk.emit_opcode(OpCode::Constant);
-        chunk.write_u8(index as u8);
+        chunk.write_u16(index as u16);
 
         // Store in memory
         chunk.emit_opcode(OpCode::MemorySet);

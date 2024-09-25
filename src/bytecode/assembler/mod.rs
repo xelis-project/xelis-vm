@@ -91,9 +91,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(chunk.get_instructions(), &[
-            OpCode::Constant.as_byte(),
-            0,
-            0,
+            OpCode::Constant.as_byte(), 0, 0,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
         ]);
@@ -118,18 +116,14 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(chunk.get_instructions(), &[
-            OpCode::Constant.as_byte(),
-            0,
-            0,
+            OpCode::Constant.as_byte(), 0, 0,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
         ]);
 
         let chunk = module.get_chunk_at(1).unwrap();
         assert_eq!(chunk.get_instructions(), &[
-            OpCode::Constant.as_byte(),
-            0,
-            1,
+            OpCode::Constant.as_byte(), 0, 1,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
         ]);
@@ -175,16 +169,10 @@ mod tests {
         assert_eq!(
             module.chunks().last().unwrap().get_instructions(),
             &[
-                OpCode::Constant.as_byte(),
-                0,
-                1,
+                OpCode::Constant.as_byte(), 0, 1,
                 OpCode::Copy.as_byte(),
                 OpCode::Add.as_byte(),
-                OpCode::Jump.as_byte(),
-                0,
-                0,
-                0,
-                5,
+                OpCode::Jump.as_byte(), 0, 0, 0, 5,
             ]
         );
     }

@@ -21,7 +21,7 @@ mod tests {
     #[track_caller]
     fn prepare_module(code: &str) -> (Module, Environment) {
         let tokens = Lexer::new(code).get().unwrap();
-        let env = EnvironmentBuilder::new();
+        let env = EnvironmentBuilder::default();
         let (program, _) = Parser::new(tokens, &env).parse().unwrap();
 
         let env = env.build();
