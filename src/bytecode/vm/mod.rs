@@ -173,6 +173,7 @@ impl<'a> VM<'a> {
                         manager.push_stack(value.get_sub_variable(index as usize)?);
                     },
                     OpCode::InvokeChunk => {
+                        // TODO: fix on value
                         let id = manager.read_u16()?;
                         let on_value = if manager.read_bool()? {
                             Some(manager.pop_stack()?)
@@ -202,17 +203,19 @@ impl<'a> VM<'a> {
                     },
                     OpCode::SysCall => {
                         let id = manager.read_u16()?;
-                        let mut on_value = if manager.read_bool()? {
-                            Some(manager.pop_stack()?)
-                        } else {
-                            None
-                        };
+                        let on_value = manager.read_bool()?;
                         let args = manager.read_u8()?;
 
                         let mut arguments = VecDeque::with_capacity(args as usize);
                         for _ in 0..args {
                             arguments.push_front(manager.pop_stack()?);
                         }
+
+                        let mut on_value = if on_value {
+                            Some(manager.pop_stack()?)
+                        } else {
+                            None
+                        };
 
                         let func = self.environment.get_functions().get(id as usize)
                             .ok_or(VMError::UnknownSysCall)?;
