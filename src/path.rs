@@ -22,6 +22,11 @@ impl<'a> Path<'a> {
     }
 
     #[inline(always)]
+    pub fn as_u32(&'a self) -> Result<u32, ValueError> {
+        self.as_ref().as_u32()
+    }
+
+    #[inline(always)]
     pub fn as_u64(&'a self) -> Result<u64, ValueError> {
         self.as_ref().as_u64()
     }

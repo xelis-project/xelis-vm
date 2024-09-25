@@ -6,8 +6,8 @@ pub enum EnvironmentError {
     FnExpectedInstance,
     Panic(Value),
     OutOfBounds(usize, usize),
-    InvalidRange(u64, u64),
-    NoValueFoundAtIndex(u64),
+    InvalidRange(u32, u32),
+    NoValueFoundAtIndex(u32),
     InvalidType(Value),
     ValueError(ValueError)
 }

@@ -203,7 +203,7 @@ impl<'a> Interpreter<'a> {
                 },
                 ExprHelper::ArrayCall(index) => {
                     let index = self.execute_expression_and_expect_value(index, stack, state)?
-                        .as_u64()?;
+                        .as_u32()?;
 
                     let on_value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
                     local_result.push(on_value.get_sub_variable(index as usize)?);

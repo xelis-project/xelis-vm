@@ -9,13 +9,13 @@ use crate::{
 use super::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U64));
+    env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U32));
     env.register_native_function("push", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], push, 1, None);
-    env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64], remove, 1, Some(Type::T));
+    env.register_native_function("remove", Some(Type::Array(Box::new(Type::Any))), vec![Type::U32], remove, 1, Some(Type::T));
     env.register_native_function("pop", Some(Type::Array(Box::new(Type::Any))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T))));
-    env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64, Type::U64], slice, 3, Some(Type::Array(Box::new(Type::T))));
+    env.register_native_function("slice", Some(Type::Array(Box::new(Type::Any))), vec![Type::U32, Type::U32], slice, 3, Some(Type::Array(Box::new(Type::T))));
     env.register_native_function("contains", Some(Type::Array(Box::new(Type::Any))), vec![Type::T], contains, 1, Some(Type::Bool));
-    env.register_native_function("get", Some(Type::Array(Box::new(Type::Any))), vec![Type::U64], get, 1, Some(Type::Optional(Box::new(Type::T))));
+    env.register_native_function("get", Some(Type::Array(Box::new(Type::Any))), vec![Type::U32], get, 1, Some(Type::Optional(Box::new(Type::T))));
     env.register_native_function("first", Some(Type::Array(Box::new(Type::Any))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T))));
     env.register_native_function("last", Some(Type::Array(Box::new(Type::Any))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T))));
 }
@@ -23,7 +23,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 // native functions
 fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let len = zelf?.as_vec()?.len();
-    Ok(Some(Value::U64(len as u64)))
+    Ok(Some(Value::U32(len as u32)))
 }
 
 fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
@@ -33,7 +33,7 @@ fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 }
 
 fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let index = parameters.remove(0).as_u64()? as usize;
+    let index = parameters.remove(0).as_u32()? as usize;
 
     let array = zelf?.as_mut_vec()?;
     if index >= array.len() {
@@ -53,12 +53,12 @@ fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
 }
 
 fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let start = parameters.remove(0).as_u64()?;
-    let end = parameters.remove(0).as_u64()?;
+    let start = parameters.remove(0).as_u32()?;
+    let end = parameters.remove(0).as_u32()?;
 
     let vec = zelf?.as_vec()?;
-    let len_u64 = vec.len() as u64;
-    if start >= len_u64 || end >= len_u64 || start >= end {
+    let len = vec.len() as u32;
+    if start >= len || end >= len || start >= end {
         return Err(EnvironmentError::InvalidRange(start, end))
     }
 
@@ -84,7 +84,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
-    let index = parameters.remove(0).as_u64()? as usize;
+    let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
         Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
