@@ -16,7 +16,9 @@ pub enum OpCodeWithArgs {
         register_index: u16
     },
     // pop, store in registers
-    MemoryStore,
+    MemoryStore {
+        register_index: u16
+    },
     // pop, store in registers[index]
     MemoryAssign {
         register_index: u16
@@ -173,7 +175,7 @@ impl OpCodeWithArgs {
         match self {
             OpCodeWithArgs::Constant { .. } => OpCode::Constant,
             OpCodeWithArgs::MemoryLoad { .. } => OpCode::MemoryLoad,
-            OpCodeWithArgs::MemoryStore => OpCode::MemoryStore,
+            OpCodeWithArgs::MemoryStore { .. } => OpCode::MemoryStore,
             OpCodeWithArgs::MemoryAssign { .. } => OpCode::MemoryAssign,
             OpCodeWithArgs::SubLoad { .. } => OpCode::SubLoad,
             OpCodeWithArgs::Pop => OpCode::Pop,
@@ -235,6 +237,7 @@ impl OpCodeWithArgs {
         match self {
             OpCodeWithArgs::Constant { index } => chunk.write_u16(*index),
             OpCodeWithArgs::MemoryLoad { register_index } => chunk.write_u16(*register_index),
+            OpCodeWithArgs::MemoryStore { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::MemoryAssign { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::SubLoad { index } => chunk.write_u16(*index),
             OpCodeWithArgs::Copy2 { stack_index } => chunk.write_u16(*stack_index),
@@ -288,11 +291,13 @@ impl OpCodeWithArgs {
                 }
             }
             "MEMORYSTORE" => {
-                if !args.is_empty() {
+                if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::MemoryStore
+                OpCodeWithArgs::MemoryStore {
+                    register_index: args[0].parse().map_err(|_| "Invalid register index")?
+                }
             }
             "MEMORYASSIGN" => {
                 if args.len() != 1 {

@@ -79,9 +79,14 @@ impl<'a> ChunkManager<'a> {
         self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
-    // Push a new value into the registers
-    pub fn push_register(&mut self, value: Path<'a>) {
-        self.registers.push(value);
+    // Push/set a new value into the registers
+    #[inline]
+    pub fn set_register(&mut self, index: usize, value: Path<'a>) {
+        if self.registers.len() <= index {
+            self.registers.push(value);
+        } else {
+            self.registers[index] = value;
+        }
     }
 
     // Get a value from the registers

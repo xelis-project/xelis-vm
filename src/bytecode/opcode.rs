@@ -4,7 +4,7 @@ pub enum OpCode {
     Constant,
     // load from registers, push in stack
     MemoryLoad,
-    // pop, store in registers
+    // pop, store in registers[index]
     MemoryStore,
     // pop, store in registers[index]
     MemoryAssign,

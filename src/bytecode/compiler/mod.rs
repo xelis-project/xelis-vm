@@ -22,6 +22,8 @@ pub struct Compiler<'a> {
     loop_break_patch: Vec<usize>,
     // Index of continue jump to patch
     loop_continue_patch: Vec<usize>,
+    // Used for OpCode::MemoryStore
+    next_register_store_id: u16,
 }
 
 impl<'a> Compiler<'a> {
@@ -33,6 +35,7 @@ impl<'a> Compiler<'a> {
             module: Module::new(),
             loop_break_patch: Vec::new(),
             loop_continue_patch: Vec::new(),
+            next_register_store_id: 0
         }
     }
 
@@ -62,6 +65,12 @@ impl<'a> Compiler<'a> {
                 panic!("Operator {:?} not implemented", op);
             }
         }
+    }
+
+    fn memstore(&mut self, chunk: &mut Chunk) {
+        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.write_u16(self.next_register_store_id);
+        self.next_register_store_id += 1;
     }
 
     // Compile the expression
@@ -200,7 +209,7 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::Variable(declaration) => {
                     self.compile_expr(chunk, &declaration.value);
-                    chunk.emit_opcode(OpCode::MemoryStore);
+                    self.memstore(chunk);
                 },
                 Statement::Scope(statements) => self.compile_statements(chunk, statements),
                 Statement::If(condition, statements, else_statements) => {
@@ -308,7 +317,7 @@ impl<'a> Compiler<'a> {
                 Statement::For(var, expr_condition, expr_op, statements) => {
                     // Compile the variable
                     self.compile_expr(chunk, &var.value);
-                    chunk.emit_opcode(OpCode::MemoryStore);
+                    self.memstore(chunk);
 
                     // Compile the condition
                     let start_index = chunk.index();
@@ -361,14 +370,16 @@ impl<'a> Compiler<'a> {
 
     // Compile the function
     fn compile_function(&mut self, function: &FunctionType) {
+        self.next_register_store_id = 0;
         let mut chunk = Chunk::new();
+
         if function.get_instance_name().is_some() {
-            chunk.emit_opcode(OpCode::MemoryStore);
+            self.memstore(&mut chunk);
         }
 
         // Store the parameters
         for _ in function.get_parameters() {
-            chunk.emit_opcode(OpCode::MemoryStore);
+            self.memstore(&mut chunk);
         }
 
         self.compile_statements(&mut chunk, function.get_statements());
@@ -538,15 +549,15 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryStore.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 25,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 27,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::Jump.as_byte(), 0, 0, 0, 5,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
@@ -586,17 +597,17 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryStore.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 29,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 31,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::Jump.as_byte(), 0, 0, 0, 5,
                 OpCode::Constant.as_byte(), 2,
                 OpCode::Return.as_byte()
             ]
@@ -616,7 +627,7 @@ mod tests {
                 OpCode::Constant.as_byte(), 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::NewStruct.as_byte(), 0, 0,
-                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryStore.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -682,18 +693,18 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(),
+                OpCode::MemoryStore.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 30,
+                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 32,
                 // Jump by the continue
                 // It must jump to the increment instruction
-                OpCode::Jump.as_byte(), 0, 0, 0, 19,
+                OpCode::Jump.as_byte(), 0, 0, 0, 21,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 2,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 3,
+                OpCode::Jump.as_byte(), 0, 0, 0, 5,
                 OpCode::Constant.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
