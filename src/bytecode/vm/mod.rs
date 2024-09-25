@@ -133,15 +133,10 @@ impl<'a> VM<'a> {
                             .shareable();
                         manager.push_stack(value);
                     },
-                    OpCode::MemoryStore => {
+                    OpCode::MemorySet => {
                         let index = manager.read_u16()?;
                         let value = manager.pop_stack()?;
                         manager.set_register(index as usize, value);
-                    },
-                    OpCode::MemoryAssign => {
-                        let index = manager.read_u16()?;
-                        let value = manager.pop_stack()?;
-                        manager.to_register(index as usize, value)?;
                     },
                     OpCode::Copy => {
                         let value = manager.last_stack()?;
@@ -461,7 +456,7 @@ mod tests {
         chunk.pop_instruction();
 
         // Store the struct in the memory
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(0);
 
         chunk.emit_opcode(OpCode::MemoryLoad);
@@ -589,7 +584,7 @@ mod tests {
         chunk.write_u8(index as u8);
 
         // Store the value in the memory
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(0);
 
         // Load the value from the memory
@@ -621,7 +616,7 @@ mod tests {
         chunk.write_u32(2);
 
         // Store the array in the memory
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(0);
 
         let sum_index = module.add_constant(Value::U8(0));
@@ -629,7 +624,7 @@ mod tests {
         chunk.write_u8(sum_index as u8);
 
         // Store sum in memory
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(1);
 
         let index = module.add_constant(Value::U32(0));
@@ -637,7 +632,7 @@ mod tests {
         chunk.write_u8(index as u8);
 
         // Store in memory
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(2);
 
         // Load the array
@@ -659,7 +654,7 @@ mod tests {
         chunk.emit_opcode(OpCode::Add);
 
         // Store the sum
-        chunk.emit_opcode(OpCode::MemoryAssign);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(1);
 
         // Load the index again
@@ -674,7 +669,7 @@ mod tests {
         chunk.emit_opcode(OpCode::Copy);
 
         // Store the index
-        chunk.emit_opcode(OpCode::MemoryAssign);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(2);
 
         // Load the array

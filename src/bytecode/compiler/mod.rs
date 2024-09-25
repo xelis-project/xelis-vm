@@ -68,7 +68,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn memstore(&mut self, chunk: &mut Chunk) {
-        chunk.emit_opcode(OpCode::MemoryStore);
+        chunk.emit_opcode(OpCode::MemorySet);
         chunk.write_u16(self.next_register_store_id);
         self.next_register_store_id += 1;
     }
@@ -549,7 +549,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(), 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
@@ -597,7 +597,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(), 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),
@@ -627,7 +627,7 @@ mod tests {
                 OpCode::Constant.as_byte(), 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::NewStruct.as_byte(), 0, 0,
-                OpCode::MemoryStore.as_byte(), 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -693,7 +693,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0,
-                OpCode::MemoryStore.as_byte(), 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1,
                 OpCode::Lt.as_byte(),

@@ -95,17 +95,6 @@ impl<'a> ChunkManager<'a> {
         self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
     }
 
-    // Set a value in the registers
-    #[inline]
-    pub fn to_register(&mut self, index: usize, value: Path<'a>) -> Result<(), VMError> {
-        if index < self.registers.len() {
-            self.registers[index] = value;
-            Ok(())
-        } else {
-            Err(VMError::RegisterNotFound)
-        }
-    }
-
     // Pop a value from the registers
     #[inline]
     pub fn pop_register(&mut self) -> Result<Path<'a>, VMError> {
