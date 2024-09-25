@@ -31,6 +31,117 @@ mod tests {
     }
 
     #[test]
+    fn test_if() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if x == 10 {
+                    x = 20
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(20));
+    }
+
+    #[test]
+    fn test_if_else() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if x == 20 {
+                    x = 20
+                } else {
+                    x = 30
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(30));
+    }
+
+    #[test]
+    fn test_if_else_positive() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if x == 10 {
+                    x = 20
+                } else {
+                    x = 30
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(20));
+    }
+
+    #[test]
+    fn test_nested_if() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if x == 10 {
+                    x = 5
+                    if x == 5 {
+                        x = 20
+                    }
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(20));
+    }
+
+    #[test]
+    fn test_if_else_if() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if x == 20 {
+                    x = 20
+                } else if x == 10 {
+                    x = 30
+                } else {
+                    x = 40
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(30));
+    }
+
+    #[test]
     fn test_while() {
         let code = r#"
             entry main() {
