@@ -923,8 +923,8 @@ mod tests {
 
     #[test]
     fn test_array() {
-        test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u64 = 0; return a[b]; }", 1);
-        test_code_expect_return("func test(): u64[] { return [0, 1, 2]; } entry main() { let b: u64 = 0; return test()[b]; }", 0);
+        test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u32 = 0; return a[b]; }", 1);
+        test_code_expect_return("func test(): u64[] { return [0, 1, 2]; } entry main() { let b: u32 = 0; return test()[b]; }", 0);
 
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
@@ -942,7 +942,7 @@ mod tests {
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let b: u64[] = []; let v: u64 = 10; b.push(10); a.push(b[0]); return a[0] + a[1] + a[2] + a[3]; }", 16);
 
         // Pop
-        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.pop(); return a.len(); }", 2);
+        test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.pop(); return a.len() as u64; }", 2);
     }
 
     #[test]
