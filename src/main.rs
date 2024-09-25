@@ -1,5 +1,11 @@
 use xelis_vm::{
-    ast::Signature, EnvironmentBuilder, Interpreter, Lexer, Parser, State
+    ast::Signature,
+    bytecode::{compiler::Compiler, vm::VM},
+    EnvironmentBuilder,
+    Interpreter,
+    Lexer,
+    Parser,
+    State
 };
 use std::{
     env,
@@ -32,13 +38,26 @@ fn main() {
     let (program, mapper) = Parser::new(tokens, &builder).parse().unwrap();
     println!("Parser: {:?}", start.elapsed());
 
-    // Create the VM instance
-    let mut vm = Interpreter::new(&program, builder.environment()).unwrap();
-    let mut state = State::new(None, Some(100), None);
-    vm.compute_constants(&mut state).unwrap();
+    // Create the Interpreter instance
+    {
+        let mut interpreter = Interpreter::new(&program, builder.environment()).unwrap();
+        let mut state = State::new(None, Some(100), None);
+        interpreter.compute_constants(&mut state).unwrap();
+    
+        start = Instant::now();
+        let signature = Signature::new("main".to_owned(), None, Vec::new());
+        let exit = interpreter.call_entry_function(&mapper.get(&signature).unwrap(), Vec::new(), &mut state).unwrap();
+        println!("interpreter | Exit code: {} | gas: {} | {} expressions executed in {:?}", exit, state.get_gas_usage(), state.get_expressions_executed(), start.elapsed());
+    }
 
-    start = Instant::now();
-    let signature = Signature::new("main".to_owned(), None, Vec::new());
-    let exit = vm.call_entry_function(&mapper.get(&signature).unwrap(), Vec::new(), &mut state).unwrap();
-    println!("Exit code: {} | gas: {} | {} expressions executed in {:?}", exit, state.get_gas_usage(), state.get_expressions_executed(), start.elapsed());
+    // VM
+    {
+        let compiler = Compiler::new(&program, builder.environment());
+        let module = compiler.compile().unwrap();
+        let mut vm = VM::new(&module, builder.environment());
+        start = Instant::now();
+        vm.invoke_chunk_id(1).unwrap();
+        let value = vm.run().unwrap();
+        println!("VM | Value: {:?} | {:?}", value, start.elapsed());
+    }
 }
