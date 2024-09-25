@@ -713,14 +713,11 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    // Read all statements in a block
-    // return type is used to verify that the last statement is a return with a valid value type
-    // consume_brace is used to know if we should consume the open brace
-    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
-        let mut statements: Vec<Statement> = Vec::new();
-        while let Some(token) = self.next() {
+    // Read a single statement
+    fn read_statement(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Option<Statement>, ParserError<'a>> {
+        if let Some(token) = self.next() {
             let statement: Statement = match token {
-                Token::BraceClose => break,
+                Token::BraceClose => return Ok(None),
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
                     let var = self.read_variable(context, mapper, false)?;
@@ -774,7 +771,7 @@ impl<'a> Parser<'a> {
                 Token::If => {
                     let condition = self.read_expression(context, mapper)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
-                    if  *condition_type != Type::Bool {
+                    if *condition_type != Type::Bool {
                         return Err(ParserError::InvalidCondition(condition_type.into_owned(), condition))
                     }
 
@@ -783,7 +780,8 @@ impl<'a> Parser<'a> {
                     let else_statement = if self.peek_is(Token::Else) {
                         self.advance()?;
                         Some(if self.peek_is(Token::If) {
-                            self.read_statements(context, return_type, mapper)?
+                            let statement = self.read_statement(context, return_type, mapper)?;
+                            vec![statement.ok_or(ParserError::UnexpectedToken(Token::If))?]
                         } else {
                             self.expect_token(Token::BraceOpen)?;
                             self.read_body(context, return_type, mapper)?
@@ -844,6 +842,18 @@ impl<'a> Parser<'a> {
                     Statement::Expression(self.read_expression(context, mapper)?)
                 }
             };
+            Ok(Some(statement))
+        } else {
+            Ok(None)
+        }
+
+    }
+    // Read all statements in a block
+    // return type is used to verify that the last statement is a return with a valid value type
+    // consume_brace is used to know if we should consume the open brace
+    fn read_statements(&mut self, context: &mut Context, return_type: &Option<Type>, mapper: &mut IdMapper<'a>) -> Result<Vec<Statement>, ParserError<'a>> {
+        let mut statements: Vec<Statement> = Vec::new();
+        while let Some(statement) = self.read_statement(context, return_type, mapper)? {
             statements.push(statement);
         }
 
@@ -873,18 +883,21 @@ impl<'a> Parser<'a> {
     // Verify that the last statement is a return
     // We don't check the last statement directly has it would allow
     // to have dead code after a return
-    fn ends_with_return(&self, statements: &Vec<Statement>) -> Result<bool, ParserError<'a>> {
+    fn ends_with_return(statements: &Vec<Statement>) -> Result<bool, ParserError<'a>> {
         let mut ok = false;
         if let Some(statement) = statements.last() {
             match statement {
                 Statement::If(_, statements, else_statements) => {
                     // if its the last statement
-                    ok = self.ends_with_return(statements)?;
-                    if let Some(statements) = else_statements.as_ref().filter(|_| !ok) {
-                        ok = self.ends_with_return(statements)?;
+                    ok = Self::ends_with_return(statements)?;
+                    // if it ends with a return, else must also end with a return
+                    if let Some(statements) = else_statements.as_ref().filter(|_| ok) {
+                        ok = Self::ends_with_return(statements)?;
+                    } else {
+                        ok = false;
                     }
                 }
-                Statement::Return(_) => {
+                Statement::Return(Some(_)) => {
                     ok = true;
                 },
                 _ => {}
@@ -975,7 +988,7 @@ impl<'a> Parser<'a> {
         context.end_scope();
 
         // verify that the function ends with a return
-        if has_return_type && !self.ends_with_return(&statements)? {
+        if has_return_type && !Self::ends_with_return(&statements)? {
             return Err(ParserError::NoReturnFound)
         }
 
@@ -1151,11 +1164,11 @@ mod tests {
     #[track_caller]
     fn test_parser_statement(tokens: Vec<Token>, variables: Vec<(&str, Type)>) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
-        test_parser_statement_with_env(tokens, variables, env)
+        test_parser_statement_with(tokens, variables, &None, env)
     }
 
     #[track_caller]
-    fn test_parser_statement_with_env(tokens: Vec<Token>, variables: Vec<(&str, Type)>, env: EnvironmentBuilder) -> Vec<Statement> {
+    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: EnvironmentBuilder) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut mapper = IdMapper::new();
         let mut context = Context::new();
@@ -1165,7 +1178,12 @@ mod tests {
             context.register_variable(id, t).unwrap();
         }
 
-        parser.read_statements(&mut context, &None, &mut mapper).unwrap()
+        parser.read_statements(&mut context, return_type, &mut mapper).unwrap()
+    }
+
+    fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
+        let env = EnvironmentBuilder::new();
+        test_parser_statement_with(tokens, variables, &Some(return_type), env)
     }
 
     #[test]
@@ -1459,6 +1477,151 @@ mod tests {
     }
 
     #[test]
+    fn test_if_return() {
+        // if i < 10 { nothing } return 0
+        let mut tokens = vec![
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Return
+        ];
+
+        let statements = test_parser_statement(tokens.clone(), vec![("i", Type::U64)]);
+        assert_eq!(statements, vec![
+            Statement::If(
+                Expression::Operator(
+                    Operator::LessThan,
+                    Box::new(Expression::Variable(0)),
+                    Box::new(Expression::Value(Value::U64(10)))
+                ),
+                Vec::new(),
+                None
+            ),
+            Statement::Return(None)
+        ]);
+
+        tokens.push(Token::U64Value(0));
+
+
+        let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
+        assert_eq!(statements, vec![
+            Statement::If(
+                Expression::Operator(
+                    Operator::LessThan,
+                    Box::new(Expression::Variable(0)),
+                    Box::new(Expression::Value(Value::U64(10)))
+                ),
+                Vec::new(),
+                None
+            ),
+            Statement::Return(Some(Expression::Value(Value::U64(0))))
+        ]);
+    }
+
+    #[test]
+    fn test_if_else_if_else_return() {
+        // if i < 10 {} else if i < 20 {} else {} return 0
+        let tokens = vec![
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Else,
+            Token::If,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::U64Value(20),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Else,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Return,
+            Token::U64Value(0)
+        ];
+
+        let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
+        assert_eq!(statements, vec![
+            Statement::If(
+                Expression::Operator(
+                    Operator::LessThan,
+                    Box::new(Expression::Variable(0)),
+                    Box::new(Expression::Value(Value::U64(10)))
+                ),
+                Vec::new(),
+                Some(vec![
+                    Statement::If(
+                        Expression::Operator(
+                            Operator::LessThan,
+                            Box::new(Expression::Variable(0)),
+                            Box::new(Expression::Value(Value::U64(20)))
+                        ),
+                        Vec::new(),
+                        Some(Vec::new())
+                    )
+                ])
+            ),
+            Statement::Return(Some(Expression::Value(Value::U64(0))))
+        ]);
+    }
+
+    #[test]
+    fn test_ends_with_return() {
+        const RETURN: Statement = Statement::Return(Some(Expression::Value(Value::U64(0))));
+        let statements = vec![RETURN];
+        assert!(Parser::ends_with_return(&statements).unwrap());
+
+        let statements = vec![RETURN, Statement::Expression(Expression::Value(Value::U64(0)))];
+        assert!(!Parser::ends_with_return(&statements).unwrap());
+
+        // if ... return
+        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true)), Vec::new(), None), RETURN];
+        assert!(Parser::ends_with_return(&statements).unwrap());
+
+        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true)), Vec::new(), None)];
+        assert!(!Parser::ends_with_return(&statements).unwrap());
+
+        // if else
+        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true)), Vec::new(), Some(Vec::new()))];
+        assert!(!Parser::ends_with_return(&statements).unwrap());
+
+        // if return else return
+        let statements = vec![
+            Statement::If(Expression::Value(Value::Boolean(true)), vec![RETURN], Some(vec![RETURN]))
+        ];
+        assert!(Parser::ends_with_return(&statements).unwrap());
+
+        // if return else if return else no return
+        let statements = vec![
+            Statement::If(
+                Expression::Value(Value::Boolean(true)),
+                vec![RETURN],
+                Some(vec![
+                    Statement::If(Expression::Value(Value::Boolean(true)), vec![RETURN], None)
+                ])
+            )
+        ];
+        assert!(!Parser::ends_with_return(&statements).unwrap());
+
+        // if return else if return else return
+        let statements = vec![
+            Statement::If(
+                Expression::Value(Value::Boolean(true)),
+                vec![RETURN],
+                Some(vec![
+                    Statement::If(Expression::Value(Value::Boolean(true)), vec![RETURN], Some(vec![RETURN]))
+                ])
+            )
+        ];
+        assert!(Parser::ends_with_return(&statements).unwrap());
+    }
+
+    #[test]
     fn test_variable() {
         // let hello: string = "hello";
         let tokens = vec![
@@ -1537,7 +1700,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with_env(tokens, Vec::new(), env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
     }
 }
