@@ -1,4 +1,4 @@
-use crate::{Path, State, Type, Value};
+use crate::{Path, Type, Value};
 
 use super::EnvironmentError;
 
@@ -36,13 +36,10 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, state: &mut State) -> Result<Option<Value>, EnvironmentError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams) -> Result<Option<Value>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(EnvironmentError::InvalidFnCall)
         }
-
-        // TODO
-        state.increase_gas_usage(self.cost).unwrap();
 
         let instance = match instance_value {
             Some(v) => Ok(v),
@@ -59,5 +56,10 @@ impl NativeFunction {
     // Get the expected type of the returned value
     pub fn return_type(&self) -> &Option<Type> {
         &self.return_type
+    }
+
+    // Get the cost of the function
+    pub fn get_cost(&self) -> u64 {
+        self.cost
     }
 }

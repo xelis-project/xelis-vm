@@ -226,7 +226,9 @@ impl<'a> VM<'a> {
                             None => None,
                         };
 
-                        func.call_function(instance.as_deref_mut(), arguments.into(), todo!())?;
+                        if let Some(v) = func.call_function(instance.as_deref_mut(), arguments.into())? {
+                            manager.push_stack(Path::Owned(v));
+                        }
                     },
                     OpCode::NewStruct => {
                         let id = manager.read_u16()?;

@@ -723,15 +723,16 @@ impl<'a> Interpreter<'a> {
     fn execute_function(&'a self, func: Function<'a>, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
         match func {
             Function::Native(f) => {
+                state.increase_gas_usage(f.get_cost())?;
                 match type_instance {
                     Some(mut v) => {
                         let mut instance = v.as_mut();
-                        f.call_function(Some(instance.as_mut()), values, state)
+                        f.call_function(Some(instance.as_mut()), values)
                             .map(|v| v.map(Path::Owned))
                             .map_err(InterpreterError::EnvironmentError)
                     },
                     None => {
-                        f.call_function(None, values, state)
+                        f.call_function(None, values)
                             .map(|v| v.map(Path::Owned))
                             .map_err(InterpreterError::EnvironmentError)
                     }
