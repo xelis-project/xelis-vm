@@ -19,8 +19,10 @@ pub struct Compiler<'a> {
     // Final module to return
     module: Module,
     // Index of break jump to patch
+    // TODO: vec of vec
     loop_break_patch: Vec<usize>,
     // Index of continue jump to patch
+    // TODO: vec of vec
     loop_continue_patch: Vec<usize>,
     // Used for OpCode::MemoryStore
     next_register_store_id: u16,
@@ -281,32 +283,32 @@ impl<'a> Compiler<'a> {
                     }
                 },
                 Statement::ForEach(_, expr_values, statements) => {
-                    let start_index = chunk.index();
                     // Compile the expression
                     self.compile_expr(chunk, expr_values);
 
-                    // TODO fixme
-
-                    // Emit the jump if false
-                    // We will overwrite the addr later
-                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.emit_opcode(OpCode::IterableBegin);
+                    let start_index = chunk.index();
+                    chunk.emit_opcode(OpCode::IterableNext);
                     chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.last_index();
+                    let jump_end = chunk.last_index();
+
+                    // Store the value
+                    self.memstore(chunk);
 
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(jump_addr as u32);
+                    chunk.write_u32(start_index as u32);
 
-                    // Patch the jump if false
-                    let jump_false_addr = chunk.index();
-                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
+                    // Patch the IterableNext
+                    let end_index = chunk.index();
+                    chunk.patch_jump(jump_end, end_index as u32);
 
                     // Patch the break
                     if let Some(jump) = self.loop_break_patch.pop() {
-                        chunk.patch_jump(jump, jump_false_addr as u32);
+                        chunk.patch_jump(jump, end_index as u32);
                     }
 
                     // Patch the continue
@@ -577,13 +579,21 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
+                // 1
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 10, 0, 0, 0,
+                // 2
                 OpCode::Constant.as_byte(), 1, 0,
-                OpCode::Return.as_byte(),
+                // 3
                 OpCode::Constant.as_byte(), 2, 0,
+                // [1, 2, 3]
+                OpCode::NewArray.as_byte(), 3, 0, 0, 0,
+                OpCode::IterableBegin.as_byte(),
+                OpCode::IterableNext.as_byte(), 32, 0, 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 3, 0,
+                OpCode::Jump.as_byte(), 15, 0, 0, 0,
+                OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
         );
