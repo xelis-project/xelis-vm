@@ -6,17 +6,18 @@ pub use reader::ChunkReader;
 
 use crate::{bytecode::Chunk, Path};
 
-use super::VMError;
+use super::{iterator::PathIterator, VMError};
 
 // Manager for a chunk
-// It contains the reader and the stack
-#[derive(Debug)]
+// It contains the reader and the stacks
 pub struct ChunkManager<'a> {
     reader: ChunkReader<'a>,
     // Stack of values
     stack: Vec<Path<'a>>,
     // Registers
     registers: Vec<Path<'a>>,
+    // Iterators stack
+    iterators: Vec<PathIterator<'a>>,
 }
 
 impl<'a> ChunkManager<'a> {
@@ -29,6 +30,7 @@ impl<'a> ChunkManager<'a> {
             reader: ChunkReader::new(chunk),
             stack: Vec::new(),
             registers: Vec::new(),
+            iterators: Vec::new(),
         }
     }
 
@@ -44,10 +46,39 @@ impl<'a> ChunkManager<'a> {
         &self.registers
     }
 
+    // Add an iterator to the stack
+    pub fn add_iterator(&mut self, iterator: PathIterator<'a>) {
+        self.iterators.push(iterator);
+    }
+
+    // Pop an iterator from the stack
+    pub fn pop_iterator(&mut self) -> Result<PathIterator<'a>, VMError> {
+        self.iterators.pop().ok_or(VMError::EmptyIterator)
+    }
+
+    // Get the next value from the iterators stack
+    pub fn next_iterator(&mut self) -> Result<Option<Path<'a>>, VMError> {
+        Ok(self.iterators.last_mut()
+            .ok_or(VMError::EmptyIterator)?
+            .next()?)
+    }
+
     // Push a value to the stack
     #[inline]
     pub fn push_stack(&mut self, value: Path<'a>) {
         self.stack.push(value);
+    }
+
+    // Swap in stack
+    #[inline]
+    pub fn swap_stack(&mut self, index: usize) -> Result<(), VMError> {
+        let len = self.stack.len();
+        if len <= index {
+            return Err(VMError::StackIndexOutOfBounds);
+        }
+
+        self.stack.swap(len - 1, len - 1 - index);
+        Ok(())
     }
 
     // Take multiple values from the stack

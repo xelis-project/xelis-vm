@@ -1,10 +1,12 @@
 mod chunk;
 mod error;
+mod iterator;
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 pub use error::VMError;
 pub use chunk::*;
+use iterator::PathIterator;
 
 use crate::{Path, types::Struct, Environment, Type, Value};
 
@@ -173,7 +175,6 @@ impl<'a> VM<'a> {
                         manager.push_stack(value.get_sub_variable(index as usize)?);
                     },
                     OpCode::InvokeChunk => {
-                        // TODO: fix on value
                         let id = manager.read_u16()?;
                         let on_value = manager.read_bool()?;
                         let args = manager.read_u8()?;
@@ -292,6 +293,24 @@ impl<'a> VM<'a> {
                         let len = value.as_ref().as_vec()?.len();
                         manager.push_stack(Path::Owned(Value::U32(len as u32)));
                     },
+                    OpCode::IterableBegin => {
+                        let value = manager.pop_stack()?;
+                        let iterator = PathIterator::new(value);
+                        manager.add_iterator(iterator);
+                    },
+                    OpCode::IterableNext => {
+                        let addr = manager.read_u32()?;
+                        if let Some(value) = manager.next_iterator()? {
+                            manager.push_stack(value);
+                        } else {
+                            manager.pop_iterator()?;
+                            manager.set_index(addr as usize);
+                        }
+                    },
+                    OpCode::Swap => {
+                        let index = manager.read_u8()?;
+                        manager.swap_stack(index as usize)?;
+                    }
                     OpCode::Inc => {
                         let v = manager.last_mut_stack()?;
                         v.as_mut().increment()?;
@@ -485,7 +504,6 @@ mod tests {
 
         chunk.emit_opcode(OpCode::Return);
 
-        let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::U16(30));
@@ -597,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn test_for_each() {
+    fn test_for_each_index() {
         let mut module = Module::new();
         let mut chunk = Chunk::new();
 
@@ -637,7 +655,7 @@ mod tests {
 
         // Load the array
         chunk.emit_opcode(OpCode::MemoryLoad);
-        let jump_at = chunk.index();
+        let jump_at = chunk.last_index();
         chunk.write_u16(0);
 
         // load the index
@@ -691,5 +709,65 @@ mod tests {
         module.add_chunk(chunk);
 
         assert_eq!(run(module), Value::U8(30));
+    }
+
+    #[test]
+    fn test_for_each_iterator() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+
+        let index = module.add_constant(Value::Array(vec![
+            Rc::new(RefCell::new(Value::U8(10))),
+            Rc::new(RefCell::new(Value::U8(20))),
+            Rc::new(RefCell::new(Value::U8(30))),
+            Rc::new(RefCell::new(Value::U8(40))),
+            Rc::new(RefCell::new(Value::U8(50))),
+        ].into()));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(index as u16);
+
+        // Create a new sum variable in memory
+        let index = module.add_constant(Value::U8(0));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(index as u16);
+
+        // Store the sum in memory
+        chunk.emit_opcode(OpCode::MemorySet);
+        chunk.write_u16(0);
+
+        // Start iterator
+        chunk.emit_opcode(OpCode::IterableBegin);
+        chunk.emit_opcode(OpCode::IterableNext);
+        let start_iterator_index = chunk.last_index();
+        chunk.write_u32(0);
+        let patch_addr = chunk.last_index();
+
+        // Load the sum
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        // Swap both so sum is left and value is right
+        chunk.emit_opcode(OpCode::Swap);
+        chunk.write_u8(1);
+
+        // Add the value to the sum
+        chunk.emit_opcode(OpCode::AssignAdd);
+
+        // Iterator end
+        chunk.emit_opcode(OpCode::Jump);
+        chunk.write_u32(start_iterator_index as u32);
+        
+        // Patch the iterator next jump
+        chunk.patch_jump(patch_addr, chunk.index() as u32);
+
+        // Load the sum
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        chunk.emit_opcode(OpCode::Return);
+
+        // Execute
+        module.add_chunk(chunk);
+        assert_eq!(run(module), Value::U8(150));
     }
 }
