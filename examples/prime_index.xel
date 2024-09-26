@@ -1,0 +1,23 @@
+func is_prime(num: u64, prime_list: u64[], prime_index: u32): bool {
+    for i: u32 = 0; i < prime_index; i += 1 {
+        if (num % prime_list[i]) == 0 {
+            return false;
+        }
+    }
+    return true;
+}
+
+entry main() {
+    let primes: u64[] = [2];
+    let check: u64 = 3;
+    let index: u32 = 1;
+    while index < 5_000 {
+        if is_prime(check, primes, index) {
+            primes.push(check);
+            index += 1;
+        }
+        check += 2;
+    }
+    println(primes)
+    return 0;
+}
