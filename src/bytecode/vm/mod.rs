@@ -560,9 +560,9 @@ mod tests {
 
         // Call the struct_fn which is at index 1 in chunks list
         main.emit_opcode(OpCode::InvokeChunk);
-        main.write_u8(0);
-        main.write_bool(true);
         main.write_u16(1);
+        main.write_bool(true);
+        main.write_u8(0);
 
         module.add_chunk(main);
         module.add_chunk(struct_fn);

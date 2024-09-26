@@ -494,7 +494,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Add.as_byte(),
                 OpCode::Return.as_byte()
             ]
@@ -512,10 +512,10 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 12,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::JumpIfFalse.as_byte(), 12, 0, 0, 0,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -532,10 +532,10 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 12,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::JumpIfFalse.as_byte(), 12, 0, 0, 0,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -554,13 +554,13 @@ mod tests {
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 30,
+                OpCode::JumpIfFalse.as_byte(), 30, 0, 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 6,
+                OpCode::Jump.as_byte(), 6, 0, 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]
@@ -578,12 +578,12 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 10,
-                OpCode::Constant.as_byte(), 1,
+                OpCode::JumpIfFalse.as_byte(), 10, 0, 0, 0,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Constant.as_byte(), 0, 3,
+                OpCode::Constant.as_byte(), 3, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -602,16 +602,16 @@ mod tests {
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 34,
+                OpCode::JumpIfFalse.as_byte(), 34, 0, 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 6,
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Jump.as_byte(), 6, 0, 0, 0,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -628,7 +628,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::NewStruct.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
@@ -674,12 +674,12 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 18,
+                OpCode::JumpIfFalse.as_byte(), 18, 0, 0, 0,
                 // Jump by the break
-                OpCode::Jump.as_byte(), 0, 0, 0, 18,
+                OpCode::Jump.as_byte(), 18, 0, 0, 0,
                 // Jump by the while to go back
                 OpCode::Jump.as_byte(), 0, 0, 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -698,16 +698,16 @@ mod tests {
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 1,
+                OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Lt.as_byte(),
-                OpCode::JumpIfFalse.as_byte(), 0, 0, 0, 35,
+                OpCode::JumpIfFalse.as_byte(), 35, 0, 0, 0,
                 // Jump by the continue
                 // It must jump to the increment instruction
-                OpCode::Jump.as_byte(), 0, 0, 0, 23,
+                OpCode::Jump.as_byte(), 23, 0, 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::Constant.as_byte(), 0, 2,
+                OpCode::Constant.as_byte(), 2, 0,
                 OpCode::AssignAdd.as_byte(),
-                OpCode::Jump.as_byte(), 0, 0, 0, 6,
+                OpCode::Jump.as_byte(), 6, 0, 0, 0,
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]

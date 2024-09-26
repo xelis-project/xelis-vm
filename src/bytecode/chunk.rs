@@ -68,7 +68,7 @@ impl Chunk {
     // Patch a jump instruction
     #[inline]
     pub fn patch_jump(&mut self, index: usize, addr: u32) {
-        let bytes = addr.to_be_bytes();
+        let bytes = addr.to_le_bytes();
         // addr are u32, so we need to copy 4 bytes
         // index is the position of the latest byte written in instructions
         self.instructions[index - 3..=index].copy_from_slice(&bytes);
@@ -76,28 +76,28 @@ impl Chunk {
 
     // Write a byte in the instructions
     #[inline]
-    pub fn write_u8(&mut self, byte: u8) {
-        self.instructions.push(byte);
+    pub fn write_u8(&mut self, instruction: u8) {
+        self.instructions.push(instruction);
     }
 
     // Write a bool in the instructions
     // A bool is represented as a byte
     #[inline]
-    pub fn write_bool(&mut self, byte: bool) {
-        self.instructions.push(byte as u8);
+    pub fn write_bool(&mut self, instruction: bool) {
+        self.instructions.push(instruction as u8);
     }
 
     // Write a u16 in the instructions
     #[inline]
-    pub fn write_u16(&mut self, byte: u16) {
-        let bytes = byte.to_be_bytes();
+    pub fn write_u16(&mut self, instruction: u16) {
+        let bytes = instruction.to_le_bytes();
         self.write_bytes(&bytes);
     }
 
     // Write a u32 in the instructions
     #[inline]
-    pub fn write_u32(&mut self, byte: u32) {
-        let bytes = byte.to_be_bytes();
+    pub fn write_u32(&mut self, instruction: u32) {
+        let bytes = instruction.to_le_bytes();
         self.write_bytes(&bytes);
     }
 
