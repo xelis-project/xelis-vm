@@ -19,12 +19,10 @@ pub struct Compiler<'a> {
     // Final module to return
     module: Module,
     // Index of break jump to patch
-    // TODO: vec of vec
-    loop_break_patch: Vec<usize>,
+    loop_break_patch: Vec<Vec<usize>>,
     // Index of continue jump to patch
-    // TODO: vec of vec
-    loop_continue_patch: Vec<usize>,
-    // Used for OpCode::MemoryStore
+    loop_continue_patch: Vec<Vec<usize>>,
+    // Used for OpCode::MemorySet
     next_register_store_id: u16,
 }
 
@@ -197,6 +195,25 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    // Start a loop by pushing the break/continue vec to track them
+    fn start_loop(&mut self) {
+        self.loop_break_patch.push(Vec::new());
+        self.loop_continue_patch.push(Vec::new());
+    }
+
+    // End the loop by patching all continue/break
+    fn end_loop(&mut self, chunk: &mut Chunk, start_index: usize, end_index: usize) {
+        // Patch the break
+        for jump in self.loop_break_patch.pop().unwrap() {
+            chunk.patch_jump(jump, end_index as u32);
+        }
+
+        // Patch the continue
+        for jump in self.loop_continue_patch.pop().unwrap() {
+            chunk.patch_jump(jump, start_index as u32);
+        }
+    }
+
     // Compile the statements
     fn compile_statements(&mut self, chunk: &mut Chunk, statements: &[Statement]) {
         // Compile the statements
@@ -261,6 +278,7 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
 
+                    self.start_loop();
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
@@ -272,15 +290,7 @@ impl<'a> Compiler<'a> {
                     let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
-                    // Patch the break
-                    if let Some(jump) = self.loop_break_patch.pop() {
-                        chunk.patch_jump(jump, jump_false_addr as u32);
-                    }
-
-                    // Patch the continue
-                    if let Some(jump) = self.loop_continue_patch.pop() {
-                        chunk.patch_jump(jump, start_index as u32);
-                    }
+                    self.end_loop(chunk, start_index, jump_false_addr);
                 },
                 Statement::ForEach(_, expr_values, statements) => {
                     // Compile the expression
@@ -295,6 +305,7 @@ impl<'a> Compiler<'a> {
                     // Store the value
                     self.memstore(chunk);
 
+                    self.start_loop();
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
@@ -306,15 +317,7 @@ impl<'a> Compiler<'a> {
                     let end_index = chunk.index();
                     chunk.patch_jump(jump_end, end_index as u32);
 
-                    // Patch the break
-                    if let Some(jump) = self.loop_break_patch.pop() {
-                        chunk.patch_jump(jump, end_index as u32);
-                    }
-
-                    // Patch the continue
-                    if let Some(jump) = self.loop_continue_patch.pop() {
-                        chunk.patch_jump(jump, start_index as u32);
-                    }
+                    self.end_loop(chunk, start_index, end_index);
                 }
                 Statement::For(var, expr_condition, expr_op, statements) => {
                     // Compile the variable
@@ -331,6 +334,7 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
 
+                    self.start_loop();
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
@@ -346,25 +350,17 @@ impl<'a> Compiler<'a> {
                     let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
-                    // Patch the break
-                    if let Some(jump) = self.loop_break_patch.pop() {
-                        chunk.patch_jump(jump, jump_false_addr as u32);
-                    }
-
-                    // Patch the continue
-                    if let Some(jump) = self.loop_continue_patch.pop() {
-                        chunk.patch_jump(jump, continue_index as u32);
-                    }
+                    self.end_loop(chunk, continue_index, jump_false_addr);
                 },
                 Statement::Break => {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(INVALID_ADDR);
-                    self.loop_break_patch.push(chunk.last_index());
+                    self.loop_break_patch.last_mut().unwrap().push(chunk.last_index());
                 },
                 Statement::Continue => {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(INVALID_ADDR);
-                    self.loop_continue_patch.push(chunk.last_index());
+                    self.loop_continue_patch.last_mut().unwrap().push(chunk.last_index());
                 }
             }
         }
