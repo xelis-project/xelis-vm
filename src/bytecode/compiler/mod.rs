@@ -296,9 +296,9 @@ impl<'a> Compiler<'a> {
                     // Compile the expression
                     self.compile_expr(chunk, expr_values);
 
-                    chunk.emit_opcode(OpCode::IterableBegin);
+                    chunk.emit_opcode(OpCode::IteratorBegin);
                     let start_index = chunk.index();
-                    chunk.emit_opcode(OpCode::IterableNext);
+                    chunk.emit_opcode(OpCode::IteratorNext);
                     chunk.write_u32(INVALID_ADDR);
                     let jump_end = chunk.last_index();
 
@@ -313,8 +313,11 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(start_index as u32);
 
-                    // Patch the IterableNext
-                    let end_index = chunk.index();
+                    // End of the iterator
+                    chunk.emit_opcode(OpCode::IteratorEnd);
+                    let end_index = chunk.last_index();
+
+                    // Patch the IterableNext to jump on IteratorEnd
                     chunk.patch_jump(jump_end, end_index as u32);
 
                     self.end_loop(chunk, start_index, end_index);
@@ -583,12 +586,13 @@ mod tests {
                 OpCode::Constant.as_byte(), 2, 0,
                 // [1, 2, 3]
                 OpCode::NewArray.as_byte(), 3, 0, 0, 0,
-                OpCode::IterableBegin.as_byte(),
-                OpCode::IterableNext.as_byte(), 32, 0, 0, 0,
+                OpCode::IteratorBegin.as_byte(),
+                OpCode::IteratorNext.as_byte(), 32, 0, 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
                 OpCode::Jump.as_byte(), 15, 0, 0, 0,
+                OpCode::IteratorEnd.as_byte(),
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
             ]

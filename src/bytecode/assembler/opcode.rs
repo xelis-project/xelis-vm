@@ -55,13 +55,15 @@ pub enum OpCodeWithArgs {
     },
     // pop value, get iterable length, push
     IterableLength,
-    IterableBegin,
+    IteratorBegin,
     // Push next element of an iterable
-    // If no element left, jump to defined address
-    IterableNext {
+    // If no element left, jump to defined address and pop the iterator
+    IteratorNext {
         // Jump to address if no next element
         addr: u32
     },
+    // Pop the iterator
+    IteratorEnd,
     // Return will stop processing the opcodes of a chunk
     Return,
 
@@ -189,8 +191,9 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::JumpIfFalse { .. } => OpCode::JumpIfFalse,
 
             OpCodeWithArgs::IterableLength => OpCode::IterableLength,
-            OpCodeWithArgs::IterableBegin => OpCode::IterableBegin,
-            OpCodeWithArgs::IterableNext { .. } => OpCode::IterableNext,
+            OpCodeWithArgs::IteratorBegin => OpCode::IteratorBegin,
+            OpCodeWithArgs::IteratorNext { .. } => OpCode::IteratorNext,
+            OpCodeWithArgs::IteratorEnd => OpCode::IteratorEnd,
 
             OpCodeWithArgs::Return => OpCode::Return,
             OpCodeWithArgs::ArrayCall { .. } => OpCode::ArrayCall,
@@ -265,7 +268,7 @@ impl OpCodeWithArgs {
                 chunk.write_bool(*on_value);
                 chunk.write_u8(*args_count);
             },
-            OpCodeWithArgs::IterableNext { addr } => chunk.write_u32(*addr),
+            OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::NewArray { length } => chunk.write_u32(*length),
             OpCodeWithArgs::NewStruct { struct_id } => chunk.write_u16(*struct_id),
             _ => {}
@@ -397,14 +400,14 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::IterableLength
             },
-            "ITERABLEBEGIN" => {
+            "ITERATORBEGIN" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::IterableBegin
+                OpCodeWithArgs::IteratorBegin
             },
-            "ITERABLENEXT" => {
+            "ITERATORNEXT" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -417,9 +420,16 @@ impl OpCodeWithArgs {
                     addr_arg.parse().map_err(|_| "Invalid address")?
                 };
 
-                OpCodeWithArgs::IterableNext {
+                OpCodeWithArgs::IteratorNext {
                     addr
                 }
+            },
+            "ITERATOREND" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::IteratorEnd
             },
             "RETURN" => {
                 if !args.is_empty() {

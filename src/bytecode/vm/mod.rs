@@ -344,19 +344,21 @@ impl<'a> VM<'a> {
                         let len = value.as_ref().as_vec()?.len();
                         self.push_stack(Path::Owned(Value::U32(len as u32)));
                     },
-                    OpCode::IterableBegin => {
+                    OpCode::IteratorBegin => {
                         let value = self.pop_stack()?;
                         let iterator = PathIterator::new(value);
                         manager.add_iterator(iterator);
                     },
-                    OpCode::IterableNext => {
+                    OpCode::IteratorNext => {
                         let addr = manager.read_u32()?;
                         if let Some(value) = manager.next_iterator()? {
                             self.push_stack(value);
                         } else {
-                            manager.pop_iterator()?;
                             manager.set_index(addr as usize);
                         }
+                    },
+                    OpCode::IteratorEnd => {
+                        manager.pop_iterator()?;
                     },
                     OpCode::Swap => {
                         let index = manager.read_u8()?;
@@ -785,8 +787,8 @@ mod tests {
         chunk.write_u16(0);
 
         // Start iterator
-        chunk.emit_opcode(OpCode::IterableBegin);
-        chunk.emit_opcode(OpCode::IterableNext);
+        chunk.emit_opcode(OpCode::IteratorBegin);
+        chunk.emit_opcode(OpCode::IteratorNext);
         let start_iterator_index = chunk.last_index();
         chunk.write_u32(0);
         let patch_addr = chunk.last_index();

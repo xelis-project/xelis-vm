@@ -1,5 +1,6 @@
 use crate::{values::ValueError, Path};
 
+#[derive(Debug)]
 pub struct PathIterator<'a> {
     inner: Path<'a>,
     index: usize,
