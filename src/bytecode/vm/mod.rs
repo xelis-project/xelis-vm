@@ -41,20 +41,20 @@ macro_rules! op_bool {
 }
 
 macro_rules! opcode_op {
-    ($manager: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $macr: tt, $op: tt) => {
         {
-            let right = $manager.pop_stack()?;
-            let left = $manager.pop_stack()?;
-            $manager.push_stack(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op)));
+            let right = $self.pop_stack()?;
+            let left = $self.pop_stack()?;
+            $self.push_stack(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op)));
         }
     };
 }
 
 macro_rules! opcode_op_assign {
-    ($manager: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $macr: tt, $op: tt) => {
         {
-            let right = $manager.pop_stack()?;
-            let mut left = $manager.pop_stack()?;
+            let right = $self.pop_stack()?;
+            let mut left = $self.pop_stack()?;
             let result = $macr!(left.as_ref(), right.as_ref(), $op);
             *left.as_mut() = result;
         }
@@ -71,7 +71,11 @@ pub struct VM<'a> {
     // The environment of the VM
     environment: &'a Environment,
     // The call stack of the VM
+    // Every chunks to proceed are stored here
     call_stack: Vec<ChunkManager<'a>>,
+    // The stack of the VM
+    // Every values are stored here
+    stack: Vec<Path<'a>>,
 }
 
 impl<'a> VM<'a> {
@@ -80,8 +84,57 @@ impl<'a> VM<'a> {
         VM {
             module,
             environment,
-            call_stack: Vec::new(),
+            call_stack: Vec::with_capacity(4),
+            stack: Vec::with_capacity(16),
         }
+    }
+
+    // Get the stack
+    #[inline]
+    pub fn get_stack(&self) -> &Vec<Path<'a>> {
+        &self.stack
+    }
+
+    // Push a value to the stack
+    #[inline]
+    pub fn push_stack(&mut self, value: Path<'a>) {
+        self.stack.push(value);
+    }
+
+    // Swap in stack
+    #[inline]
+    pub fn swap_stack(&mut self, index: usize) -> Result<(), VMError> {
+        let len = self.stack.len();
+        if len <= index {
+            return Err(VMError::StackIndexOutOfBounds);
+        }
+
+        self.stack.swap(len - 1, len - 1 - index);
+        Ok(())
+    }
+
+    // Push multiple values to the stack
+    #[inline]
+    pub fn extend_stack<I: IntoIterator<Item = Path<'a>>>(&mut self, values: I) {
+        self.stack.extend(values);
+    }
+
+    // Get the last value from the stack
+    #[inline]
+    pub fn pop_stack(&mut self) -> Result<Path<'a>, VMError> {
+        self.stack.pop().ok_or(VMError::EmptyStack)
+    }
+
+    // Get the last value from the stack
+    #[inline]
+    pub fn last_stack(&self) -> Result<&Path<'a>, VMError> {
+        self.stack.last().ok_or(VMError::EmptyStack)
+    }
+
+    // Get the last mutable value from the stack
+    #[inline]
+    pub fn last_mut_stack(&mut self) -> Result<&mut Path<'a>, VMError> {
+        self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
     // Get a struct with an id
@@ -105,8 +158,8 @@ impl<'a> VM<'a> {
         let chunk = self.module.get_chunk_at(id as usize)
             .ok_or(VMError::ChunkNotFound)?;
 
-        let mut manager = ChunkManager::new(chunk);
-        manager.extend_stack(args);
+        self.extend_stack(args);
+        let manager = ChunkManager::new(chunk);
         self.call_stack.push(manager);
         Ok(())
     }
@@ -119,7 +172,7 @@ impl<'a> VM<'a> {
 
         'main: while let Some(mut manager) = self.call_stack.pop() {
             if let Some(value) = final_result.take() {
-                manager.push_stack(value);
+                self.push_stack(value);
             }
 
             while let Ok(op_code) = manager.read_op_code() {
@@ -127,26 +180,26 @@ impl<'a> VM<'a> {
                     OpCode::Constant => {
                         let index = manager.read_u16()? as usize;
                         let constant = self.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
-                        manager.push_stack(Path::Borrowed(constant));
+                        self.push_stack(Path::Borrowed(constant));
                     },
                     OpCode::MemoryLoad => {
                         let index = manager.read_u16()?;
                         let value = manager.from_register(index as usize)?
                             .shareable();
-                        manager.push_stack(value);
+                        self.push_stack(value);
                     },
                     OpCode::MemorySet => {
                         let index = manager.read_u16()?;
-                        let value = manager.pop_stack()?;
+                        let value = self.pop_stack()?;
                         manager.set_register(index as usize, value);
                     },
                     OpCode::Copy => {
-                        let value = manager.last_stack()?;
-                        manager.push_stack(value.clone());
+                        let value = self.last_stack()?;
+                        self.push_stack(value.clone());
                     },
                     OpCode::Cast => {
                         let _type = manager.read_type()?;
-                        let current = manager.pop_stack()?
+                        let current = self.pop_stack()?
                             .into_owned();
 
                         let value = match _type {
@@ -158,39 +211,43 @@ impl<'a> VM<'a> {
                             Type::String => Value::String(current.cast_to_string()?),
                             _ => return Err(VMError::UnsupportedCastType)
                         };
-                        manager.push_stack(Path::Owned(value));
+                        self.push_stack(Path::Owned(value));
                     },
                     OpCode::NewArray => {
                         let length = manager.read_u32()?;
                         let mut array = VecDeque::with_capacity(length as usize);
                         for _ in 0..length {
-                            array.push_front(Rc::new(RefCell::new(manager.pop_stack()?.into_owned())));
+                            array.push_front(Rc::new(RefCell::new(self.pop_stack()?.into_owned())));
                         }
 
-                        manager.push_stack(Path::Owned(Value::Array(array.into())));
+                        self.push_stack(Path::Owned(Value::Array(array.into())));
                     },
                     OpCode::ArrayCall => {
-                        let index = manager.pop_stack()?.into_owned().cast_to_u32()?;
-                        let value = manager.pop_stack()?;
-                        manager.push_stack(value.get_sub_variable(index as usize)?);
+                        let index = self.pop_stack()?.into_owned().cast_to_u32()?;
+                        let value = self.pop_stack()?;
+                        self.push_stack(value.get_sub_variable(index as usize)?);
                     },
                     OpCode::InvokeChunk => {
                         let id = manager.read_u16()?;
                         let on_value = manager.read_bool()?;
-                        let args = manager.read_u8()?;
+                        let mut args = manager.read_u8()? as usize;
+                        if on_value {
+                            args += 1;
+                        }
+
+                        // We need to reverse the order of the arguments
+                        let len = self.stack.len();
+                        if len < args {
+                            return Err(VMError::NotEnoughArguments);
+                        }
+
+                        self.stack[len - args..].reverse();
 
                         // Find the chunk
                         let chunk = self.module.get_chunk_at(id as usize)
                             .ok_or(VMError::ChunkNotFound)?;
 
-                        let mut new_manager = ChunkManager::new(chunk);
-
-                        // Take the arguments from the stack
-                        // Reverse it because we want to push them in the right order
-                        new_manager.extend_stack(manager.take_from_stack(args as usize).rev());
-                        if on_value {
-                            new_manager.push_stack(manager.pop_stack()?);
-                        }
+                        let new_manager = ChunkManager::new(chunk);
 
                         // Add back our current state to the stack
                         self.call_stack.push(manager);
@@ -206,11 +263,11 @@ impl<'a> VM<'a> {
 
                         let mut arguments = VecDeque::with_capacity(args as usize);
                         for _ in 0..args {
-                            arguments.push_front(manager.pop_stack()?);
+                            arguments.push_front(self.pop_stack()?);
                         }
 
                         let mut on_value = if on_value {
-                            Some(manager.pop_stack()?)
+                            Some(self.pop_stack()?)
                         } else {
                             None
                         };
@@ -224,7 +281,7 @@ impl<'a> VM<'a> {
                         };
 
                         if let Some(v) = func.call_function(instance.as_deref_mut(), arguments.into())? {
-                            manager.push_stack(Path::Owned(v));
+                            self.push_stack(Path::Owned(v));
                         }
                     },
                     OpCode::NewStruct => {
@@ -232,50 +289,50 @@ impl<'a> VM<'a> {
                         let structure = self.get_struct_with_id(id)?;
                         let mut fields = VecDeque::new();
                         for _ in 0..structure.fields.len() {
-                            fields.push_front(Rc::new(RefCell::new(manager.pop_stack()?.into_owned())));
+                            fields.push_front(Rc::new(RefCell::new(self.pop_stack()?.into_owned())));
                         }
     
-                        manager.push_stack(Path::Owned(Value::Struct(id, fields.into())));
+                        self.push_stack(Path::Owned(Value::Struct(id, fields.into())));
                     },
-                    OpCode::Add => opcode_op!(manager, op, +),
-                    OpCode::Sub => opcode_op!(manager, op, -),
-                    OpCode::Mul => opcode_op!(manager, op, *),
-                    OpCode::Div => opcode_op!(manager, op, /),
-                    OpCode::Xor => opcode_op!(manager, op, ^),
-                    OpCode::Mod => opcode_op!(manager, op, %),
-                    OpCode::And => opcode_op!(manager, op, &),
-                    OpCode::Or => opcode_op!(manager, op, |),
-                    OpCode::Shl => opcode_op!(manager, op, <<),
-                    OpCode::Shr => opcode_op!(manager, op, >>),
-                    OpCode::Eq => opcode_op!(manager, op_bool, ==),
-                    OpCode::Gt => opcode_op!(manager, op_bool, >),
-                    OpCode::Lt => opcode_op!(manager, op_bool, <),
-                    OpCode::Gte => opcode_op!(manager, op_bool, >=),
-                    OpCode::Lte => opcode_op!(manager, op_bool, <=),
+                    OpCode::Add => opcode_op!(self, op, +),
+                    OpCode::Sub => opcode_op!(self, op, -),
+                    OpCode::Mul => opcode_op!(self, op, *),
+                    OpCode::Div => opcode_op!(self, op, /),
+                    OpCode::Xor => opcode_op!(self, op, ^),
+                    OpCode::Mod => opcode_op!(self, op, %),
+                    OpCode::And => opcode_op!(self, op, &),
+                    OpCode::Or => opcode_op!(self, op, |),
+                    OpCode::Shl => opcode_op!(self, op, <<),
+                    OpCode::Shr => opcode_op!(self, op, >>),
+                    OpCode::Eq => opcode_op!(self, op_bool, ==),
+                    OpCode::Gt => opcode_op!(self, op_bool, >),
+                    OpCode::Lt => opcode_op!(self, op_bool, <),
+                    OpCode::Gte => opcode_op!(self, op_bool, >=),
+                    OpCode::Lte => opcode_op!(self, op_bool, <=),
                     OpCode::Neg => {
-                        let value = manager.pop_stack()?;
-                        manager.push_stack(Path::Owned(Value::Boolean(!value.as_bool()?)));
+                        let value = self.pop_stack()?;
+                        self.push_stack(Path::Owned(Value::Boolean(!value.as_bool()?)));
                     },
                     OpCode::Assign => {
-                        let right = manager.pop_stack()?.into_owned();
-                        let mut left = manager.pop_stack()?;
+                        let right = self.pop_stack()?.into_owned();
+                        let mut left = self.pop_stack()?;
                         *left.as_mut() = right;
                     },
-                    OpCode::AssignAdd => opcode_op_assign!(manager, op, +),
-                    OpCode::AssignSub => opcode_op_assign!(manager, op, -),
-                    OpCode::AssignMul => opcode_op_assign!(manager, op, *),
-                    OpCode::AssignDiv => opcode_op_assign!(manager, op, /),
-                    OpCode::AssignXor => opcode_op_assign!(manager, op, ^),
-                    OpCode::AssignMod => opcode_op_assign!(manager, op, %),
-                    OpCode::AssignAnd => opcode_op_assign!(manager, op, &),
-                    OpCode::AssignOr => opcode_op_assign!(manager, op, |),
-                    OpCode::AssignShl => opcode_op_assign!(manager, op, <<),
-                    OpCode::AssignShr => opcode_op_assign!(manager, op, >>),
+                    OpCode::AssignAdd => opcode_op_assign!(self, op, +),
+                    OpCode::AssignSub => opcode_op_assign!(self, op, -),
+                    OpCode::AssignMul => opcode_op_assign!(self, op, *),
+                    OpCode::AssignDiv => opcode_op_assign!(self, op, /),
+                    OpCode::AssignXor => opcode_op_assign!(self, op, ^),
+                    OpCode::AssignMod => opcode_op_assign!(self, op, %),
+                    OpCode::AssignAnd => opcode_op_assign!(self, op, &),
+                    OpCode::AssignOr => opcode_op_assign!(self, op, |),
+                    OpCode::AssignShl => opcode_op_assign!(self, op, <<),
+                    OpCode::AssignShr => opcode_op_assign!(self, op, >>),
 
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
-                        let path = manager.pop_stack()?;
-                        manager.push_stack(path.get_sub_variable(index as usize)?);
+                        let path = self.pop_stack()?;
+                        self.push_stack(path.get_sub_variable(index as usize)?);
                     },
                     OpCode::Jump => {
                         let index = manager.read_u32()?;
@@ -283,25 +340,25 @@ impl<'a> VM<'a> {
                     },
                     OpCode::JumpIfFalse => {
                         let index = manager.read_u32()?;
-                        let value = manager.pop_stack()?;
+                        let value = self.pop_stack()?;
                         if !value.as_bool()? {
                             manager.set_index(index as usize);
                         }
                     },
                     OpCode::IterableLength => {
-                        let value = manager.pop_stack()?;
+                        let value = self.pop_stack()?;
                         let len = value.as_ref().as_vec()?.len();
-                        manager.push_stack(Path::Owned(Value::U32(len as u32)));
+                        self.push_stack(Path::Owned(Value::U32(len as u32)));
                     },
                     OpCode::IterableBegin => {
-                        let value = manager.pop_stack()?;
+                        let value = self.pop_stack()?;
                         let iterator = PathIterator::new(value);
                         manager.add_iterator(iterator);
                     },
                     OpCode::IterableNext => {
                         let addr = manager.read_u32()?;
                         if let Some(value) = manager.next_iterator()? {
-                            manager.push_stack(value);
+                            self.push_stack(value);
                         } else {
                             manager.pop_iterator()?;
                             manager.set_index(addr as usize);
@@ -309,10 +366,10 @@ impl<'a> VM<'a> {
                     },
                     OpCode::Swap => {
                         let index = manager.read_u8()?;
-                        manager.swap_stack(index as usize)?;
+                        self.swap_stack(index as usize)?;
                     }
                     OpCode::Inc => {
-                        let v = manager.last_mut_stack()?;
+                        let v = self.last_mut_stack()?;
                         v.as_mut().increment()?;
                     },
                     OpCode::Return => {
@@ -325,7 +382,7 @@ impl<'a> VM<'a> {
                 }
             }
 
-            final_result = manager.pop_stack().ok();
+            final_result = self.pop_stack().ok();
         }
 
         Ok(final_result.ok_or(VMError::NoValue)?.into_owned())

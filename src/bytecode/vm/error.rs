@@ -21,7 +21,8 @@ pub enum VMError {
     ValueError(ValueError),
     IncrementError,
     EmptyIterator,
-    StackIndexOutOfBounds
+    StackIndexOutOfBounds,
+    NotEnoughArguments
 }
 
 impl From<EnvironmentError> for VMError {

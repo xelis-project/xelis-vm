@@ -1,6 +1,6 @@
 mod reader;
 
-use std::{ops::{Deref, DerefMut}, vec::Drain};
+use std::ops::{Deref, DerefMut};
 
 pub use reader::ChunkReader;
 
@@ -12,8 +12,6 @@ use super::{iterator::PathIterator, VMError};
 // It contains the reader and the stacks
 pub struct ChunkManager<'a> {
     reader: ChunkReader<'a>,
-    // Stack of values
-    stack: Vec<Path<'a>>,
     // Registers
     registers: Vec<Path<'a>>,
     // Iterators stack
@@ -28,16 +26,9 @@ impl<'a> ChunkManager<'a> {
     pub fn new(chunk: &'a Chunk) -> Self {
         ChunkManager {
             reader: ChunkReader::new(chunk),
-            stack: Vec::new(),
             registers: Vec::new(),
             iterators: Vec::new(),
         }
-    }
-
-    // Get the stack
-    #[inline]
-    pub fn get_stack(&self) -> &Vec<Path<'a>> {
-        &self.stack
     }
 
     // Get the registers
@@ -61,53 +52,6 @@ impl<'a> ChunkManager<'a> {
         Ok(self.iterators.last_mut()
             .ok_or(VMError::EmptyIterator)?
             .next()?)
-    }
-
-    // Push a value to the stack
-    #[inline]
-    pub fn push_stack(&mut self, value: Path<'a>) {
-        self.stack.push(value);
-    }
-
-    // Swap in stack
-    #[inline]
-    pub fn swap_stack(&mut self, index: usize) -> Result<(), VMError> {
-        let len = self.stack.len();
-        if len <= index {
-            return Err(VMError::StackIndexOutOfBounds);
-        }
-
-        self.stack.swap(len - 1, len - 1 - index);
-        Ok(())
-    }
-
-    // Take multiple values from the stack
-    pub fn take_from_stack<'b>(&'b mut self, count: usize) -> Drain<'b, Path<'a>> {
-        self.stack.drain(self.stack.len() - count..)
-    }
-
-    // Push multiple values to the stack
-    #[inline]
-    pub fn extend_stack<I: IntoIterator<Item = Path<'a>>>(&mut self, values: I) {
-        self.stack.extend(values);
-    }
-
-    // Get the last value from the stack
-    #[inline]
-    pub fn pop_stack(&mut self) -> Result<Path<'a>, VMError> {
-        self.stack.pop().ok_or(VMError::EmptyStack)
-    }
-
-    // Get the last value from the stack
-    #[inline]
-    pub fn last_stack(&self) -> Result<&Path<'a>, VMError> {
-        self.stack.last().ok_or(VMError::EmptyStack)
-    }
-
-    // Get the last mutable value from the stack
-    #[inline]
-    pub fn last_mut_stack(&mut self) -> Result<&mut Path<'a>, VMError> {
-        self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
     // Push/set a new value into the registers
