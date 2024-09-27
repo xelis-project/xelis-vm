@@ -45,7 +45,8 @@ macro_rules! opcode_op {
         {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
-            $self.push_stack(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op)));
+            // Push the result to the stack, no need to check as we poped 2 values
+            $self.push_stack_unchecked(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op)));
         }
     };
 }
@@ -60,6 +61,13 @@ macro_rules! opcode_op_assign {
         }
     };
 }
+
+// 256 elements maximum in the stack:
+// Function Call can have up to 255 arguments and 1 on value
+const STACK_SIZE: usize = 256;
+
+// 64 elements maximum in the call stack
+const CALL_STACK_SIZE: usize = 64;
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
 // TODO: to be configurable, use a InstructionTable of 256 entries
@@ -91,13 +99,25 @@ impl<'a> VM<'a> {
 
     // Get the stack
     #[inline]
-    pub fn get_stack(&self) -> &Vec<Path<'a>> {
+    pub fn get_stack(&self) -> &[Path<'a>] {
         &self.stack
     }
 
     // Push a value to the stack
     #[inline]
-    pub fn push_stack(&mut self, value: Path<'a>) {
+    pub fn push_stack(&mut self, value: Path<'a>) -> Result<(), VMError> {
+        if self.stack.len() >= STACK_SIZE {
+            return Err(VMError::StackOverflow);
+        }
+
+        self.push_stack_unchecked(value);
+
+        Ok(())
+    }
+
+    // Push a value to the stack without checking the stack size
+    #[inline(always)]
+    fn push_stack_unchecked(&mut self, value: Path<'a>) {
         self.stack.push(value);
     }
 
@@ -115,8 +135,13 @@ impl<'a> VM<'a> {
 
     // Push multiple values to the stack
     #[inline]
-    pub fn extend_stack<I: IntoIterator<Item = Path<'a>>>(&mut self, values: I) {
+    fn extend_stack<I: IntoIterator<Item = Path<'a>> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
+        if self.stack.len() + values.len() >= STACK_SIZE {
+            return Err(VMError::StackOverflow);
+        }
+
         self.stack.extend(values);
+        Ok(())
     }
 
     // Get the last value from the stack
@@ -145,6 +170,10 @@ impl<'a> VM<'a> {
 
     // Invoke a chunk using its id
     pub fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
+        if self.call_stack.len() >= CALL_STACK_SIZE {
+            return Err(VMError::CallStackOverflow);
+        }
+
         let chunk = self.module.get_chunk_at(id as usize)
             .ok_or(VMError::ChunkNotFound)?;
 
@@ -155,13 +184,8 @@ impl<'a> VM<'a> {
 
     // Invoke a chunk using its id and arguments
     pub fn invoke_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
-        let chunk = self.module.get_chunk_at(id as usize)
-            .ok_or(VMError::ChunkNotFound)?;
-
-        self.extend_stack(args);
-        let manager = ChunkManager::new(chunk);
-        self.call_stack.push(manager);
-        Ok(())
+        self.extend_stack(args.into_iter())?;
+        self.invoke_chunk_id(id)
     }
 
     // Run the VM
@@ -174,13 +198,16 @@ impl<'a> VM<'a> {
                     OpCode::Constant => {
                         let index = manager.read_u16()? as usize;
                         let constant = self.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
-                        self.push_stack(Path::Borrowed(constant));
+                        self.push_stack(Path::Borrowed(constant))?;
+                    },
+                    OpCode::Pop => {
+                        self.pop_stack()?;
                     },
                     OpCode::MemoryLoad => {
                         let index = manager.read_u16()?;
                         let value = manager.from_register(index as usize)?
                             .shareable();
-                        self.push_stack(value);
+                        self.push_stack(value)?;
                     },
                     OpCode::MemorySet => {
                         let index = manager.read_u16()?;
@@ -189,7 +216,7 @@ impl<'a> VM<'a> {
                     },
                     OpCode::Copy => {
                         let value = self.last_stack()?;
-                        self.push_stack(value.clone());
+                        self.push_stack(value.clone())?;
                     },
                     OpCode::Cast => {
                         let _type = manager.read_type()?;
@@ -205,21 +232,23 @@ impl<'a> VM<'a> {
                             Type::String => Value::String(current.cast_to_string()?),
                             _ => return Err(VMError::UnsupportedCastType)
                         };
-                        self.push_stack(Path::Owned(value));
+                        self.push_stack(Path::Owned(value))?;
                     },
                     OpCode::NewArray => {
                         let length = manager.read_u32()?;
                         let mut array = VecDeque::with_capacity(length as usize);
                         for _ in 0..length {
-                            array.push_front(Rc::new(RefCell::new(self.pop_stack()?.into_owned())));
+                            let pop = self.pop_stack()?;
+                            array.push_front(Rc::new(RefCell::new(pop.into_owned())));
                         }
 
-                        self.push_stack(Path::Owned(Value::Array(array.into())));
+                        self.push_stack(Path::Owned(Value::Array(array.into())))?;
                     },
                     OpCode::ArrayCall => {
                         let index = self.pop_stack()?.into_owned().cast_to_u32()?;
                         let value = self.pop_stack()?;
-                        self.push_stack(value.get_sub_variable(index as usize)?);
+                        let sub = value.get_sub_variable(index as usize)?;
+                        self.push_stack_unchecked(sub);
                     },
                     OpCode::InvokeChunk => {
                         let id = manager.read_u16()?;
@@ -237,16 +266,11 @@ impl<'a> VM<'a> {
 
                         self.stack[len - args..].reverse();
 
-                        // Find the chunk
-                        let chunk = self.module.get_chunk_at(id as usize)
-                            .ok_or(VMError::ChunkNotFound)?;
-
-                        let new_manager = ChunkManager::new(chunk);
-
                         // Add back our current state to the stack
                         self.call_stack.push(manager);
 
-                        self.call_stack.push(new_manager);
+                        // Invoke the new chunk to the top of the stack
+                        self.invoke_chunk_id(id)?;
     
                         continue 'main;
                     },
@@ -275,7 +299,7 @@ impl<'a> VM<'a> {
                         };
 
                         if let Some(v) = func.call_function(instance.as_deref_mut(), arguments.into())? {
-                            self.push_stack(Path::Owned(v));
+                            self.push_stack(Path::Owned(v))?;
                         }
                     },
                     OpCode::NewStruct => {
@@ -286,7 +310,7 @@ impl<'a> VM<'a> {
                             fields.push_front(Rc::new(RefCell::new(self.pop_stack()?.into_owned())));
                         }
     
-                        self.push_stack(Path::Owned(Value::Struct(id, fields.into())));
+                        self.push_stack(Path::Owned(Value::Struct(id, fields.into())))?;
                     },
                     OpCode::Add => opcode_op!(self, op, +),
                     OpCode::Sub => opcode_op!(self, op, -),
@@ -305,7 +329,7 @@ impl<'a> VM<'a> {
                     OpCode::Lte => opcode_op!(self, op_bool, <=),
                     OpCode::Neg => {
                         let value = self.pop_stack()?;
-                        self.push_stack(Path::Owned(Value::Boolean(!value.as_bool()?)));
+                        self.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?)));
                     },
                     OpCode::Assign => {
                         let right = self.pop_stack()?.into_owned();
@@ -326,7 +350,8 @@ impl<'a> VM<'a> {
                     OpCode::SubLoad => {
                         let index = manager.read_u16()?;
                         let path = self.pop_stack()?;
-                        self.push_stack(path.get_sub_variable(index as usize)?);
+                        let sub = path.get_sub_variable(index as usize)?;
+                        self.push_stack_unchecked(sub);
                     },
                     OpCode::Jump => {
                         let index = manager.read_u32()?;
@@ -342,7 +367,7 @@ impl<'a> VM<'a> {
                     OpCode::IterableLength => {
                         let value = self.pop_stack()?;
                         let len = value.as_ref().as_vec()?.len();
-                        self.push_stack(Path::Owned(Value::U32(len as u32)));
+                        self.push_stack_unchecked(Path::Owned(Value::U32(len as u32)));
                     },
                     OpCode::IteratorBegin => {
                         let value = self.pop_stack()?;
@@ -352,7 +377,7 @@ impl<'a> VM<'a> {
                     OpCode::IteratorNext => {
                         let addr = manager.read_u32()?;
                         if let Some(value) = manager.next_iterator()? {
-                            self.push_stack(value);
+                            self.push_stack(value)?;
                         } else {
                             manager.set_index(addr as usize);
                         }

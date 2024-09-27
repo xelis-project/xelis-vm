@@ -22,7 +22,9 @@ pub enum VMError {
     IncrementError,
     EmptyIterator,
     StackIndexOutOfBounds,
-    NotEnoughArguments
+    NotEnoughArguments,
+    StackOverflow,
+    CallStackOverflow
 }
 
 impl From<EnvironmentError> for VMError {
