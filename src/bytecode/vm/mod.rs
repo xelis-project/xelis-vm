@@ -2,7 +2,7 @@ mod chunk;
 mod error;
 mod iterator;
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, mem, rc::Rc};
 
 pub use error::VMError;
 pub use chunk::*;
@@ -83,7 +83,9 @@ pub struct VM<'a> {
     call_stack: Vec<ChunkManager<'a>>,
     // The stack of the VM
     // Every values are stored here
-    stack: Vec<Path<'a>>,
+    stack: [Path<'a>; STACK_SIZE],
+    // The size of the stack
+    stack_size: usize,
 }
 
 impl<'a> VM<'a> {
@@ -93,7 +95,8 @@ impl<'a> VM<'a> {
             module,
             environment,
             call_stack: Vec::with_capacity(4),
-            stack: Vec::with_capacity(16),
+            stack: [const { Path::Owned(Value::Null) }; STACK_SIZE],
+            stack_size: 0,
         }
     }
 
@@ -106,7 +109,7 @@ impl<'a> VM<'a> {
     // Push a value to the stack
     #[inline]
     pub fn push_stack(&mut self, value: Path<'a>) -> Result<(), VMError> {
-        if self.stack.len() >= STACK_SIZE {
+        if self.stack_size >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
 
@@ -118,13 +121,14 @@ impl<'a> VM<'a> {
     // Push a value to the stack without checking the stack size
     #[inline(always)]
     fn push_stack_unchecked(&mut self, value: Path<'a>) {
-        self.stack.push(value);
+        self.stack[self.stack_size] = value;
+        self.stack_size += 1;
     }
 
     // Swap in stack
     #[inline]
     pub fn swap_stack(&mut self, index: usize) -> Result<(), VMError> {
-        let len = self.stack.len();
+        let len = self.stack_size;
         if len <= index {
             return Err(VMError::StackIndexOutOfBounds);
         }
@@ -136,30 +140,46 @@ impl<'a> VM<'a> {
     // Push multiple values to the stack
     #[inline]
     fn extend_stack<I: IntoIterator<Item = Path<'a>> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
-        if self.stack.len() + values.len() >= STACK_SIZE {
+        let start_index = self.stack_size;
+        let end_index = start_index + values.len();
+        if end_index >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
 
-        self.stack.extend(values);
+        self.stack[start_index..end_index].iter_mut()
+            .zip(values)
+            .for_each(|(a, b)| *a = b);
+
         Ok(())
     }
 
     // Get the last value from the stack
     #[inline]
     pub fn pop_stack(&mut self) -> Result<Path<'a>, VMError> {
-        self.stack.pop().ok_or(VMError::EmptyStack)
+        if self.stack_size == 0 {
+            return Err(VMError::EmptyStack);
+        }
+
+        self.stack_size -= 1;
+        Ok(mem::take(&mut self.stack[self.stack_size]))
     }
 
     // Get the last value from the stack
     #[inline]
     pub fn last_stack(&self) -> Result<&Path<'a>, VMError> {
-        self.stack.last().ok_or(VMError::EmptyStack)
+        if self.stack_size == 0 {
+            return Err(VMError::EmptyStack);
+        }
+        Ok(&self.stack[self.stack_size - 1])
     }
 
     // Get the last mutable value from the stack
     #[inline]
     pub fn last_mut_stack(&mut self) -> Result<&mut Path<'a>, VMError> {
-        self.stack.last_mut().ok_or(VMError::EmptyStack)
+        if self.stack_size == 0 {
+            return Err(VMError::EmptyStack);
+        }
+        Ok(&mut self.stack[self.stack_size - 1])
     }
 
     // Get a struct with an id
@@ -259,12 +279,12 @@ impl<'a> VM<'a> {
                         }
 
                         // We need to reverse the order of the arguments
-                        let len = self.stack.len();
+                        let len = self.stack_size;
                         if len < args {
                             return Err(VMError::NotEnoughArguments);
                         }
 
-                        self.stack[len - args..].reverse();
+                        self.stack[len - args..len].reverse();
 
                         // Add back our current state to the stack
                         self.call_stack.push(manager);

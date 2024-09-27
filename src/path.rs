@@ -15,6 +15,12 @@ pub enum Path<'a> {
     Wrapper(Rc<RefCell<Value>>)
 }
 
+impl Default for Path<'_> {
+    fn default() -> Self {
+        Self::Owned(Value::Null)
+    }
+}
+
 impl<'a> Path<'a> {
     #[inline(always)]
     pub fn as_bool<'b: 'a>(&'b self) -> Result<bool, ValueError> {
