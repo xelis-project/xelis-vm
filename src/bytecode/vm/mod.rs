@@ -168,13 +168,7 @@ impl<'a> VM<'a> {
     // It will execute the bytecode
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<Value, VMError> {
-        let mut final_result = None;
-
         'main: while let Some(mut manager) = self.call_stack.pop() {
-            if let Some(value) = final_result.take() {
-                self.push_stack(value);
-            }
-
             while let Ok(op_code) = manager.read_op_code() {
                 match op_code {
                     OpCode::Constant => {
@@ -381,11 +375,9 @@ impl<'a> VM<'a> {
                     }
                 }
             }
-
-            final_result = self.pop_stack().ok();
         }
 
-        Ok(final_result.ok_or(VMError::NoValue)?.into_owned())
+        Ok(self.pop_stack()?.into_owned())
     }
 }
 

@@ -12,7 +12,7 @@ use super::{iterator::PathIterator, VMError};
 // It contains the reader and the stacks
 pub struct ChunkManager<'a> {
     reader: ChunkReader<'a>,
-    // Registers
+    // Registers are temporary and "scoped" per chunk
     registers: Vec<Path<'a>>,
     // Iterators stack
     iterators: Vec<PathIterator<'a>>,
