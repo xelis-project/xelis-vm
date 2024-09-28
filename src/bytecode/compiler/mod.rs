@@ -201,7 +201,7 @@ impl<'a> Compiler<'a> {
 
     // Push the next register store id
     fn push_mem_scope(&mut self) {
-        self.memstore_ids.push(self.memstore_ids.last().unwrap().clone());
+        self.memstore_ids.push(self.memstore_ids.last().copied().unwrap_or(0));
     }
 
     // Pop the next register store id
