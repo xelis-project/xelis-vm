@@ -37,7 +37,7 @@ impl<'a> Compiler<'a> {
             module: Module::new(),
             loop_break_patch: Vec::new(),
             loop_continue_patch: Vec::new(),
-            memstore_ids: vec![0],
+            memstore_ids: Vec::new(),
         }
     }
 
@@ -200,12 +200,12 @@ impl<'a> Compiler<'a> {
     }
 
     // Push the next register store id
-    fn push_next_id(&mut self) {
+    fn push_mem_scope(&mut self) {
         self.memstore_ids.push(self.memstore_ids.last().unwrap().clone());
     }
 
     // Pop the next register store id
-    fn pop_next_id(&mut self) {
+    fn pop_mem_scope(&mut self) {
         self.memstore_ids.pop();
     }
 
@@ -245,14 +245,14 @@ impl<'a> Compiler<'a> {
                     self.memstore(chunk);
                 },
                 Statement::Scope(statements) => {
-                    self.push_next_id();
+                    self.push_mem_scope();
                     self.compile_statements(chunk, statements);
-                    self.pop_next_id();
+                    self.pop_mem_scope();
                 },
                 Statement::If(condition, statements, else_statements) => {
                     self.compile_expr(chunk, condition);
 
-                    self.push_next_id();
+                    self.push_mem_scope();
 
                     // Emit the jump if false
                     // We will overwrite the addr later
@@ -263,7 +263,7 @@ impl<'a> Compiler<'a> {
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
-                    self.pop_next_id();
+                    self.pop_mem_scope();
 
                     let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
                     // Once finished, we must jump the false condition
@@ -281,9 +281,9 @@ impl<'a> Compiler<'a> {
 
                     // Compile the else condition
                     if let Some(else_statements) = else_statements {
-                        self.push_next_id();
+                        self.push_mem_scope();
                         self.compile_statements(chunk, else_statements);
-                        self.pop_next_id();
+                        self.pop_mem_scope();
                     }
 
                     if let Some(jump_valid_index) = jump_valid_index {
@@ -326,7 +326,7 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     let jump_end = chunk.last_index();
 
-                    self.push_next_id();
+                    self.push_mem_scope();
 
                     // Store the value
                     self.memstore(chunk);
@@ -335,7 +335,7 @@ impl<'a> Compiler<'a> {
                     // Compile the valid condition
                     self.compile_statements(chunk, statements);
 
-                    self.pop_next_id();
+                    self.pop_mem_scope();
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -351,7 +351,7 @@ impl<'a> Compiler<'a> {
                     self.end_loop(chunk, start_index, end_index);
                 }
                 Statement::For(var, expr_condition, expr_op, statements) => {
-                    self.push_next_id();
+                    self.push_mem_scope();
                     // Compile the variable
                     self.compile_expr(chunk, &var.value);
                     self.memstore(chunk);
@@ -373,7 +373,7 @@ impl<'a> Compiler<'a> {
                     // Compile the operation
                     let continue_index = chunk.index();
                     self.compile_expr(chunk, expr_op);
-                    self.pop_next_id();
+                    self.pop_mem_scope();
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -401,10 +401,10 @@ impl<'a> Compiler<'a> {
 
     // Compile the function
     fn compile_function(&mut self, function: &FunctionType) {
-        assert!(self.memstore_ids.len() == 1);
-        assert!(*self.memstore_ids.last_mut().unwrap() == 0);
         let mut chunk = Chunk::new();
 
+        // Push the new scope for ids
+        self.push_mem_scope();
         if function.get_instance_name().is_some() {
             self.memstore(&mut chunk);
         }
@@ -413,8 +413,11 @@ impl<'a> Compiler<'a> {
         for _ in function.get_parameters() {
             self.memstore(&mut chunk);
         }
-
+        
         self.compile_statements(&mut chunk, function.get_statements());
+
+        // Pop the scope for ids
+        self.pop_mem_scope();
 
         // Add the chunk to the module
         if function.is_entry() {
@@ -438,6 +441,7 @@ impl<'a> Compiler<'a> {
 
         assert!(self.loop_break_patch.is_empty(), "Loop break patch is not empty: {:?}", self.loop_break_patch);
         assert!(self.loop_continue_patch.is_empty(), "Loop continue patch is not empty: {:?}", self.loop_continue_patch);
+        assert!(self.memstore_ids.is_empty(), "Memory store ids is not empty: {:?}", self.memstore_ids);
 
         // Return the module
         Ok(self.module)
