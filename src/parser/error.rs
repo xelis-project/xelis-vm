@@ -29,7 +29,7 @@ pub enum ParserError<'a> {
     TypeNotFound(Token<'a>),
     NoIfBeforeElse,
     StructNameAlreadyUsed(String),
-    VariableNameAlreadyUsed(String),
+    VariableNameAlreadyUsed(&'a str),
     VariableIdAlreadyUsed(IdentifierType),
     FunctionSignatureAlreadyExist,
     UnexpectedVariable(String),

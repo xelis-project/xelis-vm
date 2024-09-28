@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::{
     ast::{Operator, Signature},
     environment::{NativeFunction, OnCallFn},
-    parser::{FunctionMapper, IdMapper, Mapper, StructBuilder, StructManager},
+    parser::{FunctionMapper, StructBuilder, StructManager},
     types::Type
 };
 
@@ -46,16 +46,8 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a structure in the environment
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
-        let mut mapper: Mapper<'a, Cow<'a, str>> = IdMapper::new();
-        let mut types = Vec::with_capacity(fields.len());
-        for (field_name, field_type) in fields {
-            mapper.register(Cow::Borrowed(field_name)).unwrap();
-            types.push(field_type);
-        }
-
         let builder = StructBuilder {
-            fields: types,
-            mapper
+            fields
         };
 
         let (id, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();

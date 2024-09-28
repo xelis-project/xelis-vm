@@ -5,8 +5,19 @@ use super::IdMapper;
 
 #[derive(Debug, Clone)]
 pub struct StructBuilder<'a> {
-    pub fields: Vec<Type>,
-    pub mapper: IdMapper<'a>
+    pub fields: Vec<(&'a str, Type)>
+}
+
+impl<'a> StructBuilder<'a> {
+    pub fn new() -> Self {
+        StructBuilder {
+            fields: Vec::new()
+        }
+    }
+
+    pub fn get_id_for_field(&self, name: &str) -> Option<IdentifierType> {
+        self.fields.iter().position(|(k, _)| *k == name).map(|v| v as IdentifierType)
+    }
 }
 
 #[derive(Debug)]
@@ -55,7 +66,7 @@ impl<'a> StructManager<'a> {
         }
 
         let id = self.mapper.register(name)?;
-        let s = Struct { fields: builder.fields.clone() };
+        let s = Struct { fields: builder.fields.iter().map(|(_, v)| v.clone()).collect() };
         self.structures.insert(id, builder);
 
         Ok((id, s))
@@ -85,7 +96,7 @@ impl<'a> StructManager<'a> {
 
     // Convert the struct manager into a hashmap of structs
     pub fn finalize(self) -> Vec<Struct> {
-        self.structures.into_iter().map(|(_, v)| Struct { fields: v.fields }).collect()
+        self.structures.into_iter().map(|(_, v)| Struct { fields: v.fields.into_iter().map(|(_, v)| v).collect() }).collect()
     }
 }
 
