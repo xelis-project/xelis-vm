@@ -1,9 +1,11 @@
 entry main() {
     let opt: optional<u8> = null;
     if opt.is_some() {
-        let v: u8 = opt.take();
+        let v: u8 = opt.unwrap();
         return v as u64
-    } else {
-        return 0
     }
+
+    opt = 55;
+
+    return opt.unwrap() as u64
 }
