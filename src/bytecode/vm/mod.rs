@@ -339,7 +339,12 @@ impl<'a> VM<'a> {
                         let value = value && self.pop_stack()?.as_bool()?;
                         self.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
                     },
-                    OpCode::Or => opcode_op!(self, op, |),
+                    OpCode::Or => {
+                        let right = self.pop_stack()?;
+                        let left = self.pop_stack()?;
+                        let value = left.as_bool()? || right.as_bool()?;
+                        self.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+                    },
                     OpCode::Shl => opcode_op!(self, op, <<),
                     OpCode::Shr => opcode_op!(self, op, >>),
                     OpCode::Eq => opcode_op!(self, op_bool, ==),
@@ -424,7 +429,10 @@ impl<'a> VM<'a> {
             }
         }
 
-        Ok(self.pop_stack()?.into_owned())
+        let end_value = self.pop_stack()?.into_owned();
+        assert!(self.stack.len() == 0);
+
+        Ok(end_value)
     }
 }
 

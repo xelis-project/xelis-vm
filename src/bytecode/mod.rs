@@ -31,6 +31,42 @@ mod tests {
     }
 
     #[test]
+    fn test_ternary() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                let y: u64 = x == 10 ? 20 : 30;
+                return y
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(20));
+    }
+
+    #[test]
+    fn test_ternary_negative() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 20;
+                let y: u64 = x == 10 ? 20 : 30;
+                return y
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(30));
+    }
+
+    #[test]
     fn test_if() {
         let code = r#"
             entry main() {
@@ -75,6 +111,30 @@ mod tests {
     }
 
     #[test]
+    fn test_and_positive() {
+        let code = r#"
+            func test(): bool {
+                return true
+            }
+
+            entry main() {
+                let x: u64 = 10;
+                if (x == 10) && test() {
+                    return x
+                }
+                return panic("x is not 10")
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(1).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
+    }
+
+    #[test]
     fn test_or() {
         let code = r#"
             func no_call(): bool {
@@ -96,6 +156,26 @@ mod tests {
         vm.invoke_chunk_id(1).unwrap();
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(0));
+    }
+
+    #[test]
+    fn test_or_negative() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                if false || (x == 10) {
+                    return x
+                }
+                return panic("unexpected")
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
     }
 
     #[test]

@@ -214,6 +214,7 @@ impl<'a> Compiler<'a> {
 
                         chunk.emit_opcode(OpCode::Copy);
                         chunk.emit_opcode(OpCode::Neg);
+
                         // We will overwrite the addr later
                         chunk.emit_opcode(OpCode::JumpIfFalse);
                         chunk.write_u32(INVALID_ADDR);
