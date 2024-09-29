@@ -173,6 +173,29 @@ impl Type {
         }
     }
 
+    // Check if current type can be casted to another type without loss of data
+    pub fn is_castable_to_no_loss(&self, other: &Type) -> bool {
+        match self {
+            Type::U8 => match other {
+                Type::U16 | Type::U32 | Type::U64 | Type::U128 => true,
+                _ => false
+            },
+            Type::U16 => match other {
+                Type::U32 | Type::U64 | Type::U128 => true,
+                _ => false
+            },
+            Type::U32 => match other {
+                Type::U64 | Type::U128 => true,
+                _ => false
+            },
+            Type::U64 => match other {
+                Type::U128 => true,
+                _ => false
+            },
+            _ => false
+        }
+    }
+
     pub fn is_array(&self) -> bool {
         match &self {
             Type::Array(_) => true,

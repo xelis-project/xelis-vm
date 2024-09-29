@@ -1,5 +1,7 @@
-use std::{borrow::{Borrow, Cow}, collections::HashMap, fmt::Debug, hash::Hash};
+use std::{borrow::{Borrow, Cow}, collections::HashMap, fmt::Debug, hash::Hash, mem::take};
 use crate::{ast::Signature, IdentifierType, ParserError};
+
+use super::Expression;
 
 pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
 pub type FunctionMapper<'a> = Mapper<'a, Signature>;
@@ -92,26 +94,41 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
 }
 
 impl<'a> FunctionMapper<'a> {
-    pub fn get_compatible(&self, key: Signature) -> Result<IdentifierType, ParserError<'a>> {
+    pub fn get_compatible(&self, key: Signature, expressions: &mut [Expression]) -> Result<IdentifierType, ParserError<'a>> {
+        // First check if we have the exact signature
         if let Ok(id) = self.get(&key) {
             return Ok(id);
         }
 
-        for (signature, id) in self.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name() && s.get_parameters().len() == key.get_parameters().len()) {
-            let params = signature.get_parameters().iter().zip(key.get_parameters()).all(|(s, k)| s.is_compatible_with(k));
+        // Lets find a compatible signature
+        'main: for (signature, id) in self.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name() && s.get_parameters().len() == key.get_parameters().len()) {
+            for (i, (a, b)) in signature.get_parameters().iter().zip(key.get_parameters()).enumerate() {
+                if !a.is_compatible_with(b) {
+                    // They are not the same numbers, lets see if they are hardcoded values
+                    if b.is_castable_to(a) {
+                        if let Expression::Value(value) = &mut expressions[i] {
+                            let owned = take(value);
+                            *value = owned.checked_cast_to_primitive_type(a)?;
+                            continue;
+                        }
+                    }
+                    continue 'main;
+                }
+            }
+
             let on_type = match (signature.get_on_type(), key.get_on_type()) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
                 (None, None) => true,
                 _ => false
             };
 
-            if params && on_type {
+            if on_type {
                 return Ok(id.clone());
             }
         }
 
         if let Some(parent) = self.parent {
-            return parent.get_compatible(key);
+            return parent.get_compatible(key, expressions);
         }
 
         Err(ParserError::MappingNotFound(format!("{:?}", key)))

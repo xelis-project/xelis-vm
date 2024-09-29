@@ -47,6 +47,12 @@ pub enum Value {
     Optional(Option<Box<Value>>)
 }
 
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
+    }
+}
+
 impl Value {
     #[inline]
     pub fn is_null(&self) -> bool {

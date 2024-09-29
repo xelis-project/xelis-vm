@@ -305,7 +305,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types))?;
+        let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)?;
 
         // Entry are only callable by external
         let f = self.get_function(id)?;
