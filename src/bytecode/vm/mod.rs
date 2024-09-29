@@ -1,11 +1,13 @@
 mod chunk;
 mod error;
 mod iterator;
+mod instructions;
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 pub use error::VMError;
 pub use chunk::*;
+use instructions::InstructionTable;
 use iterator::PathIterator;
 
 use crate::{Path, types::Struct, Environment, Type, Value};
@@ -84,6 +86,8 @@ pub struct VM<'a> {
     // The stack of the VM
     // Every values are stored here
     stack: Vec<Path<'a>>,
+    // The instruction table of the VM
+    table: InstructionTable<'a>,
 }
 
 impl<'a> VM<'a> {
@@ -94,6 +98,7 @@ impl<'a> VM<'a> {
             environment,
             call_stack: Vec::with_capacity(4),
             stack: Vec::with_capacity(16),
+            table: InstructionTable::new(),
         }
     }
 
@@ -279,7 +284,7 @@ impl<'a> VM<'a> {
                             return Err(VMError::NotEnoughArguments);
                         }
 
-                        self.stack[len - args..].reverse();
+                        self.stack[len - args..len].reverse();
 
                         // Add back our current state to the stack
                         self.call_stack.push(manager);

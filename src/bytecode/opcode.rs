@@ -122,6 +122,12 @@ pub enum OpCode {
 }
 
 impl OpCode {
+    // Convert the OpCode to a usize
+    #[inline]
+    pub const fn as_usize(&self) -> usize {
+        self.as_byte() as usize
+    }
+
     // Convert the OpCode to a byte
     #[inline]
     pub const fn as_byte(&self) -> u8 {
