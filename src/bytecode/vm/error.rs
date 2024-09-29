@@ -5,6 +5,7 @@ pub enum VMError {
     EmptyStack,
     IncompatibleValues(Value, Value),
     ChunkNotFound,
+    ChunkNotEntry,
     StructNotFound,
     MissingInstruction,
     InvalidOpCode,

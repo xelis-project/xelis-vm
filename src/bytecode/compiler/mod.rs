@@ -184,13 +184,59 @@ impl<'a> Compiler<'a> {
                 chunk.write_u8(params.len() as u8);
             },
             Expression::Operator(op, left, right) => {
-                self.compile_expr(chunk, left);
-                self.compile_expr(chunk, right);
                 match op {
                     Operator::Assign(None) => {
+                        self.compile_expr(chunk, left);
+                        self.compile_expr(chunk, right);
                         chunk.emit_opcode(OpCode::Assign);
                     },
+                    Operator::And => {
+                        self.compile_expr(chunk, left);
+
+                        chunk.emit_opcode(OpCode::Copy);
+                        // Emit the jump if false
+                        // We will overwrite the addr later
+                        chunk.emit_opcode(OpCode::JumpIfFalse);
+                        chunk.write_u32(INVALID_ADDR);
+                        let jump_addr = chunk.last_index();
+
+                        // Compile the next condition
+                        self.compile_expr(chunk, right);
+
+                        chunk.emit_opcode(OpCode::And);
+
+                        // Patch the jump if false
+                        let jump_false_addr = chunk.index();
+                        chunk.patch_jump(jump_addr, jump_false_addr as u32);
+                    },
+                    Operator::Or => {
+                        self.compile_expr(chunk, left);
+
+                        chunk.emit_opcode(OpCode::Copy);
+                        chunk.emit_opcode(OpCode::Neg);
+                        // We will overwrite the addr later
+                        chunk.emit_opcode(OpCode::JumpIfFalse);
+                        chunk.write_u32(INVALID_ADDR);
+                        let jump_addr = chunk.last_index();
+
+                        // Compile the next condition
+                        self.compile_expr(chunk, right);
+
+                        chunk.emit_opcode(OpCode::Or);
+
+                        // Patch the jump if true
+                        let jump_true_addr = chunk.index();
+                        chunk.patch_jump(jump_addr, jump_true_addr as u32);
+                    },
+                    Operator::NotEquals => {
+                        self.compile_expr(chunk, left);
+                        self.compile_expr(chunk, right);
+                        chunk.emit_opcode(OpCode::Eq);
+                        chunk.emit_opcode(OpCode::Neg);
+                    },
                     _ => {
+                        self.compile_expr(chunk, left);
+                        self.compile_expr(chunk, right);
                         let op = Self::map_operator_to_opcode(op);
                         chunk.emit_opcode(op);
                     }

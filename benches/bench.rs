@@ -83,7 +83,7 @@ fn bench_internal(c: &mut Criterion, code: &str, name: &str) {
     // VM
     let mut vm = VM::new(&module, &environment);
     group.bench_function("vm", |b| b.iter(|| {
-        vm.invoke_chunk_id(0).unwrap();
+        vm.invoke_entry_chunk(0).unwrap();
         vm.run().unwrap();
     }));
 }

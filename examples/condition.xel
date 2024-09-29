@@ -2,8 +2,12 @@ func bool_test(): bool {
     return true
 }
 
+func no_call(): bool {
+    return panic("should not be called")
+}
+
 entry main() {
-    if (!bool_test()) && true { // TODO fix order
+    if (!bool_test()) && no_call() { // TODO fix order
         return 1
     }
 

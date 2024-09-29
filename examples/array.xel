@@ -12,7 +12,7 @@ entry main() {
     array.push(50)
     println(array)
 
-    let size: u64 = array.len()
+    let size: u32 = array.len()
     let value: u64 = array[size - 1]
     println(value)
 

@@ -169,7 +169,7 @@ impl<'a> VM<'a> {
     }
 
     // Invoke a chunk using its id
-    pub fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
+    pub(crate) fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
         if self.call_stack.len() >= CALL_STACK_SIZE {
             return Err(VMError::CallStackOverflow);
         }
@@ -186,6 +186,21 @@ impl<'a> VM<'a> {
     pub fn invoke_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
         self.extend_stack(args.into_iter())?;
         self.invoke_chunk_id(id)
+    }
+
+    // Invoke an entry chunk using its id
+    pub fn invoke_entry_chunk(&mut self, id: u16) -> Result<(), VMError> {
+        if !self.module.is_entry_chunk(id as usize) {
+            return Err(VMError::ChunkNotEntry);
+        }
+        self.invoke_chunk_id(id)
+    }
+
+    // Invoke an entry chunk using its id
+    pub fn invoke_entry_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
+        self.invoke_entry_chunk(id)?;
+        self.extend_stack(args.into_iter())?;
+        Ok(())
     }
 
     // Run the VM
@@ -318,7 +333,12 @@ impl<'a> VM<'a> {
                     OpCode::Div => opcode_op!(self, op, /),
                     OpCode::Xor => opcode_op!(self, op, ^),
                     OpCode::Mod => opcode_op!(self, op, %),
-                    OpCode::And => opcode_op!(self, op, &),
+                    OpCode::And => {
+                        let value = self.pop_stack()?;
+                        let value = value.as_bool()?;
+                        let value = value && self.pop_stack()?.as_bool()?;
+                        self.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+                    },
                     OpCode::Or => opcode_op!(self, op, |),
                     OpCode::Shl => opcode_op!(self, op, <<),
                     OpCode::Shr => opcode_op!(self, op, >>),

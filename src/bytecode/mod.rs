@@ -51,6 +51,54 @@ mod tests {
     }
 
     #[test]
+    fn test_and() {
+        let code = r#"
+            func no_call(): bool {
+                return panic("no call")
+            }
+
+            entry main() {
+                let x: u64 = 10;
+                if (x != 10) && no_call() {
+                    panic("x is not 10")
+                }
+                return x
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(1).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
+    }
+
+    #[test]
+    fn test_or() {
+        let code = r#"
+            func no_call(): bool {
+                return panic("no call")
+            }
+
+            entry main() {
+                let x: u64 = 10;
+                if (x == 10) || no_call() {
+                    return 0
+                }
+                return panic("x is not 10")
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(1).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(0));
+    }
+
+    #[test]
     fn test_if_else() {
         let code = r#"
             entry main() {

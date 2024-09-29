@@ -57,6 +57,11 @@ impl Module {
         &self.chunks
     }
 
+    // Get the chunks ids callable from externals
+    pub fn chunks_entry_ids(&self) -> &HashSet<usize> {
+        &self.entry_chunk_ids
+    }
+
     // Add a chunk to the module
     #[inline]
     pub fn add_chunk(&mut self, chunk: Chunk) {
