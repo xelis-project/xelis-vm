@@ -1,30 +1,36 @@
-use crate::{bytecode::vm::{iterator::PathIterator, ChunkManager, VMError, VM}, Path, Value};
+use crate::{
+    bytecode::vm::{iterator::PathIterator, stack::Stack, Backend, ChunkManager, VMError},
+    Path,
+    Value
+};
 
-pub fn iterable_length<'a>(vm: &mut VM<'a>, _: &mut ChunkManager<'a>) -> Result<(), VMError> {
-    let value = vm.pop_stack()?;
+use super::InstructionResult;
+
+pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let value = stack.pop_stack()?;
     let len = value.as_ref().as_vec()?.len();
-    vm.push_stack_unchecked(Path::Owned(Value::U32(len as u32)));
-    Ok(())
+    stack.push_stack_unchecked(Path::Owned(Value::U32(len as u32)));
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_begin<'a>(vm: &mut VM<'a>, manager: &mut ChunkManager<'a>) -> Result<(), VMError> {
-    let value = vm.pop_stack()?;
+pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let value = stack.pop_stack()?;
     let iterator = PathIterator::new(value);
     manager.add_iterator(iterator);
-    Ok(())
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_next<'a>(vm: &mut VM<'a>, manager: &mut ChunkManager<'a>) -> Result<(), VMError> {
+pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     if let Some(value) = manager.next_iterator()? {
-        vm.push_stack(value)?;
+        stack.push_stack(value)?;
     } else {
         manager.set_index(addr as usize);
     }
-    Ok(())
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_end<'a>(_: &mut VM<'a>, manager: &mut ChunkManager<'a>) -> Result<(), VMError> {
+pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     manager.pop_iterator()?;
-    Ok(())
+    Ok(InstructionResult::Nothing)
 }

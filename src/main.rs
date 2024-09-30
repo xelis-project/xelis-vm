@@ -56,7 +56,7 @@ fn main() {
         let module = compiler.compile().unwrap();
         let mut vm = VM::new(&module, builder.environment());
         start = Instant::now();
-        vm.invoke_chunk_id(1).unwrap();
+        vm.invoke_entry_chunk(1).unwrap();
         let value = vm.run().unwrap();
         println!("VM | Value: {:?} | {:?}", value, start.elapsed());
     }

@@ -291,6 +291,7 @@ impl Value {
         }
     }
 
+    // Increment the value
     pub fn increment(&mut self) -> Result<(), ValueError> {
         Ok(match self {
             Value::U8(n) => *n += 1,
@@ -298,6 +299,18 @@ impl Value {
             Value::U32(n) => *n += 1,
             Value::U64(n) => *n += 1,
             Value::U128(n) => *n += 1,
+            _ => return Err(ValueError::OperationNotNumberType)
+        })
+    }
+
+    // Decrement the value
+    pub fn decrement(&mut self) -> Result<(), ValueError> {
+        Ok(match self {
+            Value::U8(n) => *n -= 1,
+            Value::U16(n) => *n -= 1,
+            Value::U32(n) => *n -= 1,
+            Value::U64(n) => *n -= 1,
+            Value::U128(n) => *n -= 1,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }

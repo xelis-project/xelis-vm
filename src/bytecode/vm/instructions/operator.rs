@@ -1,6 +1,13 @@
 use crate::{
-    bytecode::vm::{ChunkManager, VMError, VM}, Path, Type, Value
+    bytecode::vm::{
+        stack::Stack, Backend, ChunkManager, VMError
+    },
+    Path,
+    Type,
+    Value
 };
+
+use super::InstructionResult;
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
@@ -53,9 +60,9 @@ macro_rules! opcode_op_assign {
 
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
-        pub fn $fn(vm: &mut VM, _: &mut ChunkManager) -> Result<(), VMError> {
-            $macro1!(vm, $macro2, $op);
-            Ok(())
+        pub fn $fn<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+            $macro1!(stack, $macro2, $op);
+            Ok(InstructionResult::Nothing)
         }
     };
 }
@@ -68,8 +75,6 @@ opcode_fn!(rem, opcode_op, op, %);
 opcode_fn!(xor, opcode_op, op, ^);
 opcode_fn!(shl, opcode_op, op, <<);
 opcode_fn!(shr, opcode_op, op, >>);
-opcode_fn!(and, opcode_op, op, &);
-opcode_fn!(or, opcode_op, op, |);
 
 opcode_fn!(eq, opcode_op, op_bool, ==);
 opcode_fn!(gt, opcode_op, op_bool, >);
@@ -86,22 +91,22 @@ opcode_fn!(xor_assign, opcode_op_assign, op, ^);
 opcode_fn!(shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(shr_assign, opcode_op_assign, op, >>);
 
-pub fn neg(vm: &mut VM, _: &mut ChunkManager) -> Result<(), VMError> {
-    let value = vm.pop_stack()?;
-    vm.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?)));
-    Ok(())
+pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let value = stack.pop_stack()?;
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?)));
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn assign(vm: &mut VM, _: &mut ChunkManager) -> Result<(), VMError> {
-    let right = vm.pop_stack()?;
-    let mut left = vm.pop_stack()?;
+pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let right = stack.pop_stack()?;
+    let mut left = stack.pop_stack()?;
     *left.as_mut() = right.into_owned();
-    Ok(())
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn pow(vm: &mut VM, _: &mut ChunkManager) -> Result<(), VMError> {
-    let right = vm.pop_stack()?.into_owned();
-    let left = vm.pop_stack()?.into_owned();
+pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let right = stack.pop_stack()?.into_owned();
+    let left = stack.pop_stack()?.into_owned();
     let result = match (left, right) {
         (Value::U8(a), Value::U8(b)) => Value::U8(a.pow(b as u32)),
         (Value::U16(a), Value::U16(b)) => Value::U16(a.pow(b as u32)),
@@ -110,13 +115,13 @@ pub fn pow(vm: &mut VM, _: &mut ChunkManager) -> Result<(), VMError> {
         (Value::U128(a), Value::U128(b)) => Value::U128(a.pow(b as u32)),
         (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
     };
-    vm.push_stack_unchecked(Path::Owned(result));
-    Ok(())
+    stack.push_stack_unchecked(Path::Owned(result));
+    Ok(InstructionResult::Nothing)
 }
 
-pub fn cast(vm: &mut VM, manager: &mut ChunkManager) -> Result<(), VMError> {
+pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     let _type = manager.read_type()?;
-    let current = vm.pop_stack()?
+    let current = stack.pop_stack()?
         .into_owned();
 
     let value = match _type {
@@ -129,5 +134,36 @@ pub fn cast(vm: &mut VM, manager: &mut ChunkManager) -> Result<(), VMError> {
         _ => return Err(VMError::UnsupportedCastType)
     };
 
-    vm.push_stack(Path::Owned(value))
+    stack.push_stack(Path::Owned(value))?;
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let value = stack.pop_stack()?;
+    let value = value.as_bool()?;
+    let value = value && stack.pop_stack()?.as_bool()?;
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let right = stack.pop_stack()?;
+    let left = stack.pop_stack()?;
+    let value = left.as_bool()? || right.as_bool()?;
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn increment<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let v = stack.last_mut_stack()?;
+    v.as_mut().increment()?;
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn decrement<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let v = stack.last_mut_stack()?;
+    v.as_mut().decrement()?;
+    Ok(InstructionResult::Nothing)
 }
