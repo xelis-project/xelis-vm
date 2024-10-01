@@ -373,8 +373,6 @@ impl<'a> Lexer<'a> {
                 c if c.is_digit(10) => self.read_number(c)?,
                 c if c.is_alphabetic() => self.read_token(1)?,
                 _ => {
-                    // TODO: refactor this part
-                    // We must check token with the next character because of operations with assignations
                     if let Some((token, diff)) = self.find_potential_token() {
                         self.advance_by(diff)?;
                         token
