@@ -19,7 +19,6 @@ use crate::{
     values::Value,
     EnvironmentBuilder,
     IdentifierType,
-    Function,
 };
 use std::{
     borrow::Cow,

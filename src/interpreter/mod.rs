@@ -9,14 +9,14 @@ use crate::{
         Expression,
         Operator,
         Statement,
-        Parameter
+        Parameter,
+        Function
     },
     parser::Program,
     types::*,
     values::Value,
     IdentifierType,
     NoHashMap,
-    Function,
 };
 use stack::Stack;
 pub use state::State;

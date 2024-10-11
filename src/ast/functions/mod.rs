@@ -4,11 +4,10 @@ pub use declared::{DeclaredFunction, EntryFunction};
 
 use crate::{
     types::Type,
-    Function,
     IdentifierType
 };
 
-use super::Statement;
+use super::{Statement, Function};
 
 // The return type of the entry function
 // This is hardcoded to u64 so people can't return anything else
