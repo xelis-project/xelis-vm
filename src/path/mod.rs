@@ -1,8 +1,7 @@
+mod handle;
 use std::{cell::RefCell, rc::Rc};
-
 use crate::values::{Value, ValueError};
-
-use super::handle::{
+use handle::{
     ValueHandle,
     ValueHandleMut
 };

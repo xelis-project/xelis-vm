@@ -4,7 +4,6 @@ mod values;
 mod parser;
 mod environment;
 mod interpreter;
-mod handle;
 mod path;
 
 pub mod bytecode;
@@ -18,7 +17,7 @@ pub use crate::{
     environment::{Environment, EnvironmentBuilder},
     types::Type,
     interpreter::{Interpreter, InterpreterError, State},
-    parser::{Parser, ParserError, Program},
+    parser::{Parser, ParserError},
     lexer::{Lexer, LexerError},
     values::Value,
 };

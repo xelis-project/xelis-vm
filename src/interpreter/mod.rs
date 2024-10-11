@@ -10,9 +10,9 @@ use crate::{
         Operator,
         Statement,
         Parameter,
-        Function
+        Function,
+        Program,
     },
-    parser::Program,
     types::*,
     values::Value,
     IdentifierType,

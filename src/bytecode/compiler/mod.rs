@@ -1,4 +1,13 @@
-use crate::{ast::{Expression, FunctionType, Operator, Statement}, Environment, Program};
+use crate::{
+    ast::{
+        Expression,
+        FunctionType,
+        Operator,
+        Statement,
+        Program
+    },
+    Environment
+};
 
 use super::{Chunk, Module, OpCode};
 

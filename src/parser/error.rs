@@ -3,7 +3,6 @@ use crate::{
     types::Type,
     values::ValueError,
     IdentifierType,
-    LexerError
 };
 
 #[derive(Debug)]
@@ -14,7 +13,6 @@ pub enum ParserError<'a> {
     InvalidImport,
     InvalidImportPath(String),
     ImportNotFound(String),
-    ImportLexerError(String, LexerError),
     MappingExists(IdentifierType),
     ConstantNameNotUppercase(String),
     StructNotFound(IdentifierType),

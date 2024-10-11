@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use xelis_vm::{
-    ast::Signature,
+    ast::{Program, Signature},
     bytecode::{compiler::Compiler, vm::VM, Module},
     Environment,
     EnvironmentBuilder,
@@ -8,7 +8,6 @@ use xelis_vm::{
     Interpreter,
     Lexer,
     Parser,
-    Program,
     State
 };
 

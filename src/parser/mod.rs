@@ -2,12 +2,10 @@ mod context;
 mod error;
 mod struct_manager;
 mod mapper;
-mod program;
 
 pub(crate) use struct_manager::{StructBuilder, StructManager};
 
 pub use error::ParserError;
-pub use program::Program;
 
 use self::context::Context;
 
