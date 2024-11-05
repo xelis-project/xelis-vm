@@ -1,0 +1,8 @@
+[package]
+name = "interpreter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+types = { path = "../types" }
+ast = { path = "../ast" }

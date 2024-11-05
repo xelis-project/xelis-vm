@@ -1,16 +1,10 @@
-[package]
-name = "xelis-vm"
-version = "0.1.0"
-authors = ["Slixe <slixeprivate@gmail.com>"]
-edition = "2021"
+[workspace]
+resolver = "2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dev-dependencies]
-criterion = "0.5.1"
-
-[[bench]]
-name = "bench"
-harness = false
-
-[dependencies]
+members = [
+    "types",
+    "bytecode",
+    "vm",
+    "assembler",
+    "ast", "parser", "lexer", "interpreter", "environment",
+]
