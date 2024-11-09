@@ -595,7 +595,25 @@ mod full_tests {
     
         (module, env)
     }
+
+    #[test]
+    fn test_u256() {
+        let code = r#"
+            entry main() {
+                let x: u256 = 10;
+                let y: u256 = 20;
+                return x + y
+            }
+        "#;
     
+        let (module, environment) = prepare_module(code);
+    
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U256(30u32.into()));
+    }
+
     #[test]
     fn test_ternary() {
         let code = r#"

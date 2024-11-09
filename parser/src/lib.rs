@@ -136,6 +136,7 @@ impl<'a> Parser<'a> {
      * - u16
      * - u64
      * - u128
+     * - u256
      * - string
      * - bool
      * - Struct (Structure with name that starts with a uppercase letter)
@@ -149,6 +150,7 @@ impl<'a> Parser<'a> {
             Token::U32 => Type::U32,
             Token::U64 => Type::U64,
             Token::U128 => Type::U128,
+            Token::U256 => Type::U256,
             Token::String => Type::String,
             Token::Bool => Type::Bool,
             Token::Identifier(id) => {
