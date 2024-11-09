@@ -35,6 +35,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "builder",
+ "bytecode",
+ "environment",
+ "lexer",
+ "parser",
+ "thiserror",
+ "types",
+]
+
+[[package]]
 name = "environment"
 version = "0.1.0"
 dependencies = [
@@ -138,7 +152,11 @@ checksum = "e91b56cd4cadaeb79bbf1a5645f6b4f8dc5bde8834ad5894a8db35fda9efa1fe"
 name = "vm"
 version = "0.1.0"
 dependencies = [
+ "builder",
  "bytecode",
+ "compiler",
  "environment",
+ "lexer",
+ "parser",
  "types",
 ]

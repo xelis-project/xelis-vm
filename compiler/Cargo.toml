@@ -1,15 +1,16 @@
 [package]
-name = "vm"
+name = "compiler"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ast = { path = "../ast" }
 bytecode = { path = "../bytecode" }
 types = { path = "../types" }
 environment = { path = "../environment" }
+thiserror = "2.0.1"
 
 [dev-dependencies]
 builder = { path = "../builder" }
 lexer = { path = "../lexer" }
 parser = { path = "../parser" }
-compiler = { path = "../compiler" }
