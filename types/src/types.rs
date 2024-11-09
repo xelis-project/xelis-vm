@@ -72,6 +72,7 @@ impl Type {
             Value::U32(_) => Type::U32,
             Value::U64(_) => Type::U64,
             Value::U128(_) => Type::U128,
+            Value::U256(_) => todo!(""),
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),

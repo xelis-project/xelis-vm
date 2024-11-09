@@ -1,8 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
-
 use thiserror::Error;
-
-use crate::{types::Type, IdentifierType};
+use crate::{types::Type, IdentifierType, U256};
 
 pub type InnerValue = Rc<RefCell<Value>>;
 
@@ -49,6 +47,7 @@ pub enum Value {
     U32(u32),
     U64(u64),
     U128(u128),
+    U256(U256),
 
     String(String),
     Boolean(bool),
@@ -486,6 +485,7 @@ impl std::fmt::Display for Value {
             Value::U32(v) => write!(f, "{}", v),
             Value::U64(v) => write!(f, "{}", v),
             Value::U128(v) => write!(f, "{}", v),
+            Value::U256(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
