@@ -16,6 +16,7 @@ macro_rules! op {
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
             (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
         }
     }};
@@ -30,6 +31,7 @@ macro_rules! op_bool {
             (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
+            (Value::U256(a), Value::U256(b)) => Value::Boolean(a $op b),
             (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
         }
     }};
@@ -112,6 +114,7 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>)
         (Value::U32(a), Value::U32(b)) => Value::U32(a.pow(b as u32)),
         (Value::U64(a), Value::U64(b)) => Value::U64(a.pow(b as u32)),
         (Value::U128(a), Value::U128(b)) => Value::U128(a.pow(b as u32)),
+        (Value::U256(a), Value::U256(b)) => Value::U256(a.pow(b.into())),
         (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
     };
     stack.push_stack_unchecked(Path::Owned(result));

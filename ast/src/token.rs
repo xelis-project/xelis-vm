@@ -18,6 +18,7 @@ pub enum Token<'a> {
     U32,
     U64,
     U128,
+    U256,
     Bool,
     String,
     Optional(Box<Token<'a>>),
@@ -146,6 +147,7 @@ impl Token<'_> {
             "u32" => U32,
             "u64" => U64,
             "u128" => U128,
+            "u256" => U256,
             "bool" => Bool,
             "string" => String,
 
@@ -232,6 +234,7 @@ impl Token<'_> {
             | U16
             | U64
             | U128
+            | U256
             | Bool
             | String
             | Identifier(_)

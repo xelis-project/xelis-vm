@@ -19,6 +19,7 @@ The different primitive types are:
 - `u32` (unsigned 32 bits)
 - `u64` (unsigned 64 bits)
 - `u128` (unsigned 128 bits)
+- `u256` (unsigned 256 bits)
 - `bool`
 - `string`
 - `struct`

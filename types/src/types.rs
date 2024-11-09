@@ -22,6 +22,7 @@ pub enum Type {
     U32,
     U64,
     U128,
+    U256,
 
     String,
     Bool,
@@ -39,8 +40,9 @@ impl Type {
             2 => Some(Type::U32),
             3 => Some(Type::U64),
             4 => Some(Type::U128),
-            5 => Some(Type::Bool),
-            6 => Some(Type::String),
+            5 => Some(Type::U256),
+            6 => Some(Type::Bool),
+            7 => Some(Type::String),
             _ => None
         }
     }
@@ -53,8 +55,9 @@ impl Type {
             Type::U32 => Some(2),
             Type::U64 => Some(3),
             Type::U128 => Some(4),
-            Type::Bool => Some(5),
-            Type::String => Some(6),
+            Type::U256 => Some(5),
+            Type::Bool => Some(6),
+            Type::String => Some(7),
             _ => None
         }
     }
@@ -72,7 +75,7 @@ impl Type {
             Value::U32(_) => Type::U32,
             Value::U64(_) => Type::U64,
             Value::U128(_) => Type::U128,
-            Value::U256(_) => todo!(""),
+            Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),
@@ -121,27 +124,27 @@ impl Type {
     pub fn is_castable_to(&self, other: &Type) -> bool {
         match self {
             Type::U8 => match other {
-                Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
+                Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
             Type::U16 => match other {
-                Type::U8 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
+                Type::U8 | Type::U32 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
             Type::U32 => match other {
-                Type::U8 | Type::U16 | Type::U64 | Type::U128 | Type::String => true,
+                Type::U8 | Type::U16 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
             Type::U64 => match other {
-                Type::U8 | Type::U16 | Type::U32 | Type::U128 | Type::String => true,
+                Type::U8 | Type::U16 | Type::U32 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
             Type::U128 => match other {
-                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::String => true,
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U256 | Type::String => true,
                 _ => false
             },
             Type::Bool => match other {
-                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
             _ => false
@@ -167,6 +170,10 @@ impl Type {
                 Type::U128 => true,
                 _ => false
             },
+            Type::U128 => match other {
+                Type::U256 => true,
+                _ => false
+            }
             _ => false
         }
     }
@@ -187,7 +194,7 @@ impl Type {
 
     pub fn is_number(&self) -> bool {
         match &self {
-            Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 => true,
+            Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 => true,
             _ => false
         }
     }
@@ -210,6 +217,7 @@ impl fmt::Display for Type {
             Type::U32 => write!(f, "U32"),
             Type::U64 => write!(f, "U64"),
             Type::U128 => write!(f, "U128"),
+            Type::U256 => write!(f, "U256"),
             Type::String => write!(f, "String"),
             Type::Bool => write!(f, "Bool"),
             Type::Struct(id) => write!(f, "Struct({})", id),

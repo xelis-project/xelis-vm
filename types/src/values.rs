@@ -12,6 +12,7 @@ macro_rules! checked_cast {
             Value::U32(n) => n.try_into().map_err(|_| ValueError::CastError),
             Value::U64(n) => n.try_into().map_err(|_| ValueError::CastError),
             Value::U128(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Value::U256(n) => n.try_into().map_err(|_| ValueError::CastError),
             Value::Boolean(n) => n.try_into().map_err(|_| ValueError::CastError),
             _ => Err(ValueError::InvalidCastType($type))
         }
@@ -116,6 +117,14 @@ impl Value {
         match self {
             Value::U128(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U128))
+        }
+    }
+
+    #[inline]
+    pub fn as_u256(&self) -> Result<U256, ValueError> {
+        match self {
+            Value::U256(n) => Ok(*n),
+            v => Err(ValueError::InvalidValue(v.clone(), Type::U256))
         }
     }
 
@@ -233,6 +242,14 @@ impl Value {
     }
 
     #[inline]
+    pub fn to_u256(self) -> Result<U256, ValueError> {
+        match self {
+            Value::U256(n) => Ok(n),
+            v => Err(ValueError::InvalidValue(v.clone(), Type::U256))
+        }
+    }
+
+    #[inline]
     pub fn to_string(self) -> Result<String, ValueError> {
         match self {
             Value::String(n) => Ok(n),
@@ -308,6 +325,7 @@ impl Value {
             Value::U32(n) => *n += 1,
             Value::U64(n) => *n += 1,
             Value::U128(n) => *n += 1,
+            Value::U256(n) => *n += U256::ONE,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -320,6 +338,7 @@ impl Value {
             Value::U32(n) => *n -= 1,
             Value::U64(n) => *n -= 1,
             Value::U128(n) => *n -= 1,
+            Value::U256(n) => *n -= U256::ONE,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -333,6 +352,7 @@ impl Value {
             Value::U32(n) => Ok(n.to_string()),
             Value::U64(n) => Ok(n.to_string()),
             Value::U128(n) => Ok(n.to_string()),
+            Value::U256(n) => Ok(n.to_string()),
             Value::String(s) => Ok(s),
             Value::Boolean(b) => Ok(b.to_string()),
             _ => Err(ValueError::InvalidCastType(Type::String))
@@ -348,6 +368,7 @@ impl Value {
             Type::U32 => self.checked_cast_to_u32().map(Value::U32),
             Type::U64 => self.checked_cast_to_u64().map(Value::U64),
             Type::U128 => self.checked_cast_to_u128().map(Value::U128),
+            Type::U256 => self.checked_cast_to_u256().map(Value::U256),
             Type::String => self.cast_to_string().map(Value::String),
             Type::Bool => self.cast_to_bool().map(Value::Boolean),
             Type::Optional(inner) => {
@@ -391,6 +412,12 @@ impl Value {
         checked_cast!(self, Type::U128)
     }
 
+    // Cast to u256, return an error if value is too big
+    #[inline]
+    pub fn checked_cast_to_u256(self) -> Result<U256, ValueError> {
+        checked_cast!(self, Type::U256)
+    }
+
     // Cast value to bool
     #[inline]
     pub fn cast_to_bool(self) -> Result<bool, ValueError> {
@@ -400,6 +427,7 @@ impl Value {
             Value::U32(n) => Ok(n != 0),
             Value::U64(n) => Ok(n != 0),
             Value::U128(n) => Ok(n != 0),
+            Value::U256(n) => Ok(!n.is_zero()),
             Value::Boolean(b) => Ok(b),
             _ => Err(ValueError::InvalidCastType(Type::Bool))
         }
@@ -414,6 +442,7 @@ impl Value {
             Value::U32(n) => Ok(n as u8),
             Value::U64(n) => Ok(n as u8),
             Value::U128(n) => Ok(n as u8),
+            Value::U256(n) => Ok(n.low_u64() as u8),
             Value::Boolean(b) => Ok(b as u8),
             _ => Err(ValueError::InvalidCastType(Type::U8))
         }
@@ -428,6 +457,7 @@ impl Value {
             Value::U32(n) => Ok(n as u16),
             Value::U64(n) => Ok(n as u16),
             Value::U128(n) => Ok(n as u16),
+            Value::U256(n) => Ok(n.low_u64() as u16),
             Value::Boolean(b) => Ok(b as u16),
             _ => Err(ValueError::InvalidCastType(Type::U16))
         }
@@ -442,6 +472,7 @@ impl Value {
             Value::U32(n) => Ok(n),
             Value::U64(n) => Ok(n as u32),
             Value::U128(n) => Ok(n as u32),
+            Value::U256(n) => Ok(n.low_u64() as u32),
             Value::Boolean(b) => Ok(b as u32),
             _ => Err(ValueError::InvalidCastType(Type::U16))
         }
@@ -456,6 +487,7 @@ impl Value {
             Value::U32(n) => Ok(n as u64),
             Value::U64(n) => Ok(n),
             Value::U128(n) => Ok(n as u64),
+            Value::U256(n) => Ok(n.low_u64()),
             Value::Boolean(b) => Ok(b as u64),
             _ => Err(ValueError::InvalidCastType(Type::U64))
         }
@@ -470,8 +502,24 @@ impl Value {
             Value::U32(n) => Ok(n as u128),
             Value::U64(n) => Ok(n as u128),
             Value::U128(n) => Ok(n),
+            Value::U256(n) => Ok(n.low_u128()),
             Value::Boolean(b) => Ok(b as u128),
             _ => Err(ValueError::InvalidCastType(Type::U128))
+        }
+    }
+
+    // Cast value to u256
+    #[inline]
+    pub fn cast_to_u256(self) -> Result<U256, ValueError> {
+        match self {
+            Value::U8(n) => Ok(U256::from(n)),
+            Value::U16(n) => Ok(U256::from(n)),
+            Value::U32(n) => Ok(U256::from(n)),
+            Value::U64(n) => Ok(U256::from(n)),
+            Value::U128(n) => Ok(U256::from(n)),
+            Value::U256(n) => Ok(n),
+            Value::Boolean(b) => Ok(U256::from(b as u8)),
+            _ => Err(ValueError::InvalidCastType(Type::U256))
         }
     }
 }

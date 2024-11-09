@@ -3,15 +3,25 @@ use std::{
     cmp::Ordering,
     ops::{
         Add,
+        AddAssign,
         BitAnd,
+        BitAndAssign,
         BitOr,
+        BitOrAssign,
         BitXor,
+        BitXorAssign,
         Div,
+        DivAssign,
         Mul,
+        MulAssign,
         Rem,
+        RemAssign,
         Shl,
+        ShlAssign,
         Shr,
-        Sub
+        ShrAssign,
+        Sub,
+        SubAssign
     },
     str::FromStr
 };
@@ -43,6 +53,15 @@ impl U256 {
     /// Create a new U256 from four u64 values (from least significant to most significant)
     pub fn new(lowest: u64, low: u64, high: u64, highest: u64) -> U256 {
         U256([lowest, low, high, highest])
+    }
+
+    /// Raises self to the power of exp, using exponentiation by squaring.
+    pub fn pow(self, exp: u32) -> U256 {
+        let mut result = U256::ONE;
+        for _ in 0..exp {
+            result *= self;
+        }
+        result
     }
 
     /// Addition with overflow handling
@@ -243,6 +262,21 @@ impl U256 {
 
         (U256(result), remainder as u64)
     }
+
+    /// Get the low u64 value
+    pub fn low_u64(&self) -> u64 {
+        self.0[0]
+    }
+
+    // Get the high u64 value
+    pub fn high_u64(&self) -> u64 {
+        self.0[3]
+    }
+
+    /// Get the low u128 value
+    pub fn low_u128(&self) -> u128 {
+        (self.0[0] as u128) | ((self.0[1] as u128) << 64)
+    }
 }
 
 impl FromStr for U256 {
@@ -378,6 +412,56 @@ impl Shl<u32> for U256 {
     }
 }
 
+impl Shr for U256 {
+    type Output = Self;
+
+    fn shr(self, shift: Self) -> Self {
+        if shift >= 256u64.into() {
+            return U256([0; 4]);
+        }
+
+        let mut result = [0u64; 4];
+        let v: U256 = 64u64.into();
+        let word_shift: u32 = (shift / v).into();
+        let bit_shift: u64 = (shift % v).into();
+
+        let word_shift = word_shift as usize;
+        for i in 0..(4 - word_shift) {
+            result[i] = self.0[i + word_shift] >> bit_shift;
+            if bit_shift > 0 && i + word_shift + 1 < 4 {
+                result[i] |= self.0[i + word_shift + 1] << (64 - bit_shift);
+            }
+        }
+
+        U256(result)
+    }
+}
+
+impl Shl for U256 {
+    type Output = Self;
+
+    fn shl(self, shift: Self) -> Self {
+        if shift >= 256u64.into() {
+            return U256([0; 4]);
+        }
+
+        let mut result = [0u64; 4];
+        let v: U256 = 64u64.into();
+        let word_shift: u32 = (shift / v).into();
+        let bit_shift: u64 = (shift % v).into();
+
+        let word_shift = word_shift as usize;
+        for i in (word_shift..4).rev() {
+            result[i] = self.0[i - word_shift] << bit_shift;
+            if bit_shift > 0 && i > 0 {
+                result[i] |= self.0[i - word_shift - 1] >> (64 - bit_shift);
+            }
+        }
+
+        U256(result)
+    }
+}
+
 impl BitXor for U256 {
     type Output = Self;
 
@@ -414,6 +498,72 @@ impl BitAnd for U256 {
     }
 }
 
+impl AddAssign for U256 {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl SubAssign for U256 {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl MulAssign for U256 {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
+
+impl DivAssign for U256 {
+    fn div_assign(&mut self, rhs: Self) {
+        *self = *self / rhs;
+    }
+}
+
+impl RemAssign for U256 {
+    fn rem_assign(&mut self, rhs: Self) {
+        *self = *self % rhs;
+    }
+}
+
+impl BitXorAssign for U256 {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self = *self ^ rhs;
+    }
+}
+
+impl BitOrAssign for U256 {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
+    }
+}
+
+impl BitAndAssign for U256 {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = *self & rhs;
+    }
+}
+
+impl ShlAssign<u32> for U256 {
+    fn shl_assign(&mut self, shift: u32) {
+        *self = *self << shift;
+    }
+}
+
+impl ShrAssign<u32> for U256 {
+    fn shr_assign(&mut self, shift: u32) {
+        *self = *self >> shift;
+    }
+}
+
+impl From<bool> for U256 {
+    fn from(value: bool) -> Self {
+        U256([value as u64, 0, 0, 0])
+    }
+}
+
 impl From<u8> for U256 {
     fn from(value: u8) -> Self {
         U256([value as u64, 0, 0, 0])
@@ -441,6 +591,36 @@ impl From<u64> for U256 {
 impl From<u128> for U256 {
     fn from(value: u128) -> Self {
         U256([value as u64, (value >> 64) as u64, 0, 0])
+    }
+}
+
+impl Into<u8> for U256 {
+    fn into(self) -> u8 {
+        self.0[0] as u8
+    }
+}
+
+impl Into<u16> for U256 {
+    fn into(self) -> u16 {
+        self.0[0] as u16
+    }
+}
+
+impl Into<u32> for U256 {
+    fn into(self) -> u32 {
+        self.0[0] as u32
+    }
+}
+
+impl Into<u64> for U256 {
+    fn into(self) -> u64 {
+        self.0[0]
+    }
+}
+
+impl Into<u128> for U256 {
+    fn into(self) -> u128 {
+        (self.0[0] as u128) | ((self.0[1] as u128) << 64)
     }
 }
 
