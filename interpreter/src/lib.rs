@@ -3,6 +3,7 @@ mod state;
 mod error;
 
 use std::{cell::RefCell, rc::Rc};
+use environment::{Environment, NativeFunction};
 use types::{
     Path,
     Type,
@@ -11,11 +12,7 @@ use types::{
     NoHashMap
 };
 use ast::{
-    Expression,
-    Operator,
-    Statement,
-    Parameter,
-    Program,
+    Expression, FunctionType, Operator, Parameter, Program, Statement
 };
 use stack::Stack;
 
@@ -127,6 +124,20 @@ enum ExprHelper<'a> {
     // Array(usize)
 }
 
+enum Function<'a> {
+    Native(&'a NativeFunction),
+    Program(&'a FunctionType)
+}
+
+impl<'a> Function<'a> {
+    fn is_entry(&self) -> bool {
+        match self {
+            Function::Program(f) => f.is_entry(),
+            _ => false
+        }
+    }
+}
+
 // The interpreter structure can be reused to execute multiple times the program
 pub struct Interpreter<'a> {
     // Program to execute
@@ -154,7 +165,7 @@ impl<'a> Interpreter<'a> {
             Ok(Function::Native(&self.env.get_functions()[index]))
         } else {
             self.program.functions().get(index - len)
-                .map(|v | v.as_function())
+                .map(|v | Function::Program(v))
                 .ok_or(InterpreterError::NoMatchingFunction)
         }
     }
@@ -214,11 +225,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, state: &mut State) -> Result<Value, InterpreterError> {
-        if let Some(cost) = self.env.get_operator_cost(op) {
-            state.increase_gas_usage(cost)?;
-        }
-
+    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value, _: &mut State) -> Result<Value, InterpreterError> {
         match op {
             Operator::Equals => Ok(Value::Boolean(left ==right)),
             Operator::NotEquals => Ok(Value::Boolean(left != right)),
@@ -254,191 +261,6 @@ impl<'a> Interpreter<'a> {
             None => Err(InterpreterError::ExpectedValue)
         }
     }
-
-    // Execute the selected expression in a iterative way
-    // This is used to prevent stack overflow when the program is too deep
-    // fn execute_expression_iterative(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
-    //     let mut local_stack = vec![ExprHelper::Expr(expr)];
-    //     let mut local_result: Vec<Path<'a>> = Vec::new();
-
-    //     while let Some(h) = local_stack.pop() {
-    //         state.increase_expressions_executed()?;
-    //         match h {
-    //             ExprHelper::Expr(expr) => match expr {
-    //                 Expression::Path(_, _) => {
-    //                     let path = self.get_from_path(expr, stack, state)?;
-    //                     local_result.push(path);
-    //                 },
-    //                 Expression::ArrayCall(expr, expr_index) => {
-    //                     local_stack.push(ExprHelper::ArrayCall);
-    //                     local_stack.push(ExprHelper::Expr(expr_index));
-    //                     local_stack.push(ExprHelper::Expr(expr));
-    //                 },
-    //                 Expression::Variable(name) => {
-    //                     local_result.push(stack.get_variable_path(name)?);
-    //                 },
-    //                 Expression::Value(v) => {
-    //                     local_result.push(Path::Borrowed(v));
-    //                 },
-    //                 Expression::FunctionCall(path, name, params) => {
-    //                     local_stack.push(ExprHelper::FunctionCall {
-    //                         args: params.len(),
-    //                         on_value: path.is_some(),
-    //                         name
-    //                     });
-
-    //                     for param in params.iter().rev() {
-    //                         local_stack.push(ExprHelper::Expr(param));
-    //                     }
-
-    //                     if let Some(path) = path {
-    //                         local_stack.push(ExprHelper::Expr(path));
-    //                     }
-    //                 },
-    //                 Expression::Cast(expr, as_type) => {
-    //                     local_stack.push(ExprHelper::Cast(as_type));
-    //                     local_stack.push(ExprHelper::Expr(expr));
-    //                 },
-    //                 Expression::IsNot(expr) => {
-    //                     local_stack.push(ExprHelper::Not);
-    //                     local_stack.push(ExprHelper::Expr(expr));
-    //                 },
-    //                 Expression::SubExpression(expr) => {
-    //                     local_stack.push(ExprHelper::Expr(expr));
-    //                 },
-    //                 Expression::Operator(op, left, right) => {
-    //                     // Special case to prevent the second expr to be executed
-    //                     match op {
-    //                         Operator::And => {
-    //                             local_stack.push(ExprHelper::OpAnd(right));
-    //                             local_stack.push(ExprHelper::Expr(left));
-    //                         },
-    //                         Operator::Or => {
-    //                             local_stack.push(ExprHelper::OpOr(right));
-    //                             local_stack.push(ExprHelper::Expr(left));
-    //                         },
-    //                         _ => {
-    //                             local_stack.push(ExprHelper::Operator(op));
-    //                             local_stack.push(ExprHelper::Expr(right));
-    //                             local_stack.push(ExprHelper::Expr(left));
-    //                         }
-    //                     };
-    //                 },
-    //                 Expression::Ternary(condition, left, right) => {
-    //                     local_stack.push(ExprHelper::Ternary { left, right });
-    //                     local_stack.push(ExprHelper::Expr(condition));
-    //                 },
-    //                 Expression::ArrayConstructor(expressions) => {
-    //                     local_stack.push(ExprHelper::Array(expressions.len()));
-    //                     // No reverse so we get the values in the right order
-    //                     for expr in expressions.iter().rev() {
-    //                         local_stack.push(ExprHelper::Expr(expr));
-    //                     }
-    //                 },
-    //                 Expression::StructConstructor(name, expressions) => {
-                        
-    //                 }
-    //             },
-    //             ExprHelper::Ternary { left, right } => {
-    //                 let condition = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 if condition.as_bool()? {
-    //                     local_stack.push(ExprHelper::Expr(left));
-    //                 } else {
-    //                     local_stack.push(ExprHelper::Expr(right));
-    //                 }
-    //             },
-    //             ExprHelper::Operator(op) => {
-    //                 let right = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 let mut left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 match op {
-    //                     Operator::Assign(inner_op) => {
-    //                         if let Some(op) = inner_op {
-    //                             let res = self.execute_operator(op, &left.as_ref(), &right.as_ref(), state)?;
-    //                             *left.as_mut() = res;
-    //                         } else {
-    //                             *left.as_mut() = right.into_owned();
-    //                         }
-    //                     },
-    //                     op => {
-    //                         local_result.push(Path::Owned(self.execute_operator(op, &left.as_ref(), &right.as_ref(), state)?));
-    //                     }
-    //                 }
-    //             },
-    //             ExprHelper::OpAnd(right) => {
-    //                 let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 if left.as_bool()? {
-    //                     local_stack.push(ExprHelper::Expr(right));
-    //                 } else {
-    //                     local_result.push(Path::Owned(Value::Boolean(false)));
-    //                 }
-    //             },
-    //             ExprHelper::OpOr(right) => {
-    //                 let left = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 if left.as_bool()? {
-    //                     local_result.push(Path::Owned(Value::Boolean(true)));
-    //                 } else {
-    //                     local_stack.push(ExprHelper::Expr(right));
-    //                 }
-    //             },
-    //             ExprHelper::Not => {
-    //                 let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 local_result.push(Path::Owned(Value::Boolean(!value.as_bool()?)));
-    //             },
-    //             ExprHelper::Cast(cast_type) => {
-    //                 let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 let value = value.into_owned();
-    //                 local_result.push(Path::Owned(match cast_type {
-    //                     Type::U8 => Value::U8(value.cast_to_u8()?),
-    //                     Type::U16 => Value::U16(value.cast_to_u16()?),
-    //                     Type::U32 => Value::U32(value.cast_to_u32()?),
-    //                     Type::U64 => Value::U64(value.cast_to_u64()?),
-    //                     Type::U128 => Value::U128(value.cast_to_u128()?),
-    //                     Type::String => Value::String(value.cast_to_string()?),
-    //                     _ => return Err(InterpreterError::InvalidCastType(cast_type.clone()))
-    //                 }));
-    //             },
-    //             ExprHelper::FunctionCall { args, on_value, name } => {
-    //                 let mut values = Vec::with_capacity(args);
-    //                 for _ in 0..args {
-    //                     let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                     values.push(value);
-    //                 }
-
-    //                 let on_value = if on_value {
-    //                     let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                     Some(value)
-    //                 } else {
-    //                     None
-    //                 };
-
-    //                 state.increase_recursive_depth()?;
-    //                 let func = self.get_function(name)?;
-    //                 let res = self.execute_function(func, on_value, values, state)?;
-    //                 state.decrease_recursive_depth();
-    //                 if let Some(res) = res {
-    //                     local_result.push(res);
-    //                 }
-    //             },
-    //             ExprHelper::ArrayCall => {
-    //                 let index = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 let on_value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                 let index = index.as_u64()?;
-    //                 local_result.push(on_value.get_sub_variable(index as usize)?);
-    //             },
-    //             ExprHelper::Array(len) => {
-    //                 let mut values = Vec::with_capacity(len);
-    //                 for _ in 0..len {
-    //                     let value = local_result.pop().ok_or(InterpreterError::MissingValueOnStack)?;
-    //                     values.push(Rc::new(RefCell::new(value.into_owned())));
-    //                 }
-
-    //                 local_result.push(Path::Owned(Value::Array(values)));
-    //             }
-    //         }
-    //     }
-
-    //     Ok(local_result.pop())
-    // }
 
     fn execute_expression(&'a self, expr: &'a Expression, stack: &mut Stack<'a>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
         state.increase_expressions_executed()?;
@@ -752,7 +574,10 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ast::Signature, lexer::Lexer, parser::Parser, EnvironmentBuilder};
+    use ast::Signature;
+    use lexer::Lexer;
+    use parser::Parser;
+    use builder::EnvironmentBuilder;
 
     #[track_caller]
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {

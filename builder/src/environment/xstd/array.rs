@@ -1,8 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
-
 use types::{Type, Value};
-use crate::EnvironmentBuilder;
-use super::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::Any))), vec![], len, 1, Some(Type::U32));

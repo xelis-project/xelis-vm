@@ -6,5 +6,5 @@ members = [
     "bytecode",
     "vm",
     "assembler",
-    "ast", "parser", "lexer", "interpreter", "environment",
+    "ast", "parser", "lexer", "interpreter", "environment", "builder",
 ]

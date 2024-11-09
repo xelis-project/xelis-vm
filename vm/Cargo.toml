@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bytecode = { path = "../bytecode" }
 types = { path = "../types" }
+environment = { path = "../environment" }

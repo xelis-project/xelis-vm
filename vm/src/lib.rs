@@ -4,6 +4,7 @@ mod iterator;
 mod instructions;
 mod stack;
 
+use environment::Environment;
 pub use error::VMError;
 pub use chunk::*;
 use instructions::{InstructionResult, InstructionTable};

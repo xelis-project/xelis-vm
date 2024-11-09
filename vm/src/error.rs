@@ -1,4 +1,4 @@
-// use crate::{environment::EnvironmentError};
+use environment::EnvironmentError;
 use types::{Value, ValueError};
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ pub enum VMError {
     ConstantNotFound,
     UnsupportedCastType,
     UnknownSysCall,
-    // EnvironmentError(EnvironmentError),
+    EnvironmentError(EnvironmentError),
     ValueError(ValueError),
     IncrementError,
     EmptyIterator,
@@ -29,11 +29,11 @@ pub enum VMError {
     CallStackOverflow
 }
 
-// impl From<EnvironmentError> for VMError {
-//     fn from(error: EnvironmentError) -> Self {
-//         VMError::EnvironmentError(error)
-//     }
-// }
+impl From<EnvironmentError> for VMError {
+    fn from(error: EnvironmentError) -> Self {
+        VMError::EnvironmentError(error)
+    }
+}
 
 impl From<ValueError> for VMError {
     fn from(error: ValueError) -> Self {

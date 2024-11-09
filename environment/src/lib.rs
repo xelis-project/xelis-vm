@@ -1,41 +1,31 @@
-// mod builder;
-pub mod std;
 mod error;
 mod function;
 
-
-use ::std::{collections::HashMap, hash::BuildHasherDefault};
-
-pub use builder::EnvironmentBuilder;
 pub use error::EnvironmentError;
 pub use function::*;
 
-use types::{
-    Struct,
-    NoOpHasher
-};
+use types::Struct;
 
+/// Environment is used to store all the registered functions and structures
+/// It is used to give a context/std library to the parser / interpreter / VM
 pub struct Environment {
     functions: Vec<NativeFunction>,
     structures: Vec<Struct>,
-    operators: HashMap<Operator, u64, BuildHasherDefault<NoOpHasher>>
 }
 
 impl Default for Environment {
     fn default() -> Self {
-        let builder = EnvironmentBuilder::default();
-        builder.build()
+        Self {
+            functions: Vec::new(),
+            structures: Vec::new(),
+        }
     }
 }
 
 impl Environment {
     // Create a new environment
     pub fn new() -> Self {
-        Environment {
-            functions: Vec::new(),
-            structures: Vec::new(),
-            operators: HashMap::with_hasher(BuildHasherDefault::default())
-        }
+        Self::default()
     }
 
     // Get all the registered functions
@@ -50,9 +40,15 @@ impl Environment {
         &self.structures
     }
 
-    // Get the gas used of an operator
+    // Add a new function to the environment
     #[inline(always)]
-    pub fn get_operator_cost(&self, operator: &Operator) -> Option<u64> {
-        self.operators.get(operator).copied()
+    pub fn add_function(&mut self, function: NativeFunction) {
+        self.functions.push(function);
+    }
+
+    // Add a new structure to the environment
+    #[inline(always)]
+    pub fn add_structure(&mut self, structure: Struct) {
+        self.structures.push(structure);
     }
 }

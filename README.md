@@ -1,7 +1,15 @@
 # XELIS VM
 XVM is a virtual machine with its own interpreted language for the XELIS network developed in Rust.
 It supports constants, functions, while/foreach loops, arrays and structures.
-The syntax is strongly inspired by Rust and Golang.
+The syntax is strongly inspired by Rust.
+
+## Crates
+
+- `vm` is the main crate that contains Virtual Machine to execute a (op-code) compiled program.
+- `assembler` is the crate that contains the assembler to convert an source code of raw instructions into a program.
+- `compiler` is the crate that contains the compiler to convert an AST (Abstract Syntax Tree) program into an op-code program.
+- `parser` is the crate that contains the parser to convert a list of tokens into an AST (Abstract Syntax Tree) program.
+- `lexer` is the crate that contains the lexer to convert a source code into a list of tokens.
 
 All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
 

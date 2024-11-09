@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use thiserror::Error;
+
 use crate::{types::Type, IdentifierType};
 
 pub type InnerValue = Rc<RefCell<Value>>;
@@ -18,15 +20,23 @@ macro_rules! checked_cast {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ValueError {
+    #[error("Invalid value: {0:?} is not of type {1:?}")]
     InvalidValue(Value, Type),
+    #[error("Invalid struct value: {0:?}")]
     InvalidStructValue(Value),
+    #[error("Invalid cast type: {0:?}")]
     InvalidCastType(Type),
+    #[error("Operation not supported on non-number type")]
     OperationNotNumberType,
+    #[error("Sub value")]
     SubValue,
+    #[error("Optional value is null")]
     OptionalIsNull,
+    #[error("Value out of bounds: {0} on {1}")]
     OutOfBounds(usize, usize),
+    #[error("Cast error")]
     CastError,
 }
 

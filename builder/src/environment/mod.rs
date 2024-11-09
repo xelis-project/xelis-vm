@@ -1,18 +1,12 @@
+pub mod xstd;
+
 use std::borrow::Cow;
+use ast::Signature;
+use types::Type;
+use environment::{Environment, NativeFunction, OnCallFn};
+use crate::{StructBuilder, StructManager, FunctionMapper};
 
-use ast::{Operator, Signature};
-use crate::{
-    environment::{NativeFunction, OnCallFn},
-    parser::{FunctionMapper, StructBuilder, StructManager},
-    types::Type
-};
-
-use super::{
-    std as xstd,
-    Environment
-};
-
-// EnvironmentBuilder is used to create the environment for the Parser
+// EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
 // and import files by the user
 pub struct EnvironmentBuilder<'a> {
@@ -31,28 +25,22 @@ impl<'a> EnvironmentBuilder<'a> {
         }
     }
 
-    // Set the cost of an operator
-    // Example, setting the cost of the Plus operator to 1
-    pub fn register_operator(&mut self, operator: Operator, cost: u64) {
-        self.env.operators.insert(operator, cost);
-    }
-
     // Register a native function
+    // Panic if the function signature is already registered
     pub fn register_native_function(&mut self, name: &str, for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
-        assert_eq!(id as usize, self.env.functions.len());
-        self.env.functions.push(NativeFunction::new(for_type, parameters, on_call, cost, return_type));
+        let _ = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), parameters.clone())).unwrap();
+        self.env.add_function(NativeFunction::new(for_type, parameters, on_call, cost, return_type));
     }
 
     // Register a structure in the environment
+    // Panic if the structure name is already used
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
         let builder = StructBuilder {
             fields
         };
 
-        let (id, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();
-        assert_eq!(id as usize, self.env.structures.len());
-        self.env.structures.push(s);
+        let (_, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();
+        self.env.add_structure(s);
     }
 
     // functions mapper, used to find the function id
@@ -67,7 +55,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // all registered functions
     pub fn get_functions(&self) -> &Vec<NativeFunction> {
-        &self.env.functions
+        &self.env.get_functions()
     }
 
     // Get the environment for the interpreter
@@ -80,7 +68,8 @@ impl<'a> EnvironmentBuilder<'a> {
         self.env
     }
 
-    pub fn build_and_take_mapper(self) -> (Environment, FunctionMapper<'a>) {
+    // Finalize the environment builder and return the environment and the function mapper
+    pub fn finalize(self) -> (Environment, FunctionMapper<'a>) {
         (self.env, self.functions_mapper)
     }
 }

@@ -1,69 +1,51 @@
-use crate::{
-    ast::Expression,
-    environment::EnvironmentError,
-    values::ValueError,
-    IdentifierType,
-    Type,
-    Value
-};
+use ast::Expression;
+use environment::EnvironmentError;
+use thiserror::Error;
+use types::{IdentifierType, Type, ValueError};
 
-#[derive(Debug)]
+
+#[derive(Debug, Error)]
 pub enum InterpreterError {
-    EnvironmentError(EnvironmentError),
-    ValueError(ValueError),
-    SubValue,
-    Panic(Value),
+    #[error(transparent)]
+    EnvironmentError(#[from] EnvironmentError),
+    #[error(transparent)]
+    ValueError(#[from] ValueError),
+    #[error("Missing value on stack")]
     MissingValueOnStack,
+    #[error("Stack error")]
     StackError,
-    Unknown,
-    NoReturnValue,
-    OptionalIsNull,
+    #[error("no matching function found")]
     NoMatchingFunction,
-    TypeNotFound(Value),
+    #[error("Function entry error: expected {0}, got {1}")]
     FunctionEntry(bool, bool), // expected, got
+    #[error("Limit reached")]
     LimitReached,
+    #[error("Not implemented")]
     NotImplemented,
+    #[error("no exit code found")]
     NoExitCode,
+    #[error("Expected a value")]
     ExpectedValue,
-    InvalidNativeFunctionCall,
+    #[error("Expected path, got {0:?}")]
     ExpectedPath(Expression),
-    UnexpectedInstanceType,
-    ExpectedInstanceType,
-    UnexpectedOperator,
-    ExpectedStructType,
+    #[error("Expected instance for native function call")]
     NativeFunctionExpectedInstance,
-    OverflowOccured,
-    DivByZero,
-    StructureNotFound(IdentifierType),
-    StructureFieldNotFound(IdentifierType, IdentifierType),
-    ExpectedValueType(Type),
+    #[error("Invalid type for value: {0}")]
     InvalidType(Type),
-    OutOfBounds(usize, usize),
-    InvalidRange(u64, u64),
-    NoValueFoundAtIndex(u64),
-    MissingValueForFunctionCall,
-    InvalidStructValue(Value),
-    InvalidValue(Value, Type), // got value, but expected type
+    #[error("Variable not found: {0}")]
     VariableNotFound(IdentifierType),
-    VariableAlreadyExists(IdentifierType),
-    NoScopeFound,
-    ExpectedAssignOperator,
-    OperationNotNumberType,
-    OperationNotBooleanType,
-    CastNumberError,
+    #[error("Recursive limit reached")]
     RecursiveLimitReached,
+    #[error("Gas limit reached")]
     GasLimitReached,
+    #[error("Invalid cast type: {0}")]
     InvalidCastType(Type),
-}
-
-impl From<EnvironmentError> for InterpreterError {
-    fn from(error: EnvironmentError) -> Self {
-        InterpreterError::EnvironmentError(error)
-    }
-}
-
-impl From<ValueError> for InterpreterError {
-    fn from(error: ValueError) -> Self {
-        InterpreterError::ValueError(error)
-    }
+    #[error("Division by zero")]
+    DivByZero,
+    #[error("Operation not number type")]
+    OperationNotNumberType,
+    #[error("Operation not boolean type")]
+    OperationNotBooleanType,
+    #[error("Unexpected operator")]
+    UnexpectedOperator,
 }

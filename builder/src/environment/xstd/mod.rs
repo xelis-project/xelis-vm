@@ -3,7 +3,8 @@ mod optional;
 mod string;
 
 use types::Type;
-use super::*;
+use environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     array::register(env);

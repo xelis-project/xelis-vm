@@ -3,8 +3,7 @@ use crate::{
     IdentifierType,
 };
 use std::{
-    collections::{HashMap, HashSet},
-    hash::{BuildHasher, Hash}
+    collections::{HashMap, HashSet}, fmt, hash::{BuildHasher, Hash}
 };
 
 // Represents a struct in the language
@@ -196,6 +195,25 @@ impl Type {
         match &self {
             Type::Optional(_) => true,
             _ => false
+        }
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Any => write!(f, "Any"),
+            Type::T => write!(f, "T"),
+            Type::U8 => write!(f, "U8"),
+            Type::U16 => write!(f, "U16"),
+            Type::U32 => write!(f, "U32"),
+            Type::U64 => write!(f, "U64"),
+            Type::U128 => write!(f, "U128"),
+            Type::String => write!(f, "String"),
+            Type::Bool => write!(f, "Bool"),
+            Type::Struct(id) => write!(f, "Struct({})", id),
+            Type::Array(_type) => write!(f, "Array({})", _type),
+            Type::Optional(_type) => write!(f, "Optional({})", _type)
         }
     }
 }

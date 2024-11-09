@@ -1,9 +1,11 @@
 use ast::{Expression, Token};
+use builder::BuilderError;
 use types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
     ValueError(ValueError),
+    BuilderError(BuilderError),
     InvalidStructFieldOrder,
     UnexpectedPathInFunctionCall,
     InvalidImport,
@@ -68,5 +70,11 @@ pub enum ParserError<'a> {
 impl<'a> From<ValueError> for ParserError<'a> {
     fn from(e: ValueError) -> Self {
         ParserError::ValueError(e)
+    }
+}
+
+impl<'a> From<BuilderError> for ParserError<'a> {
+    fn from(e: BuilderError) -> Self {
+        ParserError::BuilderError(e)
     }
 }

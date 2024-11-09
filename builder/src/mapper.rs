@@ -5,11 +5,10 @@ use std::{
     hash::Hash,
     mem::take
 };
-use ast::Signature;
+use ast::{Expression, Signature};
 use types::IdentifierType;
-use crate::ParserError;
 
-use super::Expression;
+use crate::BuilderError;
 
 pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
 pub type FunctionMapper<'a> = Mapper<'a, Signature>;
@@ -53,7 +52,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Get the identifier of a variable name
-    pub fn get<K: ?Sized + Debug>(&self, name: &K) -> Result<IdentifierType, ParserError<'a>>
+    pub fn get<K: ?Sized + Debug>(&self, name: &K) -> Result<IdentifierType, BuilderError>
     where
         T: Borrow<K>,
         K: Eq + Hash
@@ -64,7 +63,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
             }
         }
 
-        self.mappings.get(name).copied().ok_or_else(|| ParserError::MappingNotFound(format!("{:?}", name)))
+        self.mappings.get(name).copied().ok_or(BuilderError::MappingNotFound)
     }
 
     // Check if a variable name is already registered
@@ -82,15 +81,13 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Register a new variable name
-    pub fn register(&mut self, name: T) -> Result<IdentifierType, ParserError<'a>> {
-        if let Ok(name) = self.get(&name) {
-            return Err(ParserError::MappingExists(name));
+    pub fn register(&mut self, name: T) -> Result<IdentifierType, BuilderError> {
+        if self.get(&name).is_ok() {
+            return Err(BuilderError::MappingExists);
         }
 
         let id = self.next_id;
-        if let Some(v) = self.mappings.insert(name, id) {
-            return Err(ParserError::MappingExists(v));
-        }
+        self.mappings.insert(name, id);
 
         self.next_id += 1;
         Ok(id)
@@ -102,7 +99,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
 }
 
 impl<'a> FunctionMapper<'a> {
-    pub fn get_compatible(&self, key: Signature, expressions: &mut [Expression]) -> Result<IdentifierType, ParserError<'a>> {
+    pub fn get_compatible(&self, key: Signature, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature
         if let Ok(id) = self.get(&key) {
             return Ok(id);
@@ -139,6 +136,6 @@ impl<'a> FunctionMapper<'a> {
             return parent.get_compatible(key, expressions);
         }
 
-        Err(ParserError::MappingNotFound(format!("{:?}", key)))
+        Err(BuilderError::MappingNotFound)
     }
 }

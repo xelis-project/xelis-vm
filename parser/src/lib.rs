@@ -1,19 +1,43 @@
 mod context;
 mod error;
-mod struct_manager;
-mod mapper;
 
 use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque}
 };
+use builder::{
+    EnvironmentBuilder,
+    FunctionMapper,
+    StructBuilder,
+    StructManager
+};
 use ast::*;
+use environment::NativeFunction;
 use types::*;
-use struct_manager::{StructBuilder, StructManager};
 use context::Context;
 
 pub use error::ParserError;
-pub use mapper::{FunctionMapper, IdMapper};
+
+enum Function<'a> {
+    Native(&'a NativeFunction),
+    Program(&'a FunctionType)
+}
+
+impl<'a> Function<'a> {
+    fn return_type(&self) -> &Option<Type> {
+        match self {
+            Function::Native(f) => f.return_type(),
+            Function::Program(f) => f.return_type()
+        }
+    }
+
+    fn is_entry(&self) -> bool {
+        match self {
+            Function::Program(f) => f.is_entry(),
+            _ => false
+        }
+    }
+}
 
 pub struct Parser<'a> {
     // Tokens to process
@@ -189,7 +213,8 @@ impl<'a> Parser<'a> {
             },
             Expression::FunctionCall(path, name, _) => {
                 let f = self.get_function(*name)?;
-                match f.return_type() {
+                let return_type = f.return_type();
+                match return_type {
                     Some(ref v) => match v {
                         Type::T => match on_type {
                             Some(t) => Cow::Owned(t.get_inner_type().clone()),
@@ -206,9 +231,9 @@ impl<'a> Parser<'a> {
                                     None => return Err(ParserError::InvalidTypeT)
                                 }
                             },
-                            _ => Cow::Borrowed(v)
+                            _ => Cow::Owned(v.clone())
                         },
-                        _ => Cow::Borrowed(v)
+                        _ => Cow::Owned(v.clone())
                     },
                     None => return Err(ParserError::FunctionNoReturnType)
                 }
@@ -227,7 +252,7 @@ impl<'a> Parser<'a> {
             Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
             Expression::StructConstructor(name, _) => {
                 if !self.struct_manager.has(name) {
-                    return Err(ParserError::StructNotFound(name.clone()))
+                    return Err(ParserError::StructIdNotFound(name.clone()))
                 }
 
                 Cow::Owned(Type::Struct(name.clone()))
@@ -1035,7 +1060,7 @@ impl<'a> Parser<'a> {
             Ok(Function::Native(&self.environment.get_functions()[index]))
         } else {
             match self.functions.get(index - len) {
-                Some(func) => Ok(func.as_function()),
+                Some(func) => Ok(Function::Program(func)),
                 None => Err(ParserError::FunctionNotFound)
             }
         }

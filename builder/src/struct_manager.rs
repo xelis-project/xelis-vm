@@ -1,7 +1,18 @@
-use std::{borrow::Cow, collections::HashMap};
-
-use types::{HasKey, Struct, Type, IdentifierType, NoHashMap};
-use crate::{ParserError, IdMapper};
+use std::{
+    borrow::Cow,
+    collections::HashMap
+};
+use types::{
+    HasKey,
+    Struct,
+    Type,
+    IdentifierType,
+    NoHashMap
+};
+use crate::{
+    BuilderError,
+    IdMapper
+};
 
 #[derive(Debug, Clone)]
 pub struct StructBuilder<'a> {
@@ -48,9 +59,9 @@ impl<'a> StructManager<'a> {
     }
 
     // register a new struct in the manager
-    pub fn add(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(), ParserError<'a>> {
+    pub fn add(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(), BuilderError> {
         if self.mapper.has_variable(&name) {
-            return Err(ParserError::StructNameAlreadyUsed(name.into_owned()));
+            return Err(BuilderError::StructNameAlreadyUsed);
         }
 
         let id = self.mapper.register(name)?;
@@ -60,9 +71,9 @@ impl<'a> StructManager<'a> {
     }
 
     // Same as `add` but returns its identifier and the final struct
-    pub fn build_struct(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(IdentifierType, Struct), ParserError<'a>> {
+    pub fn build_struct(&mut self, name: Cow<'a, str>, builder: StructBuilder<'a>) -> Result<(IdentifierType, Struct), BuilderError> {
         if self.mapper.has_variable(&name) {
-            return Err(ParserError::StructNameAlreadyUsed(name.into_owned()));
+            return Err(BuilderError::StructNameAlreadyUsed);
         }
 
         let id = self.mapper.register(name)?;
@@ -73,7 +84,7 @@ impl<'a> StructManager<'a> {
     }
 
     // Get the mapping of a struct by name
-    pub fn get_mapping(&self, name: &str) -> Result<IdentifierType, ParserError<'a>> {
+    pub fn get_mapping(&self, name: &str) -> Result<IdentifierType, BuilderError> {
         if let Some(parent) = self.parent {
             if let Ok(id) = parent.get_mapping(name) {
                 return Ok(id);
@@ -84,14 +95,14 @@ impl<'a> StructManager<'a> {
     }
 
     // Get a struct by name
-    pub fn get(&self, name: &IdentifierType) -> Result<&StructBuilder<'a>, ParserError<'a>> {
+    pub fn get(&self, name: &IdentifierType) -> Result<&StructBuilder<'a>, BuilderError> {
         if let Some(parent) = self.parent {
             if let Ok(s) = parent.get(name) {
                 return Ok(s);
             }
         }
 
-        self.structures.get(name).ok_or_else(|| ParserError::StructIdNotFound(name.clone()))
+        self.structures.get(name).ok_or(BuilderError::StructNotFound)
     }
 
     // Convert the struct manager into a hashmap of structs
