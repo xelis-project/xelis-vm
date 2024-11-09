@@ -164,7 +164,7 @@ impl<'a> Compiler<'a> {
             Expression::Cast(expr, primitive_type) => {
                 self.compile_expr(chunk, expr)?;
                 chunk.emit_opcode(OpCode::Cast);
-                chunk.write_u8(primitive_type.primitive_byte().unwrap());
+                chunk.write_u8(primitive_type.primitive_byte().ok_or(CompilerError::ExpectedPrimitiveType)?);
             },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
@@ -270,16 +270,18 @@ impl<'a> Compiler<'a> {
     }
 
     // End the loop by patching all continue/break
-    fn end_loop(&mut self, chunk: &mut Chunk, start_index: usize, end_index: usize) {
-        // Patch the break
-        for jump in self.loop_break_patch.pop().unwrap() {
+    fn end_loop(&mut self, chunk: &mut Chunk, start_index: usize, end_index: usize) -> Result<(), CompilerError> {
+        // Patch all the break jumps
+        for jump in self.loop_break_patch.pop().ok_or(CompilerError::ExpectedBreak)? {
             chunk.patch_jump(jump, end_index as u32);
         }
 
-        // Patch the continue
-        for jump in self.loop_continue_patch.pop().unwrap() {
+        // Patch all the continue jumps
+        for jump in self.loop_continue_patch.pop().ok_or(CompilerError::ExpectedContinue)? {
             chunk.patch_jump(jump, start_index as u32);
         }
+
+        Ok(())
     }
 
     // Compile the statements
@@ -368,7 +370,7 @@ impl<'a> Compiler<'a> {
                     let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
-                    self.end_loop(chunk, start_index, jump_false_addr);
+                    self.end_loop(chunk, start_index, jump_false_addr)?;
                 },
                 Statement::ForEach(_, expr_values, statements) => {
                     // Compile the expression
@@ -402,7 +404,7 @@ impl<'a> Compiler<'a> {
                     // Patch the IterableNext to jump on IteratorEnd
                     chunk.patch_jump(jump_end, end_index as u32);
 
-                    self.end_loop(chunk, start_index, end_index);
+                    self.end_loop(chunk, start_index, end_index)?;
                 }
                 Statement::For(var, expr_condition, expr_op, statements) => {
                     self.push_mem_scope();
@@ -437,17 +439,23 @@ impl<'a> Compiler<'a> {
                     let jump_false_addr = chunk.index();
                     chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
-                    self.end_loop(chunk, continue_index, jump_false_addr);
+                    self.end_loop(chunk, continue_index, jump_false_addr)?;
                 },
                 Statement::Break => {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(INVALID_ADDR);
-                    self.loop_break_patch.last_mut().unwrap().push(chunk.last_index());
+
+                    let last = self.loop_break_patch.last_mut()
+                        .ok_or(CompilerError::ExpectedBreak)?;
+                    last.push(chunk.last_index());
                 },
                 Statement::Continue => {
                     chunk.emit_opcode(OpCode::Jump);
                     chunk.write_u32(INVALID_ADDR);
-                    self.loop_continue_patch.last_mut().unwrap().push(chunk.last_index());
+
+                    let last = self.loop_continue_patch.last_mut()
+                        .ok_or(CompilerError::ExpectedContinue)?;
+                    last.push(chunk.last_index());
                 }
             };
         }

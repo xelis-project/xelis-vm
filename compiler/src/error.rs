@@ -14,4 +14,6 @@ pub enum CompilerError {
     ExpectedMemstoreId,
     #[error("expected a variable")]
     ExpectedVariable,
+    #[error("expected a primitive type")]
+    ExpectedPrimitiveType,
 }
