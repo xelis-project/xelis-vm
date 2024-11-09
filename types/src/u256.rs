@@ -64,6 +64,20 @@ impl U256 {
         result
     }
 
+    /// Create a new U256 from a string and a radix.
+    pub fn from_str_radix(s: &str, radix: u32) -> Result<U256, ()> {
+        let mut result = U256::ZERO;
+        for c in s.chars() {
+            if let Some(digit) = c.to_digit(radix) {
+                result = result * U256::from(radix) + U256::from(digit as u64);
+            } else {
+                return Err(());
+            }
+        }
+
+        Ok(result)
+    }
+
     /// Addition with overflow handling
     pub fn overflowing_add(self, other: U256) -> (U256, bool) {
         let mut result = [0u64; 4];
@@ -283,16 +297,7 @@ impl FromStr for U256 {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut result = U256::ZERO;
-        for c in s.chars() {
-            if let Some(digit) = c.to_digit(10) {
-                result = result * U256::from(10u64) + U256::from(digit as u64);
-            } else {
-                return Err(());
-            }
-        }
-
-        Ok(result)
+        U256::from_str_radix(s, 10)
     }
 }
 
@@ -647,6 +652,14 @@ impl fmt::Display for U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_from_str_radix() {
+        assert_eq!(U256::from_str_radix("0", 10).unwrap(), U256::ZERO);
+        assert_eq!(U256::from_str_radix("1", 10).unwrap(), U256::ONE);
+        assert_eq!(U256::from_str_radix("1234567890", 10).unwrap(), U256::from(1234567890u64));
+        assert_eq!(U256::from_str_radix("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap(), U256::MAX);
+    }
 
     #[test]
     fn test_string() {
