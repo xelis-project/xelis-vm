@@ -602,7 +602,7 @@ mod full_tests {
             entry main() {
                 let x: u256 = 10;
                 let y: u256 = 20;
-                return x + y
+                return (x + y) as u64
             }
         "#;
     
@@ -611,7 +611,7 @@ mod full_tests {
         let mut vm = VM::new(&module, &environment);
         vm.invoke_chunk_id(0).unwrap();
         let value = vm.run().unwrap();
-        assert_eq!(value, Value::U256(30u32.into()));
+        assert_eq!(value, Value::U64(30u32.into()));
     }
 
     #[test]

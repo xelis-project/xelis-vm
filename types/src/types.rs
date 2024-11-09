@@ -143,6 +143,10 @@ impl Type {
                 Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U256 | Type::String => true,
                 _ => false
             },
+            Type::U256 => match other {
+                Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::String => true,
+                _ => false
+            },
             Type::Bool => match other {
                 Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
