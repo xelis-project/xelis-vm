@@ -1,3 +1,5 @@
+mod error;
+
 use ast::{
     Expression,
     FunctionType,
@@ -8,12 +10,7 @@ use ast::{
 use environment::Environment;
 use bytecode::{Chunk, Module, OpCode};
 
-// Error type for the compiler
-#[derive(Debug)]
-pub enum CompilerError {
-    // Error when trying to compile a program
-    CompileError,
-}
+pub use error::CompilerError;
 
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
@@ -48,8 +45,8 @@ impl<'a> Compiler<'a> {
     }
 
     // Map the operator to the opcode
-    fn map_operator_to_opcode(op: &Operator) -> OpCode {
-        match op {
+    fn map_operator_to_opcode(op: &Operator) -> Result<OpCode, CompilerError> {
+        Ok(match op {
             Operator::Plus => OpCode::Add,
             Operator::Minus => OpCode::Sub,
             Operator::Multiply => OpCode::Mul,
@@ -68,23 +65,25 @@ impl<'a> Compiler<'a> {
             Operator::LessOrEqual => OpCode::Lte,
 
             // Assigns
-            Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner).as_assign_operator().unwrap(),
-            _ => {
-                panic!("Operator {:?} not implemented", op);
-            }
-        }
+            Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner)?
+                .as_assign_operator()
+                .ok_or(CompilerError::ExpectedOperatorAssignment)?,
+            _ => return Err(CompilerError::UnexpectedOperator)
+        })
     }
 
     // Emit a memory store
-    fn memstore(&mut self, chunk: &mut Chunk) {
+    fn memstore(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
         chunk.emit_opcode(OpCode::MemorySet);
-        let id = self.memstore_ids.last_mut().unwrap();
+        let id = self.memstore_ids.last_mut().ok_or(CompilerError::ExpectedMemstoreId)?;
         chunk.write_u16(*id);
         *id += 1;
+
+        Ok(())
     }
 
     // Compile the expression
-    fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) {
+    fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) -> Result<(), CompilerError> {
         match expr {
             Expression::Value(v) => {
                 // Compile the value
@@ -94,14 +93,14 @@ impl<'a> Compiler<'a> {
             },
             Expression::ArrayConstructor(exprs) => {
                 for expr in exprs {
-                    self.compile_expr(chunk, expr);
+                    self.compile_expr(chunk, expr)?;
                 }
                 chunk.emit_opcode(OpCode::NewArray);
                 chunk.write_u32(exprs.len() as u32);
             },
             Expression::StructConstructor(id, exprs) => {
                 for expr in exprs {
-                    self.compile_expr(chunk, expr);
+                    self.compile_expr(chunk, expr)?;
                 }
 
                 // We don't verify the struct ID, the parser should have done it
@@ -110,12 +109,12 @@ impl<'a> Compiler<'a> {
             },
             Expression::Path(left, right) => {
                 // Compile the path
-                self.compile_expr(chunk, left);
+                self.compile_expr(chunk, left)?;
                 if let Expression::Variable(id) = right.as_ref() {
                     chunk.emit_opcode(OpCode::SubLoad);
                     chunk.write_u16(*id);
                 } else {
-                    panic!("Right side of the path is not a variable, got {:?}", right);
+                    return Err(CompilerError::ExpectedVariable);
                 }
             },
             Expression::Variable(id) => {
@@ -123,19 +122,19 @@ impl<'a> Compiler<'a> {
                 chunk.write_u16(*id);
             },
             Expression::IsNot(expr) => {
-                self.compile_expr(chunk, expr);
+                self.compile_expr(chunk, expr)?;
                 chunk.emit_opcode(OpCode::Neg);
             },
             Expression::ArrayCall(expr, expr_index) => {
-                self.compile_expr(chunk, expr);
-                self.compile_expr(chunk, expr_index);
+                self.compile_expr(chunk, expr)?;
+                self.compile_expr(chunk, expr_index)?;
                 chunk.emit_opcode(OpCode::ArrayCall);
             },
             Expression::SubExpression(expr) => {
-                self.compile_expr(chunk, expr);
+                self.compile_expr(chunk, expr)?;
             },
             Expression::Ternary(condition, valid, invalid) => {
-                self.compile_expr(chunk, condition);
+                self.compile_expr(chunk, condition)?;
 
                 // Emit the jump if false
                 // We will overwrite the addr later
@@ -144,7 +143,7 @@ impl<'a> Compiler<'a> {
                 let jump_addr = chunk.last_index();
 
                 // Compile the valid condition
-                self.compile_expr(chunk, valid);
+                self.compile_expr(chunk, valid)?;
 
                 // Once finished, we must jump the false condition
                 chunk.emit_opcode(OpCode::Jump);
@@ -156,24 +155,24 @@ impl<'a> Compiler<'a> {
                 chunk.patch_jump(jump_addr, jump_false_addr as u32);
 
                 // Compile the invalid condition
-                self.compile_expr(chunk, invalid);
+                self.compile_expr(chunk, invalid)?;
 
                 // Patch the jump if valid
                 let jump_valid_addr = chunk.index();
                 chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
             },
             Expression::Cast(expr, primitive_type) => {
-                self.compile_expr(chunk, expr);
+                self.compile_expr(chunk, expr)?;
                 chunk.emit_opcode(OpCode::Cast);
                 chunk.write_u8(primitive_type.primitive_byte().unwrap());
             },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
-                    self.compile_expr(chunk, expr_on);
+                    self.compile_expr(chunk, expr_on)?;
                 }
 
                 for param in params {
-                    self.compile_expr(chunk, param);
+                    self.compile_expr(chunk, param)?;
                 }
 
                 // Functions from the environment are system calls
@@ -192,12 +191,12 @@ impl<'a> Compiler<'a> {
             Expression::Operator(op, left, right) => {
                 match op {
                     Operator::Assign(None) => {
-                        self.compile_expr(chunk, left);
-                        self.compile_expr(chunk, right);
+                        self.compile_expr(chunk, left)?;
+                        self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Assign);
                     },
                     Operator::And => {
-                        self.compile_expr(chunk, left);
+                        self.compile_expr(chunk, left)?;
 
                         chunk.emit_opcode(OpCode::Copy);
                         // Emit the jump if false
@@ -207,7 +206,7 @@ impl<'a> Compiler<'a> {
                         let jump_addr = chunk.last_index();
 
                         // Compile the next condition
-                        self.compile_expr(chunk, right);
+                        self.compile_expr(chunk, right)?;
 
                         chunk.emit_opcode(OpCode::And);
 
@@ -216,7 +215,7 @@ impl<'a> Compiler<'a> {
                         chunk.patch_jump(jump_addr, jump_false_addr as u32);
                     },
                     Operator::Or => {
-                        self.compile_expr(chunk, left);
+                        self.compile_expr(chunk, left)?;
 
                         chunk.emit_opcode(OpCode::Copy);
                         chunk.emit_opcode(OpCode::Neg);
@@ -227,7 +226,7 @@ impl<'a> Compiler<'a> {
                         let jump_addr = chunk.last_index();
 
                         // Compile the next condition
-                        self.compile_expr(chunk, right);
+                        self.compile_expr(chunk, right)?;
 
                         chunk.emit_opcode(OpCode::Or);
 
@@ -236,20 +235,22 @@ impl<'a> Compiler<'a> {
                         chunk.patch_jump(jump_addr, jump_true_addr as u32);
                     },
                     Operator::NotEquals => {
-                        self.compile_expr(chunk, left);
-                        self.compile_expr(chunk, right);
+                        self.compile_expr(chunk, left)?;
+                        self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Eq);
                         chunk.emit_opcode(OpCode::Neg);
                     },
                     _ => {
-                        self.compile_expr(chunk, left);
-                        self.compile_expr(chunk, right);
-                        let op = Self::map_operator_to_opcode(op);
+                        self.compile_expr(chunk, left)?;
+                        self.compile_expr(chunk, right)?;
+                        let op = Self::map_operator_to_opcode(op)?;
                         chunk.emit_opcode(op);
                     }
                 };
             }
         }
+
+        Ok(())
     }
 
     // Push the next register store id
@@ -282,28 +283,28 @@ impl<'a> Compiler<'a> {
     }
 
     // Compile the statements
-    fn compile_statements(&mut self, chunk: &mut Chunk, statements: &[Statement]) {
+    fn compile_statements(&mut self, chunk: &mut Chunk, statements: &[Statement]) -> Result<(), CompilerError> {
         // Compile the statements
         for statement in statements {
             match statement {
-                Statement::Expression(expr) => self.compile_expr(chunk, expr),
+                Statement::Expression(expr) => self.compile_expr(chunk, expr)?,
                 Statement::Return(expr) => {
                     if let Some(expr) = expr {
-                        self.compile_expr(chunk, expr);
+                        self.compile_expr(chunk, expr)?;
                     }
                     chunk.emit_opcode(OpCode::Return);
                 },
                 Statement::Variable(declaration) => {
-                    self.compile_expr(chunk, &declaration.value);
-                    self.memstore(chunk);
+                    self.compile_expr(chunk, &declaration.value)?;
+                    self.memstore(chunk)?;
                 },
                 Statement::Scope(statements) => {
                     self.push_mem_scope();
-                    self.compile_statements(chunk, statements);
+                    self.compile_statements(chunk, statements)?;
                     self.pop_mem_scope();
                 },
                 Statement::If(condition, statements, else_statements) => {
-                    self.compile_expr(chunk, condition);
+                    self.compile_expr(chunk, condition)?;
 
                     self.push_mem_scope();
 
@@ -314,7 +315,7 @@ impl<'a> Compiler<'a> {
                     let jump_addr = chunk.last_index();
 
                     // Compile the valid condition
-                    self.compile_statements(chunk, statements);
+                    self.compile_statements(chunk, statements)?;
 
                     self.pop_mem_scope();
 
@@ -335,7 +336,7 @@ impl<'a> Compiler<'a> {
                     // Compile the else condition
                     if let Some(else_statements) = else_statements {
                         self.push_mem_scope();
-                        self.compile_statements(chunk, else_statements);
+                        self.compile_statements(chunk, else_statements)?;
                         self.pop_mem_scope();
                     }
 
@@ -347,7 +348,7 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::While(expr, statements) => {
                     let start_index = chunk.index();
-                    self.compile_expr(chunk, expr);
+                    self.compile_expr(chunk, expr)?;
 
                     // Emit the jump if false
                     // We will overwrite the addr later
@@ -357,7 +358,7 @@ impl<'a> Compiler<'a> {
 
                     self.start_loop();
                     // Compile the valid condition
-                    self.compile_statements(chunk, statements);
+                    self.compile_statements(chunk, statements)?;
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -371,7 +372,7 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::ForEach(_, expr_values, statements) => {
                     // Compile the expression
-                    self.compile_expr(chunk, expr_values);
+                    self.compile_expr(chunk, expr_values)?;
 
                     chunk.emit_opcode(OpCode::IteratorBegin);
                     let start_index = chunk.index();
@@ -382,11 +383,11 @@ impl<'a> Compiler<'a> {
                     self.push_mem_scope();
 
                     // Store the value
-                    self.memstore(chunk);
+                    self.memstore(chunk)?;
 
                     self.start_loop();
                     // Compile the valid condition
-                    self.compile_statements(chunk, statements);
+                    self.compile_statements(chunk, statements)?;
 
                     self.pop_mem_scope();
 
@@ -406,12 +407,12 @@ impl<'a> Compiler<'a> {
                 Statement::For(var, expr_condition, expr_op, statements) => {
                     self.push_mem_scope();
                     // Compile the variable
-                    self.compile_expr(chunk, &var.value);
-                    self.memstore(chunk);
+                    self.compile_expr(chunk, &var.value)?;
+                    self.memstore(chunk)?;
 
                     // Compile the condition
                     let start_index = chunk.index();
-                    self.compile_expr(chunk, expr_condition);
+                    self.compile_expr(chunk, expr_condition)?;
 
                     // Emit the jump if false
                     // We will overwrite the addr later
@@ -421,11 +422,11 @@ impl<'a> Compiler<'a> {
 
                     self.start_loop();
                     // Compile the valid condition
-                    self.compile_statements(chunk, statements);
+                    self.compile_statements(chunk, statements)?;
 
                     // Compile the operation
                     let continue_index = chunk.index();
-                    self.compile_expr(chunk, expr_op);
+                    self.compile_expr(chunk, expr_op)?;
                     self.pop_mem_scope();
 
                     // Jump back to the start
@@ -448,26 +449,28 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     self.loop_continue_patch.last_mut().unwrap().push(chunk.last_index());
                 }
-            }
+            };
         }
+
+        Ok(())
     }
 
     // Compile the function
-    fn compile_function(&mut self, function: &FunctionType) {
+    fn compile_function(&mut self, function: &FunctionType) -> Result<(), CompilerError> {
         let mut chunk = Chunk::new();
 
         // Push the new scope for ids
         self.push_mem_scope();
         if function.get_instance_name().is_some() {
-            self.memstore(&mut chunk);
+            self.memstore(&mut chunk)?;
         }
 
         // Store the parameters
         for _ in function.get_parameters() {
-            self.memstore(&mut chunk);
+            self.memstore(&mut chunk)?;
         }
         
-        self.compile_statements(&mut chunk, function.get_statements());
+        self.compile_statements(&mut chunk, function.get_statements())?;
 
         // Pop the scope for ids
         self.pop_mem_scope();
@@ -478,6 +481,8 @@ impl<'a> Compiler<'a> {
         } else {
             self.module.add_chunk(chunk);
         }
+
+        Ok(())
     }
 
     // Compile the program
@@ -489,7 +494,7 @@ impl<'a> Compiler<'a> {
 
         // Compile the program
         for function in self.program.functions() {
-            self.compile_function(function);
+            self.compile_function(function)?;
         }
 
         assert!(self.loop_break_patch.is_empty(), "Loop break patch is not empty: {:?}", self.loop_break_patch);
