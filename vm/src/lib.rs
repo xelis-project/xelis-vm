@@ -601,8 +601,8 @@ mod full_tests {
         let code = r#"
             entry main() {
                 let x: u256 = 10;
-                let y: u256 = 20;
-                return (x + y) as u64
+                let y: u64 = 20;
+                return (x + y as u256) as u64
             }
         "#;
     
