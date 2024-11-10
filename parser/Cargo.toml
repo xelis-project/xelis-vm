@@ -1,0 +1,10 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ast = { path = "../ast" }
+types = { path = "../types" }
+builder = { path = "../builder" }
+environment = { path = "../environment" }

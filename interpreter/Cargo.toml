@@ -1,0 +1,16 @@
+[package]
+name = "interpreter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+types = { path = "../types" }
+ast = { path = "../ast" }
+environment = { path = "../environment" }
+thiserror = "2.0.1"
+
+[dev-dependencies]
+ast = { path = "../ast" }
+lexer = { path = "../lexer" }
+parser = { path = "../parser" }
+builder = { path = "../builder" }

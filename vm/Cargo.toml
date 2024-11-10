@@ -1,0 +1,15 @@
+[package]
+name = "vm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytecode = { path = "../bytecode" }
+types = { path = "../types" }
+environment = { path = "../environment" }
+
+[dev-dependencies]
+builder = { path = "../builder" }
+lexer = { path = "../lexer" }
+parser = { path = "../parser" }
+compiler = { path = "../compiler" }
