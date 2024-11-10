@@ -2,13 +2,11 @@ use types::{Type, Value};
 use environment::{FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
-
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T))), vec![], is_none, 1, Some(Type::Bool));
     env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T))), vec![], is_some, 1, Some(Type::Bool));
     env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T))), vec![], unwrap, 1, Some(Type::T));
     env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T))), vec![Type::T], unwrap_or, 1, Some(Type::T));
-
 }
 
 fn is_none(zelf: FnInstance, _: FnParams) -> FnReturnType {
