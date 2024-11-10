@@ -159,19 +159,19 @@ impl Type {
     pub fn is_castable_to_no_loss(&self, other: &Type) -> bool {
         match self {
             Type::U8 => match other {
-                Type::U16 | Type::U32 | Type::U64 | Type::U128 => true,
+                Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 => true,
                 _ => false
             },
             Type::U16 => match other {
-                Type::U32 | Type::U64 | Type::U128 => true,
+                Type::U32 | Type::U64 | Type::U128 | Type::U256 => true,
                 _ => false
             },
             Type::U32 => match other {
-                Type::U64 | Type::U128 => true,
+                Type::U64 | Type::U128 | Type::U256 => true,
                 _ => false
             },
             Type::U64 => match other {
-                Type::U128 => true,
+                Type::U128 | Type::U256 => true,
                 _ => false
             },
             Type::U128 => match other {
@@ -214,19 +214,19 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Type::Any => write!(f, "Any"),
+            Type::Any => write!(f, "any"),
             Type::T => write!(f, "T"),
-            Type::U8 => write!(f, "U8"),
-            Type::U16 => write!(f, "U16"),
-            Type::U32 => write!(f, "U32"),
-            Type::U64 => write!(f, "U64"),
-            Type::U128 => write!(f, "U128"),
-            Type::U256 => write!(f, "U256"),
-            Type::String => write!(f, "String"),
-            Type::Bool => write!(f, "Bool"),
-            Type::Struct(id) => write!(f, "Struct({})", id),
-            Type::Array(_type) => write!(f, "Array({})", _type),
-            Type::Optional(_type) => write!(f, "Optional({})", _type)
+            Type::U8 => write!(f, "u8"),
+            Type::U16 => write!(f, "u16"),
+            Type::U32 => write!(f, "u32"),
+            Type::U64 => write!(f, "u64"),
+            Type::U128 => write!(f, "u128"),
+            Type::U256 => write!(f, "u256"),
+            Type::String => write!(f, "string"),
+            Type::Bool => write!(f, "bool"),
+            Type::Struct(id) => write!(f, "struct({})", id),
+            Type::Array(_type) => write!(f, "{}[]", _type),
+            Type::Optional(_type) => write!(f, "optional<{}>", _type)
         }
     }
 }

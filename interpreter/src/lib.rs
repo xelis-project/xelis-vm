@@ -365,6 +365,7 @@ impl<'a> Interpreter<'a> {
                     Type::U32 => Value::U32(value.cast_to_u32()?),
                     Type::U64 => Value::U64(value.cast_to_u64()?),
                     Type::U128 => Value::U128(value.cast_to_u128()?),
+                    Type::U256 => Value::U256(value.cast_to_u256()?),
                     Type::String => Value::String(value.cast_to_string()?),
                     _ => return Err(InterpreterError::InvalidType(cast_type.clone()))
                 })))
