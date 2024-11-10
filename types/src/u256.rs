@@ -26,7 +26,7 @@ use std::{
     str::FromStr
 };
 
-#[derive(Debug, Clone, Copy, Eq, Ord)]
+#[derive(Debug, Clone, Copy, Hash, Eq, Ord)]
 pub struct U256([u64; 4]);
 
 impl Default for U256 {

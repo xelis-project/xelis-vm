@@ -1,5 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-use xelis_types::{Type, Value, ValueOwnable};
+use xelis_types::{InnerValue, Type, Value, ValueOwnable};
 use super::{
     FnInstance,
     FnParams,
@@ -71,7 +70,7 @@ fn to_bytes(zelf: FnInstance, _: FnParams) -> FnReturnType {
 
     let mut bytes = Vec::new();
     for b in s.as_bytes() {
-        bytes.push(Rc::new(RefCell::new(Value::U8(*b))));
+        bytes.push(InnerValue::new(Value::U8(*b)));
     }
 
     Ok(Some(Value::Array(bytes)))
@@ -137,7 +136,7 @@ fn split(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let handle = param.as_ref();
     let value = handle.as_string()?;
     let values = s.split(value)
-        .map(|s| Rc::new(RefCell::new(Value::String(s.to_string()))))
+        .map(|s| InnerValue::new(Value::String(s.to_string())))
         .collect();
 
     Ok(Some(Value::Array(values)))
@@ -166,7 +165,7 @@ fn string_matches(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let handle = param.as_ref();
     let value = handle.as_string()?;
     let m = s.matches(value);
-    Ok(Some(Value::Array(m.map(|s| Rc::new(RefCell::new(Value::String(s.to_string())))).collect())))
+    Ok(Some(Value::Array(m.map(|s| InnerValue::new(Value::String(s.to_string()))).collect())))
 }
 
 fn string_substring(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {

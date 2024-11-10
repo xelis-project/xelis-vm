@@ -1,8 +1,37 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{Ref, RefCell, RefMut}, hash::Hash, rc::Rc};
 use thiserror::Error;
 use crate::{types::Type, IdentifierType, U256};
 
-pub type InnerValue = Rc<RefCell<Value>>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InnerValue(Rc<RefCell<Value>>);
+
+impl InnerValue {
+    #[inline(always)]
+    pub fn new(value: Value) -> Self {
+        InnerValue(Rc::new(RefCell::new(value)))
+    }
+
+    #[inline(always)]
+    pub fn borrow<'a>(&'a self) -> Ref<'a, Value> {
+        self.0.borrow()
+    }
+
+    #[inline(always)]
+    pub fn borrow_mut<'a>(&'a self) -> RefMut<'a, Value> {
+        self.0.borrow_mut()
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self) -> Rc<RefCell<Value>> {
+        self.0
+    }
+}
+
+impl Hash for InnerValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.borrow().hash(state)
+    }
+}
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -39,17 +68,17 @@ pub enum ValueError {
     CastError,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub enum ValueOwnable {
     Owned(Box<Value>),
-    Rc(Rc<RefCell<Value>>)
+    Rc(InnerValue)
 }
 
 impl ValueOwnable {
     pub fn into_inner(self) -> Value {
         match self {
             ValueOwnable::Owned(v) => *v,
-            ValueOwnable::Rc(v) => match Rc::try_unwrap(v) {
+            ValueOwnable::Rc(v) => match Rc::try_unwrap(v.into_inner()) {
                 Ok(value) => value.into_inner(),
                 Err(rc) => rc.borrow().clone()
             }
@@ -57,7 +86,7 @@ impl ValueOwnable {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Value {
     Null,
     // number types
@@ -557,7 +586,7 @@ impl std::fmt::Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Struct(name, fields) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
-                write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
+                write!(f, "{:?} {} {} {}", name, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();

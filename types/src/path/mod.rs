@@ -1,7 +1,6 @@
 mod handle;
 
-use std::{cell::RefCell, rc::Rc};
-use crate::values::{Value, ValueError};
+use crate::{values::{Value, ValueError}, InnerValue};
 use handle::{
     ValueHandle,
     ValueHandleMut
@@ -12,7 +11,7 @@ pub enum Path<'a> {
     Owned(Value),
     // Used for constants
     Borrowed(&'a Value),
-    Wrapper(Rc<RefCell<Value>>)
+    Wrapper(InnerValue)
 }
 
 impl<'a> Path<'a> {
@@ -35,12 +34,12 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => {
                 let dst = std::mem::replace(v, Value::Null);
-                let shared = Rc::new(RefCell::new(dst));
+                let shared = InnerValue::new(dst);
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
-                let shared = Rc::new(RefCell::new(v.clone()));
+                let shared = InnerValue::new(v.clone());
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },

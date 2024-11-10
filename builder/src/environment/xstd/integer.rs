@@ -3,11 +3,7 @@ use xelis_environment::{
     FnParams,
     FnReturnType
 };
-use std::{
-    rc::Rc,
-    cell::RefCell
-};
-use xelis_types::{Type, Value, ValueOwnable, U256 as u256};
+use xelis_types::{Type, Value, InnerValue, ValueOwnable, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -103,7 +99,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| Rc::new(RefCell::new(Value::U8(*b)))).collect();
+                let vec = bytes.iter().map(|b| InnerValue::new(Value::U8(*b))).collect();
                 Ok(Some(Value::Array(vec)))
             }
 

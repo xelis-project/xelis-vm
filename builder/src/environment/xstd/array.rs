@@ -1,5 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
-use xelis_types::{Type, Value, ValueOwnable};
+use xelis_types::{InnerValue, Type, Value, ValueOwnable};
 use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
@@ -23,7 +22,7 @@ fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(Rc::new(RefCell::new(param.into_owned())));
+    zelf?.as_mut_vec()?.push(InnerValue::new(param.into_owned()));
     Ok(None)
 }
 

@@ -135,9 +135,8 @@ impl<'a> VM<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{Type, Value};
+    use xelis_types::{InnerValue, Type, Value};
 
     use super::*;
 
@@ -203,7 +202,7 @@ mod tests {
             Value::U8(10),
             Value::U8(20),
             Value::U8(30),
-        ].into_iter().map(|v| Rc::new(RefCell::new(v))).collect();
+        ].into_iter().map(|v| InnerValue::new(v)).collect();
 
         // Push element 1
         let index = module.add_constant(Value::Array(values));
@@ -269,8 +268,8 @@ mod tests {
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::Struct(0, vec![
-            Rc::new(RefCell::new(Value::U8(10))),
-            Rc::new(RefCell::new(Value::U16(20)))
+            InnerValue::new(Value::U8(10)),
+            InnerValue::new(Value::U16(20))
         ].into()));
 
         let chunk = module.get_chunk_at_mut(0).unwrap();
@@ -372,7 +371,7 @@ mod tests {
         let mut main = Chunk::new();
         // Create a struct
         let index = module.add_constant(Value::Struct(0, vec![
-            Rc::new(RefCell::new(Value::U64(10)))
+            InnerValue::new(Value::U64(10))
         ].into()));
 
         main.emit_opcode(OpCode::Constant);
@@ -519,11 +518,11 @@ mod tests {
         let mut chunk = Chunk::new();
 
         let index = module.add_constant(Value::Array(vec![
-            Rc::new(RefCell::new(Value::U8(10))),
-            Rc::new(RefCell::new(Value::U8(20))),
-            Rc::new(RefCell::new(Value::U8(30))),
-            Rc::new(RefCell::new(Value::U8(40))),
-            Rc::new(RefCell::new(Value::U8(50))),
+            InnerValue::new(Value::U8(10)),
+            InnerValue::new(Value::U8(20)),
+            InnerValue::new(Value::U8(30)),
+            InnerValue::new(Value::U8(40)),
+            InnerValue::new(Value::U8(50)),
         ].into()));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);
