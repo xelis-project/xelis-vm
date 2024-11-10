@@ -1,5 +1,5 @@
-use bytecode::OpCode;
-use types::Type;
+use xelis_bytecode::OpCode;
+use xelis_types::Type;
 use crate::VMError;
 use super::Chunk;
 

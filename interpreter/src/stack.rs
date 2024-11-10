@@ -1,5 +1,5 @@
 use super::InterpreterError;
-use types::{Path, IdentifierType};
+use xelis_types::{Path, IdentifierType};
 
 #[derive(Debug)]
 pub struct Stack<'a> {
@@ -60,7 +60,7 @@ impl<'a> Stack<'a> {
 
 #[cfg(test)]
 mod tests {
-    use types::Value;
+    use xelis_types::Value;
     use super::*;
 
     #[test]

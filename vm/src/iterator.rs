@@ -1,4 +1,4 @@
-use types::{ValueError, Path};
+use xelis_types::{ValueError, Path};
 
 #[derive(Debug)]
 pub struct PathIterator<'a> {

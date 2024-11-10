@@ -1,4 +1,4 @@
-use environment::{
+use xelis_environment::{
     FnInstance,
     FnParams,
     FnReturnType
@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
     cell::RefCell
 };
-use types::{Type, Value, ValueOwnable, U256 as u256};
+use xelis_types::{Type, Value, ValueOwnable, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;

@@ -6,7 +6,7 @@ use operator::*;
 use r#impl::*;
 use iterator::*;
 
-use bytecode::OpCode;
+use xelis_bytecode::OpCode;
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 

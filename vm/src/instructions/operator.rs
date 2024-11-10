@@ -4,7 +4,7 @@ use crate::{
     ChunkManager,
     VMError,
 };
-use types::{Value, Type, Path};
+use xelis_types::{Value, Type, Path};
 
 use super::InstructionResult;
 

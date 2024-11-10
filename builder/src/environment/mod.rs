@@ -1,9 +1,9 @@
 pub mod xstd;
 
 use std::borrow::Cow;
-use ast::Signature;
-use types::Type;
-use environment::{Environment, NativeFunction, OnCallFn};
+use xelis_ast::Signature;
+use xelis_types::Type;
+use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{StructBuilder, StructManager, FunctionMapper};
 
 // EnvironmentBuilder is used to create an environment

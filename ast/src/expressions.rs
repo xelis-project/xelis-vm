@@ -1,4 +1,4 @@
-use types::{
+use xelis_types::{
     Type,
     Value,
     IdentifierType

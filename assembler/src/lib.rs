@@ -2,8 +2,8 @@ mod opcode;
 
 use opcode::OpCodeWithArgs;
 
-use types::Value;
-use bytecode::{Chunk, Module};
+use xelis_types::Value;
+use xelis_bytecode::{Chunk, Module};
 
 #[derive(Debug)]
 pub enum AssemblerError {
@@ -72,7 +72,7 @@ impl<'a> Assembler<'a> {
 
 #[cfg(test)]
 mod tests {
-    use bytecode::OpCode;
+    use xelis_bytecode::OpCode;
 
     use super::*;
 

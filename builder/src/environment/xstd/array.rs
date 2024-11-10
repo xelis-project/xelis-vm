@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
-use types::{Type, Value, ValueOwnable};
-use environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_types::{Type, Value, ValueOwnable};
+use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {

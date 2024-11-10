@@ -1,15 +1,15 @@
 [package]
-name = "vm"
+name = "xelis-vm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bytecode = { path = "../bytecode" }
-types = { path = "../types" }
-environment = { path = "../environment" }
+xelis-bytecode = { path = "../bytecode" }
+xelis-types = { path = "../types" }
+xelis-environment = { path = "../environment" }
 
 [dev-dependencies]
-builder = { path = "../builder" }
-lexer = { path = "../lexer" }
-parser = { path = "../parser" }
-compiler = { path = "../compiler" }
+xelis-builder = { path = "../builder" }
+xelis-lexer ={ path = "../lexer" }
+xelis-parser = { path = "../parser" }
+xelis-compiler = { path = "../compiler" }

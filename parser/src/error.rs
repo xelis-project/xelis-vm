@@ -1,6 +1,6 @@
-use ast::{Expression, Token};
-use builder::BuilderError;
-use types::{Type, ValueError, IdentifierType};
+use xelis_ast::{Expression, Token};
+use xelis_builder::BuilderError;
+use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {

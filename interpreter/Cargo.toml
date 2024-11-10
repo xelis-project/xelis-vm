@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-types = { path = "../types" }
-ast = { path = "../ast" }
-environment = { path = "../environment" }
+xelis-types = { path = "../types" }
+xelis-ast = { path = "../ast" }
+xelis-environment = { path = "../environment" }
 thiserror = "2.0.1"
 
 [dev-dependencies]
-ast = { path = "../ast" }
-lexer = { path = "../lexer" }
-parser = { path = "../parser" }
-builder = { path = "../builder" }
+xelis-ast = { path = "../ast" }
+xelis-lexer ={ path = "../lexer" }
+xelis-parser = { path = "../parser" }
+xelis-builder = { path = "../builder" }

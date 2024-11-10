@@ -5,15 +5,15 @@ use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque}
 };
-use builder::{
+use xelis_builder::{
     EnvironmentBuilder,
     FunctionMapper,
     StructBuilder,
     StructManager
 };
-use ast::*;
-use environment::NativeFunction;
-use types::*;
+use xelis_ast::*;
+use xelis_environment::NativeFunction;
+use xelis_types::*;
 use context::Context;
 
 pub use error::ParserError;

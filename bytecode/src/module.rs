@@ -1,6 +1,6 @@
 
 use std::collections::HashSet;
-use types::{Struct, Value};
+use xelis_types::{Struct, Value};
 
 use super::Chunk;
 

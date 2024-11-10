@@ -4,14 +4,14 @@ mod iterator;
 mod instructions;
 mod stack;
 
-use environment::Environment;
+use xelis_environment::Environment;
 pub use error::VMError;
 pub use chunk::*;
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use types::{Struct, Value, Path};
-use bytecode::Module;
+use xelis_types::{Struct, Value, Path};
+use xelis_bytecode::Module;
 
 // 64 elements maximum in the call stack
 const CALL_STACK_SIZE: usize = 64;
@@ -136,8 +136,8 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
-    use bytecode::{Chunk, Module, OpCode};
-    use types::{Type, Value};
+    use xelis_bytecode::{Chunk, Module, OpCode};
+    use xelis_types::{Type, Value};
 
     use super::*;
 
@@ -577,12 +577,12 @@ mod tests {
 #[cfg(test)]
 mod full_tests {
     use super::*;
-    use compiler::Compiler;
-    use environment::Environment;
-    use builder::EnvironmentBuilder;
-    use lexer::Lexer;
-    use parser::Parser;
-    use types::Value;
+    use xelis_compiler::Compiler;
+    use xelis_environment::Environment;
+    use xelis_builder::EnvironmentBuilder;
+    use xelis_lexer::Lexer;
+    use xelis_parser::Parser;
+    use xelis_types::Value;
 
     #[track_caller]
     fn prepare_module(code: &str) -> (Module, Environment) {

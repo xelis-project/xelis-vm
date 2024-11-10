@@ -1,4 +1,4 @@
-use types::{Path, Type, Value};
+use xelis_types::{Path, Type, Value};
 use super::EnvironmentError;
 
 // first parameter is the current value / instance

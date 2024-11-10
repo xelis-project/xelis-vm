@@ -1,5 +1,5 @@
-use types::{Type, Value};
-use environment::{FnInstance, FnParams, FnReturnType};
+use xelis_types::{Type, Value};
+use xelis_environment::{FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {

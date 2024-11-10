@@ -3,15 +3,15 @@ mod state;
 mod error;
 
 use std::{cell::RefCell, rc::Rc};
-use environment::{Environment, NativeFunction};
-use types::{
+use xelis_environment::{Environment, NativeFunction};
+use xelis_types::{
     Path,
     Type,
     Value,
     IdentifierType,
     NoHashMap
 };
-use ast::{
+use xelis_ast::{
     Expression, FunctionType, Operator, Parameter, Program, Statement
 };
 use stack::Stack;
@@ -575,10 +575,10 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ast::Signature;
-    use lexer::Lexer;
-    use parser::Parser;
-    use builder::EnvironmentBuilder;
+    use xelis_ast::Signature;
+    use xelis_lexer::Lexer;
+    use xelis_parser::Parser;
+    use xelis_builder::EnvironmentBuilder;
 
     #[track_caller]
     fn test_code_expect_value(key: &Signature, code: &str) -> Value {

@@ -1,4 +1,4 @@
-use types::Path;
+use xelis_types::Path;
 
 use super::VMError;
 

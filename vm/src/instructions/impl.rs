@@ -1,5 +1,5 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
-use types::{Path, Value};
+use xelis_types::{Path, Value};
 
 use crate::{stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;

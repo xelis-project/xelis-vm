@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-types = { path = "../types" }
-bytecode = { path = "../bytecode" }
+xelis-types = { path = "../types" }
+xelis-bytecode = { path = "../bytecode" }

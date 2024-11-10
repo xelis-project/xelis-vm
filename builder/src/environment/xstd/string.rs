@@ -1,5 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
-use types::{Type, Value, ValueOwnable};
+use xelis_types::{Type, Value, ValueOwnable};
 use super::{
     FnInstance,
     FnParams,

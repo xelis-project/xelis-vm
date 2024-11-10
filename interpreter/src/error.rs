@@ -1,7 +1,7 @@
-use ast::Expression;
-use environment::EnvironmentError;
+use xelis_ast::Expression;
+use xelis_environment::EnvironmentError;
 use thiserror::Error;
-use types::{IdentifierType, Type, ValueError};
+use xelis_types::{IdentifierType, Type, ValueError};
 
 
 #[derive(Debug, Error)]

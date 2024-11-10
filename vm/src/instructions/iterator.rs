@@ -1,5 +1,5 @@
 use crate::{iterator::PathIterator, stack::Stack, Backend, ChunkManager, VMError};
-use types::{Value, Path};
+use xelis_types::{Value, Path};
 
 use super::InstructionResult;
 

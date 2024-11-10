@@ -5,8 +5,8 @@ use std::{
     hash::Hash,
     mem::take
 };
-use ast::{Expression, Signature};
-use types::IdentifierType;
+use xelis_ast::{Expression, Signature};
+use xelis_types::IdentifierType;
 
 use crate::BuilderError;
 

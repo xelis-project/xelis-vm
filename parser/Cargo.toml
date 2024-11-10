@@ -1,10 +1,10 @@
 [package]
-name = "parser"
+name = "xelis-parser"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ast = { path = "../ast" }
-types = { path = "../types" }
-builder = { path = "../builder" }
-environment = { path = "../environment" }
+xelis-ast = { path = "../ast" }
+xelis-types = { path = "../types" }
+xelis-builder = { path = "../builder" }
+xelis-environment = { path = "../environment" }

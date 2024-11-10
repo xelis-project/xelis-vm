@@ -3,8 +3,8 @@ mod optional;
 mod string;
 mod integer;
 
-use types::Type;
-use environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_types::Type;
+use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {

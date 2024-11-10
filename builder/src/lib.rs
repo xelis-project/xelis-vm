@@ -6,7 +6,7 @@ pub use environment::*;
 pub use struct_manager::*;
 pub use mapper::*;
 use thiserror::Error;
-use types::ValueError;
+use xelis_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum BuilderError {

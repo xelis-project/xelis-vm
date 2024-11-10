@@ -1,5 +1,5 @@
-use environment::EnvironmentError;
-use types::{Value, ValueError};
+use xelis_environment::EnvironmentError;
+use xelis_types::{Value, ValueError};
 
 #[derive(Debug)]
 pub enum VMError {

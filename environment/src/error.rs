@@ -1,5 +1,5 @@
 use thiserror::Error;
-use types::{ValueError, Value};
+use xelis_types::{ValueError, Value};
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {

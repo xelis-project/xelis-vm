@@ -1,14 +1,14 @@
 mod error;
 
-use ast::{
+use xelis_ast::{
     Expression,
     FunctionType,
     Operator,
     Statement,
     Program
 };
-use environment::Environment;
-use bytecode::{Chunk, Module, OpCode};
+use xelis_environment::Environment;
+use xelis_bytecode::{Chunk, Module, OpCode};
 
 pub use error::CompilerError;
 
@@ -516,10 +516,10 @@ impl<'a> Compiler<'a> {
 
 #[cfg(test)]
 mod tests {
-    use builder::EnvironmentBuilder;
-    use lexer::Lexer;
-    use parser::Parser;
-    use types::Value;
+    use xelis_builder::EnvironmentBuilder;
+    use xelis_lexer::Lexer;
+    use xelis_parser::Parser;
+    use xelis_types::Value;
 
     use super::*;
 

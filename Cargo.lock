@@ -6,85 +6,21 @@ version = 3
 name = "assembler"
 version = "0.1.0"
 dependencies = [
- "bytecode",
- "types",
-]
-
-[[package]]
-name = "ast"
-version = "0.1.0"
-dependencies = [
- "types",
-]
-
-[[package]]
-name = "builder"
-version = "0.1.0"
-dependencies = [
- "ast",
- "environment",
- "paste",
- "thiserror",
- "types",
-]
-
-[[package]]
-name = "bytecode"
-version = "0.1.0"
-dependencies = [
- "types",
-]
-
-[[package]]
-name = "compiler"
-version = "0.1.0"
-dependencies = [
- "ast",
- "builder",
- "bytecode",
- "environment",
- "lexer",
- "parser",
- "thiserror",
- "types",
-]
-
-[[package]]
-name = "environment"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "types",
+ "xelis-bytecode",
+ "xelis-types",
 ]
 
 [[package]]
 name = "interpreter"
 version = "0.1.0"
 dependencies = [
- "ast",
- "builder",
- "environment",
- "lexer",
- "parser",
  "thiserror",
- "types",
-]
-
-[[package]]
-name = "lexer"
-version = "0.1.0"
-dependencies = [
- "ast",
-]
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "ast",
- "builder",
- "environment",
- "types",
+ "xelis-ast",
+ "xelis-builder",
+ "xelis-environment",
+ "xelis-lexer",
+ "xelis-parser",
+ "xelis-types",
 ]
 
 [[package]]
@@ -143,27 +79,91 @@ dependencies = [
 ]
 
 [[package]]
-name = "types"
-version = "0.1.0"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e91b56cd4cadaeb79bbf1a5645f6b4f8dc5bde8834ad5894a8db35fda9efa1fe"
 
 [[package]]
-name = "vm"
+name = "xelis-ast"
 version = "0.1.0"
 dependencies = [
- "builder",
- "bytecode",
- "compiler",
- "environment",
- "lexer",
- "parser",
- "types",
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-builder"
+version = "0.1.0"
+dependencies = [
+ "paste",
+ "thiserror",
+ "xelis-ast",
+ "xelis-environment",
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-bytecode"
+version = "0.1.0"
+dependencies = [
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-compiler"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "xelis-ast",
+ "xelis-builder",
+ "xelis-bytecode",
+ "xelis-environment",
+ "xelis-lexer",
+ "xelis-parser",
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-environment"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-lexer"
+version = "0.1.0"
+dependencies = [
+ "xelis-ast",
+]
+
+[[package]]
+name = "xelis-parser"
+version = "0.1.0"
+dependencies = [
+ "xelis-ast",
+ "xelis-builder",
+ "xelis-environment",
+ "xelis-types",
+]
+
+[[package]]
+name = "xelis-types"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "xelis-vm"
+version = "0.1.0"
+dependencies = [
+ "xelis-builder",
+ "xelis-bytecode",
+ "xelis-compiler",
+ "xelis-environment",
+ "xelis-lexer",
+ "xelis-parser",
+ "xelis-types",
 ]

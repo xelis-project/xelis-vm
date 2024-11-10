@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use types::Struct;
+use xelis_types::Struct;
 use super::{DeclarationStatement, FunctionType};
 
 #[derive(Debug)]

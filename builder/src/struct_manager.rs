@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::HashMap
 };
-use types::{
+use xelis_types::{
     HasKey,
     Struct,
     Type,

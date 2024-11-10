@@ -1,6 +1,6 @@
 mod declared;
 
-use types::{Type, IdentifierType};
+use xelis_types::{Type, IdentifierType};
 use super::Statement;
 
 pub use declared::{DeclaredFunction, EntryFunction};

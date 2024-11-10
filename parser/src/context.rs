@@ -1,4 +1,4 @@
-use types::{Type, IdentifierType};
+use xelis_types::{Type, IdentifierType};
 use crate::ParserError;
 
 #[derive(Clone, Debug)]

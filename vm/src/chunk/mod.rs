@@ -1,8 +1,8 @@
 mod reader;
 
 use std::ops::{Deref, DerefMut};
-use bytecode::Chunk;
-use types::Path;
+use xelis_bytecode::Chunk;
+use xelis_types::Path;
 use super::{iterator::PathIterator, VMError};
 pub use reader::ChunkReader;
 
