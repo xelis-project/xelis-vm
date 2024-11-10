@@ -1,5 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
-use types::{Type, Value};
+use types::{Type, Value, ValueOwnable};
 use environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
@@ -82,7 +82,8 @@ fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
+        let inner = ValueOwnable::Rc(value.clone());
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -91,7 +92,8 @@ fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
+        let inner = ValueOwnable::Rc(value.clone());
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -100,7 +102,8 @@ fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
 fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(Value::Optional(Some(Box::new(value.borrow().clone())))))
+        let inner = ValueOwnable::Rc(value.clone());
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }

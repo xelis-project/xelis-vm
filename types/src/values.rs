@@ -40,6 +40,24 @@ pub enum ValueError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValueOwnable {
+    Owned(Box<Value>),
+    Rc(Rc<RefCell<Value>>)
+}
+
+impl ValueOwnable {
+    pub fn into_inner(self) -> Value {
+        match self {
+            ValueOwnable::Owned(v) => *v,
+            ValueOwnable::Rc(v) => match Rc::try_unwrap(v) {
+                Ok(value) => value.into_inner(),
+                Err(rc) => rc.borrow().clone()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Null,
     // number types
@@ -54,7 +72,7 @@ pub enum Value {
     Boolean(bool),
     Struct(IdentifierType, Vec<InnerValue>),
     Array(Vec<InnerValue>),
-    Optional(Option<Box<Value>>)
+    Optional(Option<ValueOwnable>)
 }
 
 impl Default for Value {
@@ -177,7 +195,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<&Option<Box<Value>>, ValueError> {
+    pub fn as_optional(&self, expected: &Type) -> Result<&Option<ValueOwnable>, ValueError> {
         match self {
             Value::Null => Ok(&None),
             Value::Optional(n) => Ok(n),
@@ -186,15 +204,15 @@ impl Value {
     }
 
     #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<Value, ValueError> {
+    pub fn take_from_optional(&mut self, expected: &Type) -> Result<ValueOwnable, ValueError> {
         match self {
-            Value::Optional(opt) => Ok(*opt.take().ok_or(ValueError::OptionalIsNull)?),
+            Value::Optional(opt) => opt.take().ok_or(ValueError::OptionalIsNull),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
         }
     }
 
     #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<Box<Value>>, ValueError> {
+    pub fn take_optional(&mut self) -> Result<Option<ValueOwnable>, ValueError> {
         match self {
             Value::Optional(opt) => Ok(opt.take()),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
@@ -375,7 +393,8 @@ impl Value {
                 if let Value::Null = self {
                     Ok(Value::Optional(None))
                 } else {
-                    self.checked_cast_to_primitive_type(inner).map(|v| Value::Optional(Some(Box::new(v))))
+                    self.checked_cast_to_primitive_type(inner)
+                        .map(|v| Value::Optional(Some(ValueOwnable::Owned(Box::new(v)))))
                 }
             }
             _ => Err(ValueError::InvalidCastType(expected.clone()))
@@ -545,8 +564,11 @@ impl std::fmt::Display for Value {
                 write!(f, "[{}]", s.join(", "))
             },
             Value::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "Optional({})", value),
-                None => write!(f, "Optional(null)")
+                Some(value) => write!(f, "optional<{}>", match value {
+                    ValueOwnable::Owned(v) => v.to_string(),
+                    ValueOwnable::Rc(v) => v.borrow().to_string()
+                }),
+                None => write!(f, "optional<null>")
             },
         }
     }

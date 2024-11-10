@@ -1,6 +1,7 @@
 use crate::{
     values::Value,
     IdentifierType,
+    ValueOwnable,
 };
 use std::{
     collections::{HashMap, HashSet}, fmt, hash::{BuildHasher, Hash}
@@ -78,7 +79,10 @@ impl Type {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
-            Value::Optional(value) => Type::Optional(Box::new(Type::from_value(value.as_ref()?, structures)?)),
+            Value::Optional(value) => Type::Optional(Box::new(match value.as_ref()? {
+                ValueOwnable::Owned(v) => Type::from_value(&v, structures)?,
+                ValueOwnable::Rc(v) => Type::from_value(&v.borrow(), structures)?,
+            })),
             Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.borrow(), structures)?)),
             Value::Struct(name, _) => if structures.has(name) {
                 Type::Struct(name.clone())

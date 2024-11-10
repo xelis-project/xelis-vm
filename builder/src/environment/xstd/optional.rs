@@ -20,11 +20,15 @@ fn is_some(zelf: FnInstance, _: FnParams) -> FnReturnType {
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    Ok(Some(zelf?.take_from_optional(&Type::T)?))
+    let opt = zelf?.take_from_optional(&Type::T)?;
+    Ok(Some(opt.into_inner()))
 }
 
 fn unwrap_or(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let default = parameters.remove(0);
     let optional = zelf?.take_optional()?;
-    Ok(Some(optional.map(|v| *v).unwrap_or(default.into_owned())))
+    match optional {
+        Some(value) => Ok(Some(value.into_inner())),
+        None => Ok(Some(default.into_owned()))
+    }
 }

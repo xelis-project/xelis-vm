@@ -1,5 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
-use types::{Type, Value};
+use types::{Type, Value, ValueOwnable};
 use super::{
     FnInstance,
     FnParams,
@@ -83,7 +83,8 @@ fn index_of(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
-        Ok(Some(Value::Optional(Some(Box::new(Value::U32(index as u32))))))
+        let inner = ValueOwnable::Owned(Box::new(Value::U32(index as u32)));
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -95,7 +96,8 @@ fn last_index_of(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
-        Ok(Some(Value::Optional(Some(Box::new(Value::U32(index as u32))))))
+        let inner = ValueOwnable::Owned(Box::new(Value::U32(index as u32)));
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -146,7 +148,8 @@ fn char_at(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let index = param.as_u32()? as usize;
     let s: &String = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
-        Ok(Some(Value::Optional(Some(Box::new(Value::String(c.to_string()))))))
+        let inner = ValueOwnable::Owned(Box::new(Value::String(c.to_string())));
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -171,7 +174,8 @@ fn string_substring(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType 
     let param = parameters.remove(0);
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
-        Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
+        let inner = ValueOwnable::Owned(Box::new(Value::String(s.to_owned())));
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -184,7 +188,8 @@ fn string_substring_range(zelf: FnInstance, mut parameters: FnParams) -> FnRetur
     let start = param1.as_u32()? as usize;
     let end = param2.as_u32()? as usize;
     if let Some(s) = s.get(start..end) {
-        Ok(Some(Value::Optional(Some(Box::new(Value::String(s.to_string()))))))
+        let inner = ValueOwnable::Owned(Box::new(Value::String(s.to_owned())));
+        Ok(Some(Value::Optional(Some(inner))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
