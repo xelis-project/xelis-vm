@@ -36,9 +36,11 @@ impl Default for U256 {
 }
 
 impl U256 {
-    pub const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
     pub const ONE: U256 = U256([1, 0, 0, 0]);
     pub const ZERO: U256 = U256([0, 0, 0, 0]);
+
+    pub const MIN: U256 = Self::ZERO;
+    pub const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
 
     /// Returns true if the number is zero.
     pub fn is_zero(&self) -> bool {

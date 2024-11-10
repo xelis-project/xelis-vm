@@ -51,4 +51,11 @@ impl Environment {
     pub fn add_structure(&mut self, structure: Struct) {
         self.structures.push(structure);
     }
+
+    // Allow to change the cost of a function
+    pub fn set_cost_for_function_at_index(&mut self, index: usize, cost: u64) {
+        if let Some(function) = self.functions.get_mut(index) {
+            function.set_cost(cost);
+        }
+    }
 }

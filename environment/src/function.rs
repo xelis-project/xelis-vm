@@ -61,4 +61,9 @@ impl NativeFunction {
     pub fn get_cost(&self) -> u64 {
         self.cost
     }
+
+    // Set the cost of the function
+    pub fn set_cost(&mut self, cost: u64) {
+        self.cost = cost;
+    }
 }
