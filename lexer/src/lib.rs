@@ -10,7 +10,7 @@ pub enum LexerError { // left is line, right is column
     ExpectedType
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TokenResult<'a> {
     // the token value
     pub token: Token<'a>,
@@ -156,8 +156,7 @@ impl<'a> Lexer<'a> {
         F: Fn(&char) -> bool,
     {
         let init_pos = self.pos - diff;
-        loop {
-            let value = self.advance()?;
+        while let Some(value) = self.next_char() {
             if !delimiter(&value) {
                 // push the last character back
                 self.push_back(value);
@@ -822,4 +821,19 @@ mod tests {
         assert_eq!(token.column_start, 9);
         assert_eq!(token.column_end, 10);
     }
+
+    // test access to u64::MAX constant
+    #[test]
+    fn test_type_const() {
+        let code = "u64::MAX";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::U64,
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX")
+        ]);
+    }
+
 }
