@@ -18,5 +18,7 @@ pub enum EnvironmentError {
     #[error("Invalid type for value: {0}")]
     InvalidType(Value),
     #[error(transparent)]
-    ValueError(#[from] ValueError)
+    ValueError(#[from] ValueError),
+    #[error("Invalid range: too large")]
+    RangeTooLarge,
 }

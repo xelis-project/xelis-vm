@@ -335,7 +335,8 @@ impl<'a> Parser<'a> {
             let expr = self.read_expression(context)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
-            types.push(self.get_type_from_expression(None, &expr, context)?.into_owned());
+            let t = self.get_type_from_expression(None, &expr, context)?.into_owned();
+            types.push(t);
             parameters.push(expr);
 
             if self.peek_is(Token::Comma) {
@@ -536,6 +537,10 @@ impl<'a> Parser<'a> {
                         Some(value) => {
                             let _type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
                             // If we have .. that is mostly a range
+
+                            // because we read operator DOT + right expression
+                            required_operator = !required_operator;
+
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
                                 let end_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
@@ -552,9 +557,6 @@ impl<'a> Parser<'a> {
                             } else {
                                 let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
 
-                                // because we read operator DOT + right expression
-                                required_operator = !required_operator;
-    
                                 if let Expression::FunctionCall(path, name, params) = right_expr {
                                     if path.is_some() {
                                         return Err(ParserError::UnexpectedPathInFunctionCall)

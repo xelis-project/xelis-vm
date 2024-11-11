@@ -115,7 +115,7 @@ impl Type {
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {
             Type::Range(inner) => match self {
-                Type::Range(inner2) => inner == inner2,
+                Type::Range(inner2) => inner.is_compatible_with(inner2),
                 _ => false
             },
             Type::Any | Type::T => true,

@@ -1104,4 +1104,56 @@ mod full_tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(45));
     }
+
+    #[test]
+    fn test_range_contains() {
+        let code = r#"
+            entry main() {
+                let x: bool = (0..10).contains(5);
+                return x as u64
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+    
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(1));
+    }
+
+
+    #[test]
+    fn test_range_contains_u256() {
+        let code = r#"
+            entry main() {
+                let x: bool = (0u256..10u256).contains(5);
+                return x as u64
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+    
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(1));
+    }
+
+    #[test]
+    fn test_range_collect() {
+        let code = r#"
+            entry main() {
+                let x: u64[] = 0..10.collect();
+                return x.len() as u64
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
+    }
 }

@@ -871,5 +871,4 @@ mod tests {
             Token::Identifier("MAX")
         ]);
     }
-
 }

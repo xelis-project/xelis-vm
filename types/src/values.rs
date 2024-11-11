@@ -402,6 +402,22 @@ impl Value {
         }
     }
 
+    #[inline]
+    pub fn as_range(&self) -> Result<(&Value, &Value, &Type), ValueError> {
+        match self {
+            Value::Range(start, end, _type) => Ok((start, end, _type)),
+            v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
+        }
+    }
+
+    #[inline]
+    pub fn to_range(self) -> Result<(Value, Value, Type), ValueError> {
+        match self {
+            Value::Range(start, end, _type) => Ok((*start, *end, _type)),
+            v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
+        }
+    }
+
     // Check if the value is a number
     #[inline]
     pub fn is_number(&self) -> bool {
