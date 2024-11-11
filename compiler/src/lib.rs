@@ -247,6 +247,11 @@ impl<'a> Compiler<'a> {
                         chunk.emit_opcode(op);
                     }
                 };
+            },
+            Expression::Range(min, max) => {
+                self.compile_expr(chunk, min)?;
+                self.compile_expr(chunk, max)?;
+                chunk.emit_opcode(OpCode::NewRange);
             }
         }
 

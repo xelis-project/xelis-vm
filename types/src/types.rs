@@ -29,7 +29,8 @@ pub enum Type {
     Bool,
     Struct(IdentifierType),
     Array(Box<Type>),
-    Optional(Box<Type>)
+    Optional(Box<Type>),
+    Range(Box<Type>),
 }
 
 impl Type {
@@ -88,7 +89,8 @@ impl Type {
                 Type::Struct(name.clone())
             } else {
                 return None
-            }
+            },
+            Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
         };
 
         Some(_type)
@@ -98,6 +100,7 @@ impl Type {
         match &self {
             Type::Array(ref _type) => _type,
             Type::Optional(ref _type) => _type,
+            Type::Range(ref _type) => _type,
             _ => &self
         }
     }
@@ -111,6 +114,10 @@ impl Type {
 
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {
+            Type::Range(inner) => match self {
+                Type::Range(inner2) => inner == inner2,
+                _ => false
+            },
             Type::Any | Type::T => true,
             Type::Array(sub_type) => match self {
                 Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
@@ -186,6 +193,14 @@ impl Type {
         }
     }
 
+    pub fn is_iterable(&self) -> bool {
+        match self {
+            Type::Array(_) => true,
+            Type::Range(_) => true,
+            _ => false
+        }
+    }
+
     pub fn is_array(&self) -> bool {
         match &self {
             Type::Array(_) => true,
@@ -230,7 +245,8 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Struct(id) => write!(f, "struct({})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
-            Type::Optional(_type) => write!(f, "optional<{}>", _type)
+            Type::Optional(_type) => write!(f, "optional<{}>", _type),
+            Type::Range(_type) => write!(f, "range<{}>", _type),
         }
     }
 }

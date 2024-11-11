@@ -4,6 +4,9 @@ use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
+    NotIterable(Type),
+    InvalidRangeType(Type, Type),
+    InvalidRangeTypePrimitive(Type),
     ValueError(ValueError),
     BuilderError(BuilderError),
     InvalidStructFieldOrder,

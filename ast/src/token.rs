@@ -1,5 +1,32 @@
 use std::borrow::Cow;
 
+// Small helper for tokens that accept generics/inner token
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum TokenGeneric {
+    Optional,
+    Range,
+}
+
+impl TokenGeneric {
+    // Convert a string to a token
+    pub fn value_of(s: &str) -> Option<TokenGeneric> {
+        Some(match s {
+            "optional" => Self::Optional,
+            "range" => Self::Range,
+            _ => return None,
+        })
+    }
+
+    // Convert the token to a token with the inner token
+    pub fn to_token(self, token: Token) -> Token {
+        use Token::*;
+        match self {
+            Self::Optional => Optional(Box::new(token)),
+            Self::Range => Range(Box::new(token)),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token<'a> {
     // Variable / function names
@@ -22,6 +49,7 @@ pub enum Token<'a> {
     Bool,
     String,
     Optional(Box<Token<'a>>),
+    Range(Box<Token<'a>>),
 
     BraceOpen,
     BraceClose,

@@ -1,4 +1,4 @@
-use xelis_ast::Token;
+use xelis_ast::{Token, TokenGeneric};
 use std::{borrow::Cow, collections::VecDeque};
 
 #[derive(Debug)]
@@ -306,7 +306,8 @@ impl<'a> Lexer<'a> {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
 
-        let token = if value == "optional" && self.peek()? == '<' {
+        let generic = TokenGeneric::value_of(value);
+        let token = if generic.is_some() && self.peek()? == '<' {
             self.advance()?;
             let inner = self.read_token(0)?;
             if '>' != self.advance()? {
@@ -316,7 +317,8 @@ impl<'a> Lexer<'a> {
             if !inner.token.is_type() {
                 return Err(LexerError::ExpectedType);
             }
-            Token::Optional(Box::new(inner.token))
+
+            generic.unwrap().to_token(inner.token)
         } else {
             Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value))
         };
@@ -705,6 +707,28 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Optional(Box::new(Token::Optional(Box::new(Token::U64))))
+        ]);
+    }
+
+    #[test]
+    fn test_range() {
+        let code = "range<u64>";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Range(Box::new(Token::U64))
+        ]);
+    }
+
+    #[test]
+    fn test_identifier_cmp() {
+        let code = "a<b";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorLessThan,
+            Token::Identifier("b")
         ]);
     }
 

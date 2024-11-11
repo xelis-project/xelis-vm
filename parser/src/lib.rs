@@ -129,6 +129,29 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn get_type_from_token(&self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
+        Ok(match token {
+            Token::U8 => Type::U8,
+            Token::U16 => Type::U16,
+            Token::U32 => Type::U32,
+            Token::U64 => Type::U64,
+            Token::U128 => Type::U128,
+            Token::U256 => Type::U256,
+            Token::String => Type::String,
+            Token::Bool => Type::Bool,
+            Token::Optional(inner) => Type::Optional(Box::new(self.get_type_from_token(*inner)?)),
+            Token::Range(inner) => Type::Range(Box::new(self.get_type_from_token(*inner)?)),
+            Token::Identifier(id) => {
+                if let Ok(v) = self.struct_manager.get_mapping(id) {
+                    Type::Struct(v)
+                } else {
+                    return Err(ParserError::StructNotFound(id))
+                }
+            },
+            token => return Err(ParserError::UnexpectedToken(token))
+        })
+    }
+
     /**
      * Example: let message: string[] = ["hello", "world", "!"];
      * Types: (unsigned)
@@ -144,24 +167,7 @@ impl<'a> Parser<'a> {
      */
     fn read_type(&mut self) -> Result<Type, ParserError<'a>> {
         let token = self.advance()?;
-        let mut _type = match token {
-            Token::U8 => Type::U8,
-            Token::U16 => Type::U16,
-            Token::U32 => Type::U32,
-            Token::U64 => Type::U64,
-            Token::U128 => Type::U128,
-            Token::U256 => Type::U256,
-            Token::String => Type::String,
-            Token::Bool => Type::Bool,
-            Token::Identifier(id) => {
-                if let Ok(v) = self.struct_manager.get_mapping(id) {
-                    Type::Struct(v)
-                } else {
-                    return Err(ParserError::StructNotFound(id))
-                }
-            },
-            token => return Err(ParserError::UnexpectedToken(token))
-        };
+        let mut _type = self.get_type_from_token(token)?;
 
         // support multi dimensional arrays
         loop {
@@ -307,7 +313,8 @@ impl<'a> Parser<'a> {
             },
             Expression::IsNot(_) => Cow::Owned(Type::Bool),
             Expression::Ternary(_, expr, _) => self.get_type_from_expression(on_type, expr, context)?,
-            Expression::Cast(_, _type) => Cow::Borrowed(_type)
+            Expression::Cast(_, _type) => Cow::Borrowed(_type),
+            Expression::Range(start, _) => Cow::Owned(Type::Range(Box::new(self.get_type_from_expression(on_type, start, context)?.into_owned()))),
         };
 
         Ok(Some(_type))
@@ -415,7 +422,8 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
 
-            let expr: Expression = match self.advance()? {
+            let token = self.advance()?;
+            let expr: Expression = match token {
                 Token::BracketOpen => {
                     match last_expression {
                         Some(v) => {
@@ -512,17 +520,34 @@ impl<'a> Parser<'a> {
                     match last_expression {
                         Some(value) => {
                             let _type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
-                            let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
-                            // because we read operator DOT + right expression
-                            required_operator = !required_operator;
-
-                            if let Expression::FunctionCall(path, name, params) = right_expr {
-                                if path.is_some() {
-                                    return Err(ParserError::UnexpectedPathInFunctionCall)
+                            // If we have .. that is mostly a range
+                            if self.peek_is(Token::Dot) {
+                                self.expect_token(Token::Dot)?;
+                                let end_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
+                                let end_type = self.get_type_from_expression(on_type, &end_expr, context)?;
+                                if _type != *end_type {
+                                    return Err(ParserError::InvalidRangeType(_type, end_type.into_owned()))
                                 }
-                                Expression::FunctionCall(Some(Box::new(value)), name, params)
+
+                                if !_type.is_primitive() {
+                                    return Err(ParserError::InvalidRangeTypePrimitive(_type))
+                                }
+
+                                Expression::Range(Box::new(value), Box::new(end_expr))
                             } else {
-                                Expression::Path(Box::new(value), Box::new(right_expr))
+                                let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
+
+                                // because we read operator DOT + right expression
+                                required_operator = !required_operator;
+    
+                                if let Expression::FunctionCall(path, name, params) = right_expr {
+                                    if path.is_some() {
+                                        return Err(ParserError::UnexpectedPathInFunctionCall)
+                                    }
+                                    Expression::FunctionCall(Some(Box::new(value)), name, params)
+                                } else {
+                                    Expression::Path(Box::new(value), Box::new(right_expr))
+                                }
                             }
                         },
                         None => return Err(ParserError::UnexpectedToken(Token::Dot))
@@ -683,9 +708,11 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
+        println!("Variable: {} - Type: {:?}", name, value_type);
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(None, true, true, Some(&value_type), context)?;
+            let expr = self.read_expr(None, true, true, Some(value_type.get_inner_type()), context)?;
+            println!("Value: {:?}", expr);
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -716,6 +743,7 @@ impl<'a> Parser<'a> {
         } else {
             context.register_variable(name, value_type.clone())?
         };
+        println!("ok");
 
         Ok(DeclarationStatement {
             id,
@@ -768,8 +796,8 @@ impl<'a> Parser<'a> {
                     let expr_type = self.get_type_from_expression(None, &expr, context)?;
 
                     // verify that we can iter on it
-                    if !expr_type.is_array() {
-                        return Err(ParserError::ExpectedArrayType)
+                    if !expr_type.is_iterable() {
+                        return Err(ParserError::NotIterable(expr_type.into_owned()))
                     }
 
                     let id = context.register_variable(variable, expr_type.get_inner_type().clone())?;
@@ -1181,6 +1209,67 @@ mod tests {
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
         test_parser_statement_with(tokens, variables, &Some(return_type), env)
+    }
+
+    #[test]
+    fn test_range() {
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+
+            Token::Range(Box::new(Token::U64)),
+            Token::OperatorAssign,
+
+            Token::U64Value(0),
+            Token::Dot,
+            Token::Dot,
+            Token::U64Value(10),
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::U64,
+                    value: Expression::Range(
+                        Box::new(Expression::Value(Value::U64(0))),
+                        Box::new(Expression::Value(Value::U64(10))),
+                    )
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_for_each_range() {
+        let tokens = vec![
+            Token::ForEach,
+            Token::Identifier("a"),
+            Token::In,
+            Token::U64Value(0),
+            Token::Dot,
+            Token::Dot,
+            Token::U64Value(10),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::ForEach(
+                0,
+                Expression::Range(
+                    Box::new(Expression::Value(Value::U64(0))),
+                    Box::new(Expression::Value(Value::U64(10))),
+                ),
+                Vec::new()
+            )
+        );
     }
 
     #[test]

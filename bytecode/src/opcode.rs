@@ -119,6 +119,9 @@ pub enum OpCode {
     Inc,
     // --
     Dec,
+
+    // N..Y
+    NewRange,
 }
 
 impl OpCode {
@@ -188,6 +191,7 @@ impl OpCode {
 
             OpCode::Inc => 51,
             OpCode::Dec => 52,
+            OpCode::NewRange => 53,
         }
     }
 
@@ -251,6 +255,7 @@ impl OpCode {
 
             51 => OpCode::Inc,
             52 => OpCode::Dec,
+            53 => OpCode::NewRange,
             _ => return None,
         })
     }

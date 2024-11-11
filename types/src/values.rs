@@ -1,4 +1,4 @@
-use std::{cell::{Ref, RefCell, RefMut}, hash::Hash, rc::Rc};
+use std::{cell::{Ref, RefCell, RefMut}, cmp::Ordering, hash::Hash, rc::Rc};
 use thiserror::Error;
 use crate::{types::Type, IdentifierType, ValueHandle, ValueHandleMut, U256};
 
@@ -66,6 +66,10 @@ pub enum ValueError {
     OutOfBounds(usize, usize),
     #[error("Cast error")]
     CastError,
+    #[error("Invalid primitive type")]
+    InvalidPrimitiveType,
+    #[error("Invalid unknown type")]
+    UnknownType,
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
@@ -128,7 +132,23 @@ pub enum Value {
     Boolean(bool),
     Struct(IdentifierType, Vec<ValueOwnable>),
     Array(Vec<ValueOwnable>),
-    Optional(Option<ValueOwnable>)
+    Optional(Option<ValueOwnable>),
+    // Use box directly because the range are primitive only
+    Range(Box<Value>, Box<Value>, Type),
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Value::U8(a), Value::U8(b)) => a.partial_cmp(b),
+            (Value::U16(a), Value::U16(b)) => a.partial_cmp(b),
+            (Value::U32(a), Value::U32(b)) => a.partial_cmp(b),
+            (Value::U64(a), Value::U64(b)) => a.partial_cmp(b),
+            (Value::U128(a), Value::U128(b)) => a.partial_cmp(b),
+            (Value::U256(a), Value::U256(b)) => a.partial_cmp(b),
+            _ => None
+        }
+    }
 }
 
 impl Default for Value {
@@ -386,7 +406,7 @@ impl Value {
     #[inline]
     pub fn is_number(&self) -> bool {
         match self {
-            Value::U8(_) | Value::U16(_) | Value::U32(_) | Value::U64(_) | Value::U128(_) => true,
+            Value::U8(_) | Value::U16(_) | Value::U32(_) | Value::U64(_) | Value::U128(_) | Value::U256(_) => true,
             _ => false
         }
     }
@@ -597,6 +617,33 @@ impl Value {
             _ => Err(ValueError::InvalidCastType(Type::U256))
         }
     }
+
+    // Retrieve the type of a value
+    // Returns an error if it can't be determined
+    #[inline]
+    pub fn get_type(&self) -> Result<Type, ValueError> {
+        Ok(match self {
+            Value::Null => return Err(ValueError::UnknownType),
+            Value::U8(_) => Type::U8,
+            Value::U16(_) => Type::U16,
+            Value::U32(_) => Type::U32,
+            Value::U64(_) => Type::U64,
+            Value::U128(_) => Type::U128,
+            Value::U256(_) => Type::U256,
+            Value::String(_) => Type::String,
+            Value::Boolean(_) => Type::Bool,
+            Value::Struct(name, _) => Type::Struct(name.clone()),
+            Value::Array(inner) => match inner.first() {
+                Some(value) => Type::Array(Box::new(value.handle().get_type()?)),
+                None => return Err(ValueError::UnknownType)
+            },
+            Value::Optional(value) => match value {
+                Some(value) => Type::Optional(Box::new(value.handle().get_type()?)),
+                None => return Err(ValueError::UnknownType)
+            }
+            Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone()))
+        })
+    }
 }
 
 impl std::fmt::Display for Value {
@@ -626,6 +673,7 @@ impl std::fmt::Display for Value {
                 }),
                 None => write!(f, "optional<null>")
             },
+            Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end)
         }
     }
 }

@@ -82,6 +82,7 @@ impl<'a> InstructionTable<'a> {
 
         instructions[OpCode::Inc.as_usize()] = increment;
         instructions[OpCode::Dec.as_usize()] = decrement;
+        instructions[OpCode::NewRange.as_usize()] = new_range;
 
         Self { instructions }
     }
@@ -89,6 +90,7 @@ impl<'a> InstructionTable<'a> {
     // Execute an instruction
     pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
         let instruction = self.instructions[opcode as usize];
+        println!("Executing instruction: {:?}", opcode);
         instruction(backend, stack, chunk_manager)
     }
 }

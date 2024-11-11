@@ -1084,4 +1084,24 @@ mod full_tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(60));
     }
+
+    #[test]
+    fn test_foreach_range() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 0;
+                foreach i in 0..10 {
+                    x = x + i
+                }
+                return x
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+    
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(45));
+    }
 }

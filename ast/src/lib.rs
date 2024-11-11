@@ -6,6 +6,6 @@ mod program;
 
 pub use expressions::{Expression, Statement, DeclarationStatement};
 pub use operator::Operator;
-pub use token::Token;
+pub use token::*;
 pub use functions::*;
 pub use program::Program;
