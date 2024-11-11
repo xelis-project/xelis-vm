@@ -8,15 +8,18 @@ use xelis_parser::Parser;
 use xelis_vm::VM;
 
 macro_rules! bench {
-    ($group: expr, $name: expr, $code: expr) => {
+    ($group: expr, $name: expr, $code: expr, $id: expr) => {
         $group.bench_function($name, |b| {    
             let (module, env) = prepare($code);
             let mut vm = VM::new(&module, &env);
             b.iter(|| {
-                vm.invoke_entry_chunk(0).unwrap();
+                vm.invoke_entry_chunk($id).unwrap();
                 vm.run().unwrap();
             });
         });
+    };
+    ($group: expr, $name: expr, $code: expr) => {
+        bench!($group, $name, $code, 0);
     };
 }
 
@@ -123,6 +126,185 @@ fn bench_struct(c: &mut Criterion) {
     );
 }
 
+fn bench_foreach(c: &mut Criterion) {
+    let mut group = c.benchmark_group("foreach");
+    bench!(
+        group,
+        "array",
+        r#"
+        entry main() {
+            let arr: u32[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let sum: u32 = 0;
+
+            foreach i in arr {
+                sum += i;
+            }
+
+            return 0;
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "range",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            foreach i in 0u32..10u32 {
+                sum += i;
+            }
+            return 0;
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "nested",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            foreach i in 0u32..10u32 {
+                foreach j in 0u32..10u32 {
+                    sum += i + j;
+                }
+            }
+            return 0;
+        }
+        "#
+    );
+}
+
+fn bench_for(c: &mut Criterion) {
+    let mut group = c.benchmark_group("for");
+
+    bench!(
+        group,
+        "array",
+        r#"
+        entry main() {
+            let arr: u32[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let sum: u32 = 0;
+            for i: u32 = 0; i < arr.len(); i += 1 {
+                sum += arr[i];
+            }
+            return 0;
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "range",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            for i: u32 = 0; i < 10; i += 1 {
+                sum += i;
+            }
+            return 0;
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "nested",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            for i: u32 = 0; i < 10; i += 1 {
+                for j: u32 = 0; j < 10; j += 1 {
+                    sum += i + j;
+                }
+            }
+            return 0;
+        }
+        "#
+    );
+}
+
+fn bench_while(c: &mut Criterion) {
+    let mut group = c.benchmark_group("while");
+    bench!(
+        group,
+        "simple",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            let i: u32 = 0;
+            while i < 10 {
+                sum += i;
+                i += 1;
+            }
+            return 0;
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "nested",
+        r#"
+        entry main() {
+            let sum: u32 = 0;
+            let i: u32 = 0;
+            while i < 10 {
+                let j: u32 = 0;
+                while j < 10 {
+                    sum += i + j;
+                    j += 1;
+                }
+                i += 1;
+            }
+            return 0;
+        }
+        "#
+    );
+}
+
+fn bench_function_call(c: &mut Criterion) {
+    let mut group = c.benchmark_group("function_call");
+    bench!(
+        group,
+        "simple",
+        r#"
+        func add(a: u32, b: u32): u32 {
+            return a + b;
+        }
+
+        entry main() {
+            let a: u32 = 1;
+            let b: u32 = 2;
+            let c: u32 = add(a, b);
+            return 0;
+        }
+        "#,
+        1
+    );
+
+    bench!(
+        group,
+        "nested",
+        r#"
+        func add2(a: u32, b: u32): u32 {
+            return a + b;
+        }
+
+        func add(a: u32, b: u32): u32 {
+            return add2(a, b);
+        }
+
+        entry main() {
+            let c: u32 = add(1, 2);
+            return 0;
+        }
+        "#,
+        2
+    );
+}
+
 fn prime_finder(c: &mut Criterion) {
     let mut group = c.benchmark_group("prime_finder");
     let code = r#"
@@ -164,5 +346,13 @@ fn prime_finder(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, bench_struct, prime_finder);
+criterion_group!(
+    benches,
+    bench_struct,
+    bench_foreach,
+    bench_for,
+    bench_while,
+    bench_function_call,
+    prime_finder,
+);
 criterion_main!(benches);
