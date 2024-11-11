@@ -123,5 +123,46 @@ fn bench_struct(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, bench_struct);
+fn prime_finder(c: &mut Criterion) {
+    let mut group = c.benchmark_group("prime_finder");
+    let code = r#"
+        entry main() {
+            let n: u32 = N;
+            let primes: u32[] = [];
+            let count: u32 = 0;
+
+            for i: u32 = 2; i < n; i += 1 {
+                let is_prime: bool = true;
+
+                for j: u32 = 2; j < i; j += 1 {
+                    if (i % j) == 0 {
+                        is_prime = false;
+                        break;
+                    }
+                }
+
+                if is_prime {
+                    primes.push(i);
+                    count += 1;
+                }
+            }
+
+            return 0;
+        }
+        "#;
+
+    bench!(
+        group,
+        "2000",
+        &code.replace("N", "2000")
+    );
+
+    bench!(
+        group,
+        "5000",
+        &code.replace("N", "5000")
+    );
+}
+
+criterion_group!(benches, bench_struct, prime_finder);
 criterion_main!(benches);
