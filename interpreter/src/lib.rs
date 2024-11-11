@@ -771,7 +771,7 @@ mod tests {
         assert_eq!(Value::U16(10), test_code_expect_value(&key, "func main(): u16 { return 10; }"));
         assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { return 10; }"));
         assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { return 10; }"));
-        assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { return 10L; }"));
+        assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { return 10u128; }"));
 
         // Explicit casting
         assert_eq!(Value::U8(10), test_code_expect_value(&key, "func main(): u8 { let a: u64 = 10; return a as u8; }"));

@@ -61,6 +61,8 @@ pub enum Literal<'a> {
     U64(u64),
     U128(u128),
     U256(U256),
+    // Default number type when no type is specified
+    Number(u64),
     String(Cow<'a, str>),
     Bool(bool),
     Null,

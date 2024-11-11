@@ -236,7 +236,7 @@ impl<'a> Lexer<'a> {
     fn read_number(&mut self, c: char) -> Result<TokenResult<'a>, LexerError> {
 
         // Default number type to use
-        let mut number_type = NumberType::U32;
+        let mut number_type = None;
         let is_hex = c == '0' && self.peek()? == 'x';
         let column_start = self.column;
 
@@ -263,12 +263,12 @@ impl<'a> Lexer<'a> {
             } else if !(v.is_digit(10) || v.is_digit(16)) {
                 if v.is_alphabetic() {
                     let s = self.read_while(|c| c.is_ascii_alphanumeric(), 1)?;
-                    if let Some(t) = NumberType::value_of(&s) {
-                        number_type = t;
-                        offset = s.len();
-                    } else {
+                    let Some(t) = NumberType::value_of(&s) else {
                         return Err(LexerError::ExpectedType);
-                    }
+                    };
+
+                    number_type = Some(t);
+                    offset = s.len();
                 } else {
                     // push the character back
                     self.push_back(v);
@@ -288,12 +288,15 @@ impl<'a> Lexer<'a> {
 
         let radix = if is_hex { 16 } else { 10 };
         let token = match number_type {
-            NumberType::U8 => parse_number!(self, u8, U8, v, radix),
-            NumberType::U16 => parse_number!(self, u16, U16, v, radix),
-            NumberType::U32 => parse_number!(self, u32, U32, v, radix),
-            NumberType::U64 => parse_number!(self, u64, U64, v, radix),
-            NumberType::U128 => parse_number!(self, u128, U128, v, radix),
-            NumberType::U256 => parse_number!(self, U256, U256, v, radix),
+            Some(t) => match t {
+                NumberType::U8 => parse_number!(self, u8, U8, v, radix),
+                NumberType::U16 => parse_number!(self, u16, U16, v, radix),
+                NumberType::U32 => parse_number!(self, u32, U32, v, radix),
+                NumberType::U64 => parse_number!(self, u64, U64, v, radix),
+                NumberType::U128 => parse_number!(self, u128, U128, v, radix),
+                NumberType::U256 => parse_number!(self, U256, U256, v, radix),
+            }
+            None => parse_number!(self, u64, Number, v, radix),
         };
         Ok(TokenResult {
             token,

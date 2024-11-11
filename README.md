@@ -42,7 +42,8 @@ An error will be returned by the interpreter if an overflow is detected without 
 **Rules**
 - The value must be greater than or equal to `0`.
 - You can put `_` (underscore) for a better readability.
-- If no type is specified on the value, then `u32` will be the default.
+- If no type is specified on the value, then `u64` will be the default.
+- Array indexes are `u32` types.
 - You can precise the type by adding `u8`, `u16`, `u32`, `u64`, `u128` or `u256` after the value.
 
 **Examples**
