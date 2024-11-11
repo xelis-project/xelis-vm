@@ -1,4 +1,4 @@
-use xelis_types::{InnerValue, Type, Value, ValueOwnable};
+use xelis_types::{Type, Value, ValueOwnable};
 use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
@@ -22,7 +22,7 @@ fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(InnerValue::new(param.into_owned()));
+    zelf?.as_mut_vec()?.push(ValueOwnable::Owned(Box::new(param.into_owned())));
     Ok(None)
 }
 
@@ -34,13 +34,13 @@ fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
 
-    Ok(Some(array.remove(index).borrow().clone()))
+    Ok(Some(array.remove(index).into_inner()))
 }
 
 fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value.borrow().clone()))
+        Ok(Some(value.into_inner()))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -74,15 +74,14 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let handle = value.as_ref();
     let expected = handle.as_value();
     let vec = zelf?.as_vec()?;
-    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.borrow() == *expected).is_some())))
+    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.handle() == *expected).is_some())))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        let inner = ValueOwnable::Rc(value.clone());
-        Ok(Some(Value::Optional(Some(inner))))
+        Ok(Some(Value::Optional(Some(value.clone()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -91,8 +90,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        let inner = ValueOwnable::Rc(value.clone());
-        Ok(Some(Value::Optional(Some(inner))))
+        Ok(Some(Value::Optional(Some(value.clone()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
@@ -101,8 +99,7 @@ fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
 fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        let inner = ValueOwnable::Rc(value.clone());
-        Ok(Some(Value::Optional(Some(inner))))
+        Ok(Some(Value::Optional(Some(value.clone()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }

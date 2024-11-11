@@ -1,4 +1,8 @@
-use std::{cell::{Ref, RefMut}, ops::{Deref, DerefMut}};
+use std::{
+    fmt,
+    cell::{Ref, RefMut},
+    ops::{Deref, DerefMut}
+};
 
 use crate::values::Value;
 
@@ -101,5 +105,11 @@ impl DerefMut for ValueHandleMut<'_> {
 impl AsMut<Value> for ValueHandleMut<'_> {
     fn as_mut(&mut self) -> &mut Value {
         self.as_value_mut()
+    }
+}
+
+impl fmt::Display for ValueHandle<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_value())
     }
 }

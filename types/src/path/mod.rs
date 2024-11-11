@@ -1,7 +1,7 @@
 mod handle;
 
-use crate::{values::{Value, ValueError}, InnerValue};
-use handle::{
+use crate::{values::{Value, ValueError}, InnerValue, ValueOwnable};
+pub use handle::{
     ValueHandle,
     ValueHandleMut
 };
@@ -11,7 +11,7 @@ pub enum Path<'a> {
     Owned(Value),
     // Used for constants
     Borrowed(&'a Value),
-    Wrapper(InnerValue)
+    Wrapper(ValueOwnable)
 }
 
 impl<'a> Path<'a> {
@@ -34,12 +34,13 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => {
                 let dst = std::mem::replace(v, Value::Null);
-                let shared = InnerValue::new(dst);
+                let inner = InnerValue::new(dst);
+                let shared = ValueOwnable::Rc(inner);
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
-                let shared = InnerValue::new(v.clone());
+                let shared = ValueOwnable::Rc(InnerValue::new(v.clone()));
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
@@ -69,15 +70,15 @@ impl<'a> Path<'a> {
 
                 Ok(Path::Wrapper(at_index.clone()))
             },
-            Self::Wrapper(v) => {
-                let mut values = v.borrow_mut();
+            Self::Wrapper(mut v) => {
+                let mut values = v.handle_mut();
                 let values = values.as_mut_sub_vec()?;
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Wrapper(at_index.clone()))
+                Ok(Path::Wrapper(at_index.transform()))
             }
         }
     }
@@ -87,7 +88,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
-            Self::Wrapper(v) => v.borrow().clone()
+            Self::Wrapper(v) => v.into_inner()
         }
     }
 
@@ -96,7 +97,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => ValueHandle::Borrowed(v),
             Self::Borrowed(v) => ValueHandle::Borrowed(v),
-            Self::Wrapper(v) => ValueHandle::Ref(v.borrow())
+            Self::Wrapper(v) => v.handle()
         }
     }
 
@@ -112,7 +113,7 @@ impl<'a> Path<'a> {
                     _ => unreachable!()
                 }
             },
-            Self::Wrapper(v) => ValueHandleMut::RefMut(v.borrow_mut())
+            Self::Wrapper(v) => v.handle_mut()
         }
     }
 }

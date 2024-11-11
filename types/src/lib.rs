@@ -13,7 +13,7 @@ use std::{
 
 pub use types::*;
 pub use values::*;
-pub use path::Path;
+pub use path::*;
 pub use u256::U256;
 
 // Variable identifier used in the parser and interpreter

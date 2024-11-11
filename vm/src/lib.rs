@@ -136,7 +136,7 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{InnerValue, Type, Value};
+    use xelis_types::{Type, Value, ValueOwnable};
 
     use super::*;
 
@@ -202,7 +202,7 @@ mod tests {
             Value::U8(10),
             Value::U8(20),
             Value::U8(30),
-        ].into_iter().map(|v| InnerValue::new(v)).collect();
+        ].into_iter().map(|v| ValueOwnable::Owned(Box::new(v))).collect();
 
         // Push element 1
         let index = module.add_constant(Value::Array(values));
@@ -268,8 +268,8 @@ mod tests {
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(vm.run().unwrap(), Value::Struct(0, vec![
-            InnerValue::new(Value::U8(10)),
-            InnerValue::new(Value::U16(20))
+            ValueOwnable::Owned(Box::new(Value::U8(10))),
+            ValueOwnable::Owned(Box::new(Value::U16(20)))
         ].into()));
 
         let chunk = module.get_chunk_at_mut(0).unwrap();
@@ -371,7 +371,7 @@ mod tests {
         let mut main = Chunk::new();
         // Create a struct
         let index = module.add_constant(Value::Struct(0, vec![
-            InnerValue::new(Value::U64(10))
+            ValueOwnable::Owned(Box::new(Value::U64(10)))
         ].into()));
 
         main.emit_opcode(OpCode::Constant);
@@ -518,11 +518,11 @@ mod tests {
         let mut chunk = Chunk::new();
 
         let index = module.add_constant(Value::Array(vec![
-            InnerValue::new(Value::U8(10)),
-            InnerValue::new(Value::U8(20)),
-            InnerValue::new(Value::U8(30)),
-            InnerValue::new(Value::U8(40)),
-            InnerValue::new(Value::U8(50)),
+            ValueOwnable::Owned(Box::new(Value::U8(10))),
+            ValueOwnable::Owned(Box::new(Value::U8(20))),
+            ValueOwnable::Owned(Box::new(Value::U8(30))),
+            ValueOwnable::Owned(Box::new(Value::U8(40))),
+            ValueOwnable::Owned(Box::new(Value::U8(50))),
         ].into()));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);
@@ -912,6 +912,29 @@ mod full_tests {
         vm.invoke_chunk_id(0).unwrap();
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(30));
+    }
+
+    #[test]
+    fn test_struct_assign() {
+        let code = r#"
+            struct Test {
+                x: u64,
+                y: u64
+            }
+    
+            entry main() {
+                let t: Test = Test { x: 10, y: 20 };
+                t.x = 30;
+                return t.x + t.y
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+    
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(50));
     }
     
     #[test]

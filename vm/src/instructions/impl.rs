@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use xelis_types::{InnerValue, Path, Value};
+use xelis_types::{Path, Value, ValueOwnable};
 
 use crate::{stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;
@@ -120,7 +120,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(InnerValue::new(pop.into_owned()));
+        array.push_front(ValueOwnable::Owned(Box::new(pop.into_owned())));
     }
 
     stack.push_stack(Path::Owned(Value::Array(array.into())))?;
@@ -133,7 +133,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
 
     let mut fields = VecDeque::new();
     for _ in 0..structure.fields.len() {
-        fields.push_front(InnerValue::new(stack.pop_stack()?.into_owned()));
+        fields.push_front(ValueOwnable::Owned(Box::new(stack.pop_stack()?.into_owned())));
     }
 
     stack.push_stack(Path::Owned(Value::Struct(id, fields.into())))?;

@@ -83,7 +83,7 @@ impl Type {
                 ValueOwnable::Owned(v) => Type::from_value(&v, structures)?,
                 ValueOwnable::Rc(v) => Type::from_value(&v.borrow(), structures)?,
             })),
-            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.borrow(), structures)?)),
+            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle(), structures)?)),
             Value::Struct(name, _) => if structures.has(name) {
                 Type::Struct(name.clone())
             } else {

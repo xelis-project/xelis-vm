@@ -5,11 +5,11 @@ mod error;
 use xelis_environment::{Environment, NativeFunction};
 use xelis_types::{
     IdentifierType,
-    InnerValue,
     NoHashMap,
     Path,
     Type,
-    Value
+    Value,
+    ValueOwnable
 };
 use xelis_ast::{
     Expression, FunctionType, Operator, Parameter, Program, Statement
@@ -289,7 +289,7 @@ impl<'a> Interpreter<'a> {
                 let mut values = Vec::with_capacity(expressions.len());
                 for expr in expressions {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    values.push(InnerValue::new(value.into_owned()));
+                    values.push(ValueOwnable::Owned(Box::new(value.into_owned())));
                 }
 
                 Ok(Some(Path::Owned(Value::Array(values))))
@@ -298,7 +298,7 @@ impl<'a> Interpreter<'a> {
                 let mut fields = Vec::with_capacity(expr_fields.len());
                 for expr in expr_fields {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    fields.push(InnerValue::new(value.into_owned()));
+                    fields.push(ValueOwnable::Owned(Box::new(value.into_owned())));
                 }
 
                 Ok(Some(Path::Owned(Value::Struct(struct_name.clone(), fields))))
@@ -453,7 +453,7 @@ impl<'a> Interpreter<'a> {
                             }
                         },
                         Path::Wrapper(v) => {
-                            let v = v.borrow();
+                            let v = v.handle();
                             for value in v.as_vec()? {
                                 execute_foreach!(self, statements, var.clone(), Path::Wrapper(value.clone()), stack, state);
                             }
