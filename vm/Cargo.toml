@@ -13,3 +13,8 @@ xelis-builder = { path = "../builder" }
 xelis-lexer ={ path = "../lexer" }
 xelis-parser = { path = "../parser" }
 xelis-compiler = { path = "../compiler" }
+criterion = "0.5.1"
+
+[[bench]]
+name = "vm"
+harness = false

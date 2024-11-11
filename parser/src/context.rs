@@ -53,9 +53,14 @@ impl<'a> Context<'a> {
             return Err(ParserError::VariableNameAlreadyUsed(key))
         }
 
+        Ok(self.register_variable_unchecked(key, var_type))
+    }
+
+    // register a variable in the current scope unchecked
+    pub fn register_variable_unchecked(&mut self, key: &'a str, var_type: Type) -> IdentifierType {
         self.scopes.push((key, var_type));
 
-        Ok((self.scopes.len() - 1) as IdentifierType)
+        (self.scopes.len() - 1) as IdentifierType
     }
 
     // Add a new scope empty in the Context

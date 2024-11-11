@@ -674,8 +674,10 @@ impl<'a> Parser<'a> {
             return Err(ParserError::ConstantNameNotUppercase(name.to_owned()))
         }
 
+        let ignored = name == "_";
+
         // Variable name must start with a alphabetic character
-        if !name.starts_with(char::is_alphabetic) {
+        if !ignored && !name.starts_with(char::is_alphabetic) {
             return Err(ParserError::VariableMustStartWithAlphabetic(name.to_owned()))
         }
 
@@ -709,7 +711,11 @@ impl<'a> Parser<'a> {
             Expression::Value(Value::Null)
         };
 
-        let id = context.register_variable(name, value_type.clone())?;
+        let id = if ignored {
+            context.register_variable_unchecked(name, value_type.clone())
+        } else {
+            context.register_variable(name, value_type.clone())?
+        };
 
         Ok(DeclarationStatement {
             id,

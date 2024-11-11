@@ -370,7 +370,7 @@ impl<'a> Lexer<'a> {
                 },
                 // read a number value
                 c if c.is_digit(10) => self.read_number(c)?,
-                c if c.is_alphabetic() => self.read_token(1)?,
+                c if c == '_' || c.is_alphabetic() => self.read_token(1)?,
                 _ => {
                     if let Some((token, diff)) = self.find_potential_token() {
                         self.advance_by(diff)?;
