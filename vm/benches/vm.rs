@@ -100,6 +100,27 @@ fn bench_struct(c: &mut Criterion) {
         "#
     );
 
+    bench!(
+        group,
+        "access hot",
+        r#"
+        struct Test {
+            f: u256
+        }
+
+        entry main() {
+            let t: Test = Test {
+                f: 0
+            };
+
+            while t.f < 1000 {
+                t.f += 1;
+            }
+
+            return 0;
+        }
+        "#
+    );
 }
 
 criterion_group!(benches, bench_struct);
