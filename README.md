@@ -42,7 +42,8 @@ An error will be returned by the interpreter if an overflow is detected without 
 **Rules**
 - The value must be greater than or equal to `0`.
 - You can put `_` (underscore) for a better readability.
-- If no type is specified on the value, then `u64` will be the default.
+- If no type is specified on the value, then `u32` will be the default.
+- You can precise the type by adding `u8`, `u16`, `u32`, `u64`, `u128` or `u256` after the value.
 
 **Examples**
 ```rust
@@ -50,7 +51,7 @@ let my_byte: u8 = 10
 let my_u16: u16 = 70
 let my_u32: u32 = 999
 let my_int: u64 = 25655
-let my_u128: u128 = 100_000_000L
+let my_u128: u128 = 100_000_000u128
 ```
 
 ### Variable
@@ -235,8 +236,15 @@ while condition {
 - Have an array to go through
 
 **Examples**
-```csharp
+```rust
 foreach val in values {
+	...
+}
+```
+
+You can also do on specific ranges:
+```rust
+foreach i in 0..10 {
 	...
 }
 ```

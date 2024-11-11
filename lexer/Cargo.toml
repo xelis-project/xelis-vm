@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 xelis-ast = { path = "../ast" }
+xelis-types = { path = "../types" }

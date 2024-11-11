@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use xelis_types::U256;
+
 // Small helper for tokens that accept generics/inner token
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenGeneric {
@@ -28,24 +30,50 @@ impl TokenGeneric {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Token<'a> {
-    // Variable / function names
-    Identifier(&'a str),
-    // Values
-    U64Value(u64),
-    U128Value(u128),
-    StringValue(Cow<'a, str>),
-    Null,
-    True,
-    False,
-
-    // Types supported
+pub enum NumberType {
     U8,
     U16,
     U32,
     U64,
     U128,
-    U256,
+    U256
+}
+
+impl NumberType {
+    pub fn value_of(s: &str) -> Option<NumberType> {
+        Some(match s {
+            "u8" => Self::U8,
+            "u16" => Self::U16,
+            "u32" => Self::U32,
+            "u64" => Self::U64,
+            "u128" => Self::U128,
+            "u256" => Self::U256,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Literal<'a> {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    U128(u128),
+    U256(U256),
+    String(Cow<'a, str>),
+    Bool(bool),
+    Null,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Token<'a> {
+    // Variable / function names
+    Identifier(&'a str),
+    Value(Literal<'a>),
+
+    // Types supported
+    Number(NumberType),
     Bool,
     String,
     Optional(Box<Token<'a>>),
@@ -121,6 +149,7 @@ pub enum Token<'a> {
 impl Token<'_> {
     pub fn value_of(s: &str) -> Option<Token> {
         use Token::*;
+
         Some(match s {
             "{" => BraceOpen,
             "}" => BraceClose,
@@ -170,12 +199,6 @@ impl Token<'_> {
             "," => Comma,
             ":" => Colon,
 
-            "u8" => U8,
-            "u16" => U16,
-            "u32" => U32,
-            "u64" => U64,
-            "u128" => U128,
-            "u256" => U256,
             "bool" => Bool,
             "string" => String,
 
@@ -196,15 +219,15 @@ impl Token<'_> {
             "in" => In,
             "!" => IsNot,
 
-            "null" => Null,
-            "true" => True,
-            "false" => False,
+            "null" => Value(Literal::Null),
+            "true" => Value(Literal::Bool(true)),
+            "false" => Value(Literal::Bool(false)),
 
             "import" => Import,
             "from" => From,
             "as" => As,
 
-            _ => return None,
+            e => Number(NumberType::value_of(e)?),
         })
     }
 
@@ -258,15 +281,19 @@ impl Token<'_> {
     pub fn is_type(&self) -> bool {
         use Token::*;
         match self {
-            | U8
-            | U16
-            | U64
-            | U128
-            | U256
+            | Number(_)
             | Bool
             | String
             | Identifier(_)
             | Optional(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_number_type(&self) -> bool {
+        use Token::*;
+        match self {
+            | Number(_) => true,
             _ => false,
         }
     }

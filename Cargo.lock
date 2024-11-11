@@ -696,6 +696,7 @@ name = "xelis-lexer"
 version = "0.1.0"
 dependencies = [
  "xelis-ast",
+ "xelis-types",
 ]
 
 [[package]]

@@ -131,12 +131,14 @@ impl<'a> Parser<'a> {
 
     fn get_type_from_token(&self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
         Ok(match token {
-            Token::U8 => Type::U8,
-            Token::U16 => Type::U16,
-            Token::U32 => Type::U32,
-            Token::U64 => Type::U64,
-            Token::U128 => Type::U128,
-            Token::U256 => Type::U256,
+            Token::Number(inner) => match inner {
+                NumberType::U8 => Type::U8,
+                NumberType::U16 => Type::U16,
+                NumberType::U32 => Type::U32,
+                NumberType::U64 => Type::U64,
+                NumberType::U128 => Type::U128,
+                NumberType::U256 => Type::U256,
+            },
             Token::String => Type::String,
             Token::Bool => Type::Bool,
             Token::Optional(inner) => Type::Optional(Box::new(self.get_type_from_token(*inner)?)),
@@ -507,15 +509,17 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::U64Value(value) => Expression::Value(match expected_type {
-                    Some(t) => Value::U64(value).checked_cast_to_primitive_type(t)?,
-                    None => Value::U64(value)
+                Token::Value(value) => Expression::Value(match value {
+                    Literal::U8(n) => Value::U8(n),
+                    Literal::U16(n) => Value::U16(n),
+                    Literal::U32(n) => Value::U32(n),
+                    Literal::U64(n) => Value::U64(n),
+                    Literal::U128(n) => Value::U128(n),
+                    Literal::U256(n) => Value::U256(n),
+                    Literal::String(s) => Value::String(s.into_owned()),
+                    Literal::Bool(b) => Value::Boolean(b),
+                    Literal::Null => Value::Null
                 }),
-                Token::U128Value(value) => Expression::Value(Value::U128(value)),
-                Token::StringValue(value) => Expression::Value(Value::String(value.into_owned())),
-                Token::True => Expression::Value(Value::Boolean(true)),
-                Token::False => Expression::Value(Value::Boolean(false)),
-                Token::Null => Expression::Value(Value::Null),
                 Token::Dot => {
                     match last_expression {
                         Some(value) => {
@@ -1061,7 +1065,7 @@ impl<'a> Parser<'a> {
     fn read_import(&mut self) -> Result<(), ParserError<'a>> {
         let path = self.advance()?;
 
-        let Token::StringValue(path) = path else {
+        let Token::Value(Literal::String(path)) = path else {
             return Err(ParserError::InvalidImport)
         };
 
@@ -1215,13 +1219,13 @@ mod tests {
             Token::Identifier("a"),
             Token::Colon,
 
-            Token::Range(Box::new(Token::U64)),
+            Token::Range(Box::new(Token::Number(NumberType::U64))),
             Token::OperatorAssign,
 
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::Dot,
             Token::Dot,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
         ];
 
         let statements = test_parser_statement(tokens, Vec::new());
@@ -1246,10 +1250,10 @@ mod tests {
             Token::ForEach,
             Token::Identifier("a"),
             Token::In,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::Dot,
             Token::Dot,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose
         ];
@@ -1304,19 +1308,19 @@ mod tests {
             Token::Let,
             Token::Identifier("array"),
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::BracketOpen,
             Token::BracketClose,
             Token::OperatorAssign,
             Token::BracketOpen,
-            Token::U64Value(1),
+            Token::Value(Literal::U64(1)),
             Token::Comma,
-            Token::U64Value(2),
+            Token::Value(Literal::U64(2)),
             Token::Comma,
-            Token::U64Value(3),
+            Token::Value(Literal::U64(3)),
             Token::BracketClose,
             Token::Return,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::OperatorGreaterThan,
             Token::Identifier("array"),
             Token::Dot,
@@ -1367,7 +1371,7 @@ mod tests {
             Token::ParenthesisClose,
             Token::BraceOpen,
             Token::Return,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::BraceClose
         ];
 
@@ -1405,11 +1409,11 @@ mod tests {
             Token::ParenthesisOpen,
             Token::Identifier("a"),
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::Comma,
             Token::Identifier("b"),
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::ParenthesisClose,
             Token::BraceOpen,
             Token::Return,
@@ -1428,10 +1432,10 @@ mod tests {
             Token::ParenthesisOpen,
             Token::ParenthesisClose,
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::BraceOpen,
             Token::Return,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::BraceClose
         ];
 
@@ -1468,15 +1472,15 @@ mod tests {
             Token::For,
             Token::Identifier("i"),
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::OperatorAssign,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::Identifier("i"),
             Token::OperatorPlusAssign,
-            Token::U64Value(1),
+            Token::Value(Literal::U64(1)),
             Token::BraceOpen,
             Token::BraceClose
         ];
@@ -1492,7 +1496,7 @@ mod tests {
             Token::While,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose
         ];
@@ -1508,7 +1512,7 @@ mod tests {
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose
         ];
@@ -1524,7 +1528,7 @@ mod tests {
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose,
             Token::Else,
@@ -1543,14 +1547,14 @@ mod tests {
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose,
             Token::Else,
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(20),
+            Token::Value(Literal::U64(20)),
             Token::BraceOpen,
             Token::BraceClose
         ];
@@ -1566,7 +1570,7 @@ mod tests {
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose,
             Token::Return
@@ -1586,7 +1590,7 @@ mod tests {
             Statement::Return(None)
         ]);
 
-        tokens.push(Token::U64Value(0));
+        tokens.push(Token::Value(Literal::U64(0)));
 
 
         let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
@@ -1611,21 +1615,21 @@ mod tests {
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose,
             Token::Else,
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(20),
+            Token::Value(Literal::U64(20)),
             Token::BraceOpen,
             Token::BraceClose,
             Token::Else,
             Token::BraceOpen,
             Token::BraceClose,
             Token::Return,
-            Token::U64Value(0)
+            Token::Value(Literal::U64(0))
         ];
 
         let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
@@ -1713,7 +1717,7 @@ mod tests {
             Token::Colon,
             Token::String,
             Token::OperatorAssign,
-            Token::StringValue(Cow::Borrowed("world")),
+            Token::Value(Literal::String(Cow::Borrowed("world"))),
         ];
 
         let statements = test_parser_statement(tokens, Vec::new());
@@ -1726,11 +1730,11 @@ mod tests {
         let tokens = vec![
             Token::Identifier("i"),
             Token::OperatorLessThan,
-            Token::U64Value(10),
+            Token::Value(Literal::U64(10)),
             Token::OperatorTernary,
-            Token::U64Value(1),
+            Token::Value(Literal::U64(1)),
             Token::Colon,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
         ];
 
         let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
@@ -1746,7 +1750,7 @@ mod tests {
             Token::BraceOpen,
             Token::Identifier("aaa_message_id"),
             Token::Colon,
-            Token::U64,
+            Token::Number(NumberType::U64),
             Token::Comma,
             Token::Identifier("aaa_message"),
             Token::Colon,
@@ -1775,11 +1779,11 @@ mod tests {
             Token::BraceOpen,
             Token::Identifier("message_id"),
             Token::Colon,
-            Token::U64Value(0),
+            Token::Value(Literal::U64(0)),
             Token::Comma,
             Token::Identifier("message"),
             Token::Colon,
-            Token::StringValue(Cow::Borrowed("hello")),
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
             Token::BraceClose
         ];
 
