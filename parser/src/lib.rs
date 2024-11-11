@@ -708,11 +708,9 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
-        println!("Variable: {} - Type: {:?}", name, value_type);
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(None, true, true, Some(value_type.get_inner_type()), context)?;
-            println!("Value: {:?}", expr);
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -743,7 +741,6 @@ impl<'a> Parser<'a> {
         } else {
             context.register_variable(name, value_type.clone())?
         };
-        println!("ok");
 
         Ok(DeclarationStatement {
             id,

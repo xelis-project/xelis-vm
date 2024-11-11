@@ -90,7 +90,6 @@ impl<'a> InstructionTable<'a> {
     // Execute an instruction
     pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
         let instruction = self.instructions[opcode as usize];
-        println!("Executing instruction: {:?}", opcode);
         instruction(backend, stack, chunk_manager)
     }
 }
