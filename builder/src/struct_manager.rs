@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use xelis_types::{
     IdentifierType,
-    StructType, Type,
+    StructType,
+    Type,
 };
 use crate::{
     BuilderError,
@@ -52,34 +53,35 @@ impl<'a> StructManager<'a> {
         }
     }
 
-    // register a new struct in the manager
-    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<(), BuilderError> {
+    fn build_struct_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<StructBuilder<'a>, BuilderError> {
         if self.mapper.has_variable(&name) {
             return Err(BuilderError::StructNameAlreadyUsed);
         }
 
+        let (fields_names, fields_types) = split_vec(fields);
+
         let id = self.mapper.register(name)?;
-        let inner = StructType::new(id, fields.iter().map(|(_, t)| t.clone()).collect());
-        self.structures.push(StructBuilder {
+        let inner = StructType::new(id, fields_types);
+
+        Ok(StructBuilder {
             inner,
-            fields_names: fields.iter().map(|(n, _)| *n).collect()
-        });
+            fields_names
+        })
+    }
+    // register a new struct in the manager
+    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<(), BuilderError> {
+
+        let builder = self.build_struct_internal(name, fields)?;
+        self.structures.push(builder);
 
         Ok(())
     }
 
     // Same as `add` but returns its identifier and the final struct
     pub fn build_struct(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<StructType, BuilderError> {
-        if self.mapper.has_variable(&name) {
-            return Err(BuilderError::StructNameAlreadyUsed);
-        }
-
-        let id = self.mapper.register(name)?;
-        let inner = StructType::new(id, fields.iter().map(|(_, t)| t.clone()).collect());
-        self.structures.push(StructBuilder {
-            inner: inner.clone(),
-            fields_names: fields.iter().map(|(n, _)| *n).collect()
-        });
+        let builder = self.build_struct_internal(name, fields)?;
+        let inner = builder.inner().clone();
+        self.structures.push(builder);
 
         Ok(inner)
     }
@@ -114,4 +116,16 @@ impl<'a> StructManager<'a> {
     pub fn finalize(self) -> Vec<StructType> {
         self.structures.into_iter().map(|builder| builder.inner).collect()
     }
+}
+
+fn split_vec<A, B>(input: Vec<(A, B)>) -> (Vec<A>, Vec<B>) {
+    let mut vec_a = Vec::with_capacity(input.len());
+    let mut vec_b = Vec::with_capacity(input.len());
+
+    for (a, b) in input {
+        vec_a.push(a);
+        vec_b.push(b);
+    }
+
+    (vec_a, vec_b)
 }
