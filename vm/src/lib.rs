@@ -1156,4 +1156,21 @@ mod full_tests {
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(10));
     }
+
+    #[test]
+    fn test_range_type() {
+        let code = r#"
+            entry main() {
+                let x: range<u64> = 0..10;
+                return x.count()
+            }
+        "#;
+    
+        let (module, environment) = prepare_module(code);
+
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_chunk_id(0).unwrap();
+        let value = vm.run().unwrap();
+        assert_eq!(value, Value::U64(10));
+    }
 }

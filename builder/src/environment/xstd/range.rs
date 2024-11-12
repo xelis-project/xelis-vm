@@ -1,5 +1,5 @@
 use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Value, ValueOwnable, Type};
+use xelis_types::{Type, Value, ValueOwnable};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -30,11 +30,25 @@ macro_rules! collect {
     };
 }
 
+macro_rules! count {
+    ($t: ident, $start: expr, $end: expr, $type: ident) => {
+        paste! {
+            {
+                let start = $start.[<as_ $type>]()?;
+                let end = $end.[<as_ $type>]()?;
+                let count = end.checked_sub(start).unwrap_or(Default::default());
+                Value::$t(count)
+            }
+        }
+    };
+}
+
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("contains", Some(Type::Range(Box::new(Type::T))), vec![Type::T], contains, 5, Some(Type::Bool));
     env.register_native_function("collect", Some(Type::Range(Box::new(Type::T))), vec![], collect, 500, Some(Type::Array(Box::new(Type::T))));
     env.register_native_function("max", Some(Type::Range(Box::new(Type::T))), vec![], max, 1, Some(Type::T));
     env.register_native_function("min", Some(Type::Range(Box::new(Type::T))), vec![], min, 1, Some(Type::T));
+    env.register_native_function("count", Some(Type::Range(Box::new(Type::T))), vec![], count, 5, Some(Type::T));
 }
 
 fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
@@ -95,4 +109,19 @@ fn min(zelf: FnInstance, _: FnParams) -> FnReturnType {
     let zelf = zelf?;
     let (start, _, _) = zelf.as_range()?;
     Ok(Some(start.clone()))
+}
+
+fn count(zelf: FnInstance, _: FnParams) -> FnReturnType {
+    let zelf = zelf?;
+    let (start, end, _type) = zelf.as_range()?;
+
+    Ok(Some(match _type {
+        Type::U8 => count!(U8, start, end, u8),
+        Type::U16 => count!(U16, start, end, u16),
+        Type::U32 => count!(U32, start, end, u32),
+        Type::U64 => count!(U64, start, end, u64),
+        Type::U128 => count!(U128, start, end, u128),
+        Type::U256 => count!(U256, start, end, u256),
+        _ => return Err(EnvironmentError::InvalidType(zelf.clone()))
+    }))
 }
