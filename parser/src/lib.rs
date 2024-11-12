@@ -973,10 +973,10 @@ impl<'a> Parser<'a> {
     /**
      * Examples:
      * - entry foo() { ... }
-     * - func foo() { ... }
-     * - func foo(): u64 { ... }
-     * - func foo(a: u64, b: u64) { ... }
-     * - func (f Foo) bar() { ... }
+     * - fn foo() { ... }
+     * - fn foo() -> u64 { ... }
+     * - fn foo(a: u64, b: u64) { ... }
+     * - fn (f Foo) bar() { ... }
      * Rules:
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a u64 value
@@ -1022,7 +1022,7 @@ impl<'a> Parser<'a> {
             }
 
             Some(Type::U64)
-        } else if self.peek_is(Token::Colon) { // read returned type
+        } else if self.peek_is(Token::ReturnType) { // read returned type
             self.advance()?;
             Some(self.read_type()?)
         } else {
@@ -1305,7 +1305,7 @@ mod tests {
     #[test]
     fn test_function_call_in_expr() {
         /*
-        function foo(): bool {
+        function foo() -> bool {
             let array: u64[] = [1, 2, 3];
             return 0 > array.len()
         }
@@ -1315,7 +1315,7 @@ mod tests {
             Token::Identifier("foo"),
             Token::ParenthesisOpen,
             Token::ParenthesisClose,
-            Token::Colon,
+            Token::ReturnType,
             Token::Bool,
             Token::BraceOpen,
             Token::Let,
@@ -1394,7 +1394,7 @@ mod tests {
 
     #[test]
     fn test_function_on_type() {
-        // func (f Foo) bar() {}
+        // fn (f Foo) bar() {}
         let tokens = vec![
             Token::Function,
             Token::ParenthesisOpen,
@@ -1444,7 +1444,7 @@ mod tests {
             Token::Identifier("foo"),
             Token::ParenthesisOpen,
             Token::ParenthesisClose,
-            Token::Colon,
+            Token::ReturnType,
             Token::Number(NumberType::U64),
             Token::BraceOpen,
             Token::Return,

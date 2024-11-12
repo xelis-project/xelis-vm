@@ -145,7 +145,8 @@ pub enum Token<'a> {
 
     Import,
     From,
-    As
+    As,
+    ReturnType
 }
 
 impl Token<'_> {
@@ -208,7 +209,7 @@ impl Token<'_> {
 
             "const" => Const,
             "entry" => Entry,
-            "func" => Function,
+            "fn" => Function,
 
             "return" => Return,
             "if" => If,
@@ -228,6 +229,7 @@ impl Token<'_> {
             "import" => Import,
             "from" => From,
             "as" => As,
+            "->" => ReturnType,
 
             e => Number(NumberType::value_of(e)?),
         })

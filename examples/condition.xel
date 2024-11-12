@@ -1,8 +1,8 @@
-func bool_test(): bool {
+fn bool_test() -> bool {
     return true
 }
 
-func no_call(): bool {
+fn no_call() -> bool {
     return panic("should not be called")
 }
 

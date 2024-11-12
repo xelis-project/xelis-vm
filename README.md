@@ -118,10 +118,10 @@ sum(a, b)
 **Examples**
 ```go
 entry foo() { ... }
-func foo() { ... }
-func foo(): u64 { ... }
-func foo(a: u64, b: u64) { ... }
-func (f Foo) bar() { ... }
+fn foo() { ... }
+fn foo() -> u64 { ... }
+fn foo(a: u64, b: u64) { ... }
+fn (f Foo) bar() { ... }
 ```
 
 ### Structure
@@ -302,11 +302,11 @@ while condition {
 
 **Examples**
 ```go
-func foo(): string {
+fn foo() -> string {
 	return "Hello World!"
 }
 
-func bar() {
+fn bar() {
 	if condition {
 		return
 	}

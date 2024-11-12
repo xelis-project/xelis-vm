@@ -1,4 +1,4 @@
-func recursive() {
+fn recursive() {
     recursive()
     println("test")
 }

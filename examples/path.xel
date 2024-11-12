@@ -2,7 +2,7 @@ struct Value {
     value: string
 }
 
-func (v Value) my_value(): string {
+fn (v Value) my_value() -> string {
     return v.value
 }
 
@@ -10,7 +10,7 @@ struct Message {
     value: Value
 }
 
-func (m Message) to_string(): string {
+fn (m Message) to_string() -> string {
     return m.value.value
 }
 

@@ -400,6 +400,7 @@ impl<'a> Lexer<'a> {
                         self.advance_by(diff)?;
                         token
                     } else {
+                        println!("{}", self.chars.iter().collect::<String>());
                         return Err(LexerError::NoTokenFound(self.line, self.column));
                     }
                 }
@@ -469,11 +470,11 @@ mod tests {
         assert_eq!(tokens, vec![
             Token::Identifier("a"),
             Token::OperatorBitwiseRightAssign,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::OperatorPlus,
-            Token::Value(Literal::U32(7)),
+            Token::Value(Literal::Number(7)),
             Token::OperatorMultiply,
-            Token::Value(Literal::U32(3))
+            Token::Value(Literal::Number(3))
         ]);
     }
 
@@ -506,13 +507,13 @@ mod tests {
             Token::Let,
             Token::Identifier("a"),
             Token::OperatorAssign,
-            Token::Value(Literal::U32(10))
+            Token::Value(Literal::Number(10))
         ]);
     }
 
     #[test]
     fn test_function() {
-        let code = "func main() { return 10; }";
+        let code = "fn main() { return 10; }";
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
@@ -522,7 +523,26 @@ mod tests {
             Token::ParenthesisClose,
             Token::BraceOpen,
             Token::Return,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
+            Token::BraceClose
+        ]);
+    }
+
+    #[test]
+    fn test_function_type() {
+        let code = "fn main() -> u64 { return 10; }";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::Number(10)),
             Token::BraceClose
         ]);
     }
@@ -576,7 +596,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a"),
             Token::OperatorAssign,
-            Token::Value(Literal::U32(10))
+            Token::Value(Literal::Number(10))
         ]);
     }
 
@@ -589,7 +609,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a"),
             Token::OperatorAssign,
-            Token::Value(Literal::U32(10))
+            Token::Value(Literal::Number(10))
         ]);
     }
 
@@ -602,10 +622,10 @@ mod tests {
             Token::Let,
             Token::Identifier("a"),
             Token::OperatorAssign,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::Identifier("a"),
             Token::OperatorPlusAssign,
-            Token::Value(Literal::U32(20))
+            Token::Value(Literal::Number(20))
         ]);
     }
 
@@ -615,7 +635,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Value(Literal::U32(10))
+            Token::Value(Literal::Number(10))
         ]);
     }
 
@@ -625,7 +645,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Value(Literal::U32(10_000))
+            Token::Value(Literal::Number(10_000))
         ]);
     }
 
@@ -635,7 +655,7 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Value(Literal::U32(16))
+            Token::Value(Literal::Number(16))
         ]);
     }
 
@@ -661,7 +681,7 @@ mod tests {
 
     #[test]
     fn test_function_with_args() {
-        let code = "func sum(a: u64, b: u64): u64 { return a + b; }";
+        let code = "fn sum(a: u64, b: u64) -> u64 { return a + b; }";
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
@@ -676,7 +696,7 @@ mod tests {
             Token::Colon,
             Token::Number(NumberType::U64),
             Token::ParenthesisClose,
-            Token::Colon,
+            Token::ReturnType,
             Token::Number(NumberType::U64),
             Token::BraceOpen,
             Token::Return,
@@ -695,9 +715,9 @@ mod tests {
         assert_eq!(tokens, vec![
             Token::Identifier("sum"),
             Token::ParenthesisOpen,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::Comma,
-            Token::Value(Literal::U32(20)),
+            Token::Value(Literal::Number(20)),
             Token::ParenthesisClose
         ]);
     }
@@ -753,15 +773,15 @@ mod tests {
             Token::If,
             Token::Identifier("a"),
             Token::OperatorEquals,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::BraceOpen,
             Token::Return,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::BraceClose,
             Token::Else,
             Token::BraceOpen,
             Token::Return,
-            Token::Value(Literal::U32(20)),
+            Token::Value(Literal::Number(20)),
             Token::BraceClose
         ]);
     }
@@ -795,7 +815,7 @@ mod tests {
             Token::Let,
             Token::Identifier("a"),
             Token::OperatorAssign,
-            Token::Value(Literal::U32(10)),
+            Token::Value(Literal::Number(10)),
             Token::As,
             Token::Number(NumberType::U8)
         ]);
@@ -852,7 +872,7 @@ mod tests {
         assert_eq!(token.column_end, 7);
 
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.token, Token::Value(Literal::U32(10)));
+        assert_eq!(token.token, Token::Value(Literal::Number(10)));
         assert_eq!(token.line, 1);
         assert_eq!(token.column_start, 9);
         assert_eq!(token.column_end, 10);

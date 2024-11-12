@@ -270,7 +270,7 @@ fn bench_function_call(c: &mut Criterion) {
         group,
         "simple",
         r#"
-        func add(a: u32, b: u32): u32 {
+        fn add(a: u32, b: u32) -> u32 {
             return a + b;
         }
 
@@ -288,11 +288,11 @@ fn bench_function_call(c: &mut Criterion) {
         group,
         "nested",
         r#"
-        func add2(a: u32, b: u32): u32 {
+        fn add2(a: u32, b: u32) -> u32 {
             return a + b;
         }
 
-        func add(a: u32, b: u32): u32 {
+        fn add(a: u32, b: u32) -> u32 {
             return add2(a, b);
         }
 

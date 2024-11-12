@@ -278,8 +278,8 @@ impl<'a> Interpreter<'a> {
 
                 state.increase_recursive_depth()?;
 
-                let func = self.get_function(name)?;
-                let res = self.execute_function(func, on_value, values, state)?;
+                let f = self.get_function(name)?;
+                let res = self.execute_function(f, on_value, values, state)?;
 
                 state.decrease_recursive_depth();
 
@@ -509,8 +509,8 @@ impl<'a> Interpreter<'a> {
     }
 
     // Execute the selected function
-    fn execute_function(&'a self, func: Function<'a>, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
-        match func {
+    fn execute_function(&'a self, f: Function<'a>, type_instance: Option<Path<'a>>, values: Vec<Path<'a>>, state: &mut State) -> Result<Option<Path<'a>>, InterpreterError> {
+        match f {
             Function::Native(f) => {
                 state.increase_gas_usage(f.get_cost())?;
                 match type_instance {
@@ -558,14 +558,14 @@ impl<'a> Interpreter<'a> {
 
     // Execute the program by calling an available entry function
     pub fn call_entry_function(&'a self, function_name: &IdentifierType, parameters: Vec<Path<'a>>, state: &mut State) -> Result<u64, InterpreterError> {
-        let func = self.get_function(function_name)?;
+        let f = self.get_function(function_name)?;
 
         // only function marked as entry can be called from external
-        if !func.is_entry() {
+        if !f.is_entry() {
             return Err(InterpreterError::FunctionEntry(true, false))
         }
 
-        match self.execute_function(func, None, parameters, state)? {
+        match self.execute_function(f, None, parameters, state)? {
             Some(val) => Ok(val.as_u64()?),
             None => return Err(InterpreterError::NoExitCode)
         }
@@ -596,8 +596,8 @@ mod tests {
         let interpreter = Interpreter::new(&program, builder.environment()).unwrap();
 
         let mapped_name = mapper.get(&key).unwrap();
-        let func = interpreter.get_function(&mapped_name).unwrap();
-        let result = interpreter.execute_function(func, None, Vec::new(), &mut state).unwrap();
+        let f = interpreter.get_function(&mapped_name).unwrap();
+        let result = interpreter.execute_function(f, None, Vec::new(), &mut state).unwrap();
         result.unwrap().into_owned()
     }
 
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn test_op_and() {
         // No call shouldn't be called
-        test_code_expect_return("func no_call(): bool { return panic('should not call') } entry main() { return (false && no_call()) as u64; }", 0);
+        test_code_expect_return("fn no_call() -> bool { return panic('should not call') } entry main() { return (false && no_call()) as u64; }", 0);
         // Both should be called
         test_code_expect_return("entry main() { return (true && true) as u64; }", 1);
         test_code_expect_return("entry main() { return (false && false) as u64; }", 0);
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn test_op_or() {
         // No call shouldn't be called
-        test_code_expect_return("func no_call(): bool { return panic('should not call') } entry main() { return (true || no_call()) as u64; }", 1);
+        test_code_expect_return("fn no_call() -> bool { return panic('should not call') } entry main() { return (true || no_call()) as u64; }", 1);
         // Both are called
         test_code_expect_return("entry main() { return (false || true) as u64; }", 1);
         // Both are called but none are true
@@ -716,7 +716,7 @@ mod tests {
     #[test]
     fn test_array() {
         test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u32 = 0; return a[b]; }", 1);
-        test_code_expect_return("func test(): u64[] { return [0, 1, 2]; } entry main() { let b: u32 = 0; return test()[b]; }", 0);
+        test_code_expect_return("fn test() -> u64[] { return [0, 1, 2]; } entry main() { let b: u32 = 0; return test()[b]; }", 0);
 
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", 1);
         test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", 2);
@@ -747,19 +747,19 @@ mod tests {
 
     #[test]
     fn test_basic_function_call() {
-        test_code_expect_return("func add(a: u64, b: u64): u64 { return a + b; } entry main() { return add(10, 10); }", 20);
-        test_code_expect_return("func add(a: u64, b: u64): u64 { return a + b; } entry main() { return add(10, add(10, 10)); }", 30);
+        test_code_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, 10); }", 20);
+        test_code_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, add(10, 10)); }", 30);
 
         // With variable
-        test_code_expect_return("func add(a: u64, b: u64): u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, 10); }", 20);
-        test_code_expect_return("func add(a: u64, b: u64): u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, add(10, 10)); }", 30);
+        test_code_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, 10); }", 20);
+        test_code_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, add(10, 10)); }", 30);
     }
 
     #[test]
     fn test_function_call_on_value() {
-        test_code_expect_return("struct Test { a: u64 } func (v Test) add(b: u64): u64 { return v.a + b; } entry main() { let t: Test = Test {a: 10}; return t.add(10); }", 20);
-        test_code_expect_return("struct Test { a: u64 } func (v Test) add(b: u64): u64 { return v.a + b; } entry main() { let t: Test = Test {a: 10}; return t.add(t.add(10)); }", 30);
-        test_code_expect_return("struct Test { a: u64 } func (v Test) add(b: u64) { v.a += b; } entry main() { let t: Test = Test {a: 10}; t.add(10); return t.a }", 20);
+        test_code_expect_return("struct Test { a: u64 } fn (v Test) add(b: u64) -> u64 { return v.a + b; } entry main() { let t: Test = Test {a: 10}; return t.add(10); }", 20);
+        test_code_expect_return("struct Test { a: u64 } fn (v Test) add(b: u64) -> u64 { return v.a + b; } entry main() { let t: Test = Test {a: 10}; return t.add(t.add(10)); }", 30);
+        test_code_expect_return("struct Test { a: u64 } fn (v Test) add(b: u64) { v.a += b; } entry main() { let t: Test = Test {a: 10}; t.add(10); return t.a }", 20);
     }
 
     #[test]
@@ -767,21 +767,21 @@ mod tests {
         let key = Signature::new("main".to_string(), None, Vec::new());
 
         // Auto casting
-        assert_eq!(Value::U8(10), test_code_expect_value(&key, "func main(): u8 { return 10; }"));
-        assert_eq!(Value::U16(10), test_code_expect_value(&key, "func main(): u16 { return 10; }"));
-        assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { return 10; }"));
-        assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { return 10; }"));
-        assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { return 10u128; }"));
+        assert_eq!(Value::U8(10), test_code_expect_value(&key, "fn main() -> u8 { return 10; }"));
+        assert_eq!(Value::U16(10), test_code_expect_value(&key, "fn main() -> u16 { return 10; }"));
+        assert_eq!(Value::U32(10), test_code_expect_value(&key, "fn main() -> u32 { return 10; }"));
+        assert_eq!(Value::U64(10), test_code_expect_value(&key, "fn main() -> u64 { return 10; }"));
+        assert_eq!(Value::U128(10), test_code_expect_value(&key, "fn main() -> u128 { return 10u128; }"));
 
         // Explicit casting
-        assert_eq!(Value::U8(10), test_code_expect_value(&key, "func main(): u8 { let a: u64 = 10; return a as u8; }"));
-        assert_eq!(Value::U16(10), test_code_expect_value(&key, "func main(): u16 { let a: u64 = 10; return a as u16; }"));
-        assert_eq!(Value::U32(10), test_code_expect_value(&key, "func main(): u32 { let a: u64 = 10; return a as u32; }"));
-        assert_eq!(Value::U64(10), test_code_expect_value(&key, "func main(): u64 { let a: u32 = 10; return a as u64; }"));
-        assert_eq!(Value::U128(10), test_code_expect_value(&key, "func main(): u128 { let a: u64 = 10; return a as u128; }"));
+        assert_eq!(Value::U8(10), test_code_expect_value(&key, "fn main() -> u8 { let a: u64 = 10; return a as u8; }"));
+        assert_eq!(Value::U16(10), test_code_expect_value(&key, "fn main() -> u16 { let a: u64 = 10; return a as u16; }"));
+        assert_eq!(Value::U32(10), test_code_expect_value(&key, "fn main() -> u32 { let a: u64 = 10; return a as u32; }"));
+        assert_eq!(Value::U64(10), test_code_expect_value(&key, "fn main() -> u64 { let a: u32 = 10; return a as u64; }"));
+        assert_eq!(Value::U128(10), test_code_expect_value(&key, "fn main() -> u128 { let a: u64 = 10; return a as u128; }"));
 
         let code = "
-            func add(left: u64, right: u64): u64 {
+            fn add(left: u64, right: u64) -> u64 {
                 return left + right;
             }
 
@@ -806,22 +806,22 @@ mod tests {
     #[test]
     fn test_string_number_concatenation() {
         let key = Signature::new("main".to_string(), None, Vec::new());
-        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (\"hello world\" + 10); }"));
-        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\"); }"));
-        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "func main(): string { return (10 + \"hello world\" + 10); }"));
+        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "fn main() -> string { return (\"hello world\" + 10); }"));
+        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "fn main() -> string { return (10 + \"hello world\"); }"));
+        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "fn main() -> string { return (10 + \"hello world\" + 10); }"));
 
         // With variables
-        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (\"hello world\" + a); }"));
-        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (a + \"hello world\"); }"));
-        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "func main(): string { let a: u64 = 10; return (a + \"hello world\" + a); }"));
+        assert_eq!(Value::String("hello world10".to_string()), test_code_expect_value(&key, "fn main() -> string { let a: u64 = 10; return (\"hello world\" + a); }"));
+        assert_eq!(Value::String("10hello world".to_string()), test_code_expect_value(&key, "fn main() -> string { let a: u64 = 10; return (a + \"hello world\"); }"));
+        assert_eq!(Value::String("10hello world10".to_string()), test_code_expect_value(&key, "fn main() -> string { let a: u64 = 10; return (a + \"hello world\" + a); }"));
     }
 
     #[test]
     fn test_negative_bool() {
         let key = Signature::new("main".to_string(), None, Vec::new());
-        assert_eq!(Value::Boolean(true), test_code_expect_value(&key, "func main(): bool { return !false; }"));
-        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "func main(): bool { return !true; }"));
-        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "func main(): bool { let add: bool = true; add = !add; return add; }"));
+        assert_eq!(Value::Boolean(true), test_code_expect_value(&key, "fn main() -> bool { return !false; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "fn main() -> bool { return !true; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(&key, "fn main() -> bool { let add: bool = true; add = !add; return add; }"));
     }
 
     #[test]
@@ -852,8 +852,8 @@ mod tests {
     #[test]
     fn test_string_equals() {
         let key = &&Signature::new("main".to_string(), None, Vec::new());
-        assert_eq!(Value::Boolean(true), test_code_expect_value(key, "func main(): bool { return \"test\" == 'test'; }"));
-        assert_eq!(Value::Boolean(false), test_code_expect_value(key, "func main(): bool { return \"test\" == \"test2\"; }"));
+        assert_eq!(Value::Boolean(true), test_code_expect_value(key, "fn main() -> bool { return \"test\" == 'test'; }"));
+        assert_eq!(Value::Boolean(false), test_code_expect_value(key, "fn main() -> bool { return \"test\" == \"test2\"; }"));
     }
 
     #[test]

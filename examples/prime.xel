@@ -1,4 +1,4 @@
-func is_prime(num: u64, prime_list: u64[]): bool {
+fn is_prime(num: u64, prime_list: u64[]) -> bool {
     foreach prime in prime_list {
         if (num % prime) == 0 {
             return false

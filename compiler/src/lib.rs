@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_simple_program() {
-        let (program, environment) = prepare_program("func main() {}");
+        let (program, environment) = prepare_program("fn main() {}");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
         assert_eq!(module.chunks().len(), 1);
@@ -759,7 +759,7 @@ mod tests {
 
     #[test]
     fn test_function_call() {
-        let (program, environment) = prepare_program("func test(): u64 { return 1 } entry main() { return test() }");
+        let (program, environment) = prepare_program("fn test() -> u64 { return 1 } entry main() { return test() }");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
 

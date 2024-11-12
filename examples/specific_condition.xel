@@ -1,9 +1,9 @@
-func no_call(): bool {
+fn no_call() -> bool {
     println("Should not be called!")
     return true
 }
 
-func should_be_called(): bool {
+fn should_be_called() -> bool {
     println("Should be called!")
     return false
 }

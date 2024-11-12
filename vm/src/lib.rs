@@ -672,7 +672,7 @@ mod full_tests {
     #[test]
     fn test_and() {
         let code = r#"
-            func no_call(): bool {
+            fn no_call() -> bool {
                 return panic("no call")
             }
     
@@ -696,7 +696,7 @@ mod full_tests {
     #[test]
     fn test_and_positive() {
         let code = r#"
-            func test(): bool {
+            fn test() -> bool {
                 return true
             }
     
@@ -720,7 +720,7 @@ mod full_tests {
     #[test]
     fn test_or() {
         let code = r#"
-            func no_call(): bool {
+            fn no_call() -> bool {
                 return panic("no call")
             }
     
@@ -940,7 +940,7 @@ mod full_tests {
     #[test]
     fn test_function_call() {
         let code = r#"
-            func add(a: u64, b: u64): u64 {
+            fn add(a: u64, b: u64) -> u64 {
                 return a + b
             }
     
