@@ -1,17 +1,17 @@
+mod r#struct;
+
+pub use r#struct::*;
+
 use crate::{
     values::Value,
-    IdentifierType,
     ValueOwnable,
 };
 use std::{
-    collections::{HashMap, HashSet}, fmt, hash::{BuildHasher, Hash}
+    collections::{HashMap, HashSet},
+    fmt,
+    hash::{BuildHasher, Hash},
 };
 
-// Represents a struct in the language
-#[derive(Clone, PartialEq, Debug)]
-pub struct Struct {
-    pub fields: Vec<Type>
-}
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Type {
@@ -27,7 +27,8 @@ pub enum Type {
 
     String,
     Bool,
-    Struct(IdentifierType),
+    Struct(StructType),
+
     Array(Box<Type>),
     Optional(Box<Type>),
     Range(Box<Type>),
@@ -64,12 +65,20 @@ impl Type {
         }
     }
 
+    // check if the type has an inner type
+    pub fn has_inner_type(&self) -> bool {
+        match self {
+            Type::Array(_) | Type::Optional(_) | Type::Range(_) => true,
+            _ => false
+        }
+    }
+
     // check if the type is a primitive type
     pub fn is_primitive(&self) -> bool {
         self.primitive_byte().is_some()
     }
 
-    pub fn from_value<H: HasKey<IdentifierType>>(value: &Value, structures: &H) -> Option<Self> {
+    pub fn from_value(value: &Value) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
             Value::U8(_) => Type::U8,
@@ -81,15 +90,11 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(match value.as_ref()? {
-                ValueOwnable::Owned(v) => Type::from_value(&v, structures)?,
-                ValueOwnable::Rc(v) => Type::from_value(&v.borrow(), structures)?,
+                ValueOwnable::Owned(v) => Type::from_value(&v)?,
+                ValueOwnable::Rc(v) => Type::from_value(&v.borrow())?,
             })),
-            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle(), structures)?)),
-            Value::Struct(name, _) => if structures.has(name) {
-                Type::Struct(name.clone())
-            } else {
-                return None
-            },
+            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle())?)),
+            Value::Struct(_, _type) => Type::Struct(_type.clone()),
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
         };
 
@@ -243,7 +248,7 @@ impl fmt::Display for Type {
             Type::U256 => write!(f, "u256"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
-            Type::Struct(id) => write!(f, "struct({})", id),
+            Type::Struct(id) => write!(f, "struct({:?})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),
             Type::Range(_type) => write!(f, "range<{}>", _type),

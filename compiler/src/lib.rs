@@ -98,14 +98,14 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::NewArray);
                 chunk.write_u32(exprs.len() as u32);
             },
-            Expression::StructConstructor(id, exprs) => {
+            Expression::StructConstructor(_type, exprs) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
 
                 // We don't verify the struct ID, the parser should have done it
                 chunk.emit_opcode(OpCode::NewStruct);
-                chunk.write_u16(*id);
+                chunk.write_u16(_type.id());
             },
             Expression::Path(left, right) => {
                 // Compile the path

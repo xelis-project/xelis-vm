@@ -4,13 +4,13 @@ mod function;
 pub use error::EnvironmentError;
 pub use function::*;
 
-use xelis_types::Struct;
+use xelis_types::StructType;
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
 pub struct Environment {
     functions: Vec<NativeFunction>,
-    structures: Vec<Struct>,
+    structures: Vec<StructType>,
 }
 
 impl Default for Environment {
@@ -36,7 +36,7 @@ impl Environment {
 
     // Get all the registered structures
     #[inline(always)]
-    pub fn get_structures(&self) -> &Vec<Struct> {
+    pub fn get_structures(&self) -> &Vec<StructType> {
         &self.structures
     }
 
@@ -48,7 +48,7 @@ impl Environment {
 
     // Add a new structure to the environment
     #[inline(always)]
-    pub fn add_structure(&mut self, structure: Struct) {
+    pub fn add_structure(&mut self, structure: StructType) {
         self.structures.push(structure);
     }
 

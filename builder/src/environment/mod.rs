@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use xelis_ast::Signature;
 use xelis_types::Type;
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
-use crate::{StructBuilder, StructManager, FunctionMapper};
+use crate::{StructManager, FunctionMapper};
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -35,12 +35,8 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a structure in the environment
     // Panic if the structure name is already used
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
-        let builder = StructBuilder {
-            fields
-        };
-
-        let (_, s) = self.struct_manager.build_struct(Cow::Borrowed(name), builder).unwrap();
-        self.env.add_structure(s);
+        let _type = self.struct_manager.build_struct(Cow::Borrowed(name), fields).unwrap();
+        self.env.add_structure(_type);
     }
 
     // functions mapper, used to find the function id

@@ -1,7 +1,8 @@
 use xelis_types::{
+    IdentifierType,
+    StructType,
     Type,
-    Value,
-    IdentifierType
+    Value
 };
 
 use super::Operator;
@@ -11,7 +12,7 @@ pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
-    StructConstructor(IdentifierType, Vec<Expression>),
+    StructConstructor(StructType, Vec<Expression>),
     Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),

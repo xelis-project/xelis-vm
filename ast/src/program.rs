@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use xelis_types::Struct;
+use xelis_types::StructType;
 use super::{DeclarationStatement, FunctionType};
 
 #[derive(Debug)]
@@ -7,7 +7,7 @@ pub struct Program {
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All structures declared
-    structures: Vec<Struct>,
+    structures: Vec<StructType>,
     // All functions declared
     functions: Vec<FunctionType>
 }
@@ -23,7 +23,7 @@ impl Program {
     }
 
     // Create a new program with constants, structures and functions
-    pub fn with(constants: HashSet<DeclarationStatement>, structures: Vec<Struct>, functions: Vec<FunctionType>) -> Self {
+    pub fn with(constants: HashSet<DeclarationStatement>, structures: Vec<StructType>, functions: Vec<FunctionType>) -> Self {
         Program {
             constants,
             structures,
@@ -45,13 +45,13 @@ impl Program {
 
     // Add a structure to the program
     #[inline]
-    pub fn add_structure(&mut self, structure: Struct) {
+    pub fn add_structure(&mut self, structure: StructType) {
         self.structures.push(structure);
     }
 
     // Get the structures declared in the program
     #[inline]
-    pub fn structures(&self) -> &[Struct] {
+    pub fn structures(&self) -> &[StructType] {
         &self.structures
     }
 

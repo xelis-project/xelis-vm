@@ -10,7 +10,7 @@ pub use chunk::*;
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use xelis_types::{Struct, Value, Path};
+use xelis_types::{Path, StructType, Value};
 use xelis_bytecode::Module;
 
 // 64 elements maximum in the call stack
@@ -29,7 +29,7 @@ pub struct Backend<'a> {
 impl<'a> Backend<'a> {
     // Get a struct with an id
     // TODO: support env structs
-    pub fn get_struct_with_id(&self, id: u16) -> Result<&Struct, VMError> {
+    pub fn get_struct_with_id(&self, id: u16) -> Result<&StructType, VMError> {
         self.module.get_struct_at(id as usize).ok_or(VMError::StructNotFound)
     }
 
@@ -235,15 +235,14 @@ mod tests {
     #[test]
     fn test_struct() {
         // Create a new struct
-        let new_struct = Struct {
-            fields: vec![
+        let new_struct = StructType::new(0, vec![
                 Type::U8,
                 Type::U16
             ]
-        };
+        );
 
         let mut module = Module::new();
-        module.add_struct(new_struct);
+        module.add_struct(new_struct.clone());
 
         let mut chunk = Chunk::new();
         // Push the first field
@@ -267,10 +266,16 @@ mod tests {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        assert_eq!(vm.run().unwrap(), Value::Struct(0, vec![
-            ValueOwnable::Owned(Box::new(Value::U8(10))),
-            ValueOwnable::Owned(Box::new(Value::U16(20)))
-        ].into()));
+        assert_eq!(
+            vm.run().unwrap(),
+            Value::Struct(
+                vec![
+                    ValueOwnable::Owned(Box::new(Value::U8(10))),
+                    ValueOwnable::Owned(Box::new(Value::U16(20)))
+                ].into(),
+                new_struct
+            )
+        );
 
         let chunk = module.get_chunk_at_mut(0).unwrap();
         chunk.pop_instruction();
@@ -352,13 +357,9 @@ mod tests {
         let mut module = Module::new();
 
         // Create a struct with u64 field
-        let new_struct = Struct {
-            fields: vec![
-                Type::U64
-            ]
-        };
+        let new_struct = StructType::new(0, vec![Type::U64]);
 
-        module.add_struct(new_struct);
+        module.add_struct(new_struct.clone());
 
         // Create a function on a struct
         // When called, the first stack value should be the struct
@@ -370,9 +371,9 @@ mod tests {
         // Main function
         let mut main = Chunk::new();
         // Create a struct
-        let index = module.add_constant(Value::Struct(0, vec![
+        let index = module.add_constant(Value::Struct(vec![
             ValueOwnable::Owned(Box::new(Value::U64(10)))
-        ].into()));
+        ].into(), new_struct));
 
         main.emit_opcode(OpCode::Constant);
         main.write_u16(index as u16);
@@ -593,6 +594,14 @@ mod full_tests {
         let module = Compiler::new(&program, &env).compile().unwrap();
     
         (module, env)
+    }
+
+    #[track_caller]
+    fn run_code(code: &str) -> Value {
+        let (module, environment) = prepare_module(code);
+        let mut vm = VM::new(&module, &environment);
+        vm.invoke_entry_chunk(0).unwrap();
+        vm.run().unwrap()
     }
 
     #[test]
@@ -1172,5 +1181,28 @@ mod full_tests {
         vm.invoke_chunk_id(0).unwrap();
         let value = vm.run().unwrap();
         assert_eq!(value, Value::U64(10));
+    }
+
+    #[test]
+    fn test_stackoverflow() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 0;
+                for i: u64 = 0; i < 1000000; i += 1 {
+                    x = x + 1
+                }
+                return x
+            }"#;
+
+        run_code(code);
+
+        let mut code = r#"
+            entry main() {
+                let a: u64 = 1;
+                let b: u64 = a
+        "#.to_string() + "+ a + a ".repeat(10000).as_str();
+        code.push_str("return x }");
+
+        run_code(&code);
     }
 }

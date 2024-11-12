@@ -1,6 +1,6 @@
 use std::{cell::{Ref, RefCell, RefMut}, cmp::Ordering, hash::Hash, rc::Rc};
 use thiserror::Error;
-use crate::{types::Type, IdentifierType, ValueHandle, ValueHandleMut, U256};
+use crate::{types::Type, StructType, ValueHandle, ValueHandleMut, U256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InnerValue(Rc<RefCell<Value>>);
@@ -130,7 +130,7 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(IdentifierType, Vec<ValueOwnable>),
+    Struct(Vec<ValueOwnable>, StructType),
     Array(Vec<ValueOwnable>),
     Optional(Option<ValueOwnable>),
     // Use box directly because the range are primitive only
@@ -241,7 +241,7 @@ impl Value {
     #[inline]
     pub fn as_map(&self) -> Result<&Vec<ValueOwnable>, ValueError> {
         match self {
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             v => Err(ValueError::InvalidStructValue(v.clone()))
         }
     }
@@ -249,7 +249,7 @@ impl Value {
     #[inline]
     pub fn as_mut_map(&mut self) -> Result<&mut Vec<ValueOwnable>, ValueError> {
         match self {
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             v => Err(ValueError::InvalidStructValue(v.clone()))
         }
     }
@@ -362,7 +362,7 @@ impl Value {
     #[inline]
     pub fn to_map(self) -> Result<Vec<ValueOwnable>, ValueError> {
         match self {
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             v => Err(ValueError::InvalidStructValue(v.clone()))
         }
     }
@@ -379,7 +379,7 @@ impl Value {
     pub fn to_sub_vec(self) -> Result<Vec<ValueOwnable>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::SubValue)
         }
     }
@@ -388,7 +388,7 @@ impl Value {
     pub fn as_sub_vec(&self) -> Result<&Vec<ValueOwnable>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::SubValue)
         }
     }
@@ -397,7 +397,7 @@ impl Value {
     pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<ValueOwnable>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
-            Value::Struct(_, fields) => Ok(fields),
+            Value::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::SubValue)
         }
     }
@@ -648,7 +648,7 @@ impl Value {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
-            Value::Struct(name, _) => Type::Struct(name.clone()),
+            Value::Struct(_, _type) => Type::Struct(_type.clone()),
             Value::Array(inner) => match inner.first() {
                 Some(value) => Type::Array(Box::new(value.handle().get_type()?)),
                 None => return Err(ValueError::UnknownType)
@@ -674,9 +674,9 @@ impl std::fmt::Display for Value {
             Value::U256(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Struct(name, fields) => {
+            Value::Struct(fields, _type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
-                write!(f, "{} {} {} {}", name, "{", s.join(", "), "}")
+                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
             },
             Value::Array(values) => {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v.handle())).collect();

@@ -8,7 +8,6 @@ use std::{
 use xelis_builder::{
     EnvironmentBuilder,
     FunctionMapper,
-    StructBuilder,
     StructManager
 };
 use xelis_ast::*;
@@ -144,8 +143,8 @@ impl<'a> Parser<'a> {
             Token::Optional(inner) => Type::Optional(Box::new(self.get_type_from_token(*inner)?)),
             Token::Range(inner) => Type::Range(Box::new(self.get_type_from_token(*inner)?)),
             Token::Identifier(id) => {
-                if let Ok(v) = self.struct_manager.get_mapping(id) {
-                    Type::Struct(v)
+                if let Ok(v) = self.struct_manager.get_by_name(id) {
+                    Type::Struct(v.inner().clone())
                 } else {
                     return Err(ParserError::StructNotFound(id))
                 }
@@ -207,11 +206,10 @@ impl<'a> Parser<'a> {
             },
             Expression::Variable(ref var_name) => match on_type {
                 Some(t) => {
-                    if let Type::Struct(struct_name) = t {
-                        let structure = self.struct_manager.get(struct_name)?;
+                    if let Type::Struct(_type) = t {
                         let index = *var_name as usize;
-                        if let Some(value) = structure.fields.get(index) {
-                            Cow::Borrowed(&value.1)
+                        if let Some(field_type) = _type.fields().get(index) {
+                            Cow::Owned(field_type.clone())
                         } else {
                             return Err(ParserError::UnexpectedMappedVariableId(var_name.clone()))
                         }
@@ -249,7 +247,7 @@ impl<'a> Parser<'a> {
                 }
             },
             // we have to clone everything due to this
-            Expression::Value(ref val) => match Type::from_value(val, &self.struct_manager) {
+            Expression::Value(ref val) => match Type::from_value(val) {
                 Some(v) => Cow::Owned(v),
                 None => return Ok(None)
             },
@@ -260,13 +258,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
-            Expression::StructConstructor(name, _) => {
-                if !self.struct_manager.has(name) {
-                    return Err(ParserError::StructIdNotFound(name.clone()))
-                }
-
-                Cow::Owned(Type::Struct(name.clone()))
-            }
+            Expression::StructConstructor(_type, _) => Cow::Owned(Type::Struct(_type.clone())),
             Expression::Path(left, right) => {
                 let var_type = self.get_type_from_expression(on_type, left, context)?;
                 self.get_type_from_expression(Some(&var_type), right, context)?
@@ -360,19 +352,16 @@ impl<'a> Parser<'a> {
     // struct_name { field_name: value1, field2: value2 }
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
-    fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_name: IdentifierType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.expect_token(Token::BraceOpen)?;
-        let structure = self.struct_manager.get(&struct_name)?.clone();
-        let mut fields = Vec::with_capacity(structure.fields.len());
-        for (_, t) in structure.fields.iter() {
+        let mut fields = Vec::with_capacity(struct_type.fields().len());
+        for t in struct_type.fields() {
             let field_name = self.next_identifier()?;
             let field_value = match self.advance()? {
                 Token::Comma => {
-                    if let Some(id) = context.get_variable_id(field_name) {
-                        Expression::Variable(id)
-                    } else {
-                        return Err(ParserError::UnexpectedVariable(field_name.to_owned())) 
-                    }
+                    let id = context.get_variable_id(field_name)
+                        .ok_or_else(|| ParserError::UnexpectedVariable(field_name.to_owned()))?;
+                    Expression::Variable(id)
                 }
                 Token::Colon => {
                     let value = self.read_expr(on_type, true, true, Some(t), context)?;
@@ -393,7 +382,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_token(Token::BraceClose)?;
-        Ok(Expression::StructConstructor(struct_name, fields))
+        Ok(Expression::StructConstructor(struct_type, fields))
     }
 
     // Read an expression with default parameters
@@ -486,9 +475,8 @@ impl<'a> Parser<'a> {
                             match on_type {
                                 // mostly an access to a struct field
                                 Some(t) => {
-                                    if let Type::Struct(struct_name) = t {
-                                        let builder = self.struct_manager.get(struct_name)?;
-                                        
+                                    if let Type::Struct(_type) = t {
+                                        let builder = self.struct_manager.get_by_ref(_type)?;
                                         match builder.get_id_for_field(id) {
                                             Some(v) => Expression::Variable(v),
                                             None => return Err(ParserError::UnexpectedVariable(id.to_owned()))
@@ -500,8 +488,8 @@ impl<'a> Parser<'a> {
                                 None => {
                                     if let Some(id) = context.get_variable_id(id) {
                                         Expression::Variable(id)
-                                    } else if let Ok(id) = self.struct_manager.get_mapping(&id) {
-                                        self.read_struct_constructor(on_type, id, context)?
+                                    } else if let Ok(id) = self.struct_manager.get_by_name(&id) {
+                                        self.read_struct_constructor(on_type, id.inner().clone(), context)?
                                     } else {
                                         return Err(ParserError::UnexpectedVariable(id.to_owned()))
                                     }
@@ -988,17 +976,6 @@ impl<'a> Parser<'a> {
         let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
-
-            // verify that the type is a struct
-            if let Type::Struct(struct_name) = &for_type {
-                // only types that are declared by the same program
-                if !self.struct_manager.has(struct_name) {
-                    return Err(ParserError::StructIdNotFound(struct_name.clone()))
-                }
-            } else {
-                return Err(ParserError::InvalidFunctionType(for_type))
-            }
-
             let id = context.register_variable(instance_name, for_type.clone())?;
             self.expect_token(Token::ParenthesisClose)?;
 
@@ -1122,7 +1099,7 @@ impl<'a> Parser<'a> {
      * - Structure name should start with a uppercase character
      * - only alphanumeric chars in name
      */
-    fn read_struct(&mut self) -> Result<(&'a str, StructBuilder<'a>), ParserError<'a>> {
+    fn read_struct(&mut self) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
         let mut chars = name.chars();
         if !chars.all(|c| c.is_ascii_alphanumeric()) {
@@ -1148,9 +1125,9 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        Ok((name, StructBuilder {
-            fields
-        }))
+        self.struct_manager.add(Cow::Borrowed(name), fields)?;
+
+        Ok(())
     }
 
     // Parse the tokens and return a Program
@@ -1172,10 +1149,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
-                Token::Struct => {
-                    let (name, builder) = self.read_struct()?;
-                    self.struct_manager.add(Cow::Borrowed(name), builder)?;
-                },
+                Token::Struct => self.read_struct()?,
                 token => return Err(ParserError::UnexpectedToken(token))
             };
         }

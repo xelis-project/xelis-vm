@@ -1,6 +1,6 @@
 
 use std::collections::HashSet;
-use xelis_types::{Struct, Value};
+use xelis_types::{StructType, Value};
 
 use super::Chunk;
 
@@ -14,7 +14,7 @@ pub struct Module {
     // Chunks callable from external programs
     entry_chunk_ids: HashSet<usize>,
     // registered structs
-    structs: Vec<Struct>
+    structs: Vec<StructType>
 }
 
 impl Module {
@@ -97,13 +97,13 @@ impl Module {
 
     // Add a struct to the module
     #[inline]
-    pub fn add_struct(&mut self, structure: Struct) {
+    pub fn add_struct(&mut self, structure: StructType) {
         self.structs.push(structure);
     }
 
     // Get a struct at a specific index
     #[inline]
-    pub fn get_struct_at(&self, index: usize) -> Option<&Struct> {
+    pub fn get_struct_at(&self, index: usize) -> Option<&StructType> {
         self.structs.get(index)
     }
 }

@@ -129,13 +129,13 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
 
 pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
-    let structure = backend.get_struct_with_id(id)?;
+    let struct_type = backend.get_struct_with_id(id)?;
 
     let mut fields = VecDeque::new();
-    for _ in 0..structure.fields.len() {
+    for _ in 0..struct_type.fields().len() {
         fields.push_front(ValueOwnable::Owned(Box::new(stack.pop_stack()?.into_owned())));
     }
 
-    stack.push_stack(Path::Owned(Value::Struct(id, fields.into())))?;
+    stack.push_stack(Path::Owned(Value::Struct(fields.into(), struct_type.clone())))?;
     Ok(InstructionResult::Nothing)
 }

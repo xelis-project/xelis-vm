@@ -294,14 +294,14 @@ impl<'a> Interpreter<'a> {
 
                 Ok(Some(Path::Owned(Value::Array(values))))
             },
-            Expression::StructConstructor(struct_name, expr_fields) => {
+            Expression::StructConstructor(_type, expr_fields) => {
                 let mut fields = Vec::with_capacity(expr_fields.len());
                 for expr in expr_fields {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
                     fields.push(ValueOwnable::Owned(Box::new(value.into_owned())));
                 }
 
-                Ok(Some(Path::Owned(Value::Struct(struct_name.clone(), fields))))
+                Ok(Some(Path::Owned(Value::Struct(fields, _type.clone()))))
             },
             Expression::IsNot(expr) => {
                 let val = self.execute_expression_and_expect_value(&expr, stack, state)?.as_bool()?;
@@ -616,12 +616,11 @@ mod tests {
         let code = "entry main() { let a: u64 = 0; for i: u64 = 0; i < 100000; i += 1 { a += i; } return a; }";
         test_code_expect_return(code, 4999950000);
 
-        assert!(false);
         // TODO
-        // let mut code = "entry main() { let a: u64 = 1; return ".to_string();
-        // code.push_str("a + a + ".repeat(10000).as_str());
-        // code.push_str("a; }");
-        // test_code_expect_return(code.as_str(), 4999950000);
+        let mut code = "entry main() { let a: u64 = 1; return ".to_string();
+        code.push_str("a + a + ".repeat(10000).as_str());
+        code.push_str("a; }");
+        test_code_expect_return(code.as_str(), 4999950000);
     }
 
     #[test]
@@ -739,10 +738,12 @@ mod tests {
 
     #[test]
     fn test_number_operations_priority() {
-        // test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
-        // test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
+        test_code_expect_return("entry main() { return 10 + 10 * 10; }", 110);
+        test_code_expect_return("entry main() { return (10 + 10) * 10; }", 200);
 
-        // test_code_expect_return("entry main() { return 10 + 10 / 5 + 3; }", 15);
+        test_code_expect_return("entry main() { return 10 + 10 / 5 + 3; }", 15);
+        test_code_expect_return("entry main() { return 10 + 10 / 5 * 3; }", 16);
+        test_code_expect_return("entry main() { return 10 + 10 / 5 + 3 * 10; }", 42);
     }
 
     #[test]
