@@ -1,8 +1,8 @@
 pub mod xstd;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
-use xelis_types::Type;
+use xelis_types::{Type, Value};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{StructManager, FunctionMapper};
 
@@ -12,6 +12,7 @@ use crate::{StructManager, FunctionMapper};
 pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
+    constants: HashMap<Type, HashMap<&'a str, Value>>,
     env: Environment
 }
 
@@ -21,7 +22,8 @@ impl<'a> EnvironmentBuilder<'a> {
         Self {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
-            env: Environment::new()
+            constants: HashMap::new(),
+            env: Environment::new(),
         }
     }
 
@@ -37,6 +39,18 @@ impl<'a> EnvironmentBuilder<'a> {
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
         let _type = self.struct_manager.build_struct(Cow::Borrowed(name), fields).unwrap();
         self.env.add_structure(_type);
+    }
+
+    // Register a constant in the environment
+    // Panic if the constant name is already used
+    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Value) {
+        let constants = self.constants.entry(_type.clone()).or_insert_with(HashMap::new);
+        constants.insert(name, value.clone());
+    }
+
+    // Get a constant by name
+    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&Value> {
+        self.constants.get(_type).and_then(|v| v.get(name))
     }
 
     // functions mapper, used to find the function id

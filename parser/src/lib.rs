@@ -385,6 +385,19 @@ impl<'a> Parser<'a> {
         Ok(Expression::StructConstructor(fields, struct_type))
     }
 
+    // Read a constant from the environment
+    fn read_type_constant(&mut self, token: Token<'a>) -> Result<Expression, ParserError<'a>> {
+        let _type = self.get_type_from_token(token)?;
+        self.expect_token(Token::Colon)?;
+        self.expect_token(Token::Colon)?;
+
+        let constant_name = self.next_identifier()?;
+
+        self.environment.get_constant_by_name(&_type, &constant_name)
+            .map(|v| Expression::Value(v.clone()))
+            .ok_or_else(|| ParserError::ConstantNotFound(_type, constant_name))
+    }
+
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.read_expr(None, true, true, None, context)
@@ -471,6 +484,7 @@ impl<'a> Parser<'a> {
                     match self.peek()? {
                         // function call
                         Token::ParenthesisOpen => self.read_function_call(last_expression.take(), on_type, id, context)?,
+                        Token::Colon => self.read_type_constant(Token::Identifier(id))?,
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
@@ -661,7 +675,13 @@ impl<'a> Parser<'a> {
                                 }
                             }
                         }
-                        None => return Err(ParserError::InvalidOperation)
+                        None => {
+                            if token.is_type() {
+                                self.read_type_constant(token)?
+                            } else {
+                                return Err(ParserError::InvalidOperation)
+                            }
+                        }
                     }
                 }
             };
@@ -1774,6 +1794,27 @@ mod tests {
             Token::BraceClose
         ];
 
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_type_constant() {
+        // let test: u64 = u64::MAX;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("test"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Number(NumberType::U64),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX"),
+        ];
+
+        let mut env = EnvironmentBuilder::new();
+        env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX));
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
     }

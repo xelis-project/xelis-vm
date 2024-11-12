@@ -4,6 +4,7 @@ use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
+    ConstantNotFound(Type, &'a str),
     NotIterable(Type),
     InvalidRangeType(Type, Type),
     InvalidRangeTypePrimitive(Type),

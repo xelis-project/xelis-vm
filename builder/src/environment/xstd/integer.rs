@@ -55,44 +55,6 @@ macro_rules! register_overflows {
     };
 }
 
-// macro to generate min and max functions for a specific type
-// Allow to get the lowest or highest value of a type
-macro_rules! min_max_fns {
-    ($env: expr, $t: ident, $f: ident) => {
-        paste! {
-            fn [<min_ $f>](_: FnInstance, _: FnParams) -> FnReturnType {
-                let min = $f::MIN;
-                let inner = ValueOwnable::Owned(Box::new(Value::$t(min)));
-                Ok(Some(Value::Optional(Some(inner))))
-            }
-
-            fn [<max_ $f>](_: FnInstance, _: FnParams) -> FnReturnType {
-                let max = $f::MAX;
-                let inner = ValueOwnable::Owned(Box::new(Value::$t(max)));
-                Ok(Some(Value::Optional(Some(inner))))
-            }
-
-            $env.register_native_function(
-                stringify!([<min_ $f>]),
-                Some(Type::$t),
-                vec![],
-                [<min_ $f>],
-                1,
-                Some(Type::Optional(Box::new(Type::$t)))
-            );
-
-            $env.register_native_function(
-                stringify!([<max_ $f>]),
-                Some(Type::$t),
-                vec![],
-                [<max_ $f>],
-                1,
-                Some(Type::Optional(Box::new(Type::$t)))
-            );
-        }
-    };
-}
-
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
@@ -122,6 +84,19 @@ macro_rules! register_to_endian_bytes {
     };
 }
 
+macro_rules! register_constants_min_max {
+    ($env: expr, $t: ident, $f: ident) => {
+        let min = $f::MIN;
+        let max = $f::MAX;
+
+        let min_inner = ValueOwnable::Owned(Box::new(Value::$t(min)));
+        let max_inner = ValueOwnable::Owned(Box::new(Value::$t(max)));
+
+        $env.register_constant(Type::$t, "MIN", Value::Optional(Some(min_inner)));
+        $env.register_constant(Type::$t, "MAX", Value::Optional(Some(max_inner)));
+    };
+}
+
 pub fn register(env: &mut EnvironmentBuilder) {
     // Register all operations with overflow checking
     register_overflows!(env, U8, u8);
@@ -132,13 +107,12 @@ pub fn register(env: &mut EnvironmentBuilder) {
     register_overflows!(env, U256, u256);
 
     // Register min/max functions for all types
-    // TODO: don't create types functions, but constants like u256::MAX etc.
-    min_max_fns!(env, U8, u8);
-    min_max_fns!(env, U16, u16);
-    min_max_fns!(env, U32, u32);
-    min_max_fns!(env, U64, u64);
-    min_max_fns!(env, U128, u128);
-    min_max_fns!(env, U256, u256);
+    register_constants_min_max!(env, U8, u8);
+    register_constants_min_max!(env, U16, u16);
+    register_constants_min_max!(env, U32, u32);
+    register_constants_min_max!(env, U64, u64);
+    register_constants_min_max!(env, U128, u128);
+    register_constants_min_max!(env, U256, u256);
 
     // Register all 'to endian bytes' (be/le) functions for all types
     register_to_endian_bytes!(env, U16, u16);
