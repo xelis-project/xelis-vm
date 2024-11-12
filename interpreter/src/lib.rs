@@ -294,7 +294,7 @@ impl<'a> Interpreter<'a> {
 
                 Ok(Some(Path::Owned(Value::Array(values))))
             },
-            Expression::StructConstructor(_type, expr_fields) => {
+            Expression::StructConstructor(expr_fields, _type) => {
                 let mut fields = Vec::with_capacity(expr_fields.len());
                 for expr in expr_fields {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;

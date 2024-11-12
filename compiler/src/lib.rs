@@ -98,7 +98,7 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::NewArray);
                 chunk.write_u32(exprs.len() as u32);
             },
-            Expression::StructConstructor(_type, exprs) => {
+            Expression::StructConstructor(exprs, _type) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }

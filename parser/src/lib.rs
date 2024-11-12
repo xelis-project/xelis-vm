@@ -258,7 +258,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
-            Expression::StructConstructor(_type, _) => Cow::Owned(Type::Struct(_type.clone())),
+            Expression::StructConstructor(_, _type) => Cow::Owned(Type::Struct(_type.clone())),
             Expression::Path(left, right) => {
                 let var_type = self.get_type_from_expression(on_type, left, context)?;
                 self.get_type_from_expression(Some(&var_type), right, context)?
@@ -382,7 +382,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_token(Token::BraceClose)?;
-        Ok(Expression::StructConstructor(struct_type, fields))
+        Ok(Expression::StructConstructor(fields, struct_type))
     }
 
     // Read an expression with default parameters
