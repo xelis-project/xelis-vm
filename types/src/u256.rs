@@ -220,6 +220,67 @@ impl U256 {
         (remainder, false)
     }
 
+    /// Checked subtraction with overflow handling
+    pub fn checked_sub(self, other: U256) -> Option<U256> {
+        let (result, overflow) = self.overflowing_sub(other);
+        if overflow {
+            None
+        } else {
+            Some(result)
+        }
+    }
+
+    /// Checked addition with overflow handling
+    pub fn checked_add(self, other: U256) -> Option<U256> {
+        let (result, overflow) = self.overflowing_add(other);
+        if overflow {
+            None
+        } else {
+            Some(result)
+        }
+    }
+
+    /// Checked multiplication with overflow handling
+    /// Returns None if the multiplication overflows
+    pub fn checked_mul(self, other: U256) -> Option<U256> {
+        let (result, overflow) = self.overflowing_mul(other);
+        if overflow {
+            None
+        } else {
+            Some(result)
+        }
+    }
+
+    /// Checked division with overflow handling
+    /// Returns None if the divisor is zero or the division overflows
+    pub fn checked_div(self, divisor: U256) -> Option<U256> {
+        if divisor.is_zero() {
+            None
+        } else {
+            let (result, overflow) = self.overflowing_div(divisor);
+            if overflow {
+                None
+            } else {
+                Some(result)
+            }
+        }
+    }
+
+    /// Checked remainder with overflow handling
+    /// Returns None if the divisor is zero or the remainder overflows
+    pub fn checked_rem(self, divisor: U256) -> Option<U256> {
+        if divisor.is_zero() {
+            None
+        } else {
+            let (result, overflow) = self.overflowing_rem(divisor);
+            if overflow {
+                None
+            } else {
+                Some(result)
+            }
+        }
+    }
+
     /// Export the data as a big-endian byte array
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let bytes = [
