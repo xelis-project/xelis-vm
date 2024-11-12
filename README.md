@@ -3,6 +3,26 @@ XVM is a virtual machine with its own interpreted language for the XELIS network
 It supports constants, functions, while/foreach loops, arrays and structures.
 The syntax is strongly inspired by Rust.
 
+## Tasks
+
+Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
+
+- **Shunting Yard Algorithm for Parser**
+Currently, mathematical operations don't follow the priority rules. Implementing it would help resolving that issue.
+
+- **Improve Parser**
+Parser is currently operating in a full recursive mode, which can create a stackoverflow in case of a too complex/deep expression to build. Rewriting the key parts to operate in an iterative way would prevent any stack overflow.
+
+- **Enums**
+Enums are useful for future events system.  Each events will be broadcasted by the XELIS daemon through the WebSocket Server to all clients that subscribed to it. They will also be registered in the events history of a block.
+
+- **ABI**
+Generating a "mapper" file to easily link entry functions (name, parameters), enums, structs.. to the corresponding ids on chain. This will allow easy plugin-in with future XSWD lib and dApps development.
+
+- **VM optimizations**
+The faster the VM is, the more we can have reduced cost for running a Smart Contract.
+
+
 ## Crates
 
 - `vm` is the main crate that contains Virtual Machine to execute a (op-code) compiled program.
