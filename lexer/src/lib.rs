@@ -813,6 +813,21 @@ mod tests {
     }
 
     #[test]
+    fn test_double_generic() {
+        let code = "a<b, c>";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorLessThan,
+            Token::Identifier("b"),
+            Token::Comma,
+            Token::Identifier("c"),
+            Token::OperatorGreaterThan
+        ]);
+    }
+
+    #[test]
     fn test_range() {
         let code = "range<u64>";
         let lexer = Lexer::new(code);
