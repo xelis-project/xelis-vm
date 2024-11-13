@@ -128,7 +128,20 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn get_type_from_token(&self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
+    fn get_generic_type(&mut self) -> Result<Type, ParserError<'a>> {
+        self.expect_token(Token::OperatorLessThan)?;
+        let token = self.advance()?;
+        let inner = self.get_type_from_token(token)?;
+        Ok(inner)
+    }
+
+    fn get_single_inner_type(&mut self) -> Result<Type, ParserError<'a>> {
+        let inner = self.get_generic_type()?;
+        self.expect_token(Token::OperatorGreaterThan)?;
+        Ok(inner)
+    }
+
+    fn get_type_from_token(&mut self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
         Ok(match token {
             Token::Number(inner) => match inner {
                 NumberType::U8 => Type::U8,
@@ -140,8 +153,17 @@ impl<'a> Parser<'a> {
             },
             Token::String => Type::String,
             Token::Bool => Type::Bool,
-            Token::Optional(inner) => Type::Optional(Box::new(self.get_type_from_token(*inner)?)),
-            Token::Range(inner) => Type::Range(Box::new(self.get_type_from_token(*inner)?)),
+            Token::Optional => Type::Optional(Box::new(self.get_single_inner_type()?)),
+            Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
+            Token::Map => {
+                let key = self.get_generic_type()?;
+                self.expect_token(Token::Comma)?;
+                let token = self.advance()?;
+                let value = self.get_type_from_token(token)?;
+                self.expect_token(Token::OperatorGreaterThan)?;
+
+                Type::Map(Box::new(key), Box::new(value))
+            }
             Token::Identifier(id) => {
                 if let Ok(v) = self.struct_manager.get_by_name(id) {
                     Type::Struct(v.inner().clone())
@@ -204,6 +226,7 @@ impl<'a> Parser<'a> {
                 Some(v) => Cow::Owned(Type::Array(Box::new(self.get_type_from_expression(on_type, v, context)?.into_owned()))),
                 None => return Err(ParserError::EmptyArrayConstructor) // cannot determine type from empty array
             },
+            Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
             Expression::Variable(ref var_name) => match on_type {
                 Some(t) => {
                     if let Type::Struct(_type) = t {
@@ -419,11 +442,8 @@ impl<'a> Parser<'a> {
                     return false
                 }
 
-                !peek.should_stop()
-                && (
-                    required_operator == peek.is_operator()
+                required_operator == peek.is_operator()
                     || (**peek == Token::BracketOpen && last_expression.is_none())
-                )
             }).is_some()
         {
 
@@ -678,6 +698,14 @@ impl<'a> Parser<'a> {
                         None => {
                             if token.is_type() {
                                 self.read_type_constant(token)?
+                            } else if token == Token::BraceOpen {
+                                let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
+                                    (Some(*key.clone()), Some(*value.clone()))
+                                } else {
+                                    (None, None)
+                                };
+
+                                self.read_map_constructor(key, value, context)?
                             } else {
                                 return Err(ParserError::InvalidOperation)
                             }
@@ -694,6 +722,48 @@ impl<'a> Parser<'a> {
             Some(v) => Ok(v),
             None => Err(ParserError::NotImplemented)
         }
+    }
+
+    // Read a map constructor with the following syntax:
+    // { key1: value1, key2: value2 }
+    fn read_map_constructor(&mut self, mut key_type: Option<Type>, mut value_type: Option<Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        let mut expressions: Vec<(Expression, Expression)> = Vec::new();
+        while self.peek_is_not(Token::BraceClose) {
+            let key = self.read_expr(None, true, true, key_type.as_ref(), context)?;
+            let k_type = self.get_type_from_expression(None, &key, context)?;
+            if let Some(t) = key_type.as_ref() {
+                if *k_type != *t {
+                    return Err(ParserError::InvalidValueType(k_type.into_owned(), t.clone()))
+                }
+            } else {
+                key_type = Some(k_type.into_owned());
+            }
+
+            self.expect_token(Token::Colon)?;
+            let value = self.read_expr(None, true, true, value_type.as_ref(), context)?;
+            let v_type = self.get_type_from_expression(None, &value, context)?;
+            if let Some(t) = value_type.as_ref() {
+                if *v_type != *t {
+                    return Err(ParserError::InvalidValueType(v_type.into_owned(), t.clone()))
+                }
+            } else {
+                value_type = Some(v_type.into_owned());
+            }
+
+            expressions.push((key, value));
+
+            if self.peek_is(Token::Comma) {
+                self.expect_token(Token::Comma)?;
+            }
+        }
+
+        let (key, value) = match (key_type, value_type) {
+            (Some(k), Some(v)) => (k, v),
+            _ => return Err(ParserError::NoValueType)
+        };
+
+        self.expect_token(Token::BraceClose)?;
+        Ok(Expression::MapConstructor(expressions, key, value))
     }
 
     /**
@@ -1226,7 +1296,10 @@ mod tests {
             Token::Identifier("a"),
             Token::Colon,
 
-            Token::Range(Box::new(Token::Number(NumberType::U64))),
+            Token::Range,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
             Token::OperatorAssign,
 
             Token::Value(Literal::U64(0)),
@@ -1246,6 +1319,144 @@ mod tests {
                         Box::new(Expression::Value(Value::U64(0))),
                         Box::new(Expression::Value(Value::U64(10))),
                     )
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_double_optional() {
+        // let a: optional<optional<u64>> = null;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null)
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Optional(Box::new(Type::Optional(Box::new(Type::U64)))),
+                    value: Expression::Value(Value::Null)
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_map() {
+        // let a: map<u64, string> = {};
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
+                    value: Expression::MapConstructor(Vec::new(), Type::U64, Type::String)
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_map_with_values() {
+        // let a: map<u64, string> = { 0: "hello" };
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::BraceOpen,
+            Token::Value(Literal::U64(0)),
+            Token::Colon,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
+                    value: Expression::MapConstructor(
+                        vec![
+                            (Expression::Value(Value::U64(0)), Expression::Value(Value::String("hello".to_owned())))
+                        ],
+                        Type::U64,
+                        Type::String
+                    )
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_double_depth_map() {
+        // let a: map<u64, map<u64, string>> = {};
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
+                    value: Expression::MapConstructor(Vec::new(), Type::U64, Type::Map(Box::new(Type::U64), Box::new(Type::String)))
                 }
             )
         );

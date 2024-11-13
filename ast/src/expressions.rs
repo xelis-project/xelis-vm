@@ -13,6 +13,7 @@ pub enum Expression {
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     StructConstructor(Vec<Expression>, StructType),
+    MapConstructor(Vec<(Expression, Expression)>, Type, Type),
     Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),
