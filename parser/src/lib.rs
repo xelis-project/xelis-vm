@@ -218,6 +218,23 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn get_from_generic_type<'b>(&'b self, on_type: Option<&Type>, _type: &'b Type, path: Option<&Expression>, context: &'b Context<'a>) -> Result<Type, ParserError<'a>> {
+        Ok(match _type {
+            Type::T(id) => match on_type {
+                Some(t) => t.get_generic_type(*id).ok_or(ParserError::InvalidTypeT)?.clone(),
+                None => match path {
+                    Some(v) => {
+                        let on_type = self.get_type_from_expression(on_type, v, context)?;
+                        self.get_from_generic_type(Some(&on_type), _type, path, context)?
+                    },
+                    None => return Err(ParserError::NoValueType)
+                }
+            },
+            Type::Optional(inner) => Type::Optional(Box::new(self.get_from_generic_type(on_type, inner, path, context)?)),
+            _ => _type.clone()
+        })
+    }
+
     // this function don't verify, but only returns the type of an expression
     // all tests should be done when constructing an expression, not here
     fn get_type_from_expression_internal<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context<'a>) -> Result<Option<Cow<'b, Type>>, ParserError<'a>> {
@@ -246,26 +263,7 @@ impl<'a> Parser<'a> {
                 let f = self.get_function(*name)?;
                 let return_type = f.return_type();
                 match return_type {
-                    Some(ref v) => match v {
-                        Type::T => match on_type {
-                            Some(t) => Cow::Owned(t.get_inner_type().clone()),
-                            None => match path {
-                                Some(p) => Cow::Owned(self.get_type_from_expression(on_type, p, context)?.get_inner_type().clone()),
-                                None => return Err(ParserError::InvalidTypeT)
-                            }
-                        },
-                        Type::Optional(inner) => match inner.as_ref() {
-                            Type::T => match on_type {
-                                Some(t) => Cow::Owned(Type::Optional(Box::new(t.get_inner_type().clone()))),
-                                None => match path {
-                                    Some(p) => Cow::Owned(Type::Optional(Box::new(self.get_type_from_expression(on_type, p, context)?.get_inner_type().clone()))),
-                                    None => return Err(ParserError::InvalidTypeT)
-                                }
-                            },
-                            _ => Cow::Owned(v.clone())
-                        },
-                        _ => Cow::Owned(v.clone())
-                    },
+                    Some(ref v) => Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?),
                     None => return Err(ParserError::FunctionNoReturnType)
                 }
             },
@@ -563,6 +561,7 @@ impl<'a> Parser<'a> {
                             // because we read operator DOT + right expression
                             required_operator = !required_operator;
 
+                            // Read a type constant
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
                                 let end_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
@@ -577,8 +576,8 @@ impl<'a> Parser<'a> {
 
                                 Expression::RangeConstructor(Box::new(value), Box::new(end_expr))
                             } else {
+                                // Read a variable access OR a function call
                                 let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
-
                                 if let Expression::FunctionCall(path, name, params) = right_expr {
                                     if path.is_some() {
                                         return Err(ParserError::UnexpectedPathInFunctionCall)
@@ -805,7 +804,7 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(None, true, true, Some(value_type.get_inner_type()), context)?;
+            let expr = self.read_expr(None, true, true, Some(&value_type), context)?;
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {

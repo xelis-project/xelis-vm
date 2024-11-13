@@ -1,17 +1,17 @@
-use xelis_types::{Type, Value, ValueOwnable};
+use xelis_types::{Type, Value};
 use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    env.register_native_function("len", Some(Type::Array(Box::new(Type::T))), vec![], len, 1, Some(Type::U32));
-    env.register_native_function("push", Some(Type::Array(Box::new(Type::T))), vec![Type::T], push, 1, None);
-    env.register_native_function("remove", Some(Type::Array(Box::new(Type::T))), vec![Type::U32], remove, 1, Some(Type::T));
-    env.register_native_function("pop", Some(Type::Array(Box::new(Type::T))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T))));
-    env.register_native_function("slice", Some(Type::Array(Box::new(Type::T))), vec![Type::U32, Type::U32], slice, 3, Some(Type::Array(Box::new(Type::T))));
-    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T))), vec![Type::T], contains, 1, Some(Type::Bool));
-    env.register_native_function("get", Some(Type::Array(Box::new(Type::T))), vec![Type::U32], get, 1, Some(Type::Optional(Box::new(Type::T))));
-    env.register_native_function("first", Some(Type::Array(Box::new(Type::T))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T))));
-    env.register_native_function("last", Some(Type::Array(Box::new(Type::T))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T))));
+    env.register_native_function("len", Some(Type::Array(Box::new(Type::T(0)))), vec![], len, 1, Some(Type::U32));
+    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::T(0)], push, 1, None);
+    env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32], remove, 1, Some(Type::T(0)));
+    env.register_native_function("pop", Some(Type::Array(Box::new(Type::T(0)))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32, Type::U32], slice, 3, Some(Type::Array(Box::new(Type::T(0)))));
+    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::T(0)], contains, 1, Some(Type::Bool));
+    env.register_native_function("get", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function("first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function("last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
 }
 
 // native functions
@@ -22,7 +22,8 @@ fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
 
 fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?.push(ValueOwnable::Owned(Box::new(param.into_owned())));
+    zelf?.as_mut_vec()?
+        .push(param.into_ownable());
     Ok(None)
 }
 
@@ -79,27 +80,27 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
 
 fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
-    let vec = zelf?.as_vec()?;
-    if let Some(value) = vec.get(index) {
-        Ok(Some(Value::Optional(Some(value.clone()))))
+    let vec = zelf?.as_mut_vec()?;
+    if let Some(value) = vec.get_mut(index) {
+        Ok(Some(Value::Optional(Some(value.transform()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
 }
 
 fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    let vec = zelf?.as_vec()?;
-    if let Some(value) = vec.first() {
-        Ok(Some(Value::Optional(Some(value.clone()))))
+    let vec = zelf?.as_mut_vec()?;
+    if let Some(value) = vec.first_mut() {
+        Ok(Some(Value::Optional(Some(value.transform()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }
 }
 
 fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    let vec = zelf?.as_vec()?;
-    if let Some(value) = vec.last() {
-        Ok(Some(Value::Optional(Some(value.clone()))))
+    let vec = zelf?.as_mut_vec()?;
+    if let Some(value) = vec.last_mut() {
+        Ok(Some(Value::Optional(Some(value.transform()))))
     } else {
         Ok(Some(Value::Optional(None)))
     }

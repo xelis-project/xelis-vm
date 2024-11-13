@@ -44,11 +44,12 @@ macro_rules! count {
 }
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    env.register_native_function("contains", Some(Type::Range(Box::new(Type::T))), vec![Type::T], contains, 5, Some(Type::Bool));
-    env.register_native_function("collect", Some(Type::Range(Box::new(Type::T))), vec![], collect, 500, Some(Type::Array(Box::new(Type::T))));
-    env.register_native_function("max", Some(Type::Range(Box::new(Type::T))), vec![], max, 1, Some(Type::T));
-    env.register_native_function("min", Some(Type::Range(Box::new(Type::T))), vec![], min, 1, Some(Type::T));
-    env.register_native_function("count", Some(Type::Range(Box::new(Type::T))), vec![], count, 5, Some(Type::T));
+    let _type = Type::Range(Box::new(Type::T(0)));
+    env.register_native_function("contains", Some(_type.clone()), vec![Type::T(0)], contains, 5, Some(Type::Bool));
+    env.register_native_function("collect", Some(_type.clone()), vec![], collect, 500, Some(Type::Array(Box::new(Type::T(0)))));
+    env.register_native_function("max", Some(_type.clone()), vec![], max, 1, Some(Type::T(0)));
+    env.register_native_function("min", Some(_type.clone()), vec![], min, 1, Some(Type::T(0)));
+    env.register_native_function("count", Some(_type.clone()), vec![], count, 5, Some(Type::T(0)));
 }
 
 fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {

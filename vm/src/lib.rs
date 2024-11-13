@@ -136,7 +136,7 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{Type, Value, ValueOwnable};
+    use xelis_types::{InnerValue, Type, Value, ValueOwnable};
 
     use super::*;
 
@@ -270,8 +270,8 @@ mod tests {
             vm.run().unwrap(),
             Value::Struct(
                 vec![
-                    ValueOwnable::Owned(Box::new(Value::U8(10))),
-                    ValueOwnable::Owned(Box::new(Value::U16(20)))
+                    ValueOwnable::Rc(InnerValue::new(Value::U8(10))),
+                    ValueOwnable::Rc(InnerValue::new(Value::U16(20)))
                 ].into(),
                 new_struct
             )
@@ -1204,5 +1204,38 @@ mod full_tests {
         code.push_str("return x }");
 
         run_code(&code);
+    }
+
+    #[test]
+    fn test_map() {
+        let code = r#"
+            entry main() {
+                let x: map<string, u8> = {};
+                x.insert("a", 10);
+                let a: optional<u8> = x.get("a");
+                return a.unwrap() as u64
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_map_inline() {
+        let code = r#"
+            entry main() {
+                return {
+                    "a": 10u8
+                }.get("a").unwrap() as u64
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
     }
 }

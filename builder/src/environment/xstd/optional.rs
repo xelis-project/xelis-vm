@@ -3,22 +3,22 @@ use xelis_environment::{FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T))), vec![], is_none, 1, Some(Type::Bool));
-    env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T))), vec![], is_some, 1, Some(Type::Bool));
-    env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T))), vec![], unwrap, 1, Some(Type::T));
-    env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T))), vec![Type::T], unwrap_or, 1, Some(Type::T));
+    env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T(0)))), vec![], is_none, 1, Some(Type::Bool));
+    env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T(0)))), vec![], is_some, 1, Some(Type::Bool));
+    env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T(0)))), vec![], unwrap, 1, Some(Type::T(0)));
+    env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T(0)))), vec![Type::T(0)], unwrap_or, 1, Some(Type::T(0)));
 }
 
 fn is_none(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_none())))
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_none())))
 }
 
 fn is_some(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T)?.is_some())))
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_some())))
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams) -> FnReturnType {
-    let opt = zelf?.take_from_optional(&Type::T)?;
+    let opt = zelf?.take_from_optional(&Type::T(0))?;
     Ok(Some(opt.into_inner()))
 }
 

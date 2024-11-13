@@ -15,8 +15,10 @@ use std::{
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Type {
+    // Any Type is accepted
     Any,
-    T,
+    // T is a generic type, inner byte is for its position
+    T(u8),
 
     U8,
     U16,
@@ -100,8 +102,8 @@ impl Type {
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
             Value::Map(map) => {
                 let (key, value) = map.iter().next()?;
-                let key = Type::from_value(key)?;
-                let value = Type::from_value(&value)?;
+                let key = Type::from_value(&key)?;
+                let value = Type::from_value(&value.handle())?;
                 Type::Map(Box::new(key), Box::new(value))
             },
         };
@@ -118,9 +120,33 @@ impl Type {
         }
     }
 
+    pub fn get_generic_type(&self, id: u8) -> Option<&Type> {
+        match id {
+            0 => match &self {
+                Type::Map(key, _) => Some(key.as_ref()),
+                Type::Array(inner) => Some(inner.as_ref()),
+                Type::Optional(inner) => Some(inner.as_ref()),
+                Type::Range(inner) => Some(inner.as_ref()),
+                _ => None
+            },
+            1 => match &self {
+                Type::Map(_, value) => Some(value.as_ref()),
+                _ => None
+            }
+            _ => None
+        }
+    }
+
     pub fn allow_null(&self) -> bool {
         match self {
             Type::Optional(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_generic(&self) -> bool {
+        match self {
+            Type::T(_) | Type::Any => true,
             _ => false
         }
     }
@@ -131,7 +157,7 @@ impl Type {
                 Type::Range(inner2) => inner.is_compatible_with(inner2),
                 _ => false
             },
-            Type::Any | Type::T => true,
+            Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
                 Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
                 _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
@@ -140,7 +166,11 @@ impl Type {
                 Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
                 _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
             },
-            o => *o == *self || *self == Type::T || *self == Type::Any
+            Type::Map(k, v) => match self {
+                Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
+                _ => false
+            },
+            o => *o == *self || self.is_generic(),
         }
     }
 
@@ -247,7 +277,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Any => write!(f, "any"),
-            Type::T => write!(f, "T"),
+            Type::T(id) => write!(f, "T{}", id),
             Type::U8 => write!(f, "u8"),
             Type::U16 => write!(f, "u16"),
             Type::U32 => write!(f, "u32"),

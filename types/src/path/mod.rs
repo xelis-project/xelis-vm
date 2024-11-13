@@ -93,6 +93,15 @@ impl<'a> Path<'a> {
     }
 
     #[inline(always)]
+    pub fn into_ownable(self) -> ValueOwnable {
+        match self {
+            Self::Owned(v) => ValueOwnable::Owned(Box::new(v)),
+            Self::Borrowed(v) => ValueOwnable::Rc(InnerValue::new(v.clone())),
+            Self::Wrapper(v) => v
+        }
+    }
+
+    #[inline(always)]
     pub fn as_ref<'b>(&'b self) -> ValueHandle<'b> {
         match self {
             Self::Owned(v) => ValueHandle::Borrowed(v),

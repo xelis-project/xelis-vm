@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use xelis_types::{Path, Value, ValueOwnable};
+use xelis_types::{Path, Value};
 
 use crate::{stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;
@@ -9,7 +9,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(ValueOwnable::Owned(Box::new(pop.into_owned())));
+        array.push_front(pop.into_ownable());
     }
 
     stack.push_stack(Path::Owned(Value::Array(array.into())))?;
@@ -22,7 +22,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
 
     let mut fields = VecDeque::new();
     for _ in 0..struct_type.fields().len() {
-        fields.push_front(ValueOwnable::Owned(Box::new(stack.pop_stack()?.into_owned())));
+        fields.push_front(stack.pop_stack()?.into_ownable());
     }
 
     stack.push_stack(Path::Owned(Value::Struct(fields.into(), struct_type.clone())))?;
@@ -53,7 +53,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     for _ in 0..len {
         let value = stack.pop_stack()?;
         let key = stack.pop_stack()?;
-        map.insert(key.into_owned(), value.into_owned());
+        map.insert(key.into_owned(), value.into_ownable());
     }
 
     stack.push_stack_unchecked(Path::Owned(Value::Map(map)));

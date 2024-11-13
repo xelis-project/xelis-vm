@@ -9,7 +9,6 @@ use xelis_types::{
     Path,
     Type,
     Value,
-    ValueOwnable
 };
 use xelis_ast::{
     Expression, FunctionType, Operator, Parameter, Program, Statement
@@ -289,7 +288,7 @@ impl<'a> Interpreter<'a> {
                 let mut values = Vec::with_capacity(expressions.len());
                 for expr in expressions {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    values.push(ValueOwnable::Owned(Box::new(value.into_owned())));
+                    values.push(value.into_ownable());
                 }
 
                 Ok(Some(Path::Owned(Value::Array(values))))
@@ -298,7 +297,7 @@ impl<'a> Interpreter<'a> {
                 let mut fields = Vec::with_capacity(expr_fields.len());
                 for expr in expr_fields {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    fields.push(ValueOwnable::Owned(Box::new(value.into_owned())));
+                    fields.push(value.into_ownable());
                 }
 
                 Ok(Some(Path::Owned(Value::Struct(fields, _type.clone()))))

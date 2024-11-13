@@ -141,7 +141,7 @@ pub enum Value {
     Optional(Option<ValueOwnable>),
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
-    Map(HashMap<Value, Value>)
+    Map(HashMap<Value, ValueOwnable>)
 }
 
 impl PartialOrd for Value {
@@ -310,17 +310,17 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&Vec<ValueOwnable>, ValueError> {
+    pub fn as_map(&self) -> Result<&HashMap<Value, ValueOwnable>, ValueError> {
         match self {
-            Value::Struct(fields, _) => Ok(fields),
+            Value::Map(map) => Ok(map),
             v => Err(ValueError::InvalidStructValue(v.clone()))
         }
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut Vec<ValueOwnable>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Value, ValueOwnable>, ValueError> {
         match self {
-            Value::Struct(fields, _) => Ok(fields),
+            Value::Map(map) => Ok(map),
             v => Err(ValueError::InvalidStructValue(v.clone()))
         }
     }
@@ -742,7 +742,7 @@ impl std::fmt::Display for Value {
             },
             Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end),
             Value::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             }
         }
