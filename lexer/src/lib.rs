@@ -1,4 +1,4 @@
-use xelis_ast::{Literal, NumberType, Token, TokenGeneric};
+use xelis_ast::{Literal, NumberType, Token};
 use xelis_types::U256;
 use std::{borrow::Cow, collections::VecDeque};
 
@@ -44,7 +44,11 @@ pub struct Lexer<'a> {
     // current line number we are reading
     line: usize,
     // current column number we are reading
-    column: usize
+    column: usize,
+    // Used to keep track of the depth of the generics <...>
+    generic_depth: usize,
+    // Track if the last parsed token was an identifier
+    accept_generic: bool
 }
 
 impl<'a> Lexer<'a> {
@@ -55,7 +59,9 @@ impl<'a> Lexer<'a> {
             chars: input.chars().collect::<Vec<_>>().into(),
             pos: 0,
             line: 1,
-            column: 0
+            column: 0,
+            generic_depth: 0,
+            accept_generic: false
         }
     }
 
@@ -114,7 +120,7 @@ impl<'a> Lexer<'a> {
     }
 
     // try to parse a slice of string as a token using n+1 characters
-    fn find_potential_token(&self) -> Option<(TokenResult<'a>, usize)> {
+    fn find_potential_token(&mut self) -> Option<(TokenResult<'a>, usize)> {
         let slice = self.input.get(self.pos - 1..)?;
         let alone_special_chars = &[':', '(', ')', '[', ']', '{', '}', ',', ';', '.', '?'];
 
@@ -135,6 +141,16 @@ impl<'a> Lexer<'a> {
                     is_special = false;
                 } else {
                     is_special = !s.is_alphanumeric();
+
+                    // Check based on depth
+                    if is_special {
+                        if self.accept_generic && s == '<' {
+                            self.generic_depth += 1;
+                        } else if self.generic_depth != 0 && s == '>' {
+                            self.generic_depth -= 1;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -147,12 +163,12 @@ impl<'a> Lexer<'a> {
             }
 
             end_index = i;
+            self.accept_generic = false;
         }
 
         let slice = slice.get(..=end_index)?;
 
-        let token = Token::value_of(slice);
-        token.map(|t| (TokenResult {
+        Token::value_of(slice).map(|t| (TokenResult {
             token: t,
             line: self.line,
             column_start: self.column,
@@ -328,22 +344,8 @@ impl<'a> Lexer<'a> {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
 
-        let generic = TokenGeneric::value_of(value);
-        let token = if generic.is_some() && self.peek()? == '<' {
-            self.advance()?;
-            let inner = self.read_token(0)?;
-            if '>' != self.advance()? {
-                return Err(LexerError::ExpectedChar(self.line, self.column));
-            }
-
-            if !inner.token.is_type() {
-                return Err(LexerError::ExpectedType);
-            }
-
-            generic.unwrap().to_token(inner.token)
-        } else {
-            Token::value_of(&value).unwrap_or_else(|| Token::Identifier(value))
-        };
+        let token = Token::value_of(value)
+            .unwrap_or_else(|| Token::Identifier(value));
 
         Ok(TokenResult {
             token,
@@ -360,11 +362,13 @@ impl<'a> Lexer<'a> {
                 '\n' | '\r' | '\t' => {
                     self.line += 1;
                     self.column = 0;
+                    self.accept_generic = false;
                     continue;
                 },
                 // skipped characters
                 ' ' | ';' => {
                     // we just skip these characters
+                    self.accept_generic = false;
                     continue;
                 },
                 // read a string value
@@ -400,12 +404,12 @@ impl<'a> Lexer<'a> {
                         self.advance_by(diff)?;
                         token
                     } else {
-                        println!("{}", self.chars.iter().collect::<String>());
                         return Err(LexerError::NoTokenFound(self.line, self.column));
                     }
                 }
             };
 
+            self.accept_generic = token.token.accept_generic();
             return Ok(Some(token));
         }
 
@@ -728,7 +732,10 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Optional(Box::new(Token::Number(NumberType::U64)))
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
         ]);
     }
 
@@ -738,7 +745,70 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Optional(Box::new(Token::Optional(Box::new(Token::Number(NumberType::U64)))))
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
+            Token::OperatorGreaterThan,
+        ]);
+    }
+
+    #[test]
+    fn test_optional_3() {
+        let code = "optional<optional<optional<u64>>>";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
+            Token::OperatorGreaterThan,
+            Token::OperatorGreaterThan,
+        ]);
+    }
+
+    #[test]
+    fn test_bitwise_right() {
+        let code = "a >> b";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorBitwiseRight,
+            Token::Identifier("b")
+        ]);
+    }
+
+    #[test]
+    fn test_bitwise_left() {
+        let code = "a << b";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorBitwiseLeft,
+            Token::Identifier("b")
+        ]);
+    }
+
+    #[test]
+    fn test_bitwise_both() {
+        let code = "a << b >> c";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorBitwiseLeft,
+            Token::Identifier("b"),
+            Token::OperatorBitwiseRight,
+            Token::Identifier("c")
         ]);
     }
 
@@ -748,7 +818,10 @@ mod tests {
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
-            Token::Range(Box::new(Token::Number(NumberType::U64)))
+            Token::Range,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
         ]);
     }
 

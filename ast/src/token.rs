@@ -1,33 +1,5 @@
 use std::borrow::Cow;
-
 use xelis_types::U256;
-
-// Small helper for tokens that accept generics/inner token
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TokenGeneric {
-    Optional,
-    Range,
-}
-
-impl TokenGeneric {
-    // Convert a string to a token
-    pub fn value_of(s: &str) -> Option<TokenGeneric> {
-        Some(match s {
-            "optional" => Self::Optional,
-            "range" => Self::Range,
-            _ => return None,
-        })
-    }
-
-    // Convert the token to a token with the inner token
-    pub fn to_token(self, token: Token) -> Token {
-        use Token::*;
-        match self {
-            Self::Optional => Optional(Box::new(token)),
-            Self::Range => Range(Box::new(token)),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NumberType {
@@ -78,8 +50,9 @@ pub enum Token<'a> {
     Number(NumberType),
     Bool,
     String,
-    Optional(Box<Token<'a>>),
-    Range(Box<Token<'a>>),
+    Optional,
+    Range,
+    Map,
 
     BraceOpen,
     BraceClose,
@@ -161,7 +134,6 @@ impl Token<'_> {
 
             "(" => ParenthesisOpen,
             ")" => ParenthesisClose,
-            "struct" => Struct,
 
             "=" => OperatorAssign,
             "==" => OperatorEquals,
@@ -204,6 +176,10 @@ impl Token<'_> {
 
             "bool" => Bool,
             "string" => String,
+            "struct" => Struct,
+            "optional" => Optional,
+            "range" => Range,
+            "map" => Map,
 
             "let" => Let,
 
@@ -233,6 +209,11 @@ impl Token<'_> {
 
             e => Number(NumberType::value_of(e)?),
         })
+    }
+
+    pub fn accept_generic(&self) -> bool {
+        use Token::*;
+        matches!(self, Identifier(_) | Optional | Range | Map)
     }
 
     pub fn should_stop(&self) -> bool {
@@ -289,7 +270,9 @@ impl Token<'_> {
             | Bool
             | String
             | Identifier(_)
-            | Optional(_) => true,
+            | Optional
+            | Range
+            | Map => true,
             _ => false,
         }
     }

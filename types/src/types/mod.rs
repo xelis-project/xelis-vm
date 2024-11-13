@@ -32,6 +32,7 @@ pub enum Type {
     Array(Box<Type>),
     Optional(Box<Type>),
     Range(Box<Type>),
+    Map(Box<Type>, Box<Type>),
 }
 
 impl Type {
@@ -68,7 +69,7 @@ impl Type {
     // check if the type has an inner type
     pub fn has_inner_type(&self) -> bool {
         match self {
-            Type::Array(_) | Type::Optional(_) | Type::Range(_) => true,
+            Type::Array(_) | Type::Optional(_) | Type::Range(_) | Type::Map(_, _) => true,
             _ => false
         }
     }
@@ -252,6 +253,7 @@ impl fmt::Display for Type {
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),
             Type::Range(_type) => write!(f, "range<{}>", _type),
+            Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
         }
     }
 }
