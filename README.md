@@ -44,6 +44,10 @@ The different primitive types are:
 - `string`
 - `struct`
 - `optional<T>` where T is another type (it allow the value to be nullable)
+- `range<T>` where T is a number type (it allow to iterate over a range of values in a foreach, or have some functions like `contains`)
+- `map<K, V>` where K is a key type and V is a value type (it allow to have a key-value store)
+
+Arrays of any type are also supported, but they must contain only one type of value (example: `u64[]` and with multi-depth too).
 
 File extension is `.xel`
 
@@ -68,11 +72,24 @@ An error will be returned by the interpreter if an overflow is detected without 
 
 **Examples**
 ```rust
-let my_byte: u8 = 10
+let my_u8: u8 = 10
 let my_u16: u16 = 70
 let my_u32: u32 = 999
 let my_int: u64 = 25655
 let my_u128: u128 = 100_000_000u128
+let my_u256: u256 = 100_000_000u256
+```
+
+Each type can be casted into another type, if an overflow is detected, the value will be truncated.
+```rust
+let my_u8: u8 = 255
+let my_u16: u16 = my_u8 as u16
+```
+
+Also, each type have a `min` and `max` value that can be used.
+```rust
+let min: u8 = u8::MIN
+let max: u8 = u8::MAX
 ```
 
 ### Variable
@@ -93,6 +110,7 @@ let world: string = "world"
 
 ### Casting
 Values of built-in types can be casted into other built-in types easily using the keyword `as`.
+In case of an overflow, no error will be returned, but the value will be truncated.
 
 **Rules**
 - Both value types must be a built-in type.
@@ -101,7 +119,8 @@ Values of built-in types can be casted into other built-in types easily using th
 ```rust
 let id: u128 = 1337
 let b: u8 = id as u8
-let id_str: string = id as string 
+// id_str equals "255" due to the truncation
+let id_str: string = id as string
 ```
 
 ### Import
@@ -159,6 +178,49 @@ struct MyStruct {
     message: string,
     value: u64
 }
+```
+
+### Optional
+An optional type is a type that can be `null`.
+
+**Rules**
+- The type must be specified.
+- The value can be set to `null`.
+
+**Examples**
+```rust
+let my_optional: optional<u64> = null
+...
+let opt: optional<string> = "Hello World!"
+let s = opt.unwrap()
+```
+
+### Range
+A range is a type that can be used to iterate over a range of values.
+
+**Rules**
+- The type must be specified and be a number type.
+- The start and end values must be of the same type.
+- The end value must be greater than the start value.
+
+**Examples**
+```rust
+let my_range: range<u64> = 0..10
+let _: bool = my_range.contains(5)
+```
+
+### Map
+A map is a key-value store where the key and value can be of any type based on the declaration.
+It is backed by a HashMap.
+
+**Rules**
+- The key and value types must be specified.
+
+**Examples**
+```rust
+let my_map: map<string, u64> = {"hello": 10, "world": 20}
+my_map.insert("foo", 30)
+my_map.remove("hello")
 ```
 
 ### Ternary
