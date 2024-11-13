@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use xelis_types::{Path, Value, ValueOwnable};
+use xelis_types::Path;
 
 use crate::{stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;
@@ -112,30 +112,5 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
         stack.push_stack(Path::Owned(v))?;
     }
 
-    Ok(InstructionResult::Nothing)
-}
-
-pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
-    let length = manager.read_u32()?;
-    let mut array = VecDeque::with_capacity(length as usize);
-    for _ in 0..length {
-        let pop = stack.pop_stack()?;
-        array.push_front(ValueOwnable::Owned(Box::new(pop.into_owned())));
-    }
-
-    stack.push_stack(Path::Owned(Value::Array(array.into())))?;
-    Ok(InstructionResult::Nothing)
-}
-
-pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
-    let id = manager.read_u16()?;
-    let struct_type = backend.get_struct_with_id(id)?;
-
-    let mut fields = VecDeque::new();
-    for _ in 0..struct_type.fields().len() {
-        fields.push_front(ValueOwnable::Owned(Box::new(stack.pop_stack()?.into_owned())));
-    }
-
-    stack.push_stack(Path::Owned(Value::Struct(fields.into(), struct_type.clone())))?;
     Ok(InstructionResult::Nothing)
 }

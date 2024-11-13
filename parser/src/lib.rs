@@ -331,7 +331,7 @@ impl<'a> Parser<'a> {
             Expression::IsNot(_) => Cow::Owned(Type::Bool),
             Expression::Ternary(_, expr, _) => self.get_type_from_expression(on_type, expr, context)?,
             Expression::Cast(_, _type) => Cow::Borrowed(_type),
-            Expression::Range(start, _) => Cow::Owned(Type::Range(Box::new(self.get_type_from_expression(on_type, start, context)?.into_owned()))),
+            Expression::RangeConstructor(start, _) => Cow::Owned(Type::Range(Box::new(self.get_type_from_expression(on_type, start, context)?.into_owned()))),
         };
 
         Ok(Some(_type))
@@ -575,7 +575,7 @@ impl<'a> Parser<'a> {
                                     return Err(ParserError::InvalidRangeTypePrimitive(_type))
                                 }
 
-                                Expression::Range(Box::new(value), Box::new(end_expr))
+                                Expression::RangeConstructor(Box::new(value), Box::new(end_expr))
                             } else {
                                 let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
 
@@ -1315,7 +1315,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::U64,
-                    value: Expression::Range(
+                    value: Expression::RangeConstructor(
                         Box::new(Expression::Value(Value::U64(0))),
                         Box::new(Expression::Value(Value::U64(10))),
                     )
@@ -1482,7 +1482,7 @@ mod tests {
             statements[0],
             Statement::ForEach(
                 0,
-                Expression::Range(
+                Expression::RangeConstructor(
                     Box::new(Expression::Value(Value::U64(0))),
                     Box::new(Expression::Value(Value::U64(10))),
                 ),

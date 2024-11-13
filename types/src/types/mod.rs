@@ -79,6 +79,7 @@ impl Type {
         self.primitive_byte().is_some()
     }
 
+    // Get a type from a value
     pub fn from_value(value: &Value) -> Option<Self> {
         let _type = match value {
             Value::Null => return None,
@@ -97,6 +98,12 @@ impl Type {
             Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle())?)),
             Value::Struct(_, _type) => Type::Struct(_type.clone()),
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
+            Value::Map(map) => {
+                let (key, value) = map.iter().next()?;
+                let key = Type::from_value(key)?;
+                let value = Type::from_value(&value)?;
+                Type::Map(Box::new(key), Box::new(value))
+            },
         };
 
         Some(_type)

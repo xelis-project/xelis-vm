@@ -105,6 +105,11 @@ pub enum OpCodeWithArgs {
         // Struct id
         struct_id: u16
     },
+    // N..Y
+    // pop start, pop end, push range
+    NewRange,
+    // pop length, pop N values => create map
+    NewMap,
 
     // Operators
     // +
@@ -202,6 +207,8 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
             OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
             OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
+            OpCodeWithArgs::NewRange => OpCode::NewRange,
+            OpCodeWithArgs::NewMap => OpCode::NewMap,
 
             OpCodeWithArgs::Add => OpCode::Add,
             OpCodeWithArgs::Sub => OpCode::Sub,
@@ -503,6 +510,20 @@ impl OpCodeWithArgs {
                 OpCodeWithArgs::NewStruct {
                     struct_id: args[0].parse().map_err(|_| "Invalid struct id")?
                 }
+            },
+            "NEWRANGE" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::NewRange
+            },
+            "NEWMAP" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::NewMap
             },
             "ADD" => {
                 if !args.is_empty() {

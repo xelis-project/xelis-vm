@@ -13,6 +13,7 @@ pub enum Expression {
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     StructConstructor(Vec<Expression>, StructType),
+    RangeConstructor(Box<Expression>, Box<Expression>), // start, end
     MapConstructor(Vec<(Expression, Expression)>, Type, Type),
     Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
@@ -22,7 +23,6 @@ pub enum Expression {
     IsNot(Box<Expression>), // !expr (where expr is a bool)
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>), // bool expr, if true expr, else expr
     Cast(Box<Expression>, Type), // expr, type
-    Range(Box<Expression>, Box<Expression>), // start, end
 }
 
 #[derive(Debug, Eq, PartialEq)]

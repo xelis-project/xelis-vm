@@ -107,6 +107,21 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::NewStruct);
                 chunk.write_u16(_type.id());
             },
+            Expression::RangeConstructor(min, max) => {
+                self.compile_expr(chunk, min)?;
+                self.compile_expr(chunk, max)?;
+                chunk.emit_opcode(OpCode::NewRange);
+            },
+            // Map types aren't forced in the VM, we ignore them
+            Expression::MapConstructor(exprs, _, _) => {
+                for (key, value) in exprs {
+                    self.compile_expr(chunk, key)?;
+                    self.compile_expr(chunk, value)?;
+                }
+
+                chunk.emit_opcode(OpCode::NewMap);
+                chunk.write_u32(exprs.len() as u32);
+            },
             Expression::Path(left, right) => {
                 // Compile the path
                 self.compile_expr(chunk, left)?;
@@ -248,11 +263,6 @@ impl<'a> Compiler<'a> {
                     }
                 };
             },
-            Expression::Range(min, max) => {
-                self.compile_expr(chunk, min)?;
-                self.compile_expr(chunk, max)?;
-                chunk.emit_opcode(OpCode::NewRange);
-            }
         }
 
         Ok(())

@@ -31,21 +31,3 @@ pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkM
     manager.pop_iterator()?;
     Ok(InstructionResult::Nothing)
 }
-
-pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
-    let end = stack.pop_stack()?;
-    let start = stack.pop_stack()?;
-
-    if !start.as_ref().is_number() {
-        return Err(VMError::InvalidRangeType);
-    }
-
-    let start_type = start.as_ref().get_type()?;
-    if start_type != end.as_ref().get_type()? {
-        return Err(VMError::InvalidRangeType);
-    }
-
-    let value = Value::Range(Box::new(start.into_owned()), Box::new(end.into_owned()), start_type);
-    stack.push_stack_unchecked(Path::Owned(value));
-    Ok(InstructionResult::Nothing)
-}

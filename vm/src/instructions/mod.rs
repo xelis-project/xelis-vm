@@ -1,10 +1,12 @@
 mod operator;
 mod r#impl;
 mod iterator;
+mod constructor;
 
 use operator::*;
 use r#impl::*;
 use iterator::*;
+use constructor::*;
 
 use xelis_bytecode::OpCode;
 
@@ -40,6 +42,8 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::SysCall.as_usize()] = syscall;
         instructions[OpCode::NewArray.as_usize()] = new_array;
         instructions[OpCode::NewStruct.as_usize()] = new_struct;
+        instructions[OpCode::NewRange.as_usize()] = new_range;
+        instructions[OpCode::NewMap.as_usize()] = new_map;
 
         instructions[OpCode::Jump.as_usize()] = jump;
         instructions[OpCode::JumpIfFalse.as_usize()] = jump_if_false;
@@ -82,7 +86,6 @@ impl<'a> InstructionTable<'a> {
 
         instructions[OpCode::Inc.as_usize()] = increment;
         instructions[OpCode::Dec.as_usize()] = decrement;
-        instructions[OpCode::NewRange.as_usize()] = new_range;
 
         Self { instructions }
     }

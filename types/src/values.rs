@@ -1,4 +1,10 @@
-use std::{cell::{Ref, RefCell, RefMut}, cmp::Ordering, hash::Hash, rc::Rc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    cmp::Ordering,
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    rc::Rc
+};
 use thiserror::Error;
 use crate::{types::Type, StructType, ValueHandle, ValueHandleMut, U256};
 
@@ -28,7 +34,7 @@ impl InnerValue {
 }
 
 impl Hash for InnerValue {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.borrow().hash(state)
     }
 }
@@ -117,7 +123,7 @@ impl ValueOwnable {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Null,
     // number types
@@ -135,6 +141,7 @@ pub enum Value {
     Optional(Option<ValueOwnable>),
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
+    Map(HashMap<Value, Value>)
 }
 
 impl PartialOrd for Value {
@@ -147,6 +154,70 @@ impl PartialOrd for Value {
             (Value::U128(a), Value::U128(b)) => a.partial_cmp(b),
             (Value::U256(a), Value::U256(b)) => a.partial_cmp(b),
             _ => None
+        }
+    }
+}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Null => 0.hash(state),
+            Value::U8(n) => {
+                1.hash(state);
+                n.hash(state);
+            },
+            Value::U16(n) => {
+                2.hash(state);
+                n.hash(state);
+            },
+            Value::U32(n) => {
+                3.hash(state);
+                n.hash(state);
+            },
+            Value::U64(n) => {
+                4.hash(state);
+                n.hash(state);
+            },
+            Value::U128(n) => {
+                5.hash(state);
+                n.hash(state);
+            },
+            Value::U256(n) => {
+                6.hash(state);
+                n.hash(state);
+            },
+            Value::String(n) => {
+                7.hash(state);
+                n.hash(state);
+            },
+            Value::Boolean(n) => {
+                8.hash(state);
+                n.hash(state);
+            },
+            Value::Struct(fields, _) => {
+                9.hash(state);
+                fields.hash(state);
+            },
+            Value::Array(values) => {
+                10.hash(state);
+                values.hash(state);
+            },
+            Value::Optional(opt) => {
+                11.hash(state);
+                opt.hash(state);
+            },
+            Value::Range(start, end, _) => {
+                12.hash(state);
+                start.hash(state);
+                end.hash(state);
+            },
+            Value::Map(map) => {
+                13.hash(state);
+                for (key, value) in map {
+                    key.hash(state);
+                    value.hash(state);
+                }
+            }
         }
     }
 }
@@ -638,27 +709,7 @@ impl Value {
     // Returns an error if it can't be determined
     #[inline]
     pub fn get_type(&self) -> Result<Type, ValueError> {
-        Ok(match self {
-            Value::Null => return Err(ValueError::UnknownType),
-            Value::U8(_) => Type::U8,
-            Value::U16(_) => Type::U16,
-            Value::U32(_) => Type::U32,
-            Value::U64(_) => Type::U64,
-            Value::U128(_) => Type::U128,
-            Value::U256(_) => Type::U256,
-            Value::String(_) => Type::String,
-            Value::Boolean(_) => Type::Bool,
-            Value::Struct(_, _type) => Type::Struct(_type.clone()),
-            Value::Array(inner) => match inner.first() {
-                Some(value) => Type::Array(Box::new(value.handle().get_type()?)),
-                None => return Err(ValueError::UnknownType)
-            },
-            Value::Optional(value) => match value {
-                Some(value) => Type::Optional(Box::new(value.handle().get_type()?)),
-                None => return Err(ValueError::UnknownType)
-            }
-            Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone()))
-        })
+        Type::from_value(self).ok_or(ValueError::UnknownType)
     }
 }
 
@@ -689,7 +740,11 @@ impl std::fmt::Display for Value {
                 }),
                 None => write!(f, "optional<null>")
             },
-            Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end)
+            Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end),
+            Value::Map(map) => {
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "map{}{}{}", "{", s.join(", "), "}")
+            }
         }
     }
 }
