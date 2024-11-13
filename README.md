@@ -16,6 +16,9 @@ Parser is currently operating in a full recursive mode, which can create a stack
 - **Enums**
 Enums are useful for future events system.  Each events will be broadcasted by the XELIS daemon through the WebSocket Server to all clients that subscribed to it. They will also be registered in the events history of a block.
 
+- **Imports**
+Allow to import other files to have a better code organization.
+
 - **ABI**
 Generating a "mapper" file to easily link entry functions (name, parameters), enums, structs.. to the corresponding ids on chain. This will allow easy plugin-in with future XSWD lib and dApps development.
 
