@@ -239,7 +239,8 @@ impl<'a> Compiler<'a> {
                 let jump_valid_addr = chunk.index();
                 chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
 
-                self.decrease_values_on_stack_by(2)?;
+                // 1 for the condition, 1 for the valid, 1 for the invalid
+                self.decrease_values_on_stack_by(3)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
             Expression::Cast(expr, primitive_type) => {
@@ -549,6 +550,8 @@ impl<'a> Compiler<'a> {
                 Statement::ForEach(_, expr_values, statements) => {
                     // Compile the expression
                     self.compile_expr(chunk, expr_values)?;
+                    // It is used by the IteratorBegin
+                    self.decrease_values_on_stack()?;
 
                     chunk.emit_opcode(OpCode::IteratorBegin);
                     let start_index = chunk.index();
@@ -557,6 +560,9 @@ impl<'a> Compiler<'a> {
                     let jump_end = chunk.last_index();
 
                     self.push_mem_scope();
+
+                    // OpCode IteratorNext will push a value, mark it
+                    self.add_value_on_stack(chunk.last_index())?;
 
                     // Store the value
                     self.memstore(chunk)?;

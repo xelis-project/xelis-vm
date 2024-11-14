@@ -65,6 +65,12 @@ impl Chunk {
         self.instructions.push(op_code.as_byte());
     }
 
+    // Inject an opcode at a specific index
+    #[inline]
+    pub fn inject_opcode_at(&mut self, op_code: OpCode, index: usize) {
+        self.instructions.insert(index, op_code.as_byte());
+    }
+
     // Patch a jump instruction
     #[inline]
     pub fn patch_jump(&mut self, index: usize, addr: u32) {
