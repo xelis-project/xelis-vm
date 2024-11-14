@@ -979,4 +979,30 @@ mod tests {
             Token::Identifier("MAX")
         ]);
     }
+
+    #[test]
+    fn test_enum_declaration() {
+        let code = "enum Test { A { a: u32 }, B { b: u64 } }";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Enum,
+            Token::Identifier("Test"),
+            Token::BraceOpen,
+            Token::Identifier("A"),
+            Token::BraceOpen,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U32),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::BraceOpen,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BraceClose,
+            Token::BraceClose
+        ]);
+    }
 }
