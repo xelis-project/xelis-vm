@@ -29,6 +29,10 @@ pub struct Compiler<'a> {
     // For each scope, we store the next id to use
     // So, outside of a scope we reset to the same level
     memstore_ids: Vec<u16>,
+    // Track each values that are pushed on the stack
+    // This is used to know how many values are on the stack
+    // and prevent any dangling values
+    values_on_stack: usize,
 }
 
 impl<'a> Compiler<'a> {
@@ -41,6 +45,7 @@ impl<'a> Compiler<'a> {
             loop_break_patch: Vec::new(),
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
+            values_on_stack: 0,
         }
     }
 
@@ -79,17 +84,41 @@ impl<'a> Compiler<'a> {
         chunk.write_u16(*id);
         *id += 1;
 
+        self.decrease_values_on_stack()?;
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn increase_values_on_stack(&mut self) {
+        println!("Increase on {}", self.values_on_stack);
+        self.values_on_stack += 1;
+    }
+
+    #[inline(always)]
+    fn decrease_values_on_stack(&mut self) -> Result<(), CompilerError> {
+        self.decrease_values_on_stack_by(1)
+    }
+
+    #[inline(always)]
+    fn decrease_values_on_stack_by(&mut self, amount: usize) -> Result<(), CompilerError> {
+        println!("Decrease by {} on {}", amount, self.values_on_stack);
+        self.values_on_stack = self.values_on_stack.checked_sub(amount)
+            .ok_or(CompilerError::ExpectedValueOnStack)?;
         Ok(())
     }
 
     // Compile the expression
     fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) -> Result<(), CompilerError> {
+        println!("Compile {:?}", expr);
         match expr {
             Expression::Value(v) => {
                 // Compile the value
                 let index = self.module.add_constant(v.clone());
                 chunk.emit_opcode(OpCode::Constant);
                 chunk.write_u16(index as u16);
+
+                self.increase_values_on_stack();
             },
             Expression::ArrayConstructor(exprs) => {
                 for expr in exprs {
@@ -97,6 +126,9 @@ impl<'a> Compiler<'a> {
                 }
                 chunk.emit_opcode(OpCode::NewArray);
                 chunk.write_u32(exprs.len() as u32);
+
+                self.decrease_values_on_stack_by(exprs.len())?;
+                self.increase_values_on_stack();
             },
             Expression::StructConstructor(exprs, _type) => {
                 for expr in exprs {
@@ -105,12 +137,19 @@ impl<'a> Compiler<'a> {
 
                 // We don't verify the struct ID, the parser should have done it
                 chunk.emit_opcode(OpCode::NewStruct);
+                // Because we write the type ID, we know how many expressions to read
                 chunk.write_u16(_type.id());
+
+                self.decrease_values_on_stack_by(exprs.len())?;
+                self.increase_values_on_stack();
             },
             Expression::RangeConstructor(min, max) => {
                 self.compile_expr(chunk, min)?;
                 self.compile_expr(chunk, max)?;
                 chunk.emit_opcode(OpCode::NewRange);
+
+                // Decrease by one only because we got 2 values and we push 1
+                self.decrease_values_on_stack()?;
             },
             // Map types aren't forced in the VM, we ignore them
             Expression::MapConstructor(exprs, _, _) => {
@@ -121,6 +160,9 @@ impl<'a> Compiler<'a> {
 
                 chunk.emit_opcode(OpCode::NewMap);
                 chunk.write_u32(exprs.len() as u32);
+
+                self.decrease_values_on_stack_by(exprs.len() * 2)?;
+                self.increase_values_on_stack();
             },
             Expression::Path(left, right) => {
                 // Compile the path
@@ -135,15 +177,23 @@ impl<'a> Compiler<'a> {
             Expression::Variable(id) => {
                 chunk.emit_opcode(OpCode::MemoryLoad);
                 chunk.write_u16(*id);
+
+                self.increase_values_on_stack();
             },
             Expression::IsNot(expr) => {
                 self.compile_expr(chunk, expr)?;
                 chunk.emit_opcode(OpCode::Neg);
+
+                // No need to change the values on the stack
+                // We pop 1 and push 1
             },
             Expression::ArrayCall(expr, expr_index) => {
                 self.compile_expr(chunk, expr)?;
                 self.compile_expr(chunk, expr_index)?;
                 chunk.emit_opcode(OpCode::ArrayCall);
+
+                // Decrease by one only because we got 2 values and we push 1
+                self.decrease_values_on_stack()?;
             },
             Expression::SubExpression(expr) => {
                 self.compile_expr(chunk, expr)?;
@@ -175,11 +225,16 @@ impl<'a> Compiler<'a> {
                 // Patch the jump if valid
                 let jump_valid_addr = chunk.index();
                 chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
+
+                // One left because we got 2 values and we push 1
+                self.decrease_values_on_stack()?;
             },
             Expression::Cast(expr, primitive_type) => {
                 self.compile_expr(chunk, expr)?;
                 chunk.emit_opcode(OpCode::Cast);
                 chunk.write_u8(primitive_type.primitive_byte().ok_or(CompilerError::ExpectedPrimitiveType)?);
+
+                // No need to change the values on the stack
             },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
@@ -192,16 +247,40 @@ impl<'a> Compiler<'a> {
 
                 // Functions from the environment are system calls
                 let len = self.environment.get_functions().len();
-                if (*id as usize) < len {
+                let return_value = if (*id as usize) < len {
                     chunk.emit_opcode(OpCode::SysCall);
                     chunk.write_u16(*id);
+
+                    self.environment.get_functions()
+                        .get(*id as usize)
+                        .ok_or(CompilerError::ExpectedVariable)?
+                        .return_type()
+                        .is_some()
                 } else {
                     chunk.emit_opcode(OpCode::InvokeChunk);
-                    chunk.write_u16((*id as usize - len) as u16);
-                }
+                    let id = *id as usize - len;
+                    chunk.write_u16(id as u16);
+
+                    self.program.functions()
+                        .get(id)
+                        .ok_or(CompilerError::ExpectedVariable)?
+                        .return_type()
+                        .is_some()
+                };
 
                 chunk.write_bool(expr_on.is_some());
                 chunk.write_u8(params.len() as u8);
+
+                if expr_on.is_some() {
+                    self.decrease_values_on_stack()?;
+                }
+
+                self.decrease_values_on_stack_by(params.len())?;
+
+                // If the function returns a value, we push one
+                if return_value {
+                    self.increase_values_on_stack();
+                }
             },
             Expression::Operator(op, left, right) => {
                 match op {
@@ -209,6 +288,9 @@ impl<'a> Compiler<'a> {
                         self.compile_expr(chunk, left)?;
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Assign);
+
+                        // None left on the stack
+                        self.decrease_values_on_stack_by(2)?;
                     },
                     Operator::And => {
                         self.compile_expr(chunk, left)?;
@@ -228,6 +310,9 @@ impl<'a> Compiler<'a> {
                         // Patch the jump if false
                         let jump_false_addr = chunk.index();
                         chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                        // One left because we got 2 values and we push 1
+                        self.decrease_values_on_stack()?;
                     },
                     Operator::Or => {
                         self.compile_expr(chunk, left)?;
@@ -248,18 +333,32 @@ impl<'a> Compiler<'a> {
                         // Patch the jump if true
                         let jump_true_addr = chunk.index();
                         chunk.patch_jump(jump_addr, jump_true_addr as u32);
+
+                        // One left because we got 2 values and we push 1
+                        self.decrease_values_on_stack()?;
                     },
                     Operator::NotEquals => {
                         self.compile_expr(chunk, left)?;
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Eq);
                         chunk.emit_opcode(OpCode::Neg);
+
+                        // One left because we got 2 values and we push 1
+                        self.decrease_values_on_stack()?;
                     },
                     _ => {
                         self.compile_expr(chunk, left)?;
                         self.compile_expr(chunk, right)?;
-                        let op = Self::map_operator_to_opcode(op)?;
-                        chunk.emit_opcode(op);
+                        let opcode = Self::map_operator_to_opcode(op)?;
+                        chunk.emit_opcode(opcode);
+
+                        if op.is_assignation() {
+                            // None left on the stack
+                            self.decrease_values_on_stack_by(2)?;
+                        } else {
+                            // One left because we got 2 values and we push 1
+                            self.decrease_values_on_stack()?;
+                        }
                     }
                 };
             },
@@ -308,7 +407,9 @@ impl<'a> Compiler<'a> {
                 Statement::Return(expr) => {
                     if let Some(expr) = expr {
                         self.compile_expr(chunk, expr)?;
+                        self.decrease_values_on_stack()?;
                     }
+
                     chunk.emit_opcode(OpCode::Return);
                 },
                 Statement::Variable(declaration) => {
@@ -330,6 +431,9 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
+
+                    // One is used for the jump if false
+                    self.decrease_values_on_stack()?;
 
                     // Compile the valid condition
                     self.compile_statements(chunk, statements)?;
@@ -372,6 +476,9 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
+
+                    // One is used for the jump if false
+                    self.decrease_values_on_stack()?;
 
                     self.start_loop();
                     // Compile the valid condition
@@ -437,6 +544,9 @@ impl<'a> Compiler<'a> {
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
 
+                    // One is used for the jump if false
+                    self.decrease_values_on_stack()?;
+
                     self.start_loop();
                     // Compile the valid condition
                     self.compile_statements(chunk, statements)?;
@@ -482,6 +592,9 @@ impl<'a> Compiler<'a> {
     fn compile_function(&mut self, function: &FunctionType) -> Result<(), CompilerError> {
         let mut chunk = Chunk::new();
 
+        let total_on_stack = function.get_parameters().len() + function.get_instance_name().is_some() as usize;
+        self.values_on_stack += total_on_stack;
+
         // Push the new scope for ids
         self.push_mem_scope();
         if function.get_instance_name().is_some() {
@@ -492,7 +605,7 @@ impl<'a> Compiler<'a> {
         for _ in function.get_parameters() {
             self.memstore(&mut chunk)?;
         }
-        
+
         self.compile_statements(&mut chunk, function.get_statements())?;
 
         // Pop the scope for ids
@@ -520,9 +633,21 @@ impl<'a> Compiler<'a> {
             self.compile_function(function)?;
         }
 
-        assert!(self.loop_break_patch.is_empty(), "Loop break patch is not empty: {:?}", self.loop_break_patch);
-        assert!(self.loop_continue_patch.is_empty(), "Loop continue patch is not empty: {:?}", self.loop_continue_patch);
-        assert!(self.memstore_ids.is_empty(), "Memory store ids is not empty: {:?}", self.memstore_ids);
+        if self.values_on_stack != 0 {
+            return Err(CompilerError::DanglingValueOnStack);
+        }
+
+        if !self.loop_break_patch.is_empty() {
+            return Err(CompilerError::MissingBreakPatch);
+        }
+
+        if !self.loop_continue_patch.is_empty() {
+            return Err(CompilerError::MissingContinuePatch);
+        }
+
+        if !self.memstore_ids.is_empty() {
+            return Err(CompilerError::MemoryStoreNotEmpty);
+        }
 
         // Return the module
         Ok(self.module)

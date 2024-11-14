@@ -6,6 +6,12 @@ pub enum CompilerError {
     ExpectedBreak,
     #[error("expected a 'continue' statement")]
     ExpectedContinue,
+    #[error("Missing break patch")]
+    MissingBreakPatch,
+    #[error("Missing continue patch")]
+    MissingContinuePatch,
+    #[error("memory store is not empty")]
+    MemoryStoreNotEmpty,
     #[error("expected a assignment operator")]
     ExpectedOperatorAssignment,
     #[error("expected a comparison operator")]
@@ -16,4 +22,8 @@ pub enum CompilerError {
     ExpectedVariable,
     #[error("expected a primitive type")]
     ExpectedPrimitiveType,
+    #[error("expected a value on the stack")]
+    ExpectedValueOnStack,
+    #[error("dangling value on the stack")]
+    DanglingValueOnStack,
 }

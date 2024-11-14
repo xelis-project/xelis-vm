@@ -34,6 +34,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::MemorySet.as_usize()] = memory_set;
         instructions[OpCode::SubLoad.as_usize()] = subload;
         instructions[OpCode::Pop.as_usize()] = pop;
+        instructions[OpCode::PopN.as_usize()] = pop_n;
         instructions[OpCode::Copy.as_usize()] = copy;
         instructions[OpCode::Swap.as_usize()] = swap;
         instructions[OpCode::ArrayCall.as_usize()] = array_call;

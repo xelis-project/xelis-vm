@@ -27,6 +27,11 @@ pub enum OpCodeWithArgs {
     },
     // pop value only
     Pop,
+    // Pop N values
+    PopN {
+        // Pop count
+        count: u8
+    },
     // push copied value
     Copy,
     // Copy N value
@@ -188,6 +193,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::MemorySet { .. } => OpCode::MemorySet,
             OpCodeWithArgs::SubLoad { .. } => OpCode::SubLoad,
             OpCodeWithArgs::Pop => OpCode::Pop,
+            OpCodeWithArgs::PopN { .. } => OpCode::PopN,
             OpCodeWithArgs::Copy => OpCode::Copy,
             OpCodeWithArgs::Copy2 { .. } => OpCode::Copy2,
             OpCodeWithArgs::Swap { .. } => OpCode::Swap,
@@ -255,6 +261,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::MemoryLoad { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::MemorySet { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::SubLoad { index } => chunk.write_u16(*index),
+            OpCodeWithArgs::PopN { count } => chunk.write_u8(*count),
             OpCodeWithArgs::Copy2 { stack_index } => chunk.write_u16(*stack_index),
             OpCodeWithArgs::Swap { stack_index } => chunk.write_u16(*stack_index),
             OpCodeWithArgs::Swap2 { a_stack_index, b_stack_index } => {
@@ -330,7 +337,16 @@ impl OpCodeWithArgs {
                 }
 
                 OpCodeWithArgs::Pop
-            }
+            },
+            "POPN" => {
+                if args.len() != 1 {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::PopN {
+                    count: args[0].parse().map_err(|_| "Invalid count")?
+                }
+            },
             "COPY" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");

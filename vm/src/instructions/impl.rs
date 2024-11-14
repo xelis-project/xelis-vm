@@ -50,6 +50,12 @@ pub fn pop<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>)
     Ok(InstructionResult::Nothing)
 }
 
+pub fn pop_n<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let n = manager.read_u8()?;
+    stack.pop_stack_n(n)?;
+    Ok(InstructionResult::Nothing)
+}
+
 pub fn swap<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     stack.swap_stack(index as usize)?;

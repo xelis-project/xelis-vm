@@ -64,6 +64,18 @@ impl<'a> Stack<'a> {
         self.stack.pop().ok_or(VMError::EmptyStack)
     }
 
+    // Pop last N values
+    #[inline]
+    pub fn pop_stack_n(&mut self, n: u8) -> Result<(), VMError> {
+        let len = self.stack.len();
+        if len < n as usize {
+            return Err(VMError::StackIndexOutOfBounds);
+        }
+
+        self.stack.truncate(len - n as usize);
+        Ok(())
+    }
+
     // Get the last value from the stack
     #[inline]
     pub fn last_stack(&self) -> Result<&Path<'a>, VMError> {
