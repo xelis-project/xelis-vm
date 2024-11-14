@@ -32,7 +32,8 @@ pub struct Compiler<'a> {
     // Track each values that are pushed on the stack
     // This is used to know how many values are on the stack
     // and prevent any dangling values
-    values_on_stack: usize,
+    // Each element is a scope
+    values_on_stack: Vec<usize>,
 }
 
 impl<'a> Compiler<'a> {
@@ -45,7 +46,7 @@ impl<'a> Compiler<'a> {
             loop_break_patch: Vec::new(),
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
-            values_on_stack: 0,
+            values_on_stack: Vec::new(),
         }
     }
 
@@ -90,9 +91,13 @@ impl<'a> Compiler<'a> {
     }
 
     #[inline(always)]
-    fn increase_values_on_stack(&mut self) {
-        println!("Increase on {}", self.values_on_stack);
-        self.values_on_stack += 1;
+    fn increase_values_on_stack(&mut self) -> Result<(), CompilerError> {
+        let on_stack = self.values_on_stack.last_mut()
+        .ok_or(CompilerError::ExpectedStackScope)?;
+        println!("Increase on stack: {:?}", on_stack);
+        *on_stack += 1;
+
+        Ok(())
     }
 
     #[inline(always)]
@@ -102,9 +107,13 @@ impl<'a> Compiler<'a> {
 
     #[inline(always)]
     fn decrease_values_on_stack_by(&mut self, amount: usize) -> Result<(), CompilerError> {
-        println!("Decrease by {} on {}", amount, self.values_on_stack);
-        self.values_on_stack = self.values_on_stack.checked_sub(amount)
+        let on_stack = self.values_on_stack.last_mut()
+            .ok_or(CompilerError::ExpectedStackScope)?;
+
+        println!("Decrease by {} on stack: {}", amount, on_stack);
+        *on_stack = on_stack.checked_sub(amount)
             .ok_or(CompilerError::ExpectedValueOnStack)?;
+
         Ok(())
     }
 
@@ -118,7 +127,7 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::Constant);
                 chunk.write_u16(index as u16);
 
-                self.increase_values_on_stack();
+                self.increase_values_on_stack()?;
             },
             Expression::ArrayConstructor(exprs) => {
                 for expr in exprs {
@@ -128,7 +137,7 @@ impl<'a> Compiler<'a> {
                 chunk.write_u32(exprs.len() as u32);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
-                self.increase_values_on_stack();
+                self.increase_values_on_stack()?;
             },
             Expression::StructConstructor(exprs, _type) => {
                 for expr in exprs {
@@ -141,7 +150,7 @@ impl<'a> Compiler<'a> {
                 chunk.write_u16(_type.id());
 
                 self.decrease_values_on_stack_by(exprs.len())?;
-                self.increase_values_on_stack();
+                self.increase_values_on_stack()?;
             },
             Expression::RangeConstructor(min, max) => {
                 self.compile_expr(chunk, min)?;
@@ -162,7 +171,7 @@ impl<'a> Compiler<'a> {
                 chunk.write_u32(exprs.len() as u32);
 
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
-                self.increase_values_on_stack();
+                self.increase_values_on_stack()?;
             },
             Expression::Path(left, right) => {
                 // Compile the path
@@ -178,7 +187,7 @@ impl<'a> Compiler<'a> {
                 chunk.emit_opcode(OpCode::MemoryLoad);
                 chunk.write_u16(*id);
 
-                self.increase_values_on_stack();
+                self.increase_values_on_stack()?;
             },
             Expression::IsNot(expr) => {
                 self.compile_expr(chunk, expr)?;
@@ -279,7 +288,7 @@ impl<'a> Compiler<'a> {
 
                 // If the function returns a value, we push one
                 if return_value {
-                    self.increase_values_on_stack();
+                    self.increase_values_on_stack()?;
                 }
             },
             Expression::Operator(op, left, right) => {
@@ -369,12 +378,57 @@ impl<'a> Compiler<'a> {
 
     // Push the next register store id
     fn push_mem_scope(&mut self) {
+        println!("Push mem scope");
         self.memstore_ids.push(self.memstore_ids.last().copied().unwrap_or(0));
+        let last_on_stack = self.values_on_stack.last().copied().unwrap_or(0);
+        self.values_on_stack.push(last_on_stack);
+    }
+
+    // Handle dangling values on the stack if any
+    fn handle_dangle_values_on_stack(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
+        let on_stack = self.values_on_stack.pop()
+            .ok_or(CompilerError::ExpectedStackScope)?;
+
+        // if we have dangling values on the stack
+        if on_stack != 0 {
+            let previous_stack = self.values_on_stack.last().copied().filter(|v| *v != on_stack).unwrap_or(0);
+            println!("Previous stack: {}, now: {}", previous_stack, on_stack);
+            let dangling = on_stack.checked_sub(previous_stack)
+                .ok_or(CompilerError::LessValueOnStackThanPrevious)?;
+
+            println!("Detected {} dangling values on the stack! previous: {}, now: {}", dangling, previous_stack, on_stack);
+            if dangling > u8::MAX as usize {
+                return Err(CompilerError::TooMuchDanglingValueOnStack);
+            }
+
+            // If the last written instruction is a return, we need to overwrite it
+            let is_return = chunk.last_instruction() == Some(&OpCode::Return.as_byte());
+            if is_return {
+                chunk.pop_instruction();
+            }
+
+            if dangling == 1 {
+                chunk.emit_opcode(OpCode::Pop);
+            } else {
+                chunk.emit_opcode(OpCode::PopN);
+                chunk.write_u8(dangling as u8);
+            }
+
+            if is_return {
+                chunk.emit_opcode(OpCode::Return);
+            }
+        }
+
+        Ok(())
     }
 
     // Pop the next register store id
-    fn pop_mem_scope(&mut self) {
-        self.memstore_ids.pop();
+    fn pop_mem_scope(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
+        println!("Pop mem scope");
+        self.memstore_ids.pop().ok_or(CompilerError::ExpectedMemoryScope)?;
+        self.handle_dangle_values_on_stack(chunk)?;
+
+        Ok(())
     }
 
     // Start a loop by pushing the break/continue vec to track them
@@ -419,12 +473,11 @@ impl<'a> Compiler<'a> {
                 Statement::Scope(statements) => {
                     self.push_mem_scope();
                     self.compile_statements(chunk, statements)?;
-                    self.pop_mem_scope();
+                    self.pop_mem_scope(chunk)?;
                 },
                 Statement::If(condition, statements, else_statements) => {
-                    self.compile_expr(chunk, condition)?;
-
                     self.push_mem_scope();
+                    self.compile_expr(chunk, condition)?;
 
                     // Emit the jump if false
                     // We will overwrite the addr later
@@ -438,7 +491,7 @@ impl<'a> Compiler<'a> {
                     // Compile the valid condition
                     self.compile_statements(chunk, statements)?;
 
-                    self.pop_mem_scope();
+                    self.pop_mem_scope(chunk)?;
 
                     let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
                     // Once finished, we must jump the false condition
@@ -458,7 +511,7 @@ impl<'a> Compiler<'a> {
                     if let Some(else_statements) = else_statements {
                         self.push_mem_scope();
                         self.compile_statements(chunk, else_statements)?;
-                        self.pop_mem_scope();
+                        self.pop_mem_scope(chunk)?;
                     }
 
                     if let Some(jump_valid_index) = jump_valid_index {
@@ -513,7 +566,7 @@ impl<'a> Compiler<'a> {
                     // Compile the valid condition
                     self.compile_statements(chunk, statements)?;
 
-                    self.pop_mem_scope();
+                    self.pop_mem_scope(chunk)?;
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -554,7 +607,7 @@ impl<'a> Compiler<'a> {
                     // Compile the operation
                     let continue_index = chunk.index();
                     self.compile_expr(chunk, expr_op)?;
-                    self.pop_mem_scope();
+                    self.pop_mem_scope(chunk)?;
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
@@ -592,11 +645,15 @@ impl<'a> Compiler<'a> {
     fn compile_function(&mut self, function: &FunctionType) -> Result<(), CompilerError> {
         let mut chunk = Chunk::new();
 
-        let total_on_stack = function.get_parameters().len() + function.get_instance_name().is_some() as usize;
-        self.values_on_stack += total_on_stack;
-
+        
         // Push the new scope for ids
         self.push_mem_scope();
+
+        // Push the total expected values on the stack (due to the param and instance)
+        let total_on_stack = function.get_parameters().len() + function.get_instance_name().is_some() as usize;
+        *self.values_on_stack.last_mut()
+            .ok_or(CompilerError::ExpectedStackScope)? = total_on_stack;
+
         if function.get_instance_name().is_some() {
             self.memstore(&mut chunk)?;
         }
@@ -609,7 +666,7 @@ impl<'a> Compiler<'a> {
         self.compile_statements(&mut chunk, function.get_statements())?;
 
         // Pop the scope for ids
-        self.pop_mem_scope();
+        self.pop_mem_scope(&mut chunk)?;
 
         // Add the chunk to the module
         if function.is_entry() {
@@ -633,7 +690,7 @@ impl<'a> Compiler<'a> {
             self.compile_function(function)?;
         }
 
-        if self.values_on_stack != 0 {
+        if !self.values_on_stack.is_empty() {
             return Err(CompilerError::DanglingValueOnStack);
         }
 
@@ -713,6 +770,14 @@ mod tests {
                 OpCode::Return.as_byte()
             ]
         );
+    }
+
+    #[test]
+    fn test_dangling_value_on_stack() {
+        let (program, environment) = prepare_program("entry main() { 1 + 1; return 1 }");
+        let compiler = Compiler::new(&program, &environment);
+        let result = compiler.compile();
+        result.unwrap();
     }
 
     #[test]

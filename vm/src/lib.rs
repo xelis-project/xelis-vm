@@ -126,7 +126,9 @@ impl<'a> VM<'a> {
         }
 
         let end_value = self.stack.pop_stack()?.into_owned();
-        assert!(self.stack.count() == 0);
+        if self.stack.count() != 0 {
+            return Err(VMError::StackNotCleaned);
+        }
 
         Ok(end_value)
     }
@@ -1204,6 +1206,54 @@ mod full_tests {
         code.push_str("return x }");
 
         run_code(&code);
+    }
+
+    #[test]
+    fn test_dangling_value_scoped() {
+        let code = r#"
+            entry main() {
+                {
+                    10 + 5;
+                }
+                return 0
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(0)
+        );
+    }
+
+    #[test]
+    fn test_dangling_value() {
+        let code = r#"
+            entry main() {
+                10 + 5;
+                return 0
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(0)
+        );
+    }
+
+    #[test]
+    fn test_dangling_value_after_jump() {
+        let code = r#"
+            entry main() {
+                if false {}
+                10 + 5;
+                return 0
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(0)
+        );
     }
 
     #[test]

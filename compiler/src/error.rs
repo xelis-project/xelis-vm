@@ -24,6 +24,14 @@ pub enum CompilerError {
     ExpectedPrimitiveType,
     #[error("expected a value on the stack")]
     ExpectedValueOnStack,
+    #[error("less value on the stack than previous")]
+    LessValueOnStackThanPrevious,
+    #[error("expected a stack scope")]
+    ExpectedStackScope,
     #[error("dangling value on the stack")]
     DanglingValueOnStack,
+    #[error("too much dangling value on the stack")]
+    TooMuchDanglingValueOnStack,
+    #[error("expected a memory scope")]
+    ExpectedMemoryScope,
 }

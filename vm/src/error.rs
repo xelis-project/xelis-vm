@@ -3,6 +3,7 @@ use xelis_types::{Value, ValueError};
 
 #[derive(Debug)]
 pub enum VMError {
+    StackNotCleaned,
     InvalidRangeType,
     EmptyStack,
     IncompatibleValues(Value, Value),
