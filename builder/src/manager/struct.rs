@@ -8,9 +8,9 @@ pub struct StructBuilder<'a> {
     fields_names: Vec<&'a str>
 }
 
-pub type StructManager<'a> = TypeManager<'a, StructBuilder<'a>>;
+pub type StructManager<'a> = TypeManager<'a, Type, StructBuilder<'a>>;
 
-impl<'a> Builder<'a> for StructBuilder<'a> {
+impl<'a> Builder<'a, Type> for StructBuilder<'a> {
     type InnerType = StructType;
 
     fn new(inner: Self::InnerType, fields_names: Vec<&'a str>) -> Self {
@@ -33,7 +33,7 @@ impl<'a> Builder<'a> for StructBuilder<'a> {
     }
 }
 
-impl BuilderType for StructType {
+impl BuilderType<Type> for StructType {
     fn with(id: IdentifierType, fields: Vec<Type>) -> Self {
         StructType::new(id, fields)
     }

@@ -4,24 +4,21 @@ mod r#enum;
 pub use r#struct::*;
 pub use r#enum::*;
 
-use std::borrow::Cow;
-use xelis_types::{
-    IdentifierType,
-    Type,
-};
+use std::{borrow::Cow, marker::PhantomData};
+use xelis_types::IdentifierType;
 use crate::{
     BuilderError,
     IdMapper
 };
 
-pub trait BuilderType: Eq + Clone {
-    fn with(id: IdentifierType, fields: Vec<Type>) -> Self;
+pub trait BuilderType<D>: Eq + Clone {
+    fn with(id: IdentifierType, data: Vec<D>) -> Self;
 
     fn type_id(&self) -> IdentifierType;
 }
 
-pub trait Builder<'a> {
-    type InnerType: BuilderType;
+pub trait Builder<'a, D> {
+    type InnerType: BuilderType<D>;
 
     fn new(inner: Self::InnerType, fields_names: Vec<&'a str>) -> Self;
 
@@ -37,21 +34,23 @@ pub trait Builder<'a> {
 }
 
 #[derive(Debug)]
-pub struct TypeManager<'a, T: Builder<'a>> {
+pub struct TypeManager<'a, D, T: Builder<'a, D>> {
     parent: Option<&'a Self>,
     // All structs registered in the manager
     types: Vec<T>,
     // mapper to map each string name into a unique identifier
-    mapper: IdMapper<'a>
+    mapper: IdMapper<'a>,
+    phantom: PhantomData<D>
 }
 
-impl<'a, T: Builder<'a>> TypeManager<'a, T> {
+impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
     // Create a new struct manager
     pub fn new() -> Self {
         Self {
             parent: None,
             types: Vec::new(),
-            mapper: IdMapper::new()
+            mapper: IdMapper::new(),
+            phantom: PhantomData
         }
     }
 
@@ -59,11 +58,12 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         Self {
             parent: Some(parent),
             types: Vec::new(),
-            mapper: IdMapper::with_parent(&parent.mapper)
+            mapper: IdMapper::with_parent(&parent.mapper),
+            phantom: PhantomData
         }
     }
 
-    fn build_struct_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<T, BuilderError> {
+    fn build_struct_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<T, BuilderError> {
         if self.mapper.has_variable(&name) {
             return Err(BuilderError::StructNameAlreadyUsed);
         }
@@ -79,7 +79,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         ))
     }
     // register a new struct in the manager
-    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<(), BuilderError> {
+    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<(), BuilderError> {
         let builder = self.build_struct_internal(name, fields)?;
         self.types.push(builder);
 
@@ -87,7 +87,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
     }
 
     // Same as `add` but returns its identifier and the final struct
-    pub fn build_struct(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, Type)>) -> Result<T::InnerType, BuilderError> {
+    pub fn build_struct(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<T::InnerType, BuilderError> {
         let builder = self.build_struct_internal(name, fields)?;
         let inner = builder.inner().clone();
         self.types.push(builder);
