@@ -1,50 +1,20 @@
+mod owneable;
+mod error;
+
 use std::{
-    cell::{Ref, RefCell, RefMut},
     cmp::Ordering,
     collections::HashMap,
     hash::{Hash, Hasher},
-    rc::Rc
 };
-use thiserror::Error;
-use crate::{
+use super::{
     Type,
     EnumValueType,
     StructType,
-    ValueHandle,
-    ValueHandleMut,
     U256
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InnerValue(Rc<RefCell<Value>>);
-
-impl InnerValue {
-    #[inline(always)]
-    pub fn new(value: Value) -> Self {
-        InnerValue(Rc::new(RefCell::new(value)))
-    }
-
-    #[inline(always)]
-    pub fn borrow<'a>(&'a self) -> Ref<'a, Value> {
-        self.0.borrow()
-    }
-
-    #[inline(always)]
-    pub fn borrow_mut<'a>(&'a self) -> RefMut<'a, Value> {
-        self.0.borrow_mut()
-    }
-
-    #[inline(always)]
-    pub fn into_inner(self) -> Rc<RefCell<Value>> {
-        self.0
-    }
-}
-
-impl Hash for InnerValue {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.borrow().hash(state)
-    }
-}
+pub use owneable::*;
+pub use error::*;
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -59,90 +29,6 @@ macro_rules! checked_cast {
             _ => Err(ValueError::InvalidCastType($type))
         }
     };
-}
-
-#[derive(Debug, Error)]
-pub enum ValueError {
-    #[error("Invalid value: {0:?} is not of type {1:?}")]
-    InvalidValue(Value, Type),
-    #[error("Invalid struct value: {0:?}")]
-    InvalidStructValue(Value),
-    #[error("Invalid cast type: {0:?}")]
-    InvalidCastType(Type),
-    #[error("Operation not supported on non-number type")]
-    OperationNotNumberType,
-    #[error("Sub value")]
-    SubValue,
-    #[error("Optional value is null")]
-    OptionalIsNull,
-    #[error("Value out of bounds: {0} on {1}")]
-    OutOfBounds(usize, usize),
-    #[error("Cast error")]
-    CastError,
-    #[error("Invalid primitive type")]
-    InvalidPrimitiveType,
-    #[error("Invalid unknown type")]
-    UnknownType,
-}
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum ValueOwnable {
-    Owned(Box<Value>),
-    Rc(InnerValue)
-}
-
-impl ValueOwnable {
-    // Convert into a owned value
-    // Clone if the value is shared and can't be moved
-    pub fn into_inner(self) -> Value {
-        match self {
-            ValueOwnable::Owned(v) => *v,
-            ValueOwnable::Rc(v) => match Rc::try_unwrap(v.into_inner()) {
-                Ok(value) => value.into_inner(),
-                Err(rc) => rc.borrow().clone()
-            }
-        }
-    }
-
-    // Clone the Rc value to fully own it
-    pub fn into_ownable(self) -> ValueOwnable {
-        match self {
-            ValueOwnable::Owned(_) => self,
-            ValueOwnable::Rc(v) => ValueOwnable::Owned(Box::new(match Rc::try_unwrap(v.into_inner()) {
-                Ok(value) => value.into_inner(),
-                Err(rc) => rc.borrow().clone()
-            }))
-        }
-    }
-
-    // Transform the value into a shared value
-    pub fn transform(&mut self) -> ValueOwnable {
-        match self {
-            ValueOwnable::Owned(v) => {
-                let dst = std::mem::replace(v, Box::new(Value::Null));
-                let shared = Self::Rc(InnerValue::new(*dst));
-                *self = shared.clone();
-                shared
-            },
-            ValueOwnable::Rc(v) => Self::Rc(v.clone())
-        }
-    }
-
-    // Wrap the value into an handle to be casted to a reference of the value
-    pub fn handle<'a>(&'a self) -> ValueHandle<'a> {
-        match self {
-            ValueOwnable::Owned(v) => ValueHandle::Borrowed(v),
-            ValueOwnable::Rc(v) => ValueHandle::Ref(v.borrow())
-        }
-    }
-
-    // Wrap the value into an handle to be casted to a mutable reference of the value
-    pub fn handle_mut<'a>(&'a mut self) -> ValueHandleMut<'a> {
-        match self {
-            ValueOwnable::Owned(v) => ValueHandleMut::Borrowed(v),
-            ValueOwnable::Rc(v) => ValueHandleMut::RefMut(v.borrow_mut())
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
