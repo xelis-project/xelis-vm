@@ -95,7 +95,6 @@ impl<'a> Compiler<'a> {
     fn add_value_on_stack(&mut self, index: usize) -> Result<(), CompilerError> {
         let on_stack = self.values_on_stack.last_mut()
         .ok_or(CompilerError::ExpectedStackScope)?;
-        println!("Increase on stack: {:?}", on_stack);
         on_stack.push(index);
 
         Ok(())
@@ -122,7 +121,6 @@ impl<'a> Compiler<'a> {
 
     // Compile the expression
     fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) -> Result<(), CompilerError> {
-        println!("Compile {:?}", expr);
         match expr {
             Expression::Value(v) => {
                 // Compile the value
@@ -365,12 +363,10 @@ impl<'a> Compiler<'a> {
                         self.compile_expr(chunk, left)?;
                         self.compile_expr(chunk, right)?;
                         let opcode = Self::map_operator_to_opcode(op)?;
-                        println!("OPCODE: {:?}", opcode);
                         chunk.emit_opcode(opcode);
 
                         self.decrease_values_on_stack_by(2)?;
                         if !op.is_assignation() {
-                            println!("Add value on stack");
                             // one left on the stack
                             self.add_value_on_stack(chunk.last_index())?;
                         }
@@ -384,7 +380,6 @@ impl<'a> Compiler<'a> {
 
     // Push the next register store id
     fn push_mem_scope(&mut self) {
-        println!("Push mem scope");
         self.memstore_ids.push(self.memstore_ids.last().copied().unwrap_or(0));
         self.values_on_stack.push(Vec::new());
     }
@@ -402,18 +397,15 @@ impl<'a> Compiler<'a> {
                 .filter(|v| *v != stack_len)
                 .unwrap_or(0);
 
-            println!("Previous stack: {}, now: {}", previous_stack, stack_len);
             let dangling = stack_len.checked_sub(previous_stack)
                 .ok_or(CompilerError::LessValueOnStackThanPrevious)?;
 
             if dangling > 0 {
-                println!("Detected {} dangling values on the stack! previous: {}, now: {}", dangling, previous_stack, stack_len);
                 if dangling > u8::MAX as usize {
                     return Err(CompilerError::TooMuchDanglingValueOnStack);
                 }
 
                 for index in on_stack.into_iter().take(dangling) {
-                    println!("Pop value at index: {}", index);
                     chunk.inject_opcode_at(OpCode::Pop, index + 1);
                 }
             }
@@ -424,7 +416,6 @@ impl<'a> Compiler<'a> {
 
     // Pop the next register store id
     fn pop_mem_scope(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
-        println!("Pop mem scope");
         self.memstore_ids.pop().ok_or(CompilerError::ExpectedMemoryScope)?;
         self.handle_dangle_values_on_stack(chunk)?;
 
