@@ -4,6 +4,9 @@ use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
+    TypeNameAlreadyUsed(&'a str),
+    EmptyEnumName,
+    InvalidEnumName(&'a str),
     ConstantNotFound(Type, &'a str),
     NotIterable(Type),
     InvalidRangeType(Type, Type),
@@ -17,7 +20,7 @@ pub enum ParserError<'a> {
     ImportNotFound(String),
     MappingExists(IdentifierType),
     ConstantNameNotUppercase(String),
-    StructNotFound(&'a str),
+    TypeNameNotFound(&'a str),
     StructIdNotFound(IdentifierType),
     AssignReturnNothing,
     EntryFunctionCannotHaveForType,

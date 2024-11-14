@@ -72,6 +72,11 @@ impl<'a> EnvironmentBuilder<'a> {
         &self.struct_manager
     }
 
+    // enum manager, used to find the enum id
+    pub fn get_enum_manager(&self) -> &EnumManager {
+        &self.enum_manager
+    }
+
     // all registered functions
     pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.env.get_functions()

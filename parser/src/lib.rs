@@ -7,6 +7,7 @@ use std::{
 };
 use xelis_builder::{
     Builder,
+    EnumManager,
     EnvironmentBuilder,
     FunctionMapper,
     StructManager
@@ -52,6 +53,7 @@ pub struct Parser<'a> {
     functions_mapper: FunctionMapper<'a>,
     // Struct manager
     struct_manager: StructManager<'a>,
+    enum_manager: EnumManager<'a>,
     // Environment contains all the library linked to the program
     environment: &'a EnvironmentBuilder<'a>,
     // TODO: Path to use to import files
@@ -62,12 +64,13 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: VecDeque<Token<'a>>, environment: &'a EnvironmentBuilder) -> Self {
         let functions_mapper = FunctionMapper::with_parent(environment.get_functions_mapper());
 
-        Parser {
+        Self {
             tokens,
             constants: HashSet::new(),
             functions: Vec::new(),
             functions_mapper,
             struct_manager: StructManager::with_parent(environment.get_struct_manager()),
+            enum_manager: EnumManager::with_parent(environment.get_enum_manager()),
             environment
         }
     }
@@ -168,8 +171,10 @@ impl<'a> Parser<'a> {
             Token::Identifier(id) => {
                 if let Ok(builder) = self.struct_manager.get_by_name(id) {
                     Type::Struct(builder.get_type().clone())
+                } else if let Ok(builder) = self.enum_manager.get_by_name(id) {
+                    Type::Enum(builder.get_type().clone())
                 } else {
-                    return Err(ParserError::StructNotFound(id))
+                    return Err(ParserError::TypeNameNotFound(id))
                 }
             },
             token => return Err(ParserError::UnexpectedToken(token))
@@ -1183,17 +1188,23 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Verify that a type name is not already used
+    fn is_name_available(&self, name: &str) -> bool {
+        self.struct_manager.get_by_name(name).is_err()
+            && self.enum_manager.get_by_name(name).is_err()
+    }
+
     /**
      * Example: Message { message_id: u64, message: string }
      * Rules:
-     * - Structure name should start with a uppercase character
-     * - only alphanumeric chars in name
+     * - Structure name should start with a uppercase (ascii alphabet) character
      */
     fn read_struct(&mut self) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
-        let mut chars = name.chars();
-        if !chars.all(|c| c.is_ascii_alphanumeric()) {
-            return Err(ParserError::InvalidStructureName(name.to_owned()))
+
+        // Verify that we don't have a type with the same name
+        if !self.is_name_available(name) {
+            return Err(ParserError::TypeNameAlreadyUsed(name))
         }
 
         // check if the first letter is in uppercase
@@ -1220,6 +1231,58 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /**
+     * Example: enum Message { HELLO, WORLD { a: u64 } }
+     * Rules:
+     * - Enum name should start with a uppercase character
+     * - each variant name should start with a uppercase character
+     */
+    fn read_enum(&mut self) -> Result<(), ParserError<'a>> {
+        let name = self.next_identifier()?;
+
+        // Verify that we don't have a type with the same name
+        if !self.is_name_available(name) {
+            return Err(ParserError::TypeNameAlreadyUsed(name))
+        }
+
+        // check if the first letter is in uppercase
+        match name.chars().nth(0) {
+            Some(v) => {
+                if !v.is_ascii_alphabetic() || !v.is_uppercase() {
+                    return Err(ParserError::InvalidEnumName(name))
+                }
+            },
+            None => return Err(ParserError::EmptyEnumName)
+        };
+
+        self.expect_token(Token::BraceOpen)?;
+        let mut variants = Vec::new();
+        while self.peek_is_identifier() {
+            let variant_name = self.next_identifier()?;
+            let fields = if self.peek_is(Token::BraceOpen) {
+                self.expect_token(Token::BraceOpen)?;
+                let fields = self.read_parameters()?;
+
+                self.expect_token(Token::BraceClose)?;
+                fields
+            } else {
+                Vec::new()
+            };
+
+            variants.push((variant_name, fields));
+
+            if self.peek_is(Token::Comma) {
+                self.expect_token(Token::Comma)?;
+            }
+        }
+
+        self.expect_token(Token::BraceClose)?;
+
+        self.enum_manager.add(Cow::Borrowed(name), variants)?;
+
+        Ok(())
+    }
+
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
     pub fn parse(mut self) -> Result<(Program, FunctionMapper<'a>), ParserError<'a>> {
@@ -1240,12 +1303,12 @@ impl<'a> Parser<'a> {
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct()?,
-                Token::Enum => return Err(ParserError::NotImplemented),
+                Token::Enum => self.read_enum()?,
                 token => return Err(ParserError::UnexpectedToken(token))
             };
         }
 
-        let program = Program::with(self.constants, self.struct_manager.finalize(), Vec::new(), self.functions);
+        let program = Program::with(self.constants, self.struct_manager.finalize(), self.enum_manager.finalize(), self.functions);
         Ok((program, self.functions_mapper))
     }
 }
@@ -2027,6 +2090,52 @@ mod tests {
 
         let mut env = EnvironmentBuilder::new();
         env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX));
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_enum() {
+        // enum Message { HELLO, WORLD { a: u64 } }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("HELLO"),
+            Token::Comma,
+            Token::Identifier("WORLD"),
+            Token::BraceOpen,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BraceClose,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens.clone());
+        assert_eq!(program.enums().len(), 1);
+
+        // Also test with a environment
+        let mut env = EnvironmentBuilder::new();
+        env.register_enum("Message", vec![
+            ("HELLO", Vec::new()),
+            ("WORLD", vec![("a", Type::U64)])
+        ]);
+
+        // Create an enum instance
+        // let msg: Message = Message::HELLO;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Identifier("Message"),
+            Token::OperatorAssign,
+            Token::Identifier("Message"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("HELLO"),
+        ];
+
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
     }
