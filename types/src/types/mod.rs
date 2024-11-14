@@ -1,6 +1,8 @@
 mod r#struct;
+mod r#enum;
 
 pub use r#struct::*;
+pub use r#enum::*;
 
 use crate::{
     values::Value,
@@ -35,6 +37,7 @@ pub enum Type {
     Optional(Box<Type>),
     Range(Box<Type>),
     Map(Box<Type>, Box<Type>),
+    Enum(EnumType),
 }
 
 impl Type {
@@ -291,6 +294,7 @@ impl fmt::Display for Type {
             Type::Optional(_type) => write!(f, "optional<{}>", _type),
             Type::Range(_type) => write!(f, "range<{}>", _type),
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
+            Type::Enum(id) => write!(f, "enum({:?})", id),
         }
     }
 }
