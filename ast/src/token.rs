@@ -53,6 +53,7 @@ pub enum Token<'a> {
     Optional,
     Range,
     Map,
+    Enum,
 
     BraceOpen,
     BraceClose,
@@ -180,6 +181,7 @@ impl Token<'_> {
             "optional" => Optional,
             "range" => Range,
             "map" => Map,
+            "enum" => Enum,
 
             "let" => Let,
 

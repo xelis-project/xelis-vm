@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use xelis_types::StructType;
+use xelis_types::{EnumType, StructType};
 use super::{DeclarationStatement, FunctionType};
 
 #[derive(Debug)]
@@ -8,6 +8,8 @@ pub struct Program {
     constants: HashSet<DeclarationStatement>,
     // All structures declared
     structures: Vec<StructType>,
+    // All enums declared
+    enums: Vec<EnumType>,
     // All functions declared
     functions: Vec<FunctionType>
 }
@@ -18,15 +20,17 @@ impl Program {
         Program {
             constants: HashSet::new(),
             structures: Vec::new(),
+            enums: Vec::new(),
             functions: Vec::new()
         }
     }
 
     // Create a new program with constants, structures and functions
-    pub fn with(constants: HashSet<DeclarationStatement>, structures: Vec<StructType>, functions: Vec<FunctionType>) -> Self {
+    pub fn with(constants: HashSet<DeclarationStatement>, structures: Vec<StructType>, enums: Vec<EnumType>, functions: Vec<FunctionType>) -> Self {
         Program {
             constants,
             structures,
+            enums,
             functions
         }
     }
@@ -53,6 +57,18 @@ impl Program {
     #[inline]
     pub fn structures(&self) -> &[StructType] {
         &self.structures
+    }
+
+    // Add an enum to the program
+    #[inline]
+    pub fn add_enum(&mut self, enum_type: EnumType) {
+        self.enums.push(enum_type);
+    }
+
+    // Get the enums declared in the program
+    #[inline]
+    pub fn enums(&self) -> &[EnumType] {
+        &self.enums
     }
 
     // Add a function to the program

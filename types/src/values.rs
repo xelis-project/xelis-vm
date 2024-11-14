@@ -6,7 +6,14 @@ use std::{
     rc::Rc
 };
 use thiserror::Error;
-use crate::{types::Type, StructType, ValueHandle, ValueHandleMut, U256};
+use crate::{
+    Type,
+    EnumValueType,
+    StructType,
+    ValueHandle,
+    ValueHandleMut,
+    U256
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InnerValue(Rc<RefCell<Value>>);
@@ -85,6 +92,8 @@ pub enum ValueOwnable {
 }
 
 impl ValueOwnable {
+    // Convert into a owned value
+    // Clone if the value is shared and can't be moved
     pub fn into_inner(self) -> Value {
         match self {
             ValueOwnable::Owned(v) => *v,
@@ -108,6 +117,7 @@ impl ValueOwnable {
         }
     }
 
+    // Wrap the value into an handle to be casted to a reference of the value
     pub fn handle<'a>(&'a self) -> ValueHandle<'a> {
         match self {
             ValueOwnable::Owned(v) => ValueHandle::Borrowed(v),
@@ -115,6 +125,7 @@ impl ValueOwnable {
         }
     }
 
+    // Wrap the value into an handle to be casted to a mutable reference of the value
     pub fn handle_mut<'a>(&'a mut self) -> ValueHandleMut<'a> {
         match self {
             ValueOwnable::Owned(v) => ValueHandleMut::Borrowed(v),
@@ -141,7 +152,8 @@ pub enum Value {
     Optional(Option<ValueOwnable>),
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
-    Map(HashMap<Value, ValueOwnable>)
+    Map(HashMap<Value, ValueOwnable>),
+    Enum(Vec<ValueOwnable>, EnumValueType),
 }
 
 impl PartialOrd for Value {
@@ -194,9 +206,10 @@ impl Hash for Value {
                 8.hash(state);
                 n.hash(state);
             },
-            Value::Struct(fields, _) => {
+            Value::Struct(fields, struct_type) => {
                 9.hash(state);
                 fields.hash(state);
+                struct_type.hash(state);
             },
             Value::Array(values) => {
                 10.hash(state);
@@ -206,10 +219,11 @@ impl Hash for Value {
                 11.hash(state);
                 opt.hash(state);
             },
-            Value::Range(start, end, _) => {
+            Value::Range(start, end, range_type) => {
                 12.hash(state);
                 start.hash(state);
                 end.hash(state);
+                range_type.hash(state);
             },
             Value::Map(map) => {
                 13.hash(state);
@@ -217,6 +231,11 @@ impl Hash for Value {
                     key.hash(state);
                     value.hash(state);
                 }
+            },
+            Value::Enum(fields, enum_type) => {
+                14.hash(state);
+                fields.hash(state);
+                enum_type.hash(state);
             }
         }
     }
@@ -744,6 +763,10 @@ impl std::fmt::Display for Value {
             Value::Map(map) => {
                 let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
+            },
+            Value::Enum(fields, enum_type) => {
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
+                write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
             }
         }
     }

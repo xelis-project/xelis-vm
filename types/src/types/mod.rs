@@ -109,11 +109,13 @@ impl Type {
                 let value = Type::from_value(&value.handle())?;
                 Type::Map(Box::new(key), Box::new(value))
             },
+            Value::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
         };
 
         Some(_type)
     }
 
+    // get the inner type of the type or fallback to self
     pub fn get_inner_type(&self) -> &Type {
         match &self {
             Type::Array(ref _type) => _type,
@@ -123,6 +125,7 @@ impl Type {
         }
     }
 
+    // get the generic type with the given id
     pub fn get_generic_type(&self, id: u8) -> Option<&Type> {
         match id {
             0 => match &self {
@@ -140,6 +143,7 @@ impl Type {
         }
     }
 
+    // check if the type allow to have a null value
     pub fn allow_null(&self) -> bool {
         match self {
             Type::Optional(_) => true,
@@ -147,6 +151,7 @@ impl Type {
         }
     }
 
+    // check if the type is a generic type
     pub fn is_generic(&self) -> bool {
         match self {
             Type::T(_) | Type::Any => true,
@@ -154,10 +159,15 @@ impl Type {
         }
     }
 
+    // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {
             Type::Range(inner) => match self {
                 Type::Range(inner2) => inner.is_compatible_with(inner2),
+                _ => false
+            },
+            Type::Enum(e) => match self {
+                Type::Enum(e2) => e == e2,
                 _ => false
             },
             Type::Any | Type::T(_) => true,

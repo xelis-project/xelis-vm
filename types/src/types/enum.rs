@@ -25,6 +25,7 @@ pub struct EnumType(Rc<Enum>);
 
 // Represents the type of an enum variant
 // This is embed in the value to determine easily which variant it is
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct EnumValueType {
     enum_type: EnumType,
     variant_id: u8

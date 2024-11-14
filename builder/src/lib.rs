@@ -1,9 +1,9 @@
 mod environment;
-mod struct_manager;
+mod manager;
 mod mapper;
 
 pub use environment::*;
-pub use struct_manager::*;
+pub use manager::*;
 pub use mapper::*;
 use thiserror::Error;
 use xelis_types::ValueError;

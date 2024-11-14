@@ -6,6 +6,7 @@ use std::{
     collections::{HashSet, VecDeque}
 };
 use xelis_builder::{
+    Builder,
     EnvironmentBuilder,
     FunctionMapper,
     StructManager
@@ -1239,11 +1240,12 @@ impl<'a> Parser<'a> {
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct()?,
+                Token::Enum => return Err(ParserError::NotImplemented),
                 token => return Err(ParserError::UnexpectedToken(token))
             };
         }
 
-        let program = Program::with(self.constants, self.struct_manager.finalize(), self.functions);
+        let program = Program::with(self.constants, self.struct_manager.finalize(), Vec::new(), self.functions);
         Ok((program, self.functions_mapper))
     }
 }
