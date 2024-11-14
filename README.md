@@ -7,6 +7,9 @@ The syntax is strongly inspired by Rust.
 
 Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
 
+- **Stack Overflow**
+Prevent any stack overflow due to the recursive nature hashmaps/arrays.
+
 - **Shunting Yard Algorithm for Parser**
 Currently, mathematical operations don't follow the priority rules. Implementing it would help resolving that issue.
 
