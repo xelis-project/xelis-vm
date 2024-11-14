@@ -4,7 +4,7 @@ mod function;
 pub use error::EnvironmentError;
 pub use function::*;
 
-use xelis_types::StructType;
+use xelis_types::{EnumType, StructType};
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
@@ -13,6 +13,8 @@ pub struct Environment {
     functions: Vec<NativeFunction>,
     // All structures provided by the Environment
     structures: Vec<StructType>,
+    // All enums provided by the Environment
+    enums: Vec<EnumType>,
 }
 
 impl Default for Environment {
@@ -20,6 +22,7 @@ impl Default for Environment {
         Self {
             functions: Vec::new(),
             structures: Vec::new(),
+            enums: Vec::new(),
         }
     }
 }
@@ -42,6 +45,12 @@ impl Environment {
         &self.structures
     }
 
+    // Get all the registered enums
+    #[inline(always)]
+    pub fn get_enums(&self) -> &Vec<EnumType> {
+        &self.enums
+    }
+
     // Add a new function to the environment
     #[inline(always)]
     pub fn add_function(&mut self, function: NativeFunction) {
@@ -52,6 +61,12 @@ impl Environment {
     #[inline(always)]
     pub fn add_structure(&mut self, structure: StructType) {
         self.structures.push(structure);
+    }
+
+    // Add a new enum to the environment
+    #[inline(always)]
+    pub fn add_enum(&mut self, _enum: EnumType) {
+        self.enums.push(_enum);
     }
 
     // Allow to change the cost of a function

@@ -8,28 +8,38 @@ pub struct StructBuilder<'a> {
     fields_names: Vec<&'a str>
 }
 
-pub type StructManager<'a> = TypeManager<'a, Type, StructBuilder<'a>>;
+pub type StructManager<'a> = TypeManager<'a, StructBuilder<'a>>;
 
-impl<'a> Builder<'a, Type> for StructBuilder<'a> {
-    type InnerType = StructType;
+impl<'a> Builder<'a> for StructBuilder<'a> {
+    type Data = Type;
+    type BuilderType = StructType;
+    type Type = StructType;
 
-    fn new(inner: Self::InnerType, fields_names: Vec<&'a str>) -> Self {
+    fn new(inner: Self::BuilderType, fields_names: Vec<&'a str>) -> Self {
         Self {
             inner,
             fields_names
         }
     }
 
-    fn fields_names(&self) -> &Vec<&'a str> {
-        &self.fields_names
-    }
-
-    fn inner(&self) -> &StructType {
+    fn builder_type(&self) -> &Self::BuilderType {
         &self.inner
     }
 
-    fn into_inner(self) -> Self::InnerType {
+    fn names(&self) -> &Vec<&'a str> {
+        &self.fields_names
+    }
+
+    fn get_type(&self) -> &Self::Type {
+        &self.inner
+    }
+
+    fn into_type(self) -> Self::Type {
         self.inner
+    }
+
+    fn type_id(&self) -> IdentifierType {
+        self.inner.id()
     }
 }
 

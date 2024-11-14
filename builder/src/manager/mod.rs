@@ -4,53 +4,57 @@ mod r#enum;
 pub use r#struct::*;
 pub use r#enum::*;
 
-use std::{borrow::Cow, marker::PhantomData};
+use std::borrow::Cow;
 use xelis_types::IdentifierType;
 use crate::{
     BuilderError,
     IdMapper
 };
 
-pub trait BuilderType<D>: Eq + Clone {
+pub trait BuilderType<D> {
     fn with(id: IdentifierType, data: Vec<D>) -> Self;
 
     fn type_id(&self) -> IdentifierType;
 }
 
-pub trait Builder<'a, D> {
-    type InnerType: BuilderType<D>;
+pub trait Builder<'a> {
+    type Data;
+    type BuilderType: BuilderType<Self::Data>;
+    type Type: Clone + Eq;
 
-    fn new(inner: Self::InnerType, fields_names: Vec<&'a str>) -> Self;
+    fn new(inner: Self::BuilderType, names: Vec<&'a str>) -> Self;
 
-    fn inner(&self) -> &Self::InnerType;
+    fn get_type(&self) -> &Self::Type;
 
-    fn fields_names(&self) -> &Vec<&'a str>;
+    fn names(&self) -> &Vec<&'a str>;
+
+    fn builder_type(&self) -> &Self::BuilderType;
 
     fn get_id_for_field(&self, name: &str) -> Option<IdentifierType> {
-        self.fields_names().iter().position(|k| *k == name).map(|v| v as IdentifierType)
+        self.names().iter().position(|k| *k == name).map(|v| v as IdentifierType)
     }
 
-    fn into_inner(self) -> Self::InnerType;
+    fn into_type(self) -> Self::Type;
+
+    fn type_id(&self) -> IdentifierType;
 }
 
 #[derive(Debug)]
-pub struct TypeManager<'a, D, T: Builder<'a, D>> {
+pub struct TypeManager<'a, T: Builder<'a>> {
     parent: Option<&'a Self>,
     // All structs registered in the manager
     types: Vec<T>,
     // mapper to map each string name into a unique identifier
     mapper: IdMapper<'a>,
-    phantom: PhantomData<D>
 }
 
-impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
+impl<'a, T: Builder<'a>> TypeManager<'a, T> {
     // Create a new struct manager
     pub fn new() -> Self {
         Self {
             parent: None,
             types: Vec::new(),
-            mapper: IdMapper::new(),
-            phantom: PhantomData
+            mapper: IdMapper::new()
         }
     }
 
@@ -59,11 +63,10 @@ impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
             parent: Some(parent),
             types: Vec::new(),
             mapper: IdMapper::with_parent(&parent.mapper),
-            phantom: PhantomData
         }
     }
 
-    fn build_struct_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<T, BuilderError> {
+    fn build_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<T, BuilderError> {
         if self.mapper.has_variable(&name) {
             return Err(BuilderError::StructNameAlreadyUsed);
         }
@@ -71,7 +74,7 @@ impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
         let (fields_names, fields_types) = split_vec(fields);
 
         let id = self.mapper.register(name)?;
-        let inner = T::InnerType::with(id, fields_types);
+        let inner = T::BuilderType::with(id, fields_types);
 
         Ok(T::new(
             inner,
@@ -79,17 +82,17 @@ impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
         ))
     }
     // register a new struct in the manager
-    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<(), BuilderError> {
-        let builder = self.build_struct_internal(name, fields)?;
+    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<(), BuilderError> {
+        let builder = self.build_internal(name, fields)?;
         self.types.push(builder);
 
         Ok(())
     }
 
     // Same as `add` but returns its identifier and the final struct
-    pub fn build_struct(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, D)>) -> Result<T::InnerType, BuilderError> {
-        let builder = self.build_struct_internal(name, fields)?;
-        let inner = builder.inner().clone();
+    pub fn build(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<T::Type, BuilderError> {
+        let builder = self.build_internal(name, fields)?;
+        let inner = builder.get_type().clone();
         self.types.push(builder);
 
         Ok(inner)
@@ -102,7 +105,7 @@ impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
             }
         }
 
-        self.types.iter().find(|b| b.inner().type_id() == *id).ok_or(BuilderError::StructNotFound)
+        self.types.iter().find(|b| b.type_id() == *id).ok_or(BuilderError::StructNotFound)
     }
 
     // Get a struct by name
@@ -111,19 +114,19 @@ impl<'a, D, T: Builder<'a, D>> TypeManager<'a, D, T> {
         self.get_by_id(&id)
     }
 
-    pub fn get_by_ref(&self, _type: &T::InnerType) -> Result<&T, BuilderError> {
+    pub fn get_by_ref(&self, _type: &T::Type) -> Result<&T, BuilderError> {
         if let Some(parent) = self.parent {
             if let Ok(s) = parent.get_by_ref(_type) {
                 return Ok(s);
             }
         }
 
-        self.types.iter().find(|v| v.inner() == _type).ok_or(BuilderError::StructNotFound)   
+        self.types.iter().find(|v| v.get_type() == _type).ok_or(BuilderError::StructNotFound)   
     }
 
     // Convert the struct manager into a list of structs
-    pub fn finalize(self) -> Vec<T::InnerType> {
-        self.types.into_iter().map(T::into_inner).collect()
+    pub fn finalize(self) -> Vec<T::Type> {
+        self.types.into_iter().map(T::into_type).collect()
     }
 }
 

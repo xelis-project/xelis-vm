@@ -6,10 +6,7 @@ use super::Type;
 // Represents a variant of an enum
 // This is similar to a struct
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct EnumVariant {
-    // Fields of the enum variant
-    fields: Vec<Type>
-}
+pub struct EnumVariant(pub Vec<Type>);
 
 // Represents an enum like in Rust with variants
 // Support up to 255 variants

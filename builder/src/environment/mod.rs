@@ -4,7 +4,7 @@ use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Type, Value};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
-use crate::{StructManager, FunctionMapper};
+use crate::{EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -12,6 +12,7 @@ use crate::{StructManager, FunctionMapper};
 pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
+    enum_manager: EnumManager<'a>,
     constants: HashMap<Type, HashMap<&'a str, Value>>,
     env: Environment
 }
@@ -22,6 +23,7 @@ impl<'a> EnvironmentBuilder<'a> {
         Self {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
+            enum_manager: EnumManager::new(),
             constants: HashMap::new(),
             env: Environment::new(),
         }
@@ -37,8 +39,15 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a structure in the environment
     // Panic if the structure name is already used
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
-        let _type = self.struct_manager.build_struct(Cow::Borrowed(name), fields).unwrap();
+        let _type = self.struct_manager.build(Cow::Borrowed(name), fields).unwrap();
         self.env.add_structure(_type);
+    }
+
+    // Register an enum in the environment
+    // Panic if the enum name is already used
+    pub fn register_enum(&mut self, name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) {
+        let _type = self.enum_manager.build(Cow::Borrowed(name), variants).unwrap();
+        self.env.add_enum(_type);
     }
 
     // Register a constant in the environment
@@ -91,5 +100,29 @@ impl Default for EnvironmentBuilder<'_> {
         xstd::register(&mut env);
 
         env
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_add_enum() {
+        let mut builder = EnvironmentBuilder::new();
+
+        /*
+        enum Test {
+            A { a: u32 },
+            B { b: u64 }
+        }
+         */
+        builder.register_enum("Test", vec![
+            ("A", vec![("a", Type::U32)]),
+            ("B", vec![("b", Type::U64)])
+        ]);
+
+        let env = builder.build();
+        assert_eq!(env.get_enums().len(), 1);
     }
 }

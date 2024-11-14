@@ -1,43 +1,75 @@
-use xelis_types::{EnumType, EnumVariant, IdentifierType};
+use xelis_types::{EnumType, EnumVariant, IdentifierType, Type};
 use super::{Builder, BuilderType, TypeManager};
 
-#[derive(Debug, Clone)]
 pub struct EnumBuilder<'a> {
-    inner: EnumType,
-    fields_names: Vec<&'a str>
+    inner: EnumTypeBuilder<'a>,
+    variants_names: Vec<&'a str>
 }
 
-pub type EnumManager<'a> = TypeManager<'a, EnumVariant, EnumBuilder<'a>>;
+pub struct EnumTypeBuilder<'a> {
+    inner: EnumType,
+    variants: Vec<EnumVariantBuilder<'a>>
+}
 
-impl<'a> Builder<'a, EnumVariant> for EnumBuilder<'a> {
-    type InnerType = EnumType;
+impl EnumTypeBuilder<'_> {
+    pub fn variants(&self) -> &Vec<EnumVariantBuilder> {
+        &self.variants
+    }
+}
 
-    fn new(inner: Self::InnerType, fields_names: Vec<&'a str>) -> Self {
+pub type EnumVariantBuilder<'a> = Vec<(&'a str, Type)>;
+
+pub type EnumManager<'a> = TypeManager<'a, EnumBuilder<'a>>;
+
+impl<'a> Builder<'a> for EnumBuilder<'a> {
+    type Data = EnumVariantBuilder<'a>;
+    type BuilderType = EnumTypeBuilder<'a>;
+    type Type = EnumType;
+
+    fn new(inner: Self::BuilderType, variants_names: Vec<&'a str>) -> Self {
         Self {
             inner,
-            fields_names
+            variants_names
         }
     }
 
-    fn fields_names(&self) -> &Vec<&'a str> {
-        &self.fields_names
+    fn names(&self) -> &Vec<&'a str> {
+        &self.variants_names
     }
 
-    fn inner(&self) -> &EnumType {
+    fn builder_type(&self) -> &Self::BuilderType {
         &self.inner
     }
 
-    fn into_inner(self) -> Self::InnerType {
-        self.inner
+    fn get_type(&self) -> &Self::Type {
+        &self.inner.inner
     }
-}
 
-impl BuilderType<EnumVariant> for EnumType {
-    fn with(id: IdentifierType, fields: Vec<EnumVariant>) -> Self {
-        EnumType::new(id, fields)
+    fn into_type(self) -> Self::Type {
+        self.inner.inner
     }
 
     fn type_id(&self) -> IdentifierType {
-        self.id()
+        self.inner.inner.id()
+    }
+}
+
+impl<'a> BuilderType<EnumVariantBuilder<'a>> for EnumTypeBuilder<'a> {
+    fn with(id: IdentifierType, variants: Vec<EnumVariantBuilder<'a>>) -> Self {
+        let types = variants.iter()
+            .map(|v| EnumVariant(v.iter()
+                .map(|(_, t)| t.clone())
+                .collect()
+            ).clone())
+            .collect();
+
+        Self {
+            inner: EnumType::new(id, types),
+            variants
+        }
+    }
+
+    fn type_id(&self) -> IdentifierType {
+        self.inner.id()
     }
 }

@@ -166,8 +166,8 @@ impl<'a> Parser<'a> {
                 Type::Map(Box::new(key), Box::new(value))
             }
             Token::Identifier(id) => {
-                if let Ok(v) = self.struct_manager.get_by_name(id) {
-                    Type::Struct(v.inner().clone())
+                if let Ok(builder) = self.struct_manager.get_by_name(id) {
+                    Type::Struct(builder.get_type().clone())
                 } else {
                     return Err(ParserError::StructNotFound(id))
                 }
@@ -521,8 +521,8 @@ impl<'a> Parser<'a> {
                                 None => {
                                     if let Some(id) = context.get_variable_id(id) {
                                         Expression::Variable(id)
-                                    } else if let Ok(id) = self.struct_manager.get_by_name(&id) {
-                                        self.read_struct_constructor(on_type, id.inner().clone(), context)?
+                                    } else if let Ok(builder) = self.struct_manager.get_by_name(&id) {
+                                        self.read_struct_constructor(on_type, builder.get_type().clone(), context)?
                                     } else {
                                         return Err(ParserError::UnexpectedVariable(id.to_owned()))
                                     }
