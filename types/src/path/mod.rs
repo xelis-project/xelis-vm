@@ -96,8 +96,8 @@ impl<'a> Path<'a> {
     pub fn into_ownable(self) -> ValueOwnable {
         match self {
             Self::Owned(v) => ValueOwnable::Owned(Box::new(v)),
-            Self::Borrowed(v) => ValueOwnable::Rc(InnerValue::new(v.clone())),
-            Self::Wrapper(v) => v
+            Self::Borrowed(v) => ValueOwnable::Owned(Box::new(v.clone())),
+            Self::Wrapper(v) => v.into_ownable()
         }
     }
 

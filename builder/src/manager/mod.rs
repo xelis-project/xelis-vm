@@ -72,7 +72,6 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         }
 
         let (fields_names, fields_types) = split_vec(fields);
-
         let id = self.mapper.register(name)?;
         let inner = T::BuilderType::with(id, fields_types);
 

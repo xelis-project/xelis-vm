@@ -1288,4 +1288,22 @@ mod full_tests {
             Value::U64(10)
         );
     }
+
+    #[test]
+    fn test_self_reference() {
+        let code = r#"
+            entry main() {
+                let x: u64[][] = [[10]];
+                x.push(x[0]);
+                debug(x)
+                x[1][0] = 20;
+                return x[0][0]
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
 }

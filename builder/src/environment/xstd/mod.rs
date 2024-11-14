@@ -18,12 +18,21 @@ pub fn register(env: &mut EnvironmentBuilder) {
     map::register(env);
 
     env.register_native_function("println", None, vec![Type::Any], println, 1, None);
+    env.register_native_function("debug", None, vec![Type::Any], debug, 1, None);
+
     env.register_native_function("panic", None, vec![Type::Any], panic, 1, Some(Type::Any));
 }
 
 fn println(_: FnInstance, parameters: FnParams) -> FnReturnType {
     let param = &parameters[0];
     println!("{}", param.as_ref().as_value());
+
+    Ok(None)
+}
+
+fn debug(_: FnInstance, parameters: FnParams) -> FnReturnType {
+    let param = &parameters[0];
+    println!("{:?}", param.as_ref().as_value());
 
     Ok(None)
 }

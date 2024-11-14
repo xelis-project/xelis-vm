@@ -104,6 +104,17 @@ impl ValueOwnable {
         }
     }
 
+    // Clone the Rc value to fully own it
+    pub fn into_ownable(self) -> ValueOwnable {
+        match self {
+            ValueOwnable::Owned(_) => self,
+            ValueOwnable::Rc(v) => ValueOwnable::Owned(Box::new(match Rc::try_unwrap(v.into_inner()) {
+                Ok(value) => value.into_inner(),
+                Err(rc) => rc.borrow().clone()
+            }))
+        }
+    }
+
     // Transform the value into a shared value
     pub fn transform(&mut self) -> ValueOwnable {
         match self {
