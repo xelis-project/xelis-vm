@@ -5,6 +5,7 @@ use xelis_types::{Type, ValueError, IdentifierType};
 #[derive(Debug)]
 pub enum ParserError<'a> {
     InvalidFieldName(&'a str, &'a str),
+    EnumVariantAlreadyUsed(&'a str),
     InvalidEnumFieldName(&'a str),
     TypeNameAlreadyUsed(&'a str),
     EmptyEnumName,

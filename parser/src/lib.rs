@@ -1304,6 +1304,7 @@ impl<'a> Parser<'a> {
      * Rules:
      * - Enum name should start with a uppercase character
      * - each variant name should start with a uppercase character
+     * - each variant has a unique name
      */
     fn read_enum(&mut self) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
@@ -1327,6 +1328,12 @@ impl<'a> Parser<'a> {
         let mut variants = Vec::new();
         while self.peek_is_identifier() {
             let variant_name = self.next_identifier()?;
+
+            // Variant name should be unique
+            if variants.iter().any(|(name, _)| *name == variant_name) {
+                return Err(ParserError::EnumVariantAlreadyUsed(variant_name))
+            }
+
             let fields = if self.peek_is(Token::BraceOpen) {
                 self.expect_token(Token::BraceOpen)?;
                 let fields = self.read_parameters()?;

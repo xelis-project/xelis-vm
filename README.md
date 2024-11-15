@@ -49,6 +49,7 @@ The different primitive types are:
 - `bool`
 - `string`
 - `struct`
+- `enum` variants
 - `optional<T>` where T is another type (it allow the value to be nullable)
 - `range<T>` where T is a number type (it allow to iterate over a range of values in a foreach, or have some functions like `contains`)
 - `map<K, V>` where K is a key type and V is a value type (it allow to have a key-value store)
@@ -183,6 +184,30 @@ A structure can contain other structures.
 struct MyStruct {
     message: string,
     value: u64
+}
+```
+
+### Enum
+An enum is a type that can have multiple variants.
+
+**Rules**
+- The name must be unique.
+- Name should start with a uppercase letter.
+- Variants must be unique.
+- Each variants can contains fields or not.
+
+**Examples**
+```rust
+enum MyEnum {
+	A,
+	B,
+	C {
+		value: u64
+	},
+	D {
+		name: string,
+		value: u64
+	}
 }
 ```
 
