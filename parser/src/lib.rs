@@ -396,7 +396,7 @@ impl<'a> Parser<'a> {
         while self.peek_is_not(Token::BraceClose) {
             let field_name = self.next_identifier()?;
             let expr = match self.advance()? {
-                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name).ok_or_else(|| ParserError::UnexpectedVariable(field_name.to_owned()))?),
+                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name).ok_or_else(|| ParserError::UnexpectedVariable(field_name))?),
                 Token::Colon => self.read_expression(context)?,
                 token => return Err(ParserError::UnexpectedToken(token))
             };
@@ -599,7 +599,7 @@ impl<'a> Parser<'a> {
                                         let builder = self.struct_manager.get_by_ref(_type)?;
                                         match builder.get_id_for_field(id) {
                                             Some(v) => Expression::Variable(v),
-                                            None => return Err(ParserError::UnexpectedVariable(id.to_owned()))
+                                            None => return Err(ParserError::UnexpectedVariable(id))
                                         }
                                     } else {
                                         return Err(ParserError::UnexpectedType(t.clone()))
@@ -611,7 +611,7 @@ impl<'a> Parser<'a> {
                                     } else if let Ok(builder) = self.struct_manager.get_by_name(&id) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else {
-                                        return Err(ParserError::UnexpectedVariable(id.to_owned()))
+                                        return Err(ParserError::UnexpectedVariable(id))
                                     }
                                 }
                             }
@@ -890,7 +890,7 @@ impl<'a> Parser<'a> {
 
         // Variable name must start with a alphabetic character
         if !ignored && !name.starts_with(char::is_alphabetic) {
-            return Err(ParserError::VariableMustStartWithAlphabetic(name.to_owned()))
+            return Err(ParserError::VariableMustStartWithAlphabetic(name))
         }
 
         self.expect_token(Token::Colon)?;
@@ -1306,7 +1306,7 @@ impl<'a> Parser<'a> {
         match name.chars().nth(0) {
             Some(v) => {
                 if !v.is_ascii_alphabetic() || !v.is_uppercase() {
-                    return Err(ParserError::InvalidStructureName(name.to_owned()))
+                    return Err(ParserError::InvalidStructureName(name))
                 }
             },
             None => return Err(ParserError::EmptyStructName)

@@ -709,6 +709,7 @@ name = "xelis-parser"
 version = "0.1.0"
 dependencies = [
  "log",
+ "thiserror",
  "xelis-ast",
  "xelis-builder",
  "xelis-environment",

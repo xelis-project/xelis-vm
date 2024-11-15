@@ -9,3 +9,4 @@ xelis-types = { path = "../types" }
 xelis-builder = { path = "../builder" }
 xelis-environment = { path = "../environment" }
 log = "0.4.22"
+thiserror = "2.0.3"
