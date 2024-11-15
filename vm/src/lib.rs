@@ -615,13 +615,8 @@ mod full_tests {
                 return (x + y as u256) as u64
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30u32.into()));
+
+        assert_eq!(run_code(code), Value::U64(30u32.into()));
     }
 
     #[test]
@@ -633,13 +628,8 @@ mod full_tests {
                 return y
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(20));
+
+        assert_eq!(run_code(code), Value::U64(20));
     }
     
     #[test]
@@ -651,13 +641,8 @@ mod full_tests {
                 return y
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30));
+
+        assert_eq!(run_code(code), Value::U64(30));
     }
     
     #[test]
@@ -671,13 +656,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(20));
+
+        assert_eq!(run_code(code), Value::U64(20));
     }
     
     #[test]
@@ -695,13 +675,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(1).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+
+        assert_eq!(run_code(code), Value::U64(10));
     }
     
     #[test]
@@ -719,13 +694,8 @@ mod full_tests {
                 return panic("x is not 10")
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(1).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+
+        assert_eq!(run_code(code), Value::U64(10));
     }
     
     #[test]
@@ -743,13 +713,8 @@ mod full_tests {
                 return panic("x is not 10")
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(1).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(0));
+
+        assert_eq!(run_code(code), Value::U64(0));
     }
     
     #[test]
@@ -763,13 +728,8 @@ mod full_tests {
                 return panic("unexpected")
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+
+        assert_eq!(run_code(code), Value::U64(10));
     }
     
     #[test]
@@ -785,13 +745,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30));
+
+        assert_eq!(run_code(code), Value::U64(30));
     }
     
     #[test]
@@ -807,13 +762,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(20));
+
+        assert_eq!(run_code(code), Value::U64(20));
     }
     
     #[test]
@@ -830,13 +780,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(20));
+
+        assert_eq!(run_code(code), Value::U64(20));
     }
     
     #[test]
@@ -854,13 +799,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30));
+
+        assert_eq!(run_code(code), Value::U64(30));
     }
     
     #[test]
@@ -874,13 +814,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+
+        assert_eq!(run_code(code), Value::U64(10));
     }
     
     #[test]
@@ -894,13 +829,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+
+        assert_eq!(run_code(code), Value::U64(10));
     }
     
     #[test]
@@ -916,13 +846,8 @@ mod full_tests {
                 return t.x + t.y
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30));
+
+        assert_eq!(run_code(code), Value::U64(30));
     }
 
     #[test]
@@ -939,13 +864,8 @@ mod full_tests {
                 return t.x + t.y
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(50));
+
+        assert_eq!(run_code(code), Value::U64(50));
     }
     
     #[test]
@@ -959,13 +879,8 @@ mod full_tests {
                 return add(10, 20)
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(1).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(30));
+
+        assert_eq!(run_code(code), Value::U64(30));
     }
     
     #[test]
@@ -976,13 +891,8 @@ mod full_tests {
                 return arr[0] + arr[1] + arr[2]
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(60));
+
+        assert_eq!(run_code(code), Value::U64(60));
     }
     
     #[test]
@@ -997,13 +907,8 @@ mod full_tests {
                 return t.arr[0] + t.arr[1] + t.arr[2]
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(60));
+
+        assert_eq!(run_code(code), Value::U64(60));
     }
     
     #[test]
@@ -1020,13 +925,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(5));
+
+        assert_eq!(run_code(code), Value::U64(5));
     }
     
     #[test]
@@ -1043,13 +943,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(5));
+
+        assert_eq!(run_code(code), Value::U64(5));
     }
     
     #[test]
@@ -1065,13 +960,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(100));
+
+        assert_eq!(run_code(code), Value::U64(100));
     }
     
     #[test]
@@ -1087,13 +977,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(60));
+
+        assert_eq!(run_code(code), Value::U64(60));
     }
 
     #[test]
@@ -1107,13 +992,8 @@ mod full_tests {
                 return x
             }
         "#;
-    
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(45));
+
+        assert_eq!(run_code(code), Value::U64(45));
     }
 
     #[test]
@@ -1125,12 +1005,7 @@ mod full_tests {
             }
         "#;
     
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(1));
+        assert_eq!(run_code(code), Value::U64(1));
     }
 
 
@@ -1143,12 +1018,7 @@ mod full_tests {
             }
         "#;
     
-        let (module, environment) = prepare_module(code);
-    
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(1));
+        assert_eq!(run_code(code), Value::U64(1));
     }
 
     #[test]
@@ -1160,12 +1030,10 @@ mod full_tests {
             }
         "#;
     
-        let (module, environment) = prepare_module(code);
-
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
     }
 
     #[test]
@@ -1177,12 +1045,10 @@ mod full_tests {
             }
         "#;
     
-        let (module, environment) = prepare_module(code);
-
-        let mut vm = VM::new(&module, &environment);
-        vm.invoke_chunk_id(0).unwrap();
-        let value = vm.run().unwrap();
-        assert_eq!(value, Value::U64(10));
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
     }
 
     #[test]
@@ -1196,7 +1062,7 @@ mod full_tests {
                 return x
             }"#;
 
-        run_code(code);
+        assert_eq!(run_code(code), Value::U64(1000000));
 
         let mut code = r#"
             entry main() {
@@ -1205,7 +1071,7 @@ mod full_tests {
         "#.to_string() + "+ a + a ".repeat(10000).as_str();
         code.push_str("return x }");
 
-        run_code(&code);
+        assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
     }
 
     #[test]
