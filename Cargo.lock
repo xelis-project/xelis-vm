@@ -727,6 +727,7 @@ name = "xelis-vm"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "thiserror",
  "xelis-builder",
  "xelis-bytecode",
  "xelis-compiler",
