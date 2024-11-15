@@ -1,13 +1,17 @@
 mod opcode;
 
+use log::{debug, trace};
 use opcode::OpCodeWithArgs;
 
+use thiserror::Error;
 use xelis_types::Value;
 use xelis_bytecode::{Chunk, Module};
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AssemblerError {
+    #[error("Error on opcode: {0}")]
     OpCode(&'static str),
+    #[error("Expected a chunk")]
     ExpectedChunk,
 }
 
@@ -22,7 +26,7 @@ pub struct Assembler<'a> {
 impl<'a> Assembler<'a> {
     // Create a new assembler with the given source code
     pub fn new(source: &'a str) -> Self {
-        Assembler {
+        Self {
             module: Module::new(),
             source,
             chunks_labels: Vec::new(),
@@ -32,6 +36,7 @@ impl<'a> Assembler<'a> {
 
     // Add a constant to the module and return its index
     pub fn add_constant(&mut self, value: Value) -> usize {
+        trace!("Adding constant: {:?}", value);
         self.module.add_constant(value)
     }
 
@@ -41,8 +46,10 @@ impl<'a> Assembler<'a> {
         for line in self.source.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with("//") {
+                trace!("Ignoring line: {}", line);
                 // Ignore comments and empty lines
             } else if line.starts_with("#") {
+                debug!("Creating new chunk: {}", &line[1..]);
                 // Push the previous chunk and create a new one
                 if let Some(chunk) = chunk.take() {
                     self.module.add_chunk(chunk);
@@ -51,13 +58,16 @@ impl<'a> Assembler<'a> {
                 chunk = Some(Chunk::new());
                 self.chunks_labels.push(&line[1..]);
             } else if line.starts_with(":") {
+                debug!("Registering jump label: {}", &line[1..]);
                 // Register a jump label for the next instruction
                 let c = chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?;
                 self.jump_labels.push((&line[1..], c.index() as u32));
             } else {
+                debug!("Assembling line: {}", line);
                 let op = OpCodeWithArgs::from_str_with_labels(line, &self.chunks_labels, &self.jump_labels)
                     .map_err(AssemblerError::OpCode)?;
 
+                trace!("Assembled: {:?}", op);
                 op.write_to_chunk(chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?);
             }
         }
@@ -73,7 +83,6 @@ impl<'a> Assembler<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::OpCode;
-
     use super::*;
 
     #[test]
