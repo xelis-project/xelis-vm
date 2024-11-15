@@ -396,6 +396,7 @@ impl<'a> Parser<'a> {
                 self.expect_token(Token::Comma)?;
             }
         }
+        self.expect_token(Token::BraceClose)?;
 
         Ok(fields)
     }
@@ -437,7 +438,6 @@ impl<'a> Parser<'a> {
             fields_expressions.push(field_expr);
         }
 
-        self.expect_token(Token::BraceClose)?;
         Ok(Expression::StructConstructor(fields_expressions, struct_type))
     }
 
@@ -447,6 +447,7 @@ impl<'a> Parser<'a> {
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         // If its an enum variant with fields
         let fields = if self.peek_is(Token::BraceOpen) {
+            self.expect_token(Token::BraceOpen)?;
             self.read_constructor_fields(context)?
         } else {
             Vec::new()
@@ -2241,6 +2242,62 @@ mod tests {
             Token::Colon,
             Token::Colon,
             Token::Identifier("HELLO"),
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_enum_with_fields() {
+        // enum Message { HELLO { a: u64 }, WORLD { b: string } }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("HELLO"),
+            Token::BraceOpen,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("WORLD"),
+            Token::BraceOpen,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::String,
+            Token::BraceClose,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens.clone());
+        assert_eq!(program.enums().len(), 1);
+
+        // Also test with a environment
+        let mut env = EnvironmentBuilder::new();
+        env.register_enum("Message", vec![
+            ("HELLO", vec![("a", Type::U64)]),
+            ("WORLD", vec![("b", Type::String)])
+        ]);
+
+        // Create an enum instance
+        // let msg: Message = Message::HELLO { a: 0 };
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Identifier("Message"),
+            Token::OperatorAssign,
+            Token::Identifier("Message"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("HELLO"),
+            Token::BraceOpen,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose
         ];
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);

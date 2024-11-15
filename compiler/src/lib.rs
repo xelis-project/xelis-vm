@@ -1057,4 +1057,21 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_enum_with_fields() {
+        let (program, environment) = prepare_program("enum Test { A, B { value: u64 } } fn main() -> Test { return Test::B { value: 1 } }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::NewEnum.as_byte(), 0, 0, 1,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
 }
