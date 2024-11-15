@@ -1,6 +1,7 @@
 mod error;
 
 use std::iter;
+use log::{trace, warn};
 use xelis_ast::{
     Expression,
     FunctionType,
@@ -40,7 +41,7 @@ pub struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     // Create a new compiler
     pub fn new(program: &'a Program, environment: &'a Environment) -> Self {
-        Compiler {
+        Self {
             program,
             environment,
             module: Module::new(),
@@ -53,6 +54,7 @@ impl<'a> Compiler<'a> {
 
     // Map the operator to the opcode
     fn map_operator_to_opcode(op: &Operator) -> Result<OpCode, CompilerError> {
+        trace!("Mapping operator to opcode: {:?}", op);
         Ok(match op {
             Operator::Plus => OpCode::Add,
             Operator::Minus => OpCode::Sub,
@@ -81,6 +83,7 @@ impl<'a> Compiler<'a> {
 
     // Emit a memory store
     fn memstore(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
+        trace!("Emitting memory store");
         chunk.emit_opcode(OpCode::MemorySet);
         let id = self.memstore_ids.last_mut().ok_or(CompilerError::ExpectedMemstoreId)?;
         chunk.write_u16(*id);
@@ -93,6 +96,7 @@ impl<'a> Compiler<'a> {
 
     #[inline(always)]
     fn add_value_on_stack(&mut self, index: usize) -> Result<(), CompilerError> {
+        trace!("Adding value on stack at instruction {}", index);
         let on_stack = self.values_on_stack.last_mut()
         .ok_or(CompilerError::ExpectedStackScope)?;
         on_stack.push(index);
@@ -107,6 +111,7 @@ impl<'a> Compiler<'a> {
 
     #[inline(always)]
     fn decrease_values_on_stack_by(&mut self, amount: usize) -> Result<(), CompilerError> {
+        trace!("Decreasing values on stack by {}", amount);
         let on_stack = self.values_on_stack.last_mut()
             .ok_or(CompilerError::ExpectedStackScope)?;
 
@@ -121,6 +126,7 @@ impl<'a> Compiler<'a> {
 
     // Compile the expression
     fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) -> Result<(), CompilerError> {
+        trace!("Compiling expression: {:?}", expr);
         match expr {
             Expression::Value(v) => {
                 // Compile the value
@@ -393,6 +399,7 @@ impl<'a> Compiler<'a> {
 
     // Push the next register store id
     fn push_mem_scope(&mut self) {
+        trace!("Pushing memory scope");
         self.memstore_ids.push(self.memstore_ids.last().copied().unwrap_or(0));
         self.values_on_stack.push(Vec::new());
     }
@@ -410,10 +417,13 @@ impl<'a> Compiler<'a> {
                 .filter(|v| *v != stack_len)
                 .unwrap_or(0);
 
+            trace!("Previous stack: {}, Current stack: {}", previous_stack, stack_len);
+
             let dangling = stack_len.checked_sub(previous_stack)
                 .ok_or(CompilerError::LessValueOnStackThanPrevious)?;
-
+            
             if dangling > 0 {
+                warn!("Dangling values on the stack: {}", dangling);
                 if dangling > u8::MAX as usize {
                     return Err(CompilerError::TooMuchDanglingValueOnStack);
                 }
@@ -429,6 +439,7 @@ impl<'a> Compiler<'a> {
 
     // Pop the next register store id
     fn pop_mem_scope(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
+        trace!("Popping memory scope");
         self.memstore_ids.pop().ok_or(CompilerError::ExpectedMemoryScope)?;
         self.handle_dangle_values_on_stack(chunk)?;
 
@@ -437,19 +448,23 @@ impl<'a> Compiler<'a> {
 
     // Start a loop by pushing the break/continue vec to track them
     fn start_loop(&mut self) {
+        trace!("Starting loop");
         self.loop_break_patch.push(Vec::new());
         self.loop_continue_patch.push(Vec::new());
     }
 
     // End the loop by patching all continue/break
     fn end_loop(&mut self, chunk: &mut Chunk, start_index: usize, end_index: usize) -> Result<(), CompilerError> {
+        trace!("Ending loop");
         // Patch all the break jumps
         for jump in self.loop_break_patch.pop().ok_or(CompilerError::ExpectedBreak)? {
+            trace!("Patching break jump at index {}", jump);
             chunk.patch_jump(jump, end_index as u32);
         }
 
         // Patch all the continue jumps
         for jump in self.loop_continue_patch.pop().ok_or(CompilerError::ExpectedContinue)? {
+            trace!("Patching continue jump at index {}", jump);
             chunk.patch_jump(jump, start_index as u32);
         }
 
@@ -458,6 +473,7 @@ impl<'a> Compiler<'a> {
 
     // Compile the statements
     fn compile_statements(&mut self, chunk: &mut Chunk, statements: &[Statement]) -> Result<(), CompilerError> {
+        trace!("Compiling statements: {:?}", statements);
         // Compile the statements
         for statement in statements {
             match statement {
@@ -652,6 +668,7 @@ impl<'a> Compiler<'a> {
 
     // Compile the function
     fn compile_function(&mut self, function: &FunctionType) -> Result<(), CompilerError> {
+        trace!("Compiling function: {:?}", function);
         let mut chunk = Chunk::new();
 
         // Push the new scope for ids
@@ -691,10 +708,12 @@ impl<'a> Compiler<'a> {
     pub fn compile(mut self) -> Result<Module, CompilerError> {
         // Include the structs created
         for struct_type in self.program.structures() {
+            trace!("Adding struct: {:?}", struct_type);
             self.module.add_struct(struct_type.clone());
         }
 
         for enum_type in self.program.enums() {
+            trace!("Adding enum: {:?}", enum_type);
             self.module.add_enum(enum_type.clone());
         }
 

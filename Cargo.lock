@@ -675,6 +675,7 @@ dependencies = [
 name = "xelis-compiler"
 version = "0.1.0"
 dependencies = [
+ "log",
  "thiserror",
  "xelis-ast",
  "xelis-builder",
