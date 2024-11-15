@@ -66,7 +66,7 @@ impl<'a> Builder<'a> for EnumBuilder<'a> {
 impl<'a> BuilderType<EnumVariantBuilder<'a>> for EnumTypeBuilder<'a> {
     fn with(id: IdentifierType, variants: Vec<EnumVariantBuilder<'a>>) -> Self {
         let types = variants.iter()
-            .map(|v| EnumVariant(v.iter()
+            .map(|v| EnumVariant::new(v.iter()
                 .map(|(_, t)| t.clone())
                 .collect()
             ).clone())

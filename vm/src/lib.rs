@@ -10,7 +10,7 @@ pub use chunk::*;
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use xelis_types::{Path, StructType, Value};
+use xelis_types::{EnumType, Path, StructType, Value};
 use xelis_bytecode::Module;
 
 // 64 elements maximum in the call stack
@@ -28,14 +28,35 @@ pub struct Backend<'a> {
 
 impl<'a> Backend<'a> {
     // Get a struct with an id
-    // TODO: support env structs
-    pub fn get_struct_with_id(&self, id: u16) -> Result<&StructType, VMError> {
-        self.module.get_struct_at(id as usize).ok_or(VMError::StructNotFound)
+    #[inline]
+    pub fn get_struct_with_id(&self, mut id: usize) -> Result<&StructType, VMError> {
+        let env_structs = self.environment.get_structures();
+        if let Some(struct_type) = env_structs.get(id) {
+            return Ok(struct_type);
+        } else {
+            id -= env_structs.len();
+        }
+
+        self.module.get_struct_at(id).ok_or(VMError::StructNotFound)
     }
 
-    // Get a constant with an id
-    pub fn get_constant_with_id(&self, id: u16) -> Result<&Value, VMError> {
-        self.module.get_constant_at(id as usize).ok_or(VMError::ConstantNotFound)
+    // Get a constant registered in the module using its id
+    #[inline(always)]
+    pub fn get_constant_with_id(&self, id: usize) -> Result<&Value, VMError> {
+        self.module.get_constant_at(id).ok_or(VMError::ConstantNotFound)
+    }
+
+    // Get an enum with an id
+    #[inline]
+    pub fn get_enum_with_id(&self, mut id: usize) -> Result<&EnumType, VMError> {
+        let env_enums = self.environment.get_enums();
+        if let Some(enum_type) = env_enums.get(id) {
+            return Ok(enum_type);
+        } else {
+            id -= env_enums.len();
+        }
+
+        self.module.get_enum_at(id).ok_or(VMError::EnumNotFound)
     }
 }
 
@@ -1164,6 +1185,47 @@ mod full_tests {
                 debug(x)
                 x[1][0] = 20;
                 return x[0][0]
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_self_reference_struct() {
+        let code = r#"
+            struct Test {
+                x: u64
+            }
+
+            entry main() {
+                let t: Test[] = [Test { x: 10 }];
+                t.push(t.get(0).unwrap());
+                t[1].x = 20;
+                return t[0].x
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_enum() {
+        let code = r#"
+            enum Test {
+                A,
+                B { value: u64 }
+            }
+
+            entry main() {
+                let x: Test = Test::B { value: 10 };
+                return 10
             }
         "#;
 

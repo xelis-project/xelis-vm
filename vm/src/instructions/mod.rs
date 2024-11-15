@@ -45,6 +45,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::NewStruct.as_usize()] = new_struct;
         instructions[OpCode::NewRange.as_usize()] = new_range;
         instructions[OpCode::NewMap.as_usize()] = new_map;
+        instructions[OpCode::NewEnum.as_usize()] = new_enum;
 
         instructions[OpCode::Jump.as_usize()] = jump;
         instructions[OpCode::JumpIfFalse.as_usize()] = jump_if_false;

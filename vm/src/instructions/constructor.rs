@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use xelis_types::{Path, Value};
+use xelis_types::{EnumValueType, Path, Value};
 
 use crate::{stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;
@@ -18,7 +18,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
 
 pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
-    let struct_type = backend.get_struct_with_id(id)?;
+    let struct_type = backend.get_struct_with_id(id as usize)?;
 
     let mut fields = VecDeque::new();
     for _ in 0..struct_type.fields().len() {
@@ -57,5 +57,22 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     }
 
     stack.push_stack_unchecked(Path::Owned(Value::Map(map)));
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    let id = manager.read_u16()?;
+    let enum_type = backend.get_enum_with_id(id as usize)?;
+
+    let variant_id = manager.read_u8()?;
+    let variant = enum_type.get_variant(variant_id)
+        .ok_or(VMError::InvalidEnumVariant)?;
+
+    let mut values = VecDeque::new();
+    for _ in variant.fields() {
+        values.push_front(stack.pop_stack()?.into_ownable());
+    }
+
+    stack.push_stack(Path::Owned(Value::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;
     Ok(InstructionResult::Nothing)
 }

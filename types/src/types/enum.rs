@@ -6,7 +6,19 @@ use super::Type;
 // Represents a variant of an enum
 // This is similar to a struct
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct EnumVariant(pub Vec<Type>);
+pub struct EnumVariant(Vec<Type>);
+
+impl EnumVariant {
+    #[inline(always)]
+    pub fn new(types: Vec<Type>) -> Self {
+        Self(types)
+    }
+
+    #[inline(always)]
+    pub fn fields(&self) -> &[Type] {
+        &self.0
+    }
+}
 
 // Represents an enum like in Rust with variants
 // Support up to 255 variants
@@ -44,6 +56,12 @@ impl EnumType {
     #[inline(always)]
     pub fn variants(&self) -> &Vec<EnumVariant> {
         &self.0.variants
+    }
+
+    // Get a variant by its id
+    #[inline(always)]
+    pub fn get_variant(&self, id: u8) -> Option<&EnumVariant> {
+        self.0.variants.get(id as usize)
     }
 }
 

@@ -1,6 +1,6 @@
 
 use std::collections::HashSet;
-use xelis_types::{StructType, Value};
+use xelis_types::{EnumType, StructType, Value};
 
 use super::Chunk;
 
@@ -14,17 +14,20 @@ pub struct Module {
     // Chunks callable from external programs
     entry_chunk_ids: HashSet<usize>,
     // registered structs
-    structs: Vec<StructType>
+    structs: Vec<StructType>,
+    // registered enums
+    enums: Vec<EnumType>
 }
 
 impl Module {
     // Create a new module
     pub fn new() -> Self {
-        Module {
+        Self {
             constants: Vec::new(),
             chunks: Vec::new(),
             entry_chunk_ids: HashSet::new(),
-            structs: Vec::new()
+            structs: Vec::new(),
+            enums: Vec::new()
         }
     }
 
@@ -95,6 +98,12 @@ impl Module {
         self.chunks.get_mut(index)
     }
 
+    // Get all the structs declared in the module
+    #[inline]
+    pub fn structs(&self) -> &[StructType] {
+        &self.structs
+    }
+
     // Add a struct to the module
     #[inline]
     pub fn add_struct(&mut self, structure: StructType) {
@@ -105,5 +114,23 @@ impl Module {
     #[inline]
     pub fn get_struct_at(&self, index: usize) -> Option<&StructType> {
         self.structs.get(index)
+    }
+
+    // Get all the enums declared in the module
+    #[inline]
+    pub fn enums(&self) -> &[EnumType] {
+        &self.enums
+    }
+
+    // Add an enum to the module
+    #[inline]
+    pub fn add_enum(&mut self, enumeration: EnumType) {
+        self.enums.push(enumeration);
+    }
+
+    // Get an enum at a specific index
+    #[inline]
+    pub fn get_enum_at(&self, index: usize) -> Option<&EnumType> {
+        self.enums.get(index)
     }
 }

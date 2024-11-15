@@ -694,6 +694,10 @@ impl<'a> Compiler<'a> {
             self.module.add_struct(struct_type.clone());
         }
 
+        for enum_type in self.program.enums() {
+            self.module.add_enum(enum_type.clone());
+        }
+
         // Compile the program
         for function in self.program.functions() {
             self.compile_function(function)?;
