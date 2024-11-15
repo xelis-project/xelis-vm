@@ -53,6 +53,12 @@ impl EnumValueType {
         Self { enum_type, variant_id }
     }
 
+    // Get the unique identifier of the enum
+    #[inline(always)]
+    pub fn id(&self) -> IdentifierType {
+        self.enum_type.id()
+    }
+
     // Get the enum type
     #[inline(always)]
     pub fn enum_type(&self) -> &EnumType {

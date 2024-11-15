@@ -175,6 +175,19 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
+            Expression::EnumConstructor(exprs, enum_type) => {
+                for expr in exprs {
+                    self.compile_expr(chunk, expr)?;
+                }
+
+                chunk.emit_opcode(OpCode::NewEnum);
+                // Because we write the type ID, we know how many expressions to read
+                chunk.write_u16(enum_type.id());
+                chunk.write_u8(enum_type.variant_id());
+
+                self.decrease_values_on_stack_by(exprs.len())?;
+                self.add_value_on_stack(chunk.last_index())?;
+            }
             Expression::Path(left, right) => {
                 // Compile the path
                 self.compile_expr(chunk, left)?;
@@ -1024,6 +1037,22 @@ mod tests {
                 OpCode::AssignAdd.as_byte(),
                 OpCode::Jump.as_byte(), 6, 0, 0, 0,
                 OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_enum() {
+        let (program, environment) = prepare_program("enum Test { A, B } fn main() -> Test { return Test::A }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::NewEnum.as_byte(), 0, 0, 0,
                 OpCode::Return.as_byte()
             ]
         );
