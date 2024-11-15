@@ -16,9 +16,6 @@ Currently, mathematical operations don't follow the priority rules. Implementing
 - **Improve Parser**
 Parser is currently operating in a full recursive mode, which can create a stackoverflow in case of a too complex/deep expression to build. Rewriting the key parts to operate in an iterative way would prevent any stack overflow.
 
-- **Enums**
-Enums are useful for future events system.  Each events will be broadcasted by the XELIS daemon through the WebSocket Server to all clients that subscribed to it. They will also be registered in the events history of a block.
-
 - **Imports**
 Allow to import other files to have a better code organization.
 
