@@ -5,6 +5,7 @@ use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque}
 };
+use log::trace;
 use xelis_builder::{
     Builder,
     EnumManager,
@@ -133,6 +134,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_generic_type(&mut self) -> Result<Type, ParserError<'a>> {
+        trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
         let token = self.advance()?;
         let inner = self.get_type_from_token(token)?;
@@ -140,12 +142,14 @@ impl<'a> Parser<'a> {
     }
 
     fn get_single_inner_type(&mut self) -> Result<Type, ParserError<'a>> {
+        trace!("Get single inner type");
         let inner = self.get_generic_type()?;
         self.expect_token(Token::OperatorGreaterThan)?;
         Ok(inner)
     }
 
     fn get_type_from_token(&mut self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
+        trace!("Get type from token: {:?}", token);
         Ok(match token {
             Token::Number(inner) => match inner {
                 NumberType::U8 => Type::U8,
@@ -195,6 +199,7 @@ impl<'a> Parser<'a> {
      * - T[] (where T is any above Type)
      */
     fn read_type(&mut self) -> Result<Type, ParserError<'a>> {
+        trace!("Read type");
         let token = self.advance()?;
         let mut _type = self.get_type_from_token(token)?;
 
@@ -225,6 +230,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_from_generic_type<'b>(&'b self, on_type: Option<&Type>, _type: &'b Type, path: Option<&Expression>, context: &'b Context<'a>) -> Result<Type, ParserError<'a>> {
+        trace!("Get from generic type: {:?}", _type);
         Ok(match _type {
             Type::T(id) => match on_type {
                 Some(t) => t.get_generic_type(*id).ok_or(ParserError::InvalidTypeT)?.clone(),
@@ -244,6 +250,7 @@ impl<'a> Parser<'a> {
     // this function don't verify, but only returns the type of an expression
     // all tests should be done when constructing an expression, not here
     fn get_type_from_expression_internal<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context<'a>) -> Result<Option<Cow<'b, Type>>, ParserError<'a>> {
+        trace!("Get type from expression: {:?}", expression);
         let _type: Cow<'b, Type> = match expression {
             Expression::ArrayConstructor(ref values) => match values.first() {
                 Some(v) => Cow::Owned(Type::Array(Box::new(self.get_type_from_expression(on_type, v, context)?.into_owned()))),
@@ -345,6 +352,8 @@ impl<'a> Parser<'a> {
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
     fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read function call: {}", name);
+
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -381,6 +390,8 @@ impl<'a> Parser<'a> {
     // or with values
     // { field1: value1, field2: value2, ... }
     fn read_constructor_fields(&mut self, context: &mut Context<'a>) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
+        trace!("Read constructor fields");
+
         let mut fields = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
             let field_name = self.next_identifier()?;
@@ -418,6 +429,7 @@ impl<'a> Parser<'a> {
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
         let fields = self.read_constructor_fields(context)?;
 
@@ -445,6 +457,7 @@ impl<'a> Parser<'a> {
     // enum_name::variant_name { field1: value1, field2: value2 }
     // Or if no fields: enum_name::variant_name
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
         // If its an enum variant with fields
         let fields = if self.peek_is(Token::BraceOpen) {
             self.expect_token(Token::BraceOpen)?;
@@ -486,6 +499,7 @@ impl<'a> Parser<'a> {
         if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
+            trace!("Read type constant: {:?}::{}", _type, constant_name);
             self.environment.get_constant_by_name(&_type, &constant_name)
                 .map(|v| Expression::Value(v.clone()))
                 .ok_or_else(|| ParserError::ConstantNotFound(_type, constant_name))
@@ -500,6 +514,7 @@ impl<'a> Parser<'a> {
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
     fn read_expr(&mut self, on_type: Option<&Type>, allow_ternary: bool, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read expression");
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while self.peek()
@@ -517,8 +532,8 @@ impl<'a> Parser<'a> {
                     || (**peek == Token::BracketOpen && last_expression.is_none())
             }).is_some()
         {
-
             let token = self.advance()?;
+            trace!("token: {:?}", token);
             let expr: Expression = match token {
                 Token::BracketOpen => {
                     match last_expression {
@@ -801,6 +816,8 @@ impl<'a> Parser<'a> {
     // The keys must be of the same type and the values must be of the same type
     // you can use direct values like { "hello": "world" }
     fn read_map_constructor(&mut self, mut key_type: Option<Type>, mut value_type: Option<Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read map constructor");
+
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
             let key = self.read_expr(None, true, true, key_type.as_ref(), context)?;
@@ -862,6 +879,7 @@ impl<'a> Parser<'a> {
      */
     fn read_variable(&mut self, context: &mut Context<'a>, is_const: bool) -> Result<DeclarationStatement, ParserError<'a>> {
         let name: &'a str = self.next_identifier()?;
+        trace!("Read variable: {}", name);
 
         // Constants must be uppercase
         if is_const && name.to_uppercase() != name {
@@ -1067,8 +1085,10 @@ impl<'a> Parser<'a> {
     // return type is used to verify that the last statement is a return with a valid value type
     // consume_brace is used to know if we should consume the open brace
     fn read_statements(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError<'a>> {
+        trace!("Read statements");
         let mut statements: Vec<Statement> = Vec::new();
         while let Some(statement) = self.read_statement(context, return_type)? {
+            trace!("statement: {:?}", statement);
             statements.push(statement);
         }
 
@@ -1083,6 +1103,7 @@ impl<'a> Parser<'a> {
             self.expect_token(Token::Colon)?;
             let value_type = self.read_type()?;
 
+            trace!("Read parameter: `{}: {:?}`", name, value_type);
             parameters.push((name, value_type));
 
             if self.peek_is_not(Token::Comma) {
@@ -1134,6 +1155,7 @@ impl<'a> Parser<'a> {
      * - Entry function is a "public callable" function and must return a u64 value
      */
     fn read_function(&mut self, entry: bool, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
+        trace!("Read function");
         context.begin_scope();
 
         let token = self.advance()?;
@@ -1217,6 +1239,8 @@ impl<'a> Parser<'a> {
     // or with an alias:
     // import "filename.xel" as alias;
     fn read_import(&mut self) -> Result<(), ParserError<'a>> {
+        trace!("Read import");
+
         let path = self.advance()?;
 
         let Token::Value(Literal::String(path)) = path else {
@@ -1259,6 +1283,7 @@ impl<'a> Parser<'a> {
 
     // Verify that a type name is not already used
     fn is_name_available(&self, name: &str) -> bool {
+        trace!("Check if name is available: {}", name);
         self.struct_manager.get_by_name(name).is_err()
             && self.enum_manager.get_by_name(name).is_err()
     }
@@ -1270,6 +1295,7 @@ impl<'a> Parser<'a> {
      */
     fn read_struct(&mut self) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
+        trace!("Read struct: {}", name);
 
         // Verify that we don't have a type with the same name
         if !self.is_name_available(name) {
@@ -1309,6 +1335,7 @@ impl<'a> Parser<'a> {
      */
     fn read_enum(&mut self) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
+        trace!("Read enum: {}", name);
 
         // Verify that we don't have a type with the same name
         if !self.is_name_available(name) {

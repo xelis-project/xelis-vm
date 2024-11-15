@@ -708,6 +708,7 @@ dependencies = [
 name = "xelis-parser"
 version = "0.1.0"
 dependencies = [
+ "log",
  "xelis-ast",
  "xelis-builder",
  "xelis-environment",
