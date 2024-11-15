@@ -1,4 +1,5 @@
 use xelis_types::{
+    EnumValueType,
     IdentifierType,
     StructType,
     Type,
@@ -15,6 +16,7 @@ pub enum Expression {
     StructConstructor(Vec<Expression>, StructType),
     RangeConstructor(Box<Expression>, Box<Expression>), // start, end
     MapConstructor(Vec<(Expression, Expression)>, Type, Type),
+    EnumConstructor(Vec<Expression>, EnumValueType),
     Variable(IdentifierType), // variable name
     Value(Value), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),

@@ -4,9 +4,12 @@ use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug)]
 pub enum ParserError<'a> {
+    InvalidFieldName(&'a str, &'a str),
+    InvalidEnumFieldName(&'a str),
     TypeNameAlreadyUsed(&'a str),
     EmptyEnumName,
     InvalidEnumName(&'a str),
+    EnumVariantNotFound(&'a str),
     ConstantNotFound(Type, &'a str),
     NotIterable(Type),
     InvalidRangeType(Type, Type),
@@ -14,6 +17,7 @@ pub enum ParserError<'a> {
     ValueError(ValueError),
     BuilderError(BuilderError),
     InvalidStructFieldOrder,
+    InvalidFieldCount,
     UnexpectedPathInFunctionCall,
     InvalidImport,
     InvalidImportPath(String),

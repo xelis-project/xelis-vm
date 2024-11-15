@@ -456,6 +456,14 @@ impl Value {
         }
     }
 
+    // Cast the value to the expected type
+    pub fn mut_checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<(), ValueError> {
+        let take = std::mem::take(self);
+        let value = take.checked_cast_to_primitive_type(expected)?;
+        *self = value;
+        Ok(())
+    }
+
     // Cast without loss in the expected type
     #[inline]
     pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Value, ValueError> {

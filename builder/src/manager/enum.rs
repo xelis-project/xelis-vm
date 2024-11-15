@@ -11,6 +11,15 @@ pub struct EnumTypeBuilder<'a> {
     variants: Vec<EnumVariantBuilder<'a>>
 }
 
+impl<'a> EnumBuilder<'a> {
+    // This function is used to get the variant and its id by its name
+    pub fn get_variant_by_name(&'a self, name: &str) -> Option<(u8, &'a EnumVariantBuilder)> {
+        self.variants_names.iter()
+            .position(|n| n == &name)
+            .map(|i| (i as u8, &self.inner.variants[i]))
+    }
+}
+
 impl EnumTypeBuilder<'_> {
     pub fn variants(&self) -> &Vec<EnumVariantBuilder> {
         &self.variants

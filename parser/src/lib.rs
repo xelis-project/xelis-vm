@@ -250,6 +250,7 @@ impl<'a> Parser<'a> {
                 None => return Err(ParserError::EmptyArrayConstructor) // cannot determine type from empty array
             },
             Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
+            Expression::EnumConstructor(_, _type) => Cow::Owned(Type::Enum(_type.enum_type().clone())),
             Expression::Variable(ref var_name) => match on_type {
                 Some(t) => {
                     if let Type::Struct(_type) = t {
@@ -375,54 +376,119 @@ impl<'a> Parser<'a> {
         Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
     }
 
+    // Read fields of a constructor with the following syntax:
+    // { field1, field2, ... }
+    // or with values
+    // { field1: value1, field2: value2, ... }
+    fn read_constructor_fields(&mut self, context: &mut Context<'a>) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
+        let mut fields = Vec::new();
+        while self.peek_is_not(Token::BraceClose) {
+            let field_name = self.next_identifier()?;
+            let expr = match self.advance()? {
+                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name).ok_or_else(|| ParserError::UnexpectedVariable(field_name.to_owned()))?),
+                Token::Colon => self.read_expression(context)?,
+                token => return Err(ParserError::UnexpectedToken(token))
+            };
+
+            fields.push((field_name, expr));
+
+            if self.peek_is(Token::Comma) {
+                self.expect_token(Token::Comma)?;
+            }
+        }
+
+        Ok(fields)
+    }
+
+    // Verify the type of an expression, if not the same, try to cast it with no loss
+    fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
+        let _type = self.get_type_from_expression(None, &expr, context)?.into_owned();
+        if _type != *expected_type {
+            match expr {
+                Expression::Value(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)?,
+                _ => return Err(ParserError::InvalidValueType(_type, expected_type.clone()))
+            }
+        }
+        Ok(())
+    }
+
     // Read a struct constructor with the following syntax:
     // struct_name { field_name: value1, field2: value2 }
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
-    fn read_struct_constructor(&mut self, on_type: Option<&Type>, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.expect_token(Token::BraceOpen)?;
-        let mut fields = Vec::with_capacity(struct_type.fields().len());
-        for t in struct_type.fields() {
-            let field_name = self.next_identifier()?;
-            let field_value = match self.advance()? {
-                Token::Comma => {
-                    let id = context.get_variable_id(field_name)
-                        .ok_or_else(|| ParserError::UnexpectedVariable(field_name.to_owned()))?;
-                    Expression::Variable(id)
-                }
-                Token::Colon => {
-                    let value = self.read_expr(on_type, true, true, Some(t), context)?;
-                    if self.peek_is(Token::Comma) {
-                        self.advance()?;
-                    }
-                    value
-                }
-                token => return Err(ParserError::UnexpectedToken(token))
-            };
+        let fields = self.read_constructor_fields(context)?;
 
-            let field_type = self.get_type_from_expression(on_type, &field_value, context)?;
-            if !t.is_compatible_with(&field_type) {
-                return Err(ParserError::InvalidValueType(field_type.into_owned(), t.clone()))
+        if struct_type.fields().len() != fields.len() {
+            return Err(ParserError::InvalidFieldCount)
+        }
+
+        // Now verify that it match our struct
+        let builder = self.struct_manager.get_by_ref(&struct_type)?;
+        let mut fields_expressions = Vec::with_capacity(fields.len());
+        for ((field_name, mut field_expr), (field_type, field_name_expected)) in fields.into_iter().zip(struct_type.fields().iter().zip(builder.names())) {
+            if field_name != *field_name_expected {
+                return Err(ParserError::InvalidFieldName(field_name, field_name_expected))
             }
 
-            fields.push(field_value);
+            self.verify_type_of(&mut field_expr, field_type, context)?;
+
+            fields_expressions.push(field_expr);
         }
 
         self.expect_token(Token::BraceClose)?;
-        Ok(Expression::StructConstructor(fields, struct_type))
+        Ok(Expression::StructConstructor(fields_expressions, struct_type))
+    }
+
+    // Read an enum variant constructor with the following syntax:
+    // enum_name::variant_name { field1: value1, field2: value2 }
+    // Or if no fields: enum_name::variant_name
+    fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        // If its an enum variant with fields
+        let fields = if self.peek_is(Token::BraceOpen) {
+            self.read_constructor_fields(context)?
+        } else {
+            Vec::new()
+        };
+
+        let builder = self.enum_manager.get_by_ref(&enum_type)?;
+        let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
+            .ok_or_else(|| ParserError::EnumVariantNotFound(variant_name))?;
+
+        if variant_fields.len() != fields.len() {
+            return Err(ParserError::InvalidFieldCount)
+        }
+
+        let mut fields_expressions = Vec::with_capacity(variant_fields.len());
+        for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant_fields) {
+            if field_name != *expected_name {
+                return Err(ParserError::InvalidEnumFieldName(field_name))
+            }
+
+            self.verify_type_of(&mut field_expr, expected_type, context)?;
+
+            fields_expressions.push(field_expr);
+        }
+
+        Ok(Expression::EnumConstructor(fields_expressions, EnumValueType::new(enum_type, variant_id)))
     }
 
     // Read a constant from the environment
-    fn read_type_constant(&mut self, token: Token<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_type_constant(&mut self, token: Token<'a>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let _type = self.get_type_from_token(token)?;
         self.expect_token(Token::Colon)?;
         self.expect_token(Token::Colon)?;
 
         let constant_name = self.next_identifier()?;
 
-        self.environment.get_constant_by_name(&_type, &constant_name)
-            .map(|v| Expression::Value(v.clone()))
-            .ok_or_else(|| ParserError::ConstantNotFound(_type, constant_name))
+        if let Type::Enum(enum_type) = _type {
+            self.read_enum_variant_constructor(enum_type, constant_name, context)
+        } else {
+            self.environment.get_constant_by_name(&_type, &constant_name)
+                .map(|v| Expression::Value(v.clone()))
+                .ok_or_else(|| ParserError::ConstantNotFound(_type, constant_name))
+        }
     }
 
     // Read an expression with default parameters
@@ -508,7 +574,7 @@ impl<'a> Parser<'a> {
                     match self.peek()? {
                         // function call
                         Token::ParenthesisOpen => self.read_function_call(last_expression.take(), on_type, id, context)?,
-                        Token::Colon => self.read_type_constant(Token::Identifier(id))?,
+                        Token::Colon => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
@@ -527,7 +593,7 @@ impl<'a> Parser<'a> {
                                     if let Some(id) = context.get_variable_id(id) {
                                         Expression::Variable(id)
                                     } else if let Ok(builder) = self.struct_manager.get_by_name(&id) {
-                                        self.read_struct_constructor(on_type, builder.get_type().clone(), context)?
+                                        self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else {
                                         return Err(ParserError::UnexpectedVariable(id.to_owned()))
                                     }
@@ -702,7 +768,7 @@ impl<'a> Parser<'a> {
                         }
                         None => {
                             if token.is_type() {
-                                self.read_type_constant(token)?
+                                self.read_type_constant(token, context)?
                             } else if token == Token::BraceOpen {
                                 let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
                                     (Some(*key.clone()), Some(*value.clone()))
@@ -731,6 +797,8 @@ impl<'a> Parser<'a> {
 
     // Read a map constructor with the following syntax:
     // { key1: value1, key2: value2 }
+    // The keys must be of the same type and the values must be of the same type
+    // you can use direct values like { "hello": "world" }
     fn read_map_constructor(&mut self, mut key_type: Option<Type>, mut value_type: Option<Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
@@ -2046,11 +2114,12 @@ mod tests {
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
         env.register_structure("Message", vec![
-            ("message_id", Type::U64),
+            ("message_id", Type::U8),
             ("message", Type::String)
         ]);
 
         // Create a struct instance
+        // let msg: Message = Message { message_id: 0, message: "hello" };
         let tokens = vec![
             Token::Let,
             Token::Identifier("msg"),
@@ -2071,6 +2140,37 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_struct_cast_error() {
+        // Also test with a environment
+        let mut env = EnvironmentBuilder::new();
+        env.register_structure("Message", vec![
+            ("message_id", Type::U8)
+        ]);
+
+        // Create a struct instance
+        // let msg: Message = Message { message_id: 0 };
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Identifier("Message"),
+            Token::OperatorAssign,
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("message_id"),
+            Token::Colon,
+            Token::Value(Literal::U64(5000)),
+            Token::BraceClose
+        ];
+
+        let mut parser = Parser::new(VecDeque::from(tokens), &env);
+        let mut context = Context::new();
+        context.begin_scope();
+
+        assert!(parser.read_statements(&mut context, &None).is_err());
     }
 
     #[test]

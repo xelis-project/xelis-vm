@@ -159,6 +159,14 @@ impl Type {
         }
     }
 
+    // check if the type is an enum
+    pub fn is_enum(&self) -> bool {
+        match self {
+            Type::Enum(_) => true,
+            _ => false
+        }
+    }
+
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {
