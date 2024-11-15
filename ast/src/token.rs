@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use xelis_types::U256;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NumberType {
     U8,
     U16,
@@ -120,7 +120,9 @@ pub enum Token<'a> {
     Import,
     From,
     As,
-    ReturnType
+    ReturnType,
+    Match,
+    FatArrow,
 }
 
 impl Token<'_> {
@@ -208,6 +210,8 @@ impl Token<'_> {
             "from" => From,
             "as" => As,
             "->" => ReturnType,
+            "match" => Match,
+            "=>" => FatArrow,
 
             e => Number(NumberType::value_of(e)?),
         })

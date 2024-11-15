@@ -1,6 +1,8 @@
+use std::{borrow::Cow, collections::VecDeque};
+use thiserror::Error;
+use log::{debug, trace};
 use xelis_ast::{Literal, NumberType, Token};
 use xelis_types::U256;
-use std::{borrow::Cow, collections::VecDeque};
 
 macro_rules! parse_number {
     ($self: expr, $t: ident, $l: ident, $s: expr, $radix: expr) => {
@@ -11,13 +13,18 @@ macro_rules! parse_number {
     };
 }
 
-#[derive(Debug)]
-pub enum LexerError { // left is line, right is column
+#[derive(Debug, Error)]
+pub enum LexerError {
+    #[error("End of file reached")]
     EndOfFile,
+    #[error("Failed to parse number at line {0} column {1}")]
     ParseToNumber(usize, usize),
+    #[error("No token found at line {0} column {1}")]
     NoTokenFound(usize, usize),
+    #[error("Expected character at line {0} column {1}")]
     ExpectedChar(usize, usize),
-    ExpectedType
+    #[error("Expected type at line {0} column {1}")]
+    ExpectedType(usize, usize)
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +61,7 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     // create a new lexer
     pub fn new(input: &'a str) -> Self {
-        Lexer {
+        Self {
             input,
             chars: input.chars().collect::<Vec<_>>().into(),
             pos: 0,
@@ -250,7 +257,7 @@ impl<'a> Lexer<'a> {
     // Read a number
     // Support base 10 and base 16, also support u128 numbers
     fn read_number(&mut self, c: char) -> Result<TokenResult<'a>, LexerError> {
-
+        trace!("reading number");
         // Default number type to use
         let mut number_type = None;
         let is_hex = c == '0' && self.peek()? == 'x';
@@ -280,7 +287,8 @@ impl<'a> Lexer<'a> {
                 if v.is_alphabetic() {
                     let s = self.read_while(|c| c.is_ascii_alphanumeric(), 1)?;
                     let Some(t) = NumberType::value_of(&s) else {
-                        return Err(LexerError::ExpectedType);
+                        debug!("Expected type at line {} column {} on `{}`", self.line, self.column, s);
+                        return Err(LexerError::ExpectedType(self.line, self.column));
                     };
 
                     number_type = Some(t);
@@ -314,6 +322,9 @@ impl<'a> Lexer<'a> {
             }
             None => parse_number!(self, u64, Number, v, radix),
         };
+
+        trace!("Number parsed: {:?}, radix: {:?}, type: {:?}", token, radix, number_type);
+
         Ok(TokenResult {
             token,
             line: self.line,
@@ -344,6 +355,8 @@ impl<'a> Lexer<'a> {
             *v == '_' || v.is_ascii_alphanumeric()
         }, diff)?;
 
+        trace!("searching token with: `{}`", value);
+
         let token = Token::value_of(value)
             .unwrap_or_else(|| Token::Identifier(value));
 
@@ -360,6 +373,7 @@ impl<'a> Lexer<'a> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
                 '\n' | '\r' | '\t' => {
+                    debug!("Skipping whitespace");
                     self.line += 1;
                     self.column = 0;
                     self.accept_generic = false;
@@ -367,6 +381,7 @@ impl<'a> Lexer<'a> {
                 },
                 // skipped characters
                 ' ' | ';' => {
+                    debug!("Skipping character: {}", c);
                     // we just skip these characters
                     self.accept_generic = false;
                     continue;
@@ -374,6 +389,7 @@ impl<'a> Lexer<'a> {
                 // read a string value
                 // It supports escaped characters
                 '"' | '\'' => {
+                    debug!("Reading string");
                     let column_start = self.column;
                     let value = self.read_string(c)?;
                     TokenResult {
@@ -388,6 +404,7 @@ impl<'a> Lexer<'a> {
                     let v = self.peek()?;
                     v == '/' || v == '*'
                 } => {
+                    debug!("Skipping comment");
                     let v = self.advance()?;
                     if v == '/' {
                         self.skip_until(|c| *c == '\n')?;
@@ -401,9 +418,11 @@ impl<'a> Lexer<'a> {
                 c if c == '_' || c.is_alphabetic() => self.read_token(1)?,
                 _ => {
                     if let Some((token, diff)) = self.find_potential_token() {
+                        trace!("Found potential token: {:?} with diff {}", token, diff);
                         self.advance_by(diff)?;
                         token
                     } else {
+                        debug!("No token found with char `{}`", c);
                         return Err(LexerError::NoTokenFound(self.line, self.column));
                     }
                 }
