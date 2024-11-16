@@ -124,6 +124,82 @@ impl<'a> Parser<'a> {
         }).is_some()
     }
 
+    //tranform an input deque from infix to postfix (shunting yard algorithm)
+    fn transform_infix_to_postfix(&mut self) -> Result<(), ParserError<'a>> {
+        let mut output: VecDeque<Token> = VecDeque::new();
+        let mut stack: VecDeque<Token> = VecDeque::new();
+
+        for token in self.tokens.iter() {
+            match token {
+                Token::Number(_) => output.push_back(token.clone()),
+                Token::ParenthesisOpen => stack.push_back(token.clone()),
+                Token::ParenthesisClose => {
+                    while let Some(op) = stack.pop_back() {
+                        if op == Token::ParenthesisOpen {
+                            break;
+                        }
+                        output.push_back(op);
+                    }
+                }
+                Token::OperatorPlus
+                | Token::OperatorMinus
+                | Token::OperatorMultiply
+                | Token::OperatorDivide
+                | Token::OperatorModulo
+                | Token::OperatorBitwiseLeft
+                | Token::OperatorBitwiseRight
+                | Token::OperatorGreaterThan
+                | Token::OperatorLessThan
+                | Token::OperatorGreaterOrEqual
+                | Token::OperatorLessOrEqual
+                | Token::OperatorEquals
+                | Token::OperatorNotEquals
+                | Token::OperatorBitwiseAnd
+                | Token::OperatorBitwiseXor
+                | Token::OperatorBitwiseOr
+                | Token::OperatorAnd
+                | Token::OperatorOr
+                | Token::OperatorAssign
+                | Token::OperatorPlusAssign
+                | Token::OperatorMinusAssign
+                | Token::OperatorMultiplyAssign
+                | Token::OperatorDivideAssign
+                | Token::OperatorModuloAssign
+                | Token::OperatorBitwiseXorAssign
+                | Token::OperatorBitwiseOrAssign
+                | Token::OperatorBitwiseAndAssign
+                | Token::OperatorBitwiseLeftAssign
+                | Token::OperatorBitwiseRightAssign
+                | Token::OperatorTernary => {
+                    while let Some(top_op) = stack.back() {
+                        if (Some(top_op.get_precedence()) > Some(token.get_precedence()))
+                            || (Some(top_op.get_precedence()) == Some(token.get_precedence())
+                                && token.is_left_associative())
+                        {
+                            output.push_back(stack.pop_back().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                    stack.push_back(token.clone());
+                }
+                token => return Err(ParserError::UnexpectedToken(token.clone())),
+            }
+        }
+
+        while let Some(op) = stack.pop_back() {
+            output.push_back(op);
+        }
+
+        self.tokens.clear();
+
+        while let Some(token) = output.pop_front() {
+            self.tokens.push_back(token);
+        }
+
+        Ok(())
+    }
+
     // Require a specific token
     fn expect_token(&mut self, expected: Token<'a>) -> Result<(), ParserError<'a>> {
         let token = self.advance()?;

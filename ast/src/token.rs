@@ -290,4 +290,65 @@ impl Token<'_> {
             _ => false,
         }
     }
+
+     //get token predecence without error
+     pub fn get_precedence(&self) -> Option<u8> {
+        use Token::*;
+
+        match self {
+            ParenthesisOpen | ParenthesisClose => Some(1),
+            OperatorPlus | OperatorMinus => Some(2),
+            OperatorMultiply | OperatorDivide | OperatorModulo => Some(3),
+            OperatorBitwiseLeft | OperatorBitwiseRight => Some(4),
+
+            OperatorGreaterThan
+            | OperatorLessThan
+            | OperatorGreaterOrEqual
+            | OperatorLessOrEqual => Some(5),
+
+            OperatorEquals | OperatorNotEquals => Some(6),
+            OperatorBitwiseAnd => Some(7),
+            OperatorBitwiseXor => Some(8),
+            OperatorBitwiseOr => Some(9),
+            OperatorAnd => Some(10),
+            OperatorOr => Some(11),
+
+            OperatorAssign
+            | OperatorPlusAssign
+            | OperatorMinusAssign
+            | OperatorMultiplyAssign
+            | OperatorDivideAssign
+            | OperatorModuloAssign
+            | OperatorBitwiseXorAssign
+            | OperatorBitwiseOrAssign
+            | OperatorBitwiseAndAssign
+            | OperatorBitwiseLeftAssign
+            | OperatorBitwiseRightAssign
+            | OperatorTernary => Some(12),
+
+            _ => None,
+        }
+    }
+
+    // check operator associativity
+    pub fn is_left_associative(&self) -> bool {
+        use Token::*;
+
+        match self {
+            OperatorBitwiseXor
+            | OperatorAssign
+            | OperatorPlusAssign
+            | OperatorMinusAssign
+            | OperatorMultiplyAssign
+            | OperatorDivideAssign
+            | OperatorModuloAssign
+            | OperatorBitwiseXorAssign
+            | OperatorBitwiseOrAssign
+            | OperatorBitwiseAndAssign
+            | OperatorBitwiseLeftAssign
+            | OperatorBitwiseRightAssign
+            | OperatorTernary => false,
+            _ => true,
+        }
+    }
 }
