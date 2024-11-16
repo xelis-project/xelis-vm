@@ -1024,4 +1024,61 @@ mod tests {
             Token::BraceClose
         ]);
     }
+
+    #[test]
+    fn test_accurate_line() {
+        let code = "let a = 10;\nlet b = 20;";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Let);
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 1);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("a"));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 5);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::OperatorAssign);
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 7);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Value(Literal::Number(10)));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 9);
+
+        // Second line
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Let);
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 1);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("b"));
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 5);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::OperatorAssign);
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 7);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Value(Literal::Number(20)));
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 9);
+    }
+
+
+    #[test]
+    fn test_accurate_line_with_space() {
+        let code = "             hello";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("hello"));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 14);
+    }
 }
