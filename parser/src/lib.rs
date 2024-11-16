@@ -55,7 +55,7 @@ impl<'a> Function<'a> {
 
 pub struct Parser<'a> {
     // Tokens to process
-    tokens: VecDeque<Token<'a>>,
+    tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
@@ -71,17 +71,29 @@ pub struct Parser<'a> {
     environment: &'a EnvironmentBuilder<'a>,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
+    // Used for errors, we track the line and column
     line: usize,
     column_start: usize,
     column_end: usize
 }
 
 impl<'a> Parser<'a> {
-    pub fn new<I: Into<VecDeque<Token<'a>>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
+    // Compatibility purpose: Create a new parser with a list of tokens only
+    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
+        Self::with(tokens.into_iter().map(|v| TokenResult {
+            token: v,
+            line: 0,
+            column_start: 0,
+            column_end: 0
+        }), environment)
+    }
+
+    // Create a new parser with a list of tokens and the environment
+    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
         let functions_mapper = FunctionMapper::with_parent(environment.get_functions_mapper());
 
         Self {
-            tokens: tokens.into(),
+            tokens: tokens.collect(),
             constants: HashSet::new(),
             functions: Vec::new(),
             functions_mapper,
@@ -97,19 +109,35 @@ impl<'a> Parser<'a> {
     // Consume the next token
     #[inline(always)]
     fn advance(&mut self) -> Result<Token<'a>, ParserError<'a>> {
-        self.tokens.pop_front().ok_or(err!(self, ParserErrorKind::ExpectedToken))
+        self.next().ok_or(err!(self, ParserErrorKind::ExpectedToken))
     }
 
     // Consume the next token without error
     #[inline(always)]
     fn next(&mut self) -> Option<Token<'a>> {
-        self.tokens.pop_front()
+        self.tokens.pop_front().map(|v| {
+            self.line = v.line;
+            self.column_start = v.column_start;
+            self.column_end = v.column_end;
+            v.token
+        })
+    }
+
+    // Push back a token
+    fn push_back(&mut self, token: Token<'a>) {
+        self.tokens.push_front(TokenResult {
+            token,
+            line: self.line,
+            column_start: self.column_start,
+            column_end: self.column_end
+        });
     }
 
     // Peek the next token without consuming it
     #[inline(always)]
     fn peek(&self) -> Result<&Token<'a>, ParserError<'a>> {
-        self.tokens.front().ok_or(err!(self, ParserErrorKind::ExpectedToken))
+        self.tokens.front().map(|t| &t.token)
+            .ok_or(err!(self, ParserErrorKind::ExpectedToken))
     }
 
     // Limited to 32 characters
@@ -124,19 +152,19 @@ impl<'a> Parser<'a> {
     // Check if the next token is a specific token
     #[inline(always)]
     fn peek_is(&self, token: Token<'a>) -> bool {
-        self.tokens.front().filter(|t| **t == token).is_some()
+        self.tokens.front().filter(|t| t.token == token).is_some()
     }
 
     // Check if the next token is not a specific token
     #[inline(always)]
     fn peek_is_not(&self, token: Token<'a>) -> bool {
-        self.tokens.front().filter(|t| **t != token).is_some()
+        !self.peek_is(token)
     }
 
     // Check if the next token is an identifier
     #[inline(always)]
     fn peek_is_identifier(&self) -> bool {
-        self.peek().ok().filter(|t| match t {
+        self.tokens.front().filter(|t| match t.token {
             Token::Identifier(_) => true,
             _ => false
         }).is_some()
@@ -1097,7 +1125,7 @@ impl<'a> Parser<'a> {
                     Statement::Break
                 },
                 token => {
-                    self.tokens.push_front(token);
+                    self.push_back(token);
                     Statement::Expression(self.read_expression(context)?)
                 }
             };
