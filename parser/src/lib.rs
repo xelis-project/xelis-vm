@@ -205,15 +205,11 @@ impl<'a> Parser<'a> {
 
         // support multi dimensional arrays
         loop {
-            let token = self.advance()?;
-            if token != Token::BracketOpen {
-                // Push back
-                // This allow us to economize one read per iteration on array type
-                // by simply pushing back the token that we don't need
-                self.tokens.push_front(token);
+            if !self.peek_is(Token::BracketOpen) {
                 break;
             }
 
+            self.expect_token(Token::BracketOpen)?;
             self.expect_token(Token::BracketClose)?;
             _type = Type::Array(Box::new(_type));
         }
@@ -1428,7 +1424,7 @@ mod tests {
 
     #[track_caller]
     fn test_parser_with_env(tokens: Vec<Token>, env: &EnvironmentBuilder) -> Program {
-        let parser = Parser::new(VecDeque::from(tokens), env);
+        let parser = Parser::new(tokens.into(), env);
         let (program, _) = parser.parse().unwrap();
         program
     }
