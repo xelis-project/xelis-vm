@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::VecDeque};
 use thiserror::Error;
 use log::{debug, trace};
-use xelis_ast::{Literal, NumberType, Token};
+use xelis_ast::{Literal, NumberType, Token, TokenResult};
 use xelis_types::U256;
 
 macro_rules! parse_number {
@@ -20,9 +20,11 @@ macro_rules! parse_number {
 #[derive(Debug, Error)]
 #[error("Lexer error at line {line} column {column}: {kind}")]
 pub struct LexerError {
-    //
+    // line number on the source file
     pub line: usize,
+    // column number on the source file
     pub column: usize,
+    // error kind
     pub kind: LexerErrorKind
 }
 
@@ -38,18 +40,6 @@ pub enum LexerErrorKind {
     ExpectedChar,
     #[error("Expected type at line")]
     ExpectedType
-}
-
-#[derive(Debug, Clone)]
-pub struct TokenResult<'a> {
-    // the token value
-    pub token: Token<'a>,
-    // the line number where the token is located
-    pub line: usize,
-    // the column number where the token starts
-    pub column_start: usize,
-    // the column number where the token ends
-    pub column_end: usize
 }
 
 pub struct Lexer<'a> {

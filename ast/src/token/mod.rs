@@ -1,6 +1,19 @@
 use std::borrow::Cow;
 use xelis_types::U256;
 
+
+#[derive(Debug, Clone)]
+pub struct TokenResult<'a> {
+    // the token value
+    pub token: Token<'a>,
+    // the line number where the token is located
+    pub line: usize,
+    // the column number where the token starts
+    pub column_start: usize,
+    // the column number where the token ends
+    pub column_end: usize
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NumberType {
     U8,
