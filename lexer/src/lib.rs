@@ -135,13 +135,8 @@ impl<'a> Lexer<'a> {
 
     // push a character back to the list
     fn push_back(&mut self, c: char) {
-        if c == '\n' {
-            self.line -= 1;
-            self.column = 1;
-        } else {
-            self.column -= 1;
-        }
         self.pos -= 1;
+        self.column -= 1;
         self.chars.push_front(c);
     }
 
@@ -1107,5 +1102,30 @@ mod tests {
         assert_eq!(token.token, Token::Identifier("hello"));
         assert_eq!(token.line, 1);
         assert_eq!(token.column_start, 14);
+    }
+
+    #[test]
+    fn test_accurate_line_with_newline() {
+        let code = "hello\nworld";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("hello"));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 1);
+
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("world"));
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 1);
+    }
+
+    #[test]
+    fn test_accurate_line_string_value_with_newline() {
+        let code = "\"hello\nworld\"";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Value(Literal::String(Cow::Borrowed("hello\nworld"))));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 1);
     }
 }
