@@ -57,6 +57,11 @@ impl Environment {
         self.functions.push(function);
     }
 
+    // Get a mutable native function by its id
+    pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction> {
+        self.functions.get_mut(id)
+    }
+
     // Add a new structure to the environment
     #[inline(always)]
     pub fn add_structure(&mut self, structure: StructType) {

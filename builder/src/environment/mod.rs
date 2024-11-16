@@ -36,6 +36,14 @@ impl<'a> EnvironmentBuilder<'a> {
         self.env.add_function(NativeFunction::new(for_type, parameters, on_call, cost, return_type));
     }
 
+    // Get a function by its signature
+    // Panic if the function signature is not found
+    pub fn get_mut_function(&mut self, name: &str, on_type: Option<Type>, parameters: Vec<Type>) -> &mut NativeFunction {
+        let id = self.functions_mapper.get(&Signature::new(name.to_owned(), on_type.clone(), parameters)).unwrap();
+        self.env.get_function_by_id_mut(id as usize).unwrap()
+
+    }
+
     // Register a structure in the environment
     // Panic if the structure name is already used
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {

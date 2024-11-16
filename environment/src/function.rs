@@ -47,6 +47,11 @@ impl NativeFunction {
         (self.on_call)(instance, parameters)
     }
 
+    // Set the function on call
+    pub fn set_on_call(&mut self, on_call: OnCallFn) {
+        self.on_call = on_call;
+    }
+
     // Get parameters of the function
     pub fn get_parameters(&self) -> &Vec<Type> {
         &self.parameters
