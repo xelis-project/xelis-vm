@@ -1,5 +1,4 @@
 use xelis_types::{Type, IdentifierType};
-use crate::ParserError;
 
 #[derive(Clone, Debug)]
 pub struct Context<'a> {
@@ -26,10 +25,9 @@ impl<'a> Context<'a> {
     }
 
     // get the value type of a variable registered in scopes using its name
-    pub fn get_type_of_variable<'b>(&'b self, key: &IdentifierType) -> Result<&'b Type, ParserError<'a>> {
+    pub fn get_type_of_variable<'b>(&'b self, key: &IdentifierType) -> Option<&'b Type> {
         self.scopes.get(*key as usize)
             .map(|v| &v.1)
-            .ok_or_else(|| ParserError::UnexpectedMappedVariableId(key.clone()))
     }
 
     // returns true if this variable name is registered in scopes
@@ -48,12 +46,12 @@ impl<'a> Context<'a> {
     }
 
     // register a variable in the current scope
-    pub fn register_variable(&mut self, key: &'a str, var_type: Type) -> Result<IdentifierType, ParserError<'a>> {
+    pub fn register_variable(&mut self, key: &'a str, var_type: Type) -> Option<IdentifierType> {
         if self.has_variable(&key) {
-            return Err(ParserError::VariableNameAlreadyUsed(key))
+            return None
         }
 
-        Ok(self.register_variable_unchecked(key, var_type))
+        Some(self.register_variable_unchecked(key, var_type))
     }
 
     // register a variable in the current scope unchecked

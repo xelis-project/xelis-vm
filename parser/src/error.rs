@@ -1,10 +1,23 @@
+use std::borrow::Cow;
+
 use thiserror::Error;
 use xelis_ast::{Expression, Token};
 use xelis_builder::BuilderError;
 use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug, Error)]
-pub enum ParserError<'a> {
+#[error("error at line {line}, column {column_start} to {column_end}: {kind}")]
+pub struct ParserError<'a> {
+    pub line: usize,
+    pub column_start: usize,
+    pub column_end: usize,
+    pub kind: ParserErrorKind<'a>
+}
+
+#[derive(Debug, Error)]
+pub enum ParserErrorKind<'a> {
+    #[error("cannot call this function, its an entry function")]
+    FunctionIsEntry,
     #[error("invalid field name, got '{0}' but expected '{1}'")]
     InvalidFieldName(&'a str, &'a str),
     #[error("enum variant name '{0}' is already used")]
@@ -40,25 +53,17 @@ pub enum ParserError<'a> {
     #[error("invalid import")]
     InvalidImport,
     #[error("invalid import path '{0}'")]
-    InvalidImportPath(String),
-    #[error("import not found '{0}'")]
-    ImportNotFound(String),
-    #[error("mapping exists for '{0}'")]
-    MappingExists(IdentifierType),
+    InvalidImportPath(Cow<'a, str>),
     #[error("constant name is not in uppercase: '{0}'")]
-    ConstantNameNotUppercase(String),
+    ConstantNameNotUppercase(&'a str),
     #[error("type name not found '{0}'")]
     TypeNameNotFound(&'a str),
-    #[error("struct id not found '{0}'")]
-    StructIdNotFound(IdentifierType),
     #[error("assign operation return nothing")]
     AssignReturnNothing,
     #[error("entry function cannot have a type")]
     EntryFunctionCannotHaveForType,
     #[error("expected token")]
     ExpectedToken,
-    #[error("variable name is too long: '{0}'")]
-    VariableTooLong(&'a str),
     #[error("variable name must start with an alphabetic character: '{0}'")]
     VariableMustStartWithAlphabetic(&'a str),
     #[error("expected identifier token got '{0:?}'")]
@@ -67,12 +72,6 @@ pub enum ParserError<'a> {
     UnexpectedToken(Token<'a>),
     #[error("invalid token, got '{0:?}' expected '{1:?}'")]
     InvalidToken(Token<'a>, Token<'a>),
-    #[error("type not found for token '{0:?}'")]
-    TypeNotFound(Token<'a>),
-    #[error("no if condition before else")]
-    NoIfBeforeElse,
-    #[error("struct name is already used: {0}")]
-    StructNameAlreadyUsed(&'a str),
     #[error("variable name is already used: {0}")]
     VariableNameAlreadyUsed(&'a str),
     #[error("variable id is already used: {0}")]
@@ -83,28 +82,18 @@ pub enum ParserError<'a> {
     UnexpectedVariable(&'a str),
     #[error("unexpected mapped variable id '{0}'")]
     UnexpectedMappedVariableId(IdentifierType),
-    #[error("mapping not found for '{0}'")]
-    MappingNotFound(&'a str),
     #[error("unexpected type '{0}'")]
     UnexpectedType(Type),
-    #[error("invalid struct field '{0}'")]
-    InvalidStructField(&'a str),
     #[error("invalid struct name '{0}'")]
     InvalidStructureName(&'a str),
     #[error("function was not found")]
     FunctionNotFound,
-    #[error("no last function found")]
-    LastFunction,
     #[error("function has no return type")]
     FunctionNoReturnType,
     #[error("invalid type T")]
     InvalidTypeT,
-    #[error("no scope found in Context")]
-    NoScopeFound,
     #[error("no return found in function")]
     NoReturnFound,
-    #[error("dead-code, return already in else")]
-    ReturnAlreadyInElse,
     #[error("empty value")]
     EmptyValue,
     #[error("invalid 'null' value with type {0}")]
@@ -141,14 +130,6 @@ pub enum ParserError<'a> {
     InvalidValueType(Type, Type),
     #[error("no value type found")]
     NoValueType,
-    #[error("expected an array type")]
-    ExpectedArrayType,
-    #[error("invalid array type")]
-    InvalidFunctionType(Type),
     #[error("empty array constructor")]
     EmptyArrayConstructor,
-    #[error("expected a number type")]
-    ExpectedNumberType(Type),
-    #[error("invalid number value for selected type")]
-    InvalidNumberValueForType
 }
