@@ -34,11 +34,11 @@ pub enum LexerErrorKind {
     EndOfFile,
     #[error("Failed to parse number")]
     ParseToNumber,
-    #[error("No token found at line")]
+    #[error("No token found")]
     NoTokenFound,
     #[error("Expected character")]
     ExpectedChar,
-    #[error("Expected type at line")]
+    #[error("Expected a type")]
     ExpectedType
 }
 
