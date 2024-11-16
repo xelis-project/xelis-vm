@@ -8,23 +8,36 @@ macro_rules! parse_number {
     ($self: expr, $t: ident, $l: ident, $s: expr, $radix: expr) => {
         match $t::from_str_radix($s, $radix) {
             Ok(value) => Token::Value(Literal::$l(value)),
-            Err(_) => return Err(LexerError::ParseToNumber($self.line, $self.column))
+            Err(_) => return Err(LexerError {
+                line: $self.line,
+                column: $self.column,
+                kind: LexerErrorKind::ParseToNumber
+            })
         }
     };
 }
 
 #[derive(Debug, Error)]
-pub enum LexerError {
+#[error("Lexer error at line {line} column {column}: {kind}")]
+pub struct LexerError {
+    //
+    pub line: usize,
+    pub column: usize,
+    pub kind: LexerErrorKind
+}
+
+#[derive(Debug, Error)]
+pub enum LexerErrorKind {
     #[error("End of file reached")]
     EndOfFile,
-    #[error("Failed to parse number at line {0} column {1}")]
-    ParseToNumber(usize, usize),
-    #[error("No token found at line {0} column {1}")]
-    NoTokenFound(usize, usize),
-    #[error("Expected character at line {0} column {1}")]
-    ExpectedChar(usize, usize),
-    #[error("Expected type at line {0} column {1}")]
-    ExpectedType(usize, usize)
+    #[error("Failed to parse number")]
+    ParseToNumber,
+    #[error("No token found at line")]
+    NoTokenFound,
+    #[error("Expected character")]
+    ExpectedChar,
+    #[error("Expected type at line")]
+    ExpectedType
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +89,11 @@ impl<'a> Lexer<'a> {
     fn peek(&self) -> Result<char, LexerError> {
         self.chars.front()
             .copied()
-            .ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
+            .ok_or_else(|| LexerError {
+                line: self.line,
+                column: self.column,
+                kind: LexerErrorKind::EndOfFile
+            })
     }
 
     // advance by n characters
@@ -84,7 +101,11 @@ impl<'a> Lexer<'a> {
         let drain = self.chars.drain(0..n);
 
         if drain.len() != n {
-            return Err(LexerError::EndOfFile);
+            return Err(LexerError {
+                line: self.line,
+                column: self.column,
+                kind: LexerErrorKind::EndOfFile
+            });
         }
 
         self.pos += n;
@@ -96,7 +117,11 @@ impl<'a> Lexer<'a> {
     // consume the next character
     fn advance(&mut self) -> Result<char, LexerError> {
         self.next_char()
-            .ok_or_else(|| LexerError::ExpectedChar(self.line, self.column))
+            .ok_or_else(|| LexerError {
+                line: self.line,
+                column: self.column,
+                kind: LexerErrorKind::EndOfFile
+            })
     }
 
     // get the next character
@@ -111,7 +136,11 @@ impl<'a> Lexer<'a> {
     // get a str slice of the input
     // this is done to prevent copying the string
     fn get_slice(&self, start: usize, end: usize) -> Result<&'a str, LexerError> {
-        self.input.get(start..end).ok_or_else(|| LexerError::EndOfFile)
+        self.input.get(start..end).ok_or_else(|| LexerError {
+            line: self.line,
+            column: self.column,
+            kind: LexerErrorKind::EndOfFile
+        })
     }
 
     // push a character back to the list
@@ -288,7 +317,11 @@ impl<'a> Lexer<'a> {
                     let s = self.read_while(|c| c.is_ascii_alphanumeric(), 1)?;
                     let Some(t) = NumberType::value_of(&s) else {
                         debug!("Expected type at line {} column {} on `{}`", self.line, self.column, s);
-                        return Err(LexerError::ExpectedType(self.line, self.column));
+                        return Err(LexerError {
+                            line: self.line,
+                            column: self.column,
+                            kind: LexerErrorKind::ExpectedType
+                        });
                     };
 
                     number_type = Some(t);
@@ -423,7 +456,11 @@ impl<'a> Lexer<'a> {
                         token
                     } else {
                         debug!("No token found with char `{}`", c);
-                        return Err(LexerError::NoTokenFound(self.line, self.column));
+                        return Err(LexerError {
+                            line: self.line,
+                            column: self.column,
+                            kind: LexerErrorKind::NoTokenFound
+                        });
                     }
                 }
             };
