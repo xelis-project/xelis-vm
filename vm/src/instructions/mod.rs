@@ -23,11 +23,16 @@ pub enum InstructionResult {
 
 pub type Handler<'a> = fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>, &mut Context<'a>) -> Result<InstructionResult, VMError>;
 
+// Table of instructions
+// It contains all the instructions that the VM can execute
+// It is a fixed size array of 256 elements
+// Each element is a function pointer to the instruction
 pub struct InstructionTable<'a> {
     instructions: [Handler<'a>; 256],
 }
 
 impl<'a> InstructionTable<'a> {
+    // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
         let mut instructions: [Handler; 256] = [unimplemented; 256];
 
@@ -92,6 +97,11 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Dec.as_usize()] = decrement;
 
         Self { instructions }
+    }
+
+    // Allow to overwrite a instruction with a custom handler
+    pub fn set_instruction(&mut self, opcode: OpCode, handler: Handler<'a>) {
+        self.instructions[opcode.as_usize()] = handler;
     }
 
     // Execute an instruction

@@ -1,9 +1,10 @@
 mod chunk;
 mod error;
 mod iterator;
-mod instructions;
 mod stack;
 mod context;
+
+pub mod instructions;
 
 use xelis_environment::Environment;
 use instructions::{InstructionResult, InstructionTable};
@@ -80,16 +81,16 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     // Create a new VM
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self::with_context(module, environment, Context::default())
+        Self::with(module, environment, InstructionTable::new(), Context::default())
     }
 
-    // Create a new VM with a given context
-    pub fn with_context(module: &'a Module, environment: &'a Environment, context: Context<'a>) -> Self {
+    // Create a new VM with a given table and context
+    pub fn with(module: &'a Module, environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a>) -> Self {
         Self {
             backend: Backend {
                 module,
                 environment,
-                table: InstructionTable::new(),
+                table,
             },
             call_stack: Vec::with_capacity(4),
             stack: Stack::new(),
