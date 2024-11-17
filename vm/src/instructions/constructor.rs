@@ -53,12 +53,12 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     let mut map = HashMap::new();
     for _ in 0..len {
         let value = stack.pop_stack()?;
-        let key = stack.pop_stack()?;
-        if key.as_ref().is_map() {
+        let key = stack.pop_stack()?.into_owned();
+        if key.is_map() {
             return Err(EnvironmentError::InvalidKeyType.into());
         }
 
-        map.insert(key.into_owned(), value.into_ownable());
+        map.insert(key, value.into_ownable());
     }
 
     stack.push_stack_unchecked(Path::Owned(Value::Map(map)));
