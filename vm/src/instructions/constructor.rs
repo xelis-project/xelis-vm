@@ -31,19 +31,19 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
 }
 
 pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
-    let end = stack.pop_stack()?;
-    let start = stack.pop_stack()?;
+    let end = stack.pop_stack()?.into_owned();
+    let start = stack.pop_stack()?.into_owned();
 
-    if !start.as_ref().is_number() {
+    if !start.is_number() {
         return Err(VMError::InvalidRangeType);
     }
 
-    let start_type = start.as_ref().get_type()?;
-    if start_type != end.as_ref().get_type()? {
+    let start_type = start.get_type()?;
+    if start_type != end.get_type()? {
         return Err(VMError::InvalidRangeType);
     }
 
-    let value = Value::Range(Box::new(start.into_owned()), Box::new(end.into_owned()), start_type);
+    let value = Value::Range(Box::new(start), Box::new(end), start_type);
     stack.push_stack_unchecked(Path::Owned(value));
     Ok(InstructionResult::Nothing)
 }
