@@ -3,15 +3,18 @@ mod error;
 mod iterator;
 mod instructions;
 mod stack;
+mod context;
 
 use xelis_environment::Environment;
-pub use error::VMError;
-pub use chunk::*;
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
 use xelis_types::{EnumType, Path, StructType, Value};
 use xelis_bytecode::Module;
+
+pub use error::VMError;
+pub use chunk::*;
+pub use context::*;
 
 // 64 elements maximum in the call stack
 const CALL_STACK_SIZE: usize = 64;
@@ -609,10 +612,10 @@ mod full_tests {
 
     #[track_caller]
     fn prepare_module(code: &str) -> (Module, Environment) {
-        let tokens = Lexer::new(code).get().unwrap();
+        let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
         let env = EnvironmentBuilder::default();
-        let (program, _) = Parser::new(tokens, &env).parse().unwrap();
-    
+        let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
+
         let env = env.build();
         let module = Compiler::new(&program, &env).compile().unwrap();
     
