@@ -515,16 +515,11 @@ impl<'a> Interpreter<'a> {
                 match type_instance {
                     Some(mut v) => {
                         let mut instance = v.as_mut();
-                        f.call_function(Some(instance.as_mut()), values)
-                            .map(|v| v.map(Path::Owned))
-                            .map_err(InterpreterError::EnvironmentError)
+                        f.call_function(Some(instance.as_mut()), values, state.context_mut())
                     },
-                    None => {
-                        f.call_function(None, values)
-                            .map(|v| v.map(Path::Owned))
-                            .map_err(InterpreterError::EnvironmentError)
-                    }
-                }
+                    None => f.call_function(None, values, state.context_mut()),
+                }.map(|v| v.map(Path::Owned))
+                .map_err(InterpreterError::EnvironmentError)
             },
             Function::Program(f) => {
                 let instance = match (type_instance, f.get_instance_name()) {
@@ -619,7 +614,9 @@ mod tests {
         let mut code = "entry main() { let a: u64 = 1; return ".to_string();
         code.push_str("a + a + ".repeat(10000).as_str());
         code.push_str("a; }");
-        test_code_expect_return(code.as_str(), 4999950000);
+
+        todo!("FIX ME");
+        // test_code_expect_return(code.as_str(), 4999950000);
     }
 
     #[test]

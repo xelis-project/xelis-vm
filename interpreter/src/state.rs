@@ -1,7 +1,8 @@
+use xelis_environment::Context;
 use crate::InterpreterError;
 
 // State is used to store the number of expressions executed and the number of recursive calls
-pub struct State {
+pub struct State<'a> {
     // Count the number of expressions executed
     count_expr: u64,
     // Maximum number of expressions that can be executed
@@ -14,11 +15,16 @@ pub struct State {
     gas_usage: u64,
     // Program execution shouldn't exceed this limit
     max_gas_usage: Option<u64>,
+    context: Context<'a>,
 }
 
-impl State {
+impl<'a> State<'a> {
     // Create a new state with the given limits
     pub fn new(max_expr: Option<u64>, max_recursive: Option<u16>, max_cost: Option<u64>) -> Self {
+        Self::with_context(max_expr, max_recursive, max_cost, Default::default())
+    }
+
+    pub fn with_context(max_expr: Option<u64>, max_recursive: Option<u16>, max_cost: Option<u64>, context: Context<'a>) -> Self {
         Self {
             count_expr: 0,
             max_expr,
@@ -26,7 +32,18 @@ impl State {
             max_recursive,
             gas_usage: 0,
             max_gas_usage: max_cost,
+            context,
         }
+    }
+
+    // Get the context
+    pub fn context(&self) -> &Context<'a> {
+        &self.context
+    }
+
+    // Get the mutable context
+    pub fn context_mut(&mut self) -> &mut Context<'a> {
+        &mut self.context
     }
 
     // increase the number of expressions executed

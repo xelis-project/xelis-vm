@@ -31,6 +31,12 @@ pub struct InstructionTable<'a> {
     instructions: [Handler<'a>; 256],
 }
 
+impl Default for InstructionTable<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> InstructionTable<'a> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {

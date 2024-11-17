@@ -2,11 +2,10 @@ mod chunk;
 mod error;
 mod iterator;
 mod stack;
-mod context;
 
 pub mod instructions;
 
-use xelis_environment::Environment;
+use xelis_environment::{Environment, Context};
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
@@ -15,7 +14,6 @@ use xelis_bytecode::Module;
 
 pub use error::VMError;
 pub use chunk::*;
-pub use context::*;
 
 // 64 elements maximum in the call stack
 const CALL_STACK_SIZE: usize = 64;
@@ -184,7 +182,7 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{InnerValue, Type, Value, ValueOwnable};
+    use xelis_types::{Type, Value, ValueOwnable};
 
     use super::*;
 
@@ -318,8 +316,8 @@ mod tests {
             vm.run().unwrap(),
             Value::Struct(
                 vec![
-                    ValueOwnable::Rc(InnerValue::new(Value::U8(10))),
-                    ValueOwnable::Rc(InnerValue::new(Value::U16(20)))
+                    ValueOwnable::Owned(Box::new(Value::U8(10))),
+                    ValueOwnable::Owned(Box::new(Value::U16(20)))
                 ].into(),
                 new_struct
             )
@@ -644,12 +642,18 @@ mod full_tests {
         (module, env)
     }
 
+    
     #[track_caller]
-    fn run_code(code: &str) -> Value {
+    fn run_code_id(code: &str, id: u16) -> Value {
         let (module, environment) = prepare_module(code);
         let mut vm = VM::new(&module, &environment);
-        vm.invoke_entry_chunk(0).unwrap();
+        vm.invoke_entry_chunk(id).unwrap();
         vm.run().unwrap()
+    }
+    
+    #[track_caller]
+    fn run_code(code: &str) -> Value {
+        run_code_id(code, 0)
     }
 
     #[test]
@@ -722,7 +726,7 @@ mod full_tests {
             }
         "#;
 
-        assert_eq!(run_code(code), Value::U64(10));
+        assert_eq!(run_code_id(code, 1), Value::U64(10));
     }
     
     #[test]
@@ -741,7 +745,7 @@ mod full_tests {
             }
         "#;
 
-        assert_eq!(run_code(code), Value::U64(10));
+        assert_eq!(run_code_id(code, 1), Value::U64(10));
     }
     
     #[test]
@@ -760,7 +764,7 @@ mod full_tests {
             }
         "#;
 
-        assert_eq!(run_code(code), Value::U64(0));
+        assert_eq!(run_code_id(code, 1), Value::U64(0));
     }
     
     #[test]
@@ -926,7 +930,7 @@ mod full_tests {
             }
         "#;
 
-        assert_eq!(run_code(code), Value::U64(30));
+        assert_eq!(run_code_id(code, 1), Value::U64(30));
     }
     
     #[test]
@@ -1117,7 +1121,9 @@ mod full_tests {
         "#.to_string() + "+ a + a ".repeat(10000).as_str();
         code.push_str("return x }");
 
-        assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
+        // TODO FIXME
+        todo!("Fix stack overflow test");
+        // assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
     }
 
     #[test]

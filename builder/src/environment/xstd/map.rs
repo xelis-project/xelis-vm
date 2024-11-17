@@ -1,4 +1,4 @@
-use xelis_environment::{FnInstance, FnParams, FnReturnType};
+use xelis_environment::{FnInstance, FnParams, FnReturnType, Context};
 use xelis_types::{Type, Value, ValueOwnable};
 
 use crate::EnvironmentBuilder;
@@ -17,24 +17,24 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("values", Some(_type.clone()), vec![], values, 50, Some(Type::Array(Box::new(value_type.clone()))));
 }
 
-fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_map()?.len();
     Ok(Some(Value::U32(len as u32)))
 }
 
-fn contains_key(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
     let contains = zelf?.as_map()?.contains_key(&key.as_ref());
     Ok(Some(Value::Boolean(contains)))
 }
 
-fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
     let value = zelf?.as_map()?.get(&key.as_ref()).cloned();
     Ok(Some(Value::Optional(value)))
 }
 
-fn insert(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
     let value = parameters.remove(0);
     let previous = zelf?.as_mut_map()?
@@ -42,19 +42,19 @@ fn insert(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     Ok(Some(Value::Optional(previous)))
 }
 
-fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
     let value = zelf?.as_mut_map()?
         .remove(&key.as_ref());
     Ok(Some(Value::Optional(value)))
 }
 
-fn clear(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     zelf?.as_mut_map()?.clear();
     Ok(None)
 }
 
-fn keys(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn keys(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let keys = zelf?.as_map()?
         .keys()
         .map(|key| ValueOwnable::Owned(Box::new(key.clone())))
@@ -63,7 +63,7 @@ fn keys(zelf: FnInstance, _: FnParams) -> FnReturnType {
     Ok(Some(Value::Array(keys)))
 }
 
-fn values(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn values(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let values = zelf?.as_mut_map()?
         .values_mut()
         .map(ValueOwnable::transform)

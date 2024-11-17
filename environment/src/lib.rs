@@ -1,10 +1,13 @@
 mod error;
 mod function;
+mod context;
+
+use xelis_types::{EnumType, StructType};
 
 pub use error::EnvironmentError;
 pub use function::*;
+pub use context::*;
 
-use xelis_types::{EnumType, StructType};
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM

@@ -90,7 +90,7 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Ch
     Ok(InstructionResult::InvokeChunk(id))
 }
 
-pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
+pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, context: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let on_value = manager.read_bool()?;
     let args = manager.read_u8()?;
@@ -114,7 +114,7 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
         None => None,
     };
 
-    if let Some(v) = f.call_function(instance.as_deref_mut(), arguments.into())? {
+    if let Some(v) = f.call_function(instance.as_deref_mut(), arguments.into(), context)? {
         stack.push_stack(Path::Owned(v))?;
     }
 

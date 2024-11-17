@@ -1,5 +1,5 @@
 use xelis_types::{Type, Value};
-use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
@@ -15,19 +15,19 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 // native functions
-fn len(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_vec()?.len();
     Ok(Some(Value::U32(len as u32)))
 }
 
-fn push(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
     zelf?.as_mut_vec()?
         .push(param.into_ownable());
     Ok(None)
 }
 
-fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
 
     let array = zelf?.as_mut_vec()?;
@@ -38,7 +38,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     Ok(Some(array.remove(index).into_inner()))
 }
 
-fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
         Ok(Some(value.into_inner()))
@@ -47,7 +47,7 @@ fn pop(zelf: FnInstance, _: FnParams) -> FnReturnType {
     }
 }
 
-fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn slice(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let start = parameters.remove(0).as_u32()?;
     let end = parameters.remove(0).as_u32()?;
 
@@ -70,7 +70,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     Ok(Some(Value::Array(slice)))
 }
 
-fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let value = parameters.remove(0);
     let handle = value.as_ref();
     let expected = handle.as_value();
@@ -78,7 +78,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     Ok(Some(Value::Boolean(vec.iter().find(|v| *v.handle() == *expected).is_some())))
 }
 
-fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.get_mut(index) {
@@ -88,7 +88,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     }
 }
 
-fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.first_mut() {
         Ok(Some(Value::Optional(Some(value.transform()))))
@@ -97,7 +97,7 @@ fn first(zelf: FnInstance, _: FnParams) -> FnReturnType {
     }
 }
 
-fn last(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.last_mut() {
         Ok(Some(Value::Optional(Some(value.transform()))))

@@ -1,7 +1,8 @@
 use xelis_environment::{
     FnInstance,
     FnParams,
-    FnReturnType
+    FnReturnType,
+    Context,
 };
 use xelis_types::{Type, Value, ValueOwnable, U256 as u256};
 use paste::paste;
@@ -11,7 +12,7 @@ use crate::EnvironmentBuilder;
 macro_rules! overflow_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident) => {
         paste! {
-            fn [<overflowing_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+            fn [<overflowing_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
                 // Extract and convert parameters
                 let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -58,7 +59,7 @@ macro_rules! register_overflows {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams) -> FnReturnType {
+            fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| ValueOwnable::Owned(Box::new(Value::U8(*b)))).collect();

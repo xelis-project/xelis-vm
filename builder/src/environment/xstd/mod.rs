@@ -6,7 +6,13 @@ mod range;
 mod map;
 
 use xelis_types::Type;
-use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_environment::{
+    EnvironmentError,
+    FnInstance,
+    FnParams,
+    FnReturnType,
+    Context,
+};
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
@@ -23,21 +29,21 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("panic", None, vec![Type::Any], panic, 1, Some(Type::Any));
 }
 
-fn println(_: FnInstance, parameters: FnParams) -> FnReturnType {
+fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
     println!("{}", param.as_ref().as_value());
 
     Ok(None)
 }
 
-fn debug(_: FnInstance, parameters: FnParams) -> FnReturnType {
+fn debug(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
     println!("{:?}", param.as_ref().as_value());
 
     Ok(None)
 }
 
-fn panic(_: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
     let value = param.into_owned();
 

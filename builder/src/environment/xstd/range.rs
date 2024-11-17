@@ -1,4 +1,4 @@
-use xelis_environment::{EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use xelis_types::{Type, Value, ValueOwnable};
 use paste::paste;
 
@@ -52,7 +52,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("count", Some(_type.clone()), vec![], count, 5, Some(Type::T(0)));
 }
 
-fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
+fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let value = parameters.remove(0);
     let zelf = zelf?;
     let (start, end, _type) = zelf.as_range()?;
@@ -69,7 +69,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams) -> FnReturnType {
     }))
 }
 
-fn collect(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn collect(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (start, end, _type) = zelf.as_range()?;
     Ok(Some(match _type {
@@ -100,19 +100,19 @@ fn collect(zelf: FnInstance, _: FnParams) -> FnReturnType {
     }))
 }
 
-fn max(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn max(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (_, end, _) = zelf.as_range()?;
     Ok(Some(end.clone()))
 }
 
-fn min(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn min(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (start, _, _) = zelf.as_range()?;
     Ok(Some(start.clone()))
 }
 
-fn count(zelf: FnInstance, _: FnParams) -> FnReturnType {
+fn count(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (start, end, _type) = zelf.as_range()?;
 

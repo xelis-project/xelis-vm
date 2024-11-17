@@ -1,4 +1,6 @@
 use xelis_types::{Path, Type, Value};
+use crate::Context;
+
 use super::EnvironmentError;
 
 // first parameter is the current value / instance
@@ -6,7 +8,7 @@ use super::EnvironmentError;
 pub type FnReturnType = Result<Option<Value>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut Value, EnvironmentError>;
 pub type FnParams<'a> = Vec<Path<'a>>;
-pub type OnCallFn = fn(FnInstance, FnParams) -> FnReturnType;
+pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 
 // Native function that is implemented in Rust
 // This is used to register functions in the environment
@@ -35,7 +37,7 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams) -> Result<Option<Value>, EnvironmentError> {
+    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, context: &mut Context) -> Result<Option<Value>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(EnvironmentError::InvalidFnCall)
         }
@@ -44,7 +46,7 @@ impl NativeFunction {
             Some(v) => Ok(v),
             None => Err(EnvironmentError::FnExpectedInstance)
         };
-        (self.on_call)(instance, parameters)
+        (self.on_call)(instance, parameters, context)
     }
 
     // Set the function on call
