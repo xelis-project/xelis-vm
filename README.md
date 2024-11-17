@@ -243,6 +243,7 @@ It is backed by a HashMap.
 
 **Rules**
 - The key and value types must be specified.
+- Key type can't be a map.
 
 **Examples**
 ```rust

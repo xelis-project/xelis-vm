@@ -26,4 +26,8 @@ pub enum EnvironmentError {
         limit: u64,
         actual: u64,
     },
+    #[error("Invalid key type")]
+    InvalidKeyType,
+    #[error(transparent)]
+    Any(#[from] anyhow::Error)
 }

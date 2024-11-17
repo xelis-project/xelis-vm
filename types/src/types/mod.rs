@@ -167,6 +167,14 @@ impl Type {
         }
     }
 
+    // check if the type is a map
+    pub fn is_map(&self) -> bool {
+        match self {
+            Type::Map(_, _) => true,
+            _ => false
+        }
+    }
+
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match other {

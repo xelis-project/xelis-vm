@@ -211,6 +211,10 @@ impl<'a> Parser<'a> {
             Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
             Token::Map => {
                 let key = self.get_generic_type()?;
+                if key.is_map() {
+                    return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
+                }
+
                 self.expect_token(Token::Comma)?;
                 let token = self.advance()?;
                 let value = self.get_type_from_token(token)?;

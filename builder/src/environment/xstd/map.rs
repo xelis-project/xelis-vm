@@ -1,4 +1,4 @@
-use xelis_environment::{FnInstance, FnParams, FnReturnType, Context};
+use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use xelis_types::{Type, Value, ValueOwnable};
 
 use crate::EnvironmentBuilder;
@@ -24,28 +24,48 @@ fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
 fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let contains = zelf?.as_map()?.contains_key(&key.as_ref());
+    let k = key.as_ref();
+    if k.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
+    let contains = zelf?.as_map()?.contains_key(&k);
     Ok(Some(Value::Boolean(contains)))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let value = zelf?.as_map()?.get(&key.as_ref()).cloned();
+    let k = key.as_ref();
+    if k.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
+    let value = zelf?.as_map()?.get(&k).cloned();
     Ok(Some(Value::Optional(value)))
 }
 
 fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let key = parameters.remove(0);
+    let key = parameters.remove(0).into_owned();
+    if key.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
     let value = parameters.remove(0);
     let previous = zelf?.as_mut_map()?
-        .insert(key.into_owned(), value.into_ownable());
+        .insert(key, value.into_ownable());
     Ok(Some(Value::Optional(previous)))
 }
 
 fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
+
+    let k = key.as_ref();
+    if k.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
     let value = zelf?.as_mut_map()?
-        .remove(&key.as_ref());
+        .remove(&k);
     Ok(Some(Value::Optional(value)))
 }
 

@@ -162,6 +162,14 @@ impl Value {
     }
 
     #[inline]
+    pub fn is_map(&self) -> bool {
+        match &self {
+            Value::Map(_) => true,
+            _ => false
+        }
+    }
+
+    #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
             Value::U8(n) => Ok(*n),

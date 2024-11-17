@@ -132,4 +132,6 @@ pub enum ParserErrorKind<'a> {
     NoValueType,
     #[error("empty array constructor")]
     EmptyArrayConstructor,
+    #[error("invalid map key type")]
+    InvalidMapKeyType,
 }

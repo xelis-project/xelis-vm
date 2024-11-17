@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use xelis_environment::EnvironmentError;
 use xelis_types::{EnumValueType, Path, Value};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
@@ -53,6 +54,10 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     for _ in 0..len {
         let value = stack.pop_stack()?;
         let key = stack.pop_stack()?;
+        if key.as_ref().is_map() {
+            return Err(EnvironmentError::InvalidKeyType.into());
+        }
+
         map.insert(key.into_owned(), value.into_ownable());
     }
 
