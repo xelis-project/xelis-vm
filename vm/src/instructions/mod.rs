@@ -21,7 +21,9 @@ pub enum InstructionResult {
     InvokeChunk(u16),
 }
 
-pub type Handler<'a> = fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>, &mut Context<'a>) -> Result<InstructionResult, VMError>;
+// A handler is a function pointer to an instruction
+// With its associated cost
+pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>, &mut Context<'a>) -> Result<InstructionResult, VMError>, u64);
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
@@ -40,67 +42,67 @@ impl Default for InstructionTable<'_> {
 impl<'a> InstructionTable<'a> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
-        let mut instructions: [Handler; 256] = [unimplemented; 256];
+        let mut instructions: [Handler; 256] = [(unimplemented, 0); 256];
 
-        instructions[OpCode::Constant.as_usize()] = constant;
-        instructions[OpCode::MemoryLoad.as_usize()] = memory_load;
-        instructions[OpCode::MemorySet.as_usize()] = memory_set;
-        instructions[OpCode::SubLoad.as_usize()] = subload;
-        instructions[OpCode::Pop.as_usize()] = pop;
-        instructions[OpCode::PopN.as_usize()] = pop_n;
-        instructions[OpCode::Copy.as_usize()] = copy;
-        instructions[OpCode::Swap.as_usize()] = swap;
-        instructions[OpCode::ArrayCall.as_usize()] = array_call;
-        instructions[OpCode::Cast.as_usize()] = cast;
-        instructions[OpCode::InvokeChunk.as_usize()] = invoke_chunk;
-        instructions[OpCode::SysCall.as_usize()] = syscall;
-        instructions[OpCode::NewArray.as_usize()] = new_array;
-        instructions[OpCode::NewStruct.as_usize()] = new_struct;
-        instructions[OpCode::NewRange.as_usize()] = new_range;
-        instructions[OpCode::NewMap.as_usize()] = new_map;
-        instructions[OpCode::NewEnum.as_usize()] = new_enum;
+        instructions[OpCode::Constant.as_usize()] = (constant, 1);
+        instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
+        instructions[OpCode::MemorySet.as_usize()] = (memory_set, 5);
+        instructions[OpCode::SubLoad.as_usize()] = (subload, 5);
+        instructions[OpCode::Pop.as_usize()] = (pop, 1);
+        instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
+        instructions[OpCode::Copy.as_usize()] = (copy, 1);
+        instructions[OpCode::Swap.as_usize()] = (swap, 1);
+        instructions[OpCode::ArrayCall.as_usize()] = (array_call, 2);
+        instructions[OpCode::Cast.as_usize()] = (cast, 1);
+        instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
+        instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
+        instructions[OpCode::NewArray.as_usize()] = (new_array, 1);
+        instructions[OpCode::NewStruct.as_usize()] = (new_struct, 1);
+        instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
+        instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
+        instructions[OpCode::NewEnum.as_usize()] = (new_enum, 1);
 
-        instructions[OpCode::Jump.as_usize()] = jump;
-        instructions[OpCode::JumpIfFalse.as_usize()] = jump_if_false;
+        instructions[OpCode::Jump.as_usize()] = (jump, 2);
+        instructions[OpCode::JumpIfFalse.as_usize()] = (jump_if_false, 3);
 
-        instructions[OpCode::IterableLength.as_usize()] = iterable_length;
-        instructions[OpCode::IteratorBegin.as_usize()] = iterator_begin;
-        instructions[OpCode::IteratorNext.as_usize()] = iterator_next;
-        instructions[OpCode::IteratorEnd.as_usize()] = iterator_end;
+        instructions[OpCode::IterableLength.as_usize()] = (iterable_length, 3);
+        instructions[OpCode::IteratorBegin.as_usize()] = (iterator_begin, 5);
+        instructions[OpCode::IteratorNext.as_usize()] = (iterator_next, 1);
+        instructions[OpCode::IteratorEnd.as_usize()] = (iterator_end, 1);
 
-        instructions[OpCode::Return.as_usize()] = return_fn;
+        instructions[OpCode::Return.as_usize()] = (return_fn, 1);
 
-        instructions[OpCode::Add.as_usize()] = add;
-        instructions[OpCode::Sub.as_usize()] = sub;
-        instructions[OpCode::Mul.as_usize()] = mul;
-        instructions[OpCode::Div.as_usize()] = div;
-        instructions[OpCode::Mod.as_usize()] = rem;
-        instructions[OpCode::Pow.as_usize()] = pow;
-        instructions[OpCode::And.as_usize()] = and;
-        instructions[OpCode::Or.as_usize()] = or;
-        instructions[OpCode::Xor.as_usize()] = xor;
-        instructions[OpCode::Shl.as_usize()] = shl;
-        instructions[OpCode::Shr.as_usize()] = shr;
+        instructions[OpCode::Add.as_usize()] = (add, 1);
+        instructions[OpCode::Sub.as_usize()] = (sub, 1);
+        instructions[OpCode::Mul.as_usize()] = (mul, 3);
+        instructions[OpCode::Div.as_usize()] = (div, 8);
+        instructions[OpCode::Mod.as_usize()] = (rem, 8);
+        instructions[OpCode::Pow.as_usize()] = (pow, 15);
+        instructions[OpCode::And.as_usize()] = (and, 2);
+        instructions[OpCode::Or.as_usize()] = (or, 1);
+        instructions[OpCode::Xor.as_usize()] = (xor, 1);
+        instructions[OpCode::Shl.as_usize()] = (shl, 5);
+        instructions[OpCode::Shr.as_usize()] = (shr, 5);
 
-        instructions[OpCode::Eq.as_usize()] = eq;
-        instructions[OpCode::Neg.as_usize()] = neg;
-        instructions[OpCode::Gt.as_usize()] = gt;
-        instructions[OpCode::Lt.as_usize()] = lt;
-        instructions[OpCode::Gte.as_usize()] = gte;
-        instructions[OpCode::Lte.as_usize()] = lte;
+        instructions[OpCode::Eq.as_usize()] = (eq, 2);
+        instructions[OpCode::Neg.as_usize()] = (neg, 1);
+        instructions[OpCode::Gt.as_usize()] = (gt, 2);
+        instructions[OpCode::Lt.as_usize()] = (lt, 2);
+        instructions[OpCode::Gte.as_usize()] = (gte, 2);
+        instructions[OpCode::Lte.as_usize()] = (lte, 2);
 
-        instructions[OpCode::Assign.as_usize()] = assign;
-        instructions[OpCode::AssignAdd.as_usize()] = add_assign;
-        instructions[OpCode::AssignSub.as_usize()] = sub_assign;
-        instructions[OpCode::AssignMul.as_usize()] = mul_assign;
-        instructions[OpCode::AssignDiv.as_usize()] = div_assign;
-        instructions[OpCode::AssignMod.as_usize()] = rem_assign;
-        instructions[OpCode::AssignXor.as_usize()] = xor_assign;
-        instructions[OpCode::AssignShl.as_usize()] = shl_assign;
-        instructions[OpCode::AssignShr.as_usize()] = shr_assign;
+        instructions[OpCode::Assign.as_usize()] = (assign, 2);
+        instructions[OpCode::AssignAdd.as_usize()] = (add_assign, 3);
+        instructions[OpCode::AssignSub.as_usize()] = (sub_assign, 3);
+        instructions[OpCode::AssignMul.as_usize()] = (mul_assign, 5);
+        instructions[OpCode::AssignDiv.as_usize()] = (div_assign, 10);
+        instructions[OpCode::AssignMod.as_usize()] = (rem_assign, 10);
+        instructions[OpCode::AssignXor.as_usize()] = (xor_assign, 3);
+        instructions[OpCode::AssignShl.as_usize()] = (shl_assign, 7);
+        instructions[OpCode::AssignShr.as_usize()] = (shr_assign, 7);
 
-        instructions[OpCode::Inc.as_usize()] = increment;
-        instructions[OpCode::Dec.as_usize()] = decrement;
+        instructions[OpCode::Inc.as_usize()] = (increment, 1);
+        instructions[OpCode::Dec.as_usize()] = (decrement, 1);
 
         Self { instructions }
     }
@@ -110,9 +112,18 @@ impl<'a> InstructionTable<'a> {
         self.instructions[opcode.as_usize()] = handler;
     }
 
+    // Allow to overwrite the cost of an instruction
+    pub fn set_instruction_cost(&mut self, opcode: OpCode, cost: u64) {
+        self.instructions[opcode.as_usize()].1 = cost;
+    }
+
     // Execute an instruction
     pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a>) -> Result<InstructionResult, VMError> {
-        let instruction = self.instructions[opcode as usize];
+        let (instruction, cost) = self.instructions[opcode as usize];
+
+        // Increase the gas usage
+        context.increase_gas_usage(cost)?;
+
         instruction(backend, stack, chunk_manager, context)
     }
 }

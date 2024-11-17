@@ -21,4 +21,9 @@ pub enum EnvironmentError {
     ValueError(#[from] ValueError),
     #[error("Invalid range: too large")]
     RangeTooLarge,
+    #[error("Not enough gas: limit {limit}, actual {actual}")]
+    NotEnoughGas {
+        limit: u64,
+        actual: u64,
+    },
 }

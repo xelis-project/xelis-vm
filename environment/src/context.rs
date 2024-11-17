@@ -1,5 +1,7 @@
 use std::{any::{Any, TypeId}, collections::HashMap, hash::{BuildHasherDefault, Hasher}};
 
+use crate::EnvironmentError;
+
 // A hasher for `TypeId`s that takes advantage of its known characteristics.
 #[derive(Debug, Default)]
 struct NoOpHasher(u64);
@@ -68,6 +70,12 @@ impl<'a> Data<'a> {
 // Context is a simple data store that allows for storing and retrieving values of different types.
 pub struct Context<'a> {
     data: HashMap<TypeId, Data<'a>, BuildHasherDefault<NoOpHasher>>,
+    // Configurable gas limit for an execution
+    max_gas: Option<u64>,
+    // Price per byte of memory
+    memory_price_per_byte: u64,
+    // Current gas used in the execution
+    current_gas: u64,
 }
 
 impl Default for Context<'_> {
@@ -81,7 +89,49 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             data: HashMap::default(),
+            max_gas: None,
+            current_gas: 0,
+            memory_price_per_byte: 0,
         }
+    }
+
+    // Set a gas limit for the Context
+    #[inline(always)]
+    pub fn set_gas_limit(&mut self, gas: Option<u64>) {
+        self.max_gas = gas;
+    }
+
+    // Set the price per byte of memory
+    #[inline(always)]
+    pub fn set_memory_price_per_byte(&mut self, price: u64) {
+        self.memory_price_per_byte = price;
+    }
+
+    // Get the price per byte of memory
+    #[inline(always)]
+    pub fn memory_price_per_byte(&self) -> u64 {
+        self.memory_price_per_byte
+    }
+
+    // Get the current gas usage
+    #[inline(always)]
+    pub fn current_gas_usage(&self) -> u64 {
+        self.current_gas
+    }
+
+    // Increase the gas usage by a specific amount
+    #[inline]
+    pub fn increase_gas_usage(&mut self, gas: u64) -> Result<(), EnvironmentError> {
+        if let Some(max_gas) = self.max_gas {
+            self.current_gas = self.current_gas.checked_add(gas)
+                .ok_or(EnvironmentError::NotEnoughGas { limit: max_gas, actual: self.current_gas })?;
+
+            if self.current_gas > max_gas {
+                return Err(EnvironmentError::NotEnoughGas { limit: max_gas, actual: self.current_gas });
+            }
+        }
+
+        Ok(())
     }
 
     // Insert a borrowed value into the Context
@@ -127,6 +177,11 @@ impl<'a> Context<'a> {
     // Clear the Context
     pub fn clear(&mut self) {
         self.data.clear();
+    }
+
+    // Reset the gas usage
+    pub fn reset_gas_usage(&mut self) {
+        self.current_gas = 0;
     }
 }
 
