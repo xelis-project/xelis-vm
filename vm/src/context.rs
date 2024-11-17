@@ -70,6 +70,12 @@ pub struct Context<'a> {
     data: HashMap<TypeId, Data<'a>, BuildHasherDefault<NoOpHasher>>,
 }
 
+impl Default for Context<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Context<'a> {
     // Create a new Context
     pub fn new() -> Self {

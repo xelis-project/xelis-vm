@@ -10,6 +10,8 @@ use constructor::*;
 
 use xelis_bytecode::OpCode;
 
+use crate::Context;
+
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
 #[derive(Debug)]
@@ -19,7 +21,7 @@ pub enum InstructionResult {
     InvokeChunk(u16),
 }
 
-pub type Handler<'a> = fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>) -> Result<InstructionResult, VMError>;
+pub type Handler<'a> = fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>, &mut Context<'a>) -> Result<InstructionResult, VMError>;
 
 pub struct InstructionTable<'a> {
     instructions: [Handler<'a>; 256],
@@ -93,27 +95,27 @@ impl<'a> InstructionTable<'a> {
     }
 
     // Execute an instruction
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a>) -> Result<InstructionResult, VMError> {
         let instruction = self.instructions[opcode as usize];
-        instruction(backend, stack, chunk_manager)
+        instruction(backend, stack, chunk_manager, context)
     }
 }
 
-fn unimplemented<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+fn unimplemented<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     Err(VMError::InvalidOpCode)
 }
 
-fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+fn jump<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     manager.set_index(addr as usize);
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {

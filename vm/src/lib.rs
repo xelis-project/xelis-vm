@@ -20,6 +20,7 @@ pub use context::*;
 const CALL_STACK_SIZE: usize = 64;
 
 // Backend of the VM
+// This is the immutable part of the VM
 pub struct Backend<'a> {
     // The module to execute
     module: &'a Module,
@@ -72,12 +73,19 @@ pub struct VM<'a> {
     // The stack of the VM
     // Every values are stored here
     stack: Stack<'a>,
+    // Context given to each instruction
+    context: Context<'a>,
 }
 
 impl<'a> VM<'a> {
     // Create a new VM
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        VM {
+        Self::with_context(module, environment, Context::default())
+    }
+
+    // Create a new VM with a given context
+    pub fn with_context(module: &'a Module, environment: &'a Environment, context: Context<'a>) -> Self {
+        Self {
             backend: Backend {
                 module,
                 environment,
@@ -85,6 +93,7 @@ impl<'a> VM<'a> {
             },
             call_stack: Vec::with_capacity(4),
             stack: Stack::new(),
+            context,
         }
     }
 
@@ -92,6 +101,18 @@ impl<'a> VM<'a> {
     #[inline]
     pub fn get_stack(&self) -> &Stack<'a> {
         &self.stack
+    }
+
+    // Get the context
+    #[inline]
+    pub fn context(&self) -> &Context<'a> {
+        &self.context
+    }
+
+    // Get a mutable reference to the context
+    #[inline]
+    pub fn context_mut(&mut self) -> &mut Context<'a> {
+        &mut self.context
     }
 
     // Invoke a chunk using its id
@@ -135,7 +156,7 @@ impl<'a> VM<'a> {
     pub fn run(&mut self) -> Result<Value, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
             while let Ok(opcode) = manager.read_u8() {
-                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager)? {
+                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
                     InstructionResult::Nothing => {},
                     InstructionResult::InvokeChunk(id) => {
                         self.call_stack.push(manager);

@@ -2,7 +2,8 @@ use crate::{
     stack::Stack,
     Backend,
     ChunkManager,
-    VMError,
+    Context,
+    VMError
 };
 use xelis_types::{Value, Type, Path};
 
@@ -61,7 +62,7 @@ macro_rules! opcode_op_assign {
 
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
-        pub fn $fn<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+        pub fn $fn<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
             $macro1!(stack, $macro2, $op);
             Ok(InstructionResult::Nothing)
         }
@@ -92,20 +93,20 @@ opcode_fn!(xor_assign, opcode_op_assign, op, ^);
 opcode_fn!(shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(shr_assign, opcode_op_assign, op, >>);
 
-pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
     stack.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?)));
     Ok(InstructionResult::Nothing)
 }
 
-pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     *left.as_mut() = right.into_owned();
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?.into_owned();
     let left = stack.pop_stack()?.into_owned();
     let result = match (left, right) {
@@ -121,7 +122,7 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>)
     Ok(InstructionResult::Nothing)
 }
 
-pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let _type = manager.read_type()?;
     let current = stack.pop_stack()?
         .into_owned();
@@ -141,7 +142,7 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManag
     Ok(InstructionResult::Nothing)
 }
 
-pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
     let value = value.as_bool()?;
     let value = value && stack.pop_stack()?.as_bool()?;
@@ -150,7 +151,7 @@ pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>)
     Ok(InstructionResult::Nothing)
 }
 
-pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
     let value = left.as_bool()? || right.as_bool()?;
@@ -159,13 +160,13 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn increment<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn increment<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let v = stack.last_mut_stack()?;
     v.as_mut().increment()?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn decrement<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn decrement<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let v = stack.last_mut_stack()?;
     v.as_mut().decrement()?;
     Ok(InstructionResult::Nothing)

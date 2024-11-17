@@ -1,10 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 use xelis_types::{EnumValueType, Path, Value};
 
-use crate::{stack::Stack, Backend, ChunkManager, VMError};
+use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
 
-pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let length = manager.read_u32()?;
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
@@ -16,7 +16,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let struct_type = backend.get_struct_with_id(id as usize)?;
 
@@ -29,7 +29,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let end = stack.pop_stack()?;
     let start = stack.pop_stack()?;
 
@@ -47,7 +47,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManage
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let len = manager.read_u32()?;
     let mut map = HashMap::new();
     for _ in 0..len {
@@ -60,7 +60,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>) -> Result<InstructionResult, VMError> {
+pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let enum_type = backend.get_enum_with_id(id as usize)?;
 
