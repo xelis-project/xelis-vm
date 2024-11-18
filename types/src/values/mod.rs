@@ -3,8 +3,8 @@ mod error;
 
 use std::{
     cmp::Ordering,
-    collections::HashMap,
-    hash::{Hash, Hasher},
+    collections::{HashMap, HashSet},
+    hash::{Hash, Hasher}, ptr,
 };
 use super::{
     Type,
@@ -49,6 +49,7 @@ pub enum Value {
     Optional(Option<ValueOwnable>),
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
+    // Map cannot be used as a key in another map
     Map(HashMap<Value, ValueOwnable>),
     Enum(Vec<ValueOwnable>, EnumValueType),
 }
@@ -69,6 +70,23 @@ impl PartialOrd for Value {
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash_with_tracked_pointers(state, &mut HashSet::new());
+    }
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
+    }
+}
+
+impl Value {
+    fn hash_with_tracked_pointers<H: Hasher>(&self, state: &mut H, tracked_pointers: &mut HashSet<*const Value>) {
+        if !tracked_pointers.insert(ptr::from_ref(self)) {
+            // Cyclic reference detected
+            return;
+        }
+
         match self {
             Value::Null => 0.hash(state),
             Value::U8(n) => {
@@ -105,46 +123,40 @@ impl Hash for Value {
             },
             Value::Struct(fields, struct_type) => {
                 9.hash(state);
-                fields.hash(state);
+                fields.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
                 struct_type.hash(state);
             },
             Value::Array(values) => {
                 10.hash(state);
-                values.hash(state);
+                values.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
             },
             Value::Optional(opt) => {
                 11.hash(state);
-                opt.hash(state);
+                if let Some(value) = opt {
+                    value.handle().hash_with_tracked_pointers(state, tracked_pointers);
+                }
             },
             Value::Range(start, end, range_type) => {
                 12.hash(state);
-                start.hash(state);
-                end.hash(state);
+                start.hash_with_tracked_pointers(state, tracked_pointers);
+                end.hash_with_tracked_pointers(state, tracked_pointers);
                 range_type.hash(state);
             },
             Value::Map(map) => {
                 13.hash(state);
                 for (key, value) in map {
-                    key.hash(state);
-                    value.hash(state);
+                    key.hash_with_tracked_pointers(state, tracked_pointers);
+                    value.handle().hash_with_tracked_pointers(state, tracked_pointers);
                 }
             },
             Value::Enum(fields, enum_type) => {
                 14.hash(state);
-                fields.hash(state);
+                fields.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
                 enum_type.hash(state);
             }
         }
     }
-}
 
-impl Default for Value {
-    fn default() -> Self {
-        Value::Null
-    }
-}
-
-impl Value {
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
@@ -682,5 +694,26 @@ impl std::fmt::Display for Value {
                 write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stackoverflow_std_hash() {
+        // Create a map that contains itself
+        let map = InnerValue::new(Value::Map(HashMap::new()));
+        let cloned = {
+            let mut m = map.borrow_mut();
+            m.as_mut_map()
+            .unwrap()
+            .insert(Value::U8(10), ValueOwnable::Rc(map.clone()));
+            m.clone()
+        };
+
+        let mut inner_map: HashMap<Value, ValueOwnable> = HashMap::new();
+        inner_map.insert(cloned, ValueOwnable::Owned(Box::new(Value::U8(10))));
     }
 }

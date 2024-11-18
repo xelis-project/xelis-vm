@@ -1,4 +1,9 @@
-use std::{cell::{Ref, RefCell, RefMut}, hash::{Hash, Hasher}, rc::Rc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    rc::Rc
+};
 
 use crate::{ValueHandle, ValueHandleMut};
 
@@ -31,7 +36,7 @@ impl InnerValue {
 
 impl Hash for InnerValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.borrow().hash(state)
+        self.0.borrow().hash_with_tracked_pointers(state, &mut HashSet::new());
     }
 }
 
