@@ -288,7 +288,7 @@ impl<'a> Interpreter<'a> {
                 let mut values = Vec::with_capacity(expressions.len());
                 for expr in expressions {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    values.push(value.into_ownable());
+                    values.push(value.into_pointer());
                 }
 
                 Ok(Some(Path::Owned(Value::Array(values))))
@@ -297,7 +297,7 @@ impl<'a> Interpreter<'a> {
                 let mut fields = Vec::with_capacity(expr_fields.len());
                 for expr in expr_fields {
                     let value = self.execute_expression_and_expect_value(&expr, stack, state)?;
-                    fields.push(value.into_ownable());
+                    fields.push(value.into_pointer());
                 }
 
                 Ok(Some(Path::Owned(Value::Struct(fields, _type.clone()))))

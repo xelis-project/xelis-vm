@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueOwnable};
+use xelis_types::{Type, Value, ValuePointer};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -23,7 +23,7 @@ macro_rules! collect {
             {
                 let start = $start.[<as_ $type>]()?;
                 let end = $end.[<as_ $type>]()?;
-                let vec = (start..end).map(|i| ValueOwnable::Owned(Box::new(Value::$t(i)))).collect();
+                let vec = (start..end).map(|i| ValuePointer::Owned(Box::new(Value::$t(i)))).collect();
                 Value::Array(vec)
             }
         }
@@ -90,7 +90,7 @@ fn collect(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
                 let max: u32 = diff.into();
                 for i in 0..max {
-                    vec.push(ValueOwnable::Owned(Box::new(Value::U256(i.into()))));
+                    vec.push(ValuePointer::Owned(Box::new(Value::U256(i.into()))));
                 }
             }
 

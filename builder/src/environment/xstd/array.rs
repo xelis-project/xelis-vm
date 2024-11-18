@@ -23,7 +23,7 @@ fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
     zelf?.as_mut_vec()?
-        .push(param.into_ownable());
+        .push(param.into_pointer());
     Ok(None)
 }
 

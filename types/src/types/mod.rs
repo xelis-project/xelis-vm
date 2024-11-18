@@ -6,7 +6,7 @@ pub use r#enum::*;
 
 use crate::{
     values::Value,
-    ValueOwnable,
+    ValuePointer,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -97,8 +97,8 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Optional(value) => Type::Optional(Box::new(match value.as_ref()? {
-                ValueOwnable::Owned(v) => Type::from_value(&v)?,
-                ValueOwnable::Rc(v) => Type::from_value(&v.borrow())?,
+                ValuePointer::Owned(v) => Type::from_value(&v)?,
+                ValuePointer::Shared(v) => Type::from_value(&v.borrow())?,
             })),
             Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle())?)),
             Value::Struct(_, _type) => Type::Struct(_type.clone()),

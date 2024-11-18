@@ -182,7 +182,7 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{Type, Value, ValueOwnable};
+    use xelis_types::{Type, Value, ValuePointer};
 
     use super::*;
 
@@ -248,7 +248,7 @@ mod tests {
             Value::U8(10),
             Value::U8(20),
             Value::U8(30),
-        ].into_iter().map(|v| ValueOwnable::Owned(Box::new(v))).collect();
+        ].into_iter().map(|v| ValuePointer::Owned(Box::new(v))).collect();
 
         // Push element 1
         let index = module.add_constant(Value::Array(values));
@@ -316,8 +316,8 @@ mod tests {
             vm.run().unwrap(),
             Value::Struct(
                 vec![
-                    ValueOwnable::Owned(Box::new(Value::U8(10))),
-                    ValueOwnable::Owned(Box::new(Value::U16(20)))
+                    ValuePointer::Owned(Box::new(Value::U8(10))),
+                    ValuePointer::Owned(Box::new(Value::U16(20)))
                 ].into(),
                 new_struct
             )
@@ -418,7 +418,7 @@ mod tests {
         let mut main = Chunk::new();
         // Create a struct
         let index = module.add_constant(Value::Struct(vec![
-            ValueOwnable::Owned(Box::new(Value::U64(10)))
+            ValuePointer::Owned(Box::new(Value::U64(10)))
         ].into(), new_struct));
 
         main.emit_opcode(OpCode::Constant);
@@ -565,11 +565,11 @@ mod tests {
         let mut chunk = Chunk::new();
 
         let index = module.add_constant(Value::Array(vec![
-            ValueOwnable::Owned(Box::new(Value::U8(10))),
-            ValueOwnable::Owned(Box::new(Value::U8(20))),
-            ValueOwnable::Owned(Box::new(Value::U8(30))),
-            ValueOwnable::Owned(Box::new(Value::U8(40))),
-            ValueOwnable::Owned(Box::new(Value::U8(50))),
+            ValuePointer::Owned(Box::new(Value::U8(10))),
+            ValuePointer::Owned(Box::new(Value::U8(20))),
+            ValuePointer::Owned(Box::new(Value::U8(30))),
+            ValuePointer::Owned(Box::new(Value::U8(40))),
+            ValuePointer::Owned(Box::new(Value::U8(50))),
         ].into()));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);

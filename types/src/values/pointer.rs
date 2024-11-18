@@ -41,18 +41,18 @@ impl Hash for InnerValue {
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum ValueOwnable {
+pub enum ValuePointer {
     Owned(Box<Value>),
-    Rc(InnerValue)
+    Shared(InnerValue)
 }
 
-impl ValueOwnable {
+impl ValuePointer {
     // Convert into a owned value
     // Clone if the value is shared and can't be moved
     pub fn into_inner(self) -> Value {
         match self {
-            ValueOwnable::Owned(v) => *v,
-            ValueOwnable::Rc(v) => match Rc::try_unwrap(v.into_inner()) {
+            ValuePointer::Owned(v) => *v,
+            ValuePointer::Shared(v) => match Rc::try_unwrap(v.into_inner()) {
                 Ok(value) => value.into_inner(),
                 Err(rc) => rc.borrow().clone()
             }
@@ -60,10 +60,10 @@ impl ValueOwnable {
     }
 
     // Clone the Rc value to fully own it
-    pub fn into_ownable(self) -> ValueOwnable {
+    pub fn into_ownable(self) -> ValuePointer {
         match self {
-            ValueOwnable::Owned(_) => self,
-            ValueOwnable::Rc(v) => ValueOwnable::Owned(Box::new(match Rc::try_unwrap(v.into_inner()) {
+            ValuePointer::Owned(_) => self,
+            ValuePointer::Shared(v) => ValuePointer::Owned(Box::new(match Rc::try_unwrap(v.into_inner()) {
                 Ok(value) => value.into_inner(),
                 Err(rc) => rc.borrow().clone()
             }))
@@ -71,31 +71,31 @@ impl ValueOwnable {
     }
 
     // Transform the value into a shared value
-    pub fn transform(&mut self) -> ValueOwnable {
+    pub fn transform(&mut self) -> ValuePointer {
         match self {
-            ValueOwnable::Owned(v) => {
+            ValuePointer::Owned(v) => {
                 let dst = std::mem::replace(v, Box::new(Value::Null));
-                let shared = Self::Rc(InnerValue::new(*dst));
+                let shared = Self::Shared(InnerValue::new(*dst));
                 *self = shared.clone();
                 shared
             },
-            ValueOwnable::Rc(v) => Self::Rc(v.clone())
+            ValuePointer::Shared(v) => Self::Shared(v.clone())
         }
     }
 
     // Wrap the value into an handle to be casted to a reference of the value
     pub fn handle<'a>(&'a self) -> ValueHandle<'a> {
         match self {
-            ValueOwnable::Owned(v) => ValueHandle::Borrowed(v),
-            ValueOwnable::Rc(v) => ValueHandle::Ref(v.borrow())
+            ValuePointer::Owned(v) => ValueHandle::Borrowed(v),
+            ValuePointer::Shared(v) => ValueHandle::Ref(v.borrow())
         }
     }
 
     // Wrap the value into an handle to be casted to a mutable reference of the value
     pub fn handle_mut<'a>(&'a mut self) -> ValueHandleMut<'a> {
         match self {
-            ValueOwnable::Owned(v) => ValueHandleMut::Borrowed(v),
-            ValueOwnable::Rc(v) => ValueHandleMut::RefMut(v.borrow_mut())
+            ValuePointer::Owned(v) => ValueHandleMut::Borrowed(v),
+            ValuePointer::Shared(v) => ValueHandleMut::RefMut(v.borrow_mut())
         }
     }
 }

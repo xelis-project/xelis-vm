@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueOwnable};
+use xelis_types::{Type, Value, ValuePointer};
 
 use crate::EnvironmentBuilder;
 
@@ -52,7 +52,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 
     let value = parameters.remove(0);
     let previous = zelf?.as_mut_map()?
-        .insert(key, value.into_ownable());
+        .insert(key, value.into_pointer());
     Ok(Some(Value::Optional(previous)))
 }
 
@@ -77,7 +77,7 @@ fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn keys(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let keys = zelf?.as_map()?
         .keys()
-        .map(|key| ValueOwnable::Owned(Box::new(key.clone())))
+        .map(|key| ValuePointer::Owned(Box::new(key.clone())))
         .collect::<Vec<_>>();
 
     Ok(Some(Value::Array(keys)))
@@ -86,7 +86,7 @@ fn keys(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn values(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let values = zelf?.as_mut_map()?
         .values_mut()
-        .map(ValueOwnable::transform)
+        .map(ValuePointer::transform)
         .collect::<Vec<_>>();
 
     Ok(Some(Value::Array(values)))

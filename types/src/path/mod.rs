@@ -1,6 +1,6 @@
 mod handle;
 
-use crate::{values::{Value, ValueError}, InnerValue, ValueOwnable};
+use crate::{values::{Value, ValueError}, InnerValue, ValuePointer};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -11,7 +11,7 @@ pub enum Path<'a> {
     Owned(Value),
     // Used for constants
     Borrowed(&'a Value),
-    Wrapper(ValueOwnable)
+    Wrapper(ValuePointer)
 }
 
 impl<'a> Path<'a> {
@@ -35,12 +35,12 @@ impl<'a> Path<'a> {
             Self::Owned(v) => {
                 let dst = std::mem::replace(v, Value::Null);
                 let inner = InnerValue::new(dst);
-                let shared = ValueOwnable::Rc(inner);
+                let shared = ValuePointer::Shared(inner);
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
-                let shared = ValueOwnable::Rc(InnerValue::new(v.clone()));
+                let shared = ValuePointer::Shared(InnerValue::new(v.clone()));
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
@@ -93,10 +93,10 @@ impl<'a> Path<'a> {
     }
 
     #[inline(always)]
-    pub fn into_ownable(self) -> ValueOwnable {
+    pub fn into_pointer(self) -> ValuePointer {
         match self {
-            Self::Owned(v) => ValueOwnable::Owned(Box::new(v)),
-            Self::Borrowed(v) => ValueOwnable::Owned(Box::new(v.clone())),
+            Self::Owned(v) => ValuePointer::Owned(Box::new(v)),
+            Self::Borrowed(v) => ValuePointer::Owned(Box::new(v.clone())),
             Self::Wrapper(v) => v.into_ownable()
         }
     }

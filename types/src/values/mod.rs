@@ -1,4 +1,4 @@
-mod owneable;
+mod pointer;
 mod error;
 
 use std::{
@@ -13,7 +13,7 @@ use super::{
     U256
 };
 
-pub use owneable::*;
+pub use pointer::*;
 pub use error::*;
 
 macro_rules! checked_cast {
@@ -44,14 +44,14 @@ pub enum Value {
 
     String(String),
     Boolean(bool),
-    Struct(Vec<ValueOwnable>, StructType),
-    Array(Vec<ValueOwnable>),
-    Optional(Option<ValueOwnable>),
+    Struct(Vec<ValuePointer>, StructType),
+    Array(Vec<ValuePointer>),
+    Optional(Option<ValuePointer>),
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
     // Map cannot be used as a key in another map
-    Map(HashMap<Value, ValueOwnable>),
-    Enum(Vec<ValueOwnable>, EnumValueType),
+    Map(HashMap<Value, ValuePointer>),
+    Enum(Vec<ValuePointer>, EnumValueType),
 }
 
 impl PartialOrd for Value {
@@ -246,7 +246,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Value, ValueOwnable>, ValueError> {
+    pub fn as_map(&self) -> Result<&HashMap<Value, ValuePointer>, ValueError> {
         match self {
             Value::Map(map) => Ok(map),
             v => Err(ValueError::InvalidStructValue(v.clone()))
@@ -254,7 +254,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Value, ValueOwnable>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Value, ValuePointer>, ValueError> {
         match self {
             Value::Map(map) => Ok(map),
             v => Err(ValueError::InvalidStructValue(v.clone()))
@@ -262,7 +262,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValueOwnable>, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -270,7 +270,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValueOwnable>, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -278,7 +278,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<&Option<ValueOwnable>, ValueError> {
+    pub fn as_optional(&self, expected: &Type) -> Result<&Option<ValuePointer>, ValueError> {
         match self {
             Value::Null => Ok(&None),
             Value::Optional(n) => Ok(n),
@@ -287,7 +287,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<ValueOwnable, ValueError> {
+    pub fn take_from_optional(&mut self, expected: &Type) -> Result<ValuePointer, ValueError> {
         match self {
             Value::Optional(opt) => opt.take().ok_or(ValueError::OptionalIsNull),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
@@ -295,7 +295,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<ValueOwnable>, ValueError> {
+    pub fn take_optional(&mut self) -> Result<Option<ValuePointer>, ValueError> {
         match self {
             Value::Optional(opt) => Ok(opt.take()),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
@@ -367,7 +367,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<ValueOwnable>, ValueError> {
+    pub fn to_map(self) -> Result<Vec<ValuePointer>, ValueError> {
         match self {
             Value::Struct(fields, _) => Ok(fields),
             v => Err(ValueError::InvalidStructValue(v.clone()))
@@ -375,7 +375,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<ValueOwnable>, ValueError> {
+    pub fn to_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -383,7 +383,7 @@ impl Value {
     }
     #[inline]
 
-    pub fn to_sub_vec(self) -> Result<Vec<ValueOwnable>, ValueError> {
+    pub fn to_sub_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(fields, _) => Ok(fields),
@@ -392,7 +392,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<ValueOwnable>, ValueError> {
+    pub fn as_sub_vec(&self) -> Result<&Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(fields, _) => Ok(fields),
@@ -401,7 +401,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<ValueOwnable>, ValueError> {
+    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<ValuePointer>, ValueError> {
         match self {
             Value::Array(values) => Ok(values),
             Value::Struct(fields, _) => Ok(fields),
@@ -501,7 +501,7 @@ impl Value {
                     Ok(Value::Optional(None))
                 } else {
                     self.checked_cast_to_primitive_type(inner)
-                        .map(|v| Value::Optional(Some(ValueOwnable::Owned(Box::new(v)))))
+                        .map(|v| Value::Optional(Some(ValuePointer::Owned(Box::new(v)))))
                 }
             }
             _ => Err(ValueError::InvalidCastType(expected.clone()))
@@ -679,8 +679,8 @@ impl std::fmt::Display for Value {
             },
             Value::Optional(value) => match value.as_ref() {
                 Some(value) => write!(f, "optional<{}>", match value {
-                    ValueOwnable::Owned(v) => v.to_string(),
-                    ValueOwnable::Rc(v) => v.borrow().to_string()
+                    ValuePointer::Owned(v) => v.to_string(),
+                    ValuePointer::Shared(v) => v.borrow().to_string()
                 }),
                 None => write!(f, "optional<null>")
             },
@@ -709,11 +709,11 @@ mod tests {
             let mut m = map.borrow_mut();
             m.as_mut_map()
             .unwrap()
-            .insert(Value::U8(10), ValueOwnable::Rc(map.clone()));
+            .insert(Value::U8(10), ValuePointer::Shared(map.clone()));
             m.clone()
         };
 
-        let mut inner_map: HashMap<Value, ValueOwnable> = HashMap::new();
-        inner_map.insert(cloned, ValueOwnable::Owned(Box::new(Value::U8(10))));
+        let mut inner_map: HashMap<Value, ValuePointer> = HashMap::new();
+        inner_map.insert(cloned, ValuePointer::Owned(Box::new(Value::U8(10))));
     }
 }

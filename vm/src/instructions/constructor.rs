@@ -10,7 +10,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(pop.into_ownable());
+        array.push_front(pop.into_pointer());
     }
 
     stack.push_stack(Path::Owned(Value::Array(array.into())))?;
@@ -23,7 +23,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
 
     let mut fields = VecDeque::new();
     for _ in 0..struct_type.fields().len() {
-        fields.push_front(stack.pop_stack()?.into_ownable());
+        fields.push_front(stack.pop_stack()?.into_pointer());
     }
 
     stack.push_stack(Path::Owned(Value::Struct(fields.into(), struct_type.clone())))?;
@@ -58,7 +58,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
             return Err(EnvironmentError::InvalidKeyType.into());
         }
 
-        map.insert(key, value.into_ownable());
+        map.insert(key, value.into_pointer());
     }
 
     stack.push_stack_unchecked(Path::Owned(Value::Map(map)));
@@ -75,7 +75,7 @@ pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut 
 
     let mut values = VecDeque::new();
     for _ in variant.fields() {
-        values.push_front(stack.pop_stack()?.into_ownable());
+        values.push_front(stack.pop_stack()?.into_pointer());
     }
 
     stack.push_stack(Path::Owned(Value::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;
