@@ -1657,6 +1657,38 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn test_map_as_map_key() {
+        // let a: map<map<u64, string>, string> = {};
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let env = EnvironmentBuilder::new();
+        let mut parser = Parser::new(VecDeque::from(tokens), &env);
+        let mut context = Context::new();
+        context.begin_scope();
+
+        assert!(parser.read_statements(&mut context, &None).is_err());
+    }
+
     #[test]
     fn test_double_depth_map() {
         // let a: map<u64, map<u64, string>> = {};
