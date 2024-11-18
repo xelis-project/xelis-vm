@@ -47,6 +47,7 @@ pub enum Value {
     Struct(Vec<ValuePointer>, StructType),
     Array(Vec<ValuePointer>),
     Optional(Option<ValuePointer>),
+
     // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
     // Map cannot be used as a key in another map
@@ -501,7 +502,7 @@ impl Value {
                     Ok(Value::Optional(None))
                 } else {
                     self.checked_cast_to_primitive_type(inner)
-                        .map(|v| Value::Optional(Some(ValuePointer::Owned(Box::new(v)))))
+                        .map(|v| Value::Optional(Some(ValuePointer::owned(v))))
                 }
             }
             _ => Err(ValueError::InvalidCastType(expected.clone()))
@@ -678,10 +679,7 @@ impl std::fmt::Display for Value {
                 write!(f, "[{}]", s.join(", "))
             },
             Value::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", match value {
-                    ValuePointer::Owned(v) => v.to_string(),
-                    ValuePointer::Shared(v) => v.borrow().to_string()
-                }),
+                Some(value) => write!(f, "optional<{}>", value.handle().to_string()),
                 None => write!(f, "optional<null>")
             },
             Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end),
@@ -709,11 +707,23 @@ mod tests {
             let mut m = map.borrow_mut();
             m.as_mut_map()
             .unwrap()
-            .insert(Value::U8(10), ValuePointer::Shared(map.clone()));
+            .insert(Value::U8(10), ValuePointer::shared(map.clone()));
             m.clone()
         };
 
         let mut inner_map: HashMap<Value, ValuePointer> = HashMap::new();
-        inner_map.insert(cloned, ValuePointer::Owned(Box::new(Value::U8(10))));
+        inner_map.insert(cloned, ValuePointer::owned(Value::U8(10)));
+    }
+
+    #[test]
+    fn test_stackoverflow_recursive_hash() {
+        // Create a map that contains a map that contains a map...
+        let mut map = Value::Map(HashMap::new());
+        for _ in 0..28000 {
+            let mut inner_map = HashMap::new();
+            inner_map.insert(Value::U8(10), ValuePointer::owned(map));
+            map = Value::Map(inner_map);
+            // println!("Map size: {}", map.get_memory_usage(0));
+        }
     }
 }

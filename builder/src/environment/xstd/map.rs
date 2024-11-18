@@ -77,7 +77,7 @@ fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn keys(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let keys = zelf?.as_map()?
         .keys()
-        .map(|key| ValuePointer::Owned(Box::new(key.clone())))
+        .map(|key| ValuePointer::owned(key.clone()))
         .collect::<Vec<_>>();
 
     Ok(Some(Value::Array(keys)))
@@ -86,7 +86,7 @@ fn keys(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn values(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let values = zelf?.as_mut_map()?
         .values_mut()
-        .map(ValuePointer::transform)
+        .map(|v| v.transform())
         .collect::<Vec<_>>();
 
     Ok(Some(Value::Array(values)))

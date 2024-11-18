@@ -23,7 +23,7 @@ macro_rules! overflow_fn {
                 Ok(Some(if overflow {
                     Value::Optional(None)
                 } else {
-                    let inner = ValuePointer::Owned(Box::new(Value::$t(result)));
+                    let inner = ValuePointer::owned(Value::$t(result));
                     Value::Optional(Some(inner))
                 }))
             }
@@ -62,7 +62,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| ValuePointer::Owned(Box::new(Value::U8(*b)))).collect();
+                let vec = bytes.iter().map(|b| ValuePointer::owned(Value::U8(*b))).collect();
                 Ok(Some(Value::Array(vec)))
             }
 
@@ -90,8 +90,8 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = ValuePointer::Owned(Box::new(Value::$t(min)));
-        let max_inner = ValuePointer::Owned(Box::new(Value::$t(max)));
+        let min_inner = ValuePointer::owned(Value::$t(min));
+        let max_inner = ValuePointer::owned(Value::$t(max));
 
         $env.register_constant(Type::$t, "MIN", Value::Optional(Some(min_inner)));
         $env.register_constant(Type::$t, "MAX", Value::Optional(Some(max_inner)));

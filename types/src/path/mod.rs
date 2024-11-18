@@ -35,12 +35,12 @@ impl<'a> Path<'a> {
             Self::Owned(v) => {
                 let dst = std::mem::replace(v, Value::Null);
                 let inner = InnerValue::new(dst);
-                let shared = ValuePointer::Shared(inner);
+                let shared = ValuePointer::shared(inner);
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
-                let shared = ValuePointer::Shared(InnerValue::new(v.clone()));
+                let shared = ValuePointer::shared(InnerValue::new(v.clone()));
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
@@ -88,16 +88,16 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
-            Self::Wrapper(v) => v.into_inner()
+            Self::Wrapper(mut v) => v.into_inner()
         }
     }
 
     #[inline(always)]
     pub fn into_pointer(self) -> ValuePointer {
         match self {
-            Self::Owned(v) => ValuePointer::Owned(Box::new(v)),
-            Self::Borrowed(v) => ValuePointer::Owned(Box::new(v.clone())),
-            Self::Wrapper(v) => v.into_ownable()
+            Self::Owned(v) => ValuePointer::owned(v),
+            Self::Borrowed(v) => ValuePointer::owned(v.clone()),
+            Self::Wrapper(mut v) => v.into_ownable()
         }
     }
 

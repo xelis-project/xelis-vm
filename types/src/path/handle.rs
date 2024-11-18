@@ -18,7 +18,7 @@ pub enum ValueHandleMut<'a> {
 
 impl<'a> ValueHandle<'a> {
     #[inline(always)]
-    pub fn as_value(&self) -> &Value {
+    pub fn as_value<'b>(&'b self) -> &'b Value {
         match self {
             Self::Borrowed(v) => v,
             Self::Ref(v) => v

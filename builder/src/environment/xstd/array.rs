@@ -40,7 +40,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 
 fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
-    if let Some(value) = array.pop() {
+    if let Some(mut value) = array.pop() {
         Ok(Some(value.into_inner()))
     } else {
         Ok(Some(Value::Optional(None)))

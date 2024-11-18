@@ -4,10 +4,7 @@ mod r#enum;
 pub use r#struct::*;
 pub use r#enum::*;
 
-use crate::{
-    values::Value,
-    ValuePointer,
-};
+use crate::values::Value;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -96,10 +93,7 @@ impl Type {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
-            Value::Optional(value) => Type::Optional(Box::new(match value.as_ref()? {
-                ValuePointer::Owned(v) => Type::from_value(&v)?,
-                ValuePointer::Shared(v) => Type::from_value(&v.borrow())?,
-            })),
+            Value::Optional(value) => Type::Optional(Box::new(Type::from_value(&value.as_ref()?.handle())?)),
             Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle())?)),
             Value::Struct(_, _type) => Type::Struct(_type.clone()),
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
