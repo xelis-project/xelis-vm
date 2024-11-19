@@ -1515,6 +1515,7 @@ mod tests {
         parser.read_statements(&mut context, return_type).unwrap()
     }
 
+    #[track_caller]
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
         test_parser_statement_with(tokens, variables, &Some(return_type), env)
@@ -2048,51 +2049,59 @@ mod tests {
     fn test_if_return() {
         // if i < 10 { nothing } return 0
         let mut tokens = vec![
+            Token::BraceOpen,
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
             Token::Value(Literal::U64(10)),
             Token::BraceOpen,
             Token::BraceClose,
-            Token::Return
+            Token::Return,
+            Token::BraceClose
         ];
 
         let statements = test_parser_statement(tokens.clone(), vec![("i", Type::U64)]);
         assert_eq!(statements, vec![
-            Statement::If(
-                Expression::Operator(
-                    Operator::LessThan,
-                    Box::new(Expression::Variable(0)),
-                    Box::new(Expression::Value(Value::U64(10)))
+            Statement::Scope(vec![
+                Statement::If(
+                    Expression::Operator(
+                        Operator::LessThan,
+                        Box::new(Expression::Variable(0)),
+                        Box::new(Expression::Value(Value::U64(10)))
+                    ),
+                    Vec::new(),
+                    None
                 ),
-                Vec::new(),
-                None
-            ),
-            Statement::Return(None)
+                Statement::Return(None)
+            ])
         ]);
 
-        tokens.push(Token::Value(Literal::U64(0)));
+        // add a value after the return
+        tokens.insert(tokens.len() - 1, Token::Value(Literal::U64(0)));
 
 
         let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
         assert_eq!(statements, vec![
-            Statement::If(
-                Expression::Operator(
-                    Operator::LessThan,
-                    Box::new(Expression::Variable(0)),
-                    Box::new(Expression::Value(Value::U64(10)))
+            Statement::Scope(vec![
+                Statement::If(
+                    Expression::Operator(
+                        Operator::LessThan,
+                        Box::new(Expression::Variable(0)),
+                        Box::new(Expression::Value(Value::U64(10)))
+                    ),
+                    Vec::new(),
+                    None
                 ),
-                Vec::new(),
-                None
-            ),
-            Statement::Return(Some(Expression::Value(Value::U64(0))))
+                Statement::Return(Some(Expression::Value(Value::U64(0))))
+            ])
         ]);
     }
 
     #[test]
     fn test_if_else_if_else_return() {
-        // if i < 10 {} else if i < 20 {} else {} return 0
+        // { if i < 10 {} else if i < 20 {} else {} return 0 }
         let tokens = vec![
+            Token::BraceOpen,
             Token::If,
             Token::Identifier("i"),
             Token::OperatorLessThan,
@@ -2110,31 +2119,34 @@ mod tests {
             Token::BraceOpen,
             Token::BraceClose,
             Token::Return,
-            Token::Value(Literal::U64(0))
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose
         ];
 
         let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
         assert_eq!(statements, vec![
-            Statement::If(
-                Expression::Operator(
-                    Operator::LessThan,
-                    Box::new(Expression::Variable(0)),
-                    Box::new(Expression::Value(Value::U64(10)))
+            Statement::Scope(vec![
+                Statement::If(
+                    Expression::Operator(
+                        Operator::LessThan,
+                        Box::new(Expression::Variable(0)),
+                        Box::new(Expression::Value(Value::U64(10)))
+                    ),
+                    Vec::new(),
+                    Some(vec![
+                        Statement::If(
+                            Expression::Operator(
+                                Operator::LessThan,
+                                Box::new(Expression::Variable(0)),
+                                Box::new(Expression::Value(Value::U64(20)))
+                            ),
+                            Vec::new(),
+                            Some(Vec::new())
+                        )
+                    ])
                 ),
-                Vec::new(),
-                Some(vec![
-                    Statement::If(
-                        Expression::Operator(
-                            Operator::LessThan,
-                            Box::new(Expression::Variable(0)),
-                            Box::new(Expression::Value(Value::U64(20)))
-                        ),
-                        Vec::new(),
-                        Some(Vec::new())
-                    )
-                ])
-            ),
-            Statement::Return(Some(Expression::Value(Value::U64(0))))
+                Statement::Return(Some(Expression::Value(Value::U64(0))))
+            ])                
         ]);
     }
 
