@@ -33,7 +33,7 @@ macro_rules! overflow_fn {
                 // Function name as a string
                 stringify!([<overflowing_ $op>]),
                 Some(Type::$t),
-                vec![Type::$t],
+                vec![("other", Type::$t)],
                 // The function identifier
                 [<overflowing_ $op _ $f>],
                 2,

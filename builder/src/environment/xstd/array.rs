@@ -4,12 +4,12 @@ use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::T(0)))), vec![], len, 1, Some(Type::U32));
-    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::T(0)], push, 1, None);
-    env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32], remove, 1, Some(Type::T(0)));
+    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], push, 1, None);
+    env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], remove, 1, Some(Type::T(0)));
     env.register_native_function("pop", Some(Type::Array(Box::new(Type::T(0)))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T(0)))));
-    env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32, Type::U32], slice, 3, Some(Type::Array(Box::new(Type::T(0)))));
-    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::T(0)], contains, 1, Some(Type::Bool));
-    env.register_native_function("get", Some(Type::Array(Box::new(Type::T(0)))), vec![Type::U32], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(0)))), vec![("start", Type::U32), ("end", Type::U32)], slice, 3, Some(Type::Array(Box::new(Type::T(0)))));
+    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], contains, 10, Some(Type::Bool));
+    env.register_native_function("get", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
     env.register_native_function("first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
     env.register_native_function("last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
 }

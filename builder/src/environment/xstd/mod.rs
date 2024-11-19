@@ -23,10 +23,10 @@ pub fn register(env: &mut EnvironmentBuilder) {
     range::register(env);
     map::register(env);
 
-    env.register_native_function("println", None, vec![Type::Any], println, 1, None);
-    env.register_native_function("debug", None, vec![Type::Any], debug, 1, None);
+    env.register_native_function("println", None, vec![("value", Type::Any)], println, 1, None);
+    env.register_native_function("debug", None, vec![("value", Type::Any)], debug, 1, None);
 
-    env.register_native_function("panic", None, vec![Type::Any], panic, 1, Some(Type::Any));
+    env.register_native_function("panic", None, vec![("value", Type::Any)], panic, 1, Some(Type::Any));
 }
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {

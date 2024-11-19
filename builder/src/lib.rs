@@ -18,6 +18,8 @@ pub enum BuilderError {
     MappingNotFound,
     #[error("mapping already exists")]
     MappingExists,
+    #[error("Signature already registered")]
+    SignatureAlreadyRegistered,
     #[error(transparent)]
     ValueError(#[from] ValueError),
 }

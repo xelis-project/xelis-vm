@@ -1252,15 +1252,13 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let types: Vec<Type> = parameters.iter().map(|p| p.1.clone()).collect();
-        let id = self.functions_mapper.register(Signature::new(name.to_owned(), for_type.clone(), types))
+        let id = self.functions_mapper.register(name, for_type.clone(), parameters.clone())
             .map_err(|e| err!(self, e.into()))?;
         if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
         }
 
         let has_return_type = return_type.is_some();
-
         let mut new_params = Vec::with_capacity(parameters.len());
         for (name, param_type) in parameters {
             let id = context.register_variable(name, param_type.clone())
