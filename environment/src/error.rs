@@ -26,6 +26,8 @@ pub enum EnvironmentError {
         limit: u64,
         actual: u64,
     },
+    #[error("Gas overflow")]
+    GasOverflow,
     #[error("Invalid key type")]
     InvalidKeyType,
     #[error(transparent)]

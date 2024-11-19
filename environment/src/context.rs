@@ -122,10 +122,10 @@ impl<'a> Context<'a> {
     // Increase the gas usage by a specific amount
     #[inline]
     pub fn increase_gas_usage(&mut self, gas: u64) -> Result<(), EnvironmentError> {
-        if let Some(max_gas) = self.max_gas {
-            self.current_gas = self.current_gas.checked_add(gas)
-                .ok_or(EnvironmentError::NotEnoughGas { limit: max_gas, actual: self.current_gas })?;
+        self.current_gas = self.current_gas.checked_add(gas)
+            .ok_or(EnvironmentError::GasOverflow)?;
 
+        if let Some(max_gas) = self.max_gas {
             if self.current_gas > max_gas {
                 return Err(EnvironmentError::NotEnoughGas { limit: max_gas, actual: self.current_gas });
             }
@@ -135,51 +135,61 @@ impl<'a> Context<'a> {
     }
 
     // Insert a borrowed value into the Context
+    #[inline]
     pub fn insert_ref<T: 'static>(&mut self, value: &'a T) {
         self.data.insert(TypeId::of::<T>(), Data::Borrowed(value));
     }
 
     // Insert a mutable value into the Context
+    #[inline]
     pub fn insert_mut<T: 'static>(&mut self, value: &'a mut T) {
         self.data.insert(TypeId::of::<T>(), Data::Mut(value));
     }
 
     // Insert an owned value into the Context
+    #[inline]
     pub fn insert<T: 'static>(&mut self, value: T) {
         self.data.insert(TypeId::of::<T>(), Data::Owned(Box::new(value)));
     }
 
     // Get a borrowed value from the Context
+    #[inline]
     pub fn get<'b, T: 'static>(&'b self) -> Option<&'b T> {
         self.data.get(&TypeId::of::<T>()).map(|v| v.downcast_ref()).flatten()
     }
 
     // Get a mutable value from the Context
+    #[inline]
     pub fn get_mut<'b, T: 'static>(&'b mut self) -> Option<&'b mut T> {
         self.data.get_mut(&TypeId::of::<T>()).map(|v| v.downcast_mut()).flatten()
     }
 
     // Get an owned value from the Context
+    #[inline]
     pub fn take<T: 'static>(&mut self) -> Option<T> {
         self.data.remove(&TypeId::of::<T>()).and_then(|v| v.take())
     }
 
     // remove a value from the Context and returns it.
+    #[inline]
     pub fn remove<T: 'static>(&mut self) -> Option<Data<'a>> {
         self.data.remove(&TypeId::of::<T>())
     }
 
     // Check if the Context contains a value of a specific type.
+    #[inline]
     pub fn contains<T: 'static>(&self) -> bool {
         self.data.contains_key(&TypeId::of::<T>())
     }
 
     // Clear the Context
+    #[inline]
     pub fn clear(&mut self) {
         self.data.clear();
     }
 
     // Reset the gas usage
+    #[inline]
     pub fn reset_gas_usage(&mut self) {
         self.current_gas = 0;
     }
