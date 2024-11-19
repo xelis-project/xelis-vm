@@ -114,6 +114,24 @@ impl<'a> VM<'a> {
         &mut self.context
     }
 
+    // Get the instruction table
+    #[inline]
+    pub fn table(&self) -> &InstructionTable<'a> {
+        &self.backend.table
+    }
+
+    // Get a mutable reference to the instruction table
+    #[inline]
+    pub fn table_mut(&mut self) -> &mut InstructionTable<'a> {
+        &mut self.backend.table
+    }
+
+    // Get the environment
+    #[inline]
+    pub fn environment(&self) -> &Environment {
+        self.backend.environment
+    }
+
     // Invoke a chunk using its id
     pub(crate) fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
         if self.call_stack.len() >= CALL_STACK_SIZE {
