@@ -25,14 +25,14 @@ macro_rules! op {
 
 macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a, $b) {
+        match ($a.as_value(), $b.as_value()) {
             (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
             (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
             (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
             (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
             (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            (Value::U256(a), Value::U256(b)) => Value::U256(a $op b),
-            (Value::String(a), Value::String(b)) => Value::String(a $op &b),
+            (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
+            (Value::String(a), Value::String(b)) => Value::String(a.to_owned() $op &b),
             (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
         }
     }};
@@ -64,17 +64,6 @@ macro_rules! opcode_op {
     };
 }
 
-macro_rules! opcode_op_owned {
-    ($self: expr, $macr: tt, $op: tt) => {
-        {
-            let right = $self.pop_stack()?;
-            let left = $self.pop_stack()?;
-            // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked(Path::Owned($macr!(left.into_owned(), right.into_owned(), $op)));
-        }
-    };
-}
-
 macro_rules! opcode_op_assign {
     ($self: expr, $macr: tt, $op: tt) => {
         {
@@ -95,7 +84,7 @@ macro_rules! opcode_fn {
     };
 }
 
-opcode_fn!(add, opcode_op_owned, op_string, +);
+opcode_fn!(add, opcode_op, op_string, +);
 opcode_fn!(sub, opcode_op, op, -);
 opcode_fn!(mul, opcode_op, op, *);
 opcode_fn!(div, opcode_op, op, /);
