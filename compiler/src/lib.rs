@@ -710,12 +710,16 @@ impl<'a> Compiler<'a> {
         // Include the structs created
         for struct_type in self.program.structures() {
             trace!("Adding struct: {:?}", struct_type);
-            self.module.add_struct(struct_type.clone());
+            if !self.module.add_struct(struct_type.clone()) {
+                return Err(CompilerError::DuplicatedStruct(struct_type.id()));
+            }
         }
 
         for enum_type in self.program.enums() {
             trace!("Adding enum: {:?}", enum_type);
-            self.module.add_enum(enum_type.clone());
+            if !self.module.add_enum(enum_type.clone()) {
+                return Err(CompilerError::DuplicatedEnum(enum_type.id()));
+            }
         }
 
         // Compile the program
@@ -723,6 +727,7 @@ impl<'a> Compiler<'a> {
             self.compile_function(function)?;
         }
 
+        // Sanity checks
         if !self.values_on_stack.is_empty() {
             return Err(CompilerError::DanglingValueOnStack);
         }

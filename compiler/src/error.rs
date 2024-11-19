@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CompilerError {
+    #[error("duplicated struct {0}")]
+    DuplicatedStruct(u16),
+    #[error("duplicated enum {0}")]
+    DuplicatedEnum(u16),
     #[error("expected a 'break' statement")]
     ExpectedBreak,
     #[error("expected a 'continue' statement")]

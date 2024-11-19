@@ -1,57 +1,63 @@
 
 use std::collections::HashSet;
+use indexmap::IndexSet;
 use xelis_types::{EnumType, StructType, Value};
 
 use super::Chunk;
 
-// A module is a collection of declared chunks, constants and structs
+// A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
 pub struct Module {
-    // TODO use a IndexSet
-    constants: Vec<Value>,
+    // Set of constants used by the program
+    constants: IndexSet<Value>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
     entry_chunk_ids: HashSet<usize>,
     // registered structs
-    structs: Vec<StructType>,
+    structs: IndexSet<StructType>,
     // registered enums
-    enums: Vec<EnumType>
+    enums: IndexSet<EnumType>
 }
 
 impl Module {
     // Create a new module
     pub fn new() -> Self {
         Self {
-            constants: Vec::new(),
+            constants: IndexSet::new(),
             chunks: Vec::new(),
             entry_chunk_ids: HashSet::new(),
-            structs: Vec::new(),
-            enums: Vec::new()
+            structs: IndexSet::new(),
+            enums: IndexSet::new()
         }
+    }
+
+    // Validate the module
+    pub fn validate(&self) -> bool {
+        let max = u16::MAX as usize;
+
+        self.constants.len() < max
+        && self.chunks.len() < max
+        && self.structs.len() < max
+        && self.enums.len() < max
     }
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &[Value] {
+    pub fn constants(&self) -> &IndexSet<Value> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
     pub fn add_constant(&mut self, value: Value) -> usize {
-        if let Some(index) = self.constants.iter().position(|v| v == &value) {
-            index
-        } else {
-            self.constants.push(value);
-            self.constants.len() - 1
-        }
+        self.constants.insert_full(value).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<&Value> {
-        self.constants.get(index)
+        self.constants.get_index(index)
     }
 
     // Get the chunks declared in the module
@@ -100,37 +106,37 @@ impl Module {
 
     // Get all the structs declared in the module
     #[inline]
-    pub fn structs(&self) -> &[StructType] {
+    pub fn structs(&self) -> &IndexSet<StructType> {
         &self.structs
     }
 
     // Add a struct to the module
     #[inline]
-    pub fn add_struct(&mut self, structure: StructType) {
-        self.structs.push(structure);
+    pub fn add_struct(&mut self, structure: StructType) -> bool {
+        self.structs.insert(structure)
     }
 
     // Get a struct at a specific index
     #[inline]
     pub fn get_struct_at(&self, index: usize) -> Option<&StructType> {
-        self.structs.get(index)
+        self.structs.get_index(index)
     }
 
     // Get all the enums declared in the module
     #[inline]
-    pub fn enums(&self) -> &[EnumType] {
+    pub fn enums(&self) -> &IndexSet<EnumType> {
         &self.enums
     }
 
     // Add an enum to the module
     #[inline]
-    pub fn add_enum(&mut self, enumeration: EnumType) {
-        self.enums.push(enumeration);
+    pub fn add_enum(&mut self, enumeration: EnumType) -> bool {
+        self.enums.insert(enumeration)
     }
 
     // Get an enum at a specific index
     #[inline]
     pub fn get_enum_at(&self, index: usize) -> Option<&EnumType> {
-        self.enums.get(index)
+        self.enums.get_index(index)
     }
 }
