@@ -1,6 +1,6 @@
 mod handle;
 
-use crate::{values::{Value, ValueError}, InnerValue, ValuePointer};
+use crate::{values::{Value, ValueError}, SubValue, ValuePointer};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -33,14 +33,14 @@ impl<'a> Path<'a> {
     pub fn shareable(&mut self) -> Path<'a> {
         match self {
             Self::Owned(v) => {
-                let dst = std::mem::replace(v, Value::Null);
-                let inner = InnerValue::new(dst);
+                let dst = std::mem::take(v);
+                let inner = SubValue::new(dst);
                 let shared = ValuePointer::shared(inner);
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
             Self::Borrowed(v) => { 
-                let shared = ValuePointer::shared(InnerValue::new(v.clone()));
+                let shared = ValuePointer::shared(SubValue::new(v.clone()));
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
@@ -88,7 +88,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
-            Self::Wrapper(mut v) => v.into_inner()
+            Self::Wrapper(v) => v.to_value()
         }
     }
 
@@ -97,7 +97,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => ValuePointer::owned(v),
             Self::Borrowed(v) => ValuePointer::owned(v.clone()),
-            Self::Wrapper(mut v) => v.into_ownable()
+            Self::Wrapper(mut v) => v.into_owned()
         }
     }
 

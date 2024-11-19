@@ -1213,7 +1213,6 @@ mod full_tests {
             entry main() {
                 let x: u64[][] = [[10]];
                 x.push(x[0]);
-                debug(x)
                 x[1][0] = 20;
                 return x[0][0]
             }
@@ -1237,6 +1236,29 @@ mod full_tests {
                 t.push(t.get(0).unwrap());
                 t[1].x = 20;
                 return t[0].x
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_self_reference_map() {
+        let code = r#"
+            struct Dummy {
+                x: u64
+            }
+            entry main() {
+                let x: map<string, Dummy> = {};
+                x.insert("a", Dummy { x: 10 });
+                let dummy: Dummy = x.get("a").unwrap();
+                x.insert("b", dummy);
+                x.get("b").unwrap().x = 20;
+
+                return x.get("a").unwrap().x
             }
         "#;
 

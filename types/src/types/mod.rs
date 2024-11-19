@@ -174,23 +174,28 @@ impl Type {
         match other {
             Type::Range(inner) => match self {
                 Type::Range(inner2) => inner.is_compatible_with(inner2),
+                Type::Any => true,
                 _ => false
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
+                Type::Any => true,
                 _ => false
             },
             Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
                 Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                Type::Any => true,
                 _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
             },
             Type::Optional(sub_type) => match self {
                 Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
-                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
+                Type::Any => true,
+                _ => *self == *other,
             },
             Type::Map(k, v) => match self {
                 Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
+                Type::Any => true,
                 _ => false
             },
             o => *o == *self || self.is_generic(),

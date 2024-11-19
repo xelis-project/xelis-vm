@@ -702,7 +702,7 @@ mod tests {
     #[test]
     fn test_stackoverflow_std_hash() {
         // Create a map that contains itself
-        let map = InnerValue::new(Value::Map(HashMap::new()));
+        let map = SubValue::new(Value::Map(HashMap::new()));
         let cloned = {
             let mut m = map.borrow_mut();
             m.as_mut_map()

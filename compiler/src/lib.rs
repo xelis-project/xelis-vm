@@ -428,7 +428,8 @@ impl<'a> Compiler<'a> {
                     return Err(CompilerError::TooMuchDanglingValueOnStack);
                 }
 
-                for index in on_stack.into_iter().take(dangling) {
+                // Reverse it, otherwise it will be shifted
+                for index in on_stack.into_iter().take(dangling).rev() {
                     chunk.inject_opcode_at(OpCode::Pop, index + 1);
                 }
             }
@@ -765,7 +766,7 @@ mod tests {
     #[track_caller]
     fn prepare_program(code: &str) -> (Program, Environment) {
         let tokens = Lexer::new(code).get().unwrap();
-        let environment = EnvironmentBuilder::new();
+        let environment = EnvironmentBuilder::default();
         let (program, _) = Parser::new(tokens, &environment).parse().unwrap();
         (program, environment.build())
     }
@@ -1093,6 +1094,71 @@ mod tests {
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::NewEnum.as_byte(), 0, 0, 1,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dangling_values() {
+        let code = r#"
+            entry main() {
+                let x: map<string, u64> = {};
+                x.insert("a", 10);
+                let dummy: u64 = x.get("a").unwrap();
+                x.insert("b", dummy);
+
+                return 0
+            }
+        "#;
+
+        let (program, environment) = prepare_program(code);
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                // let x: map<string, u64> = {};
+                OpCode::NewMap.as_byte(), 0, 0, 0, 0,
+                OpCode::MemorySet.as_byte(), 0, 0,
+                // x.insert("a", 10);
+                // load
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                // a
+                OpCode::Constant.as_byte(), 0, 0,
+                // 10
+                OpCode::Constant.as_byte(), 1, 0,
+                // insert
+                OpCode::SysCall.as_byte(), 79, 0, 1, 2,
+                // Expected POP
+                OpCode::Pop.as_byte(),
+                // x.get("a")
+                // Load x
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                // a
+                OpCode::Constant.as_byte(), 0, 0,
+                // get
+                OpCode::SysCall.as_byte(), 78, 0, 1, 1,
+                // unwrap (u16 id, on type bool, params u8)
+                OpCode::SysCall.as_byte(), 11, 0, 1, 0,
+                // let dummy: u64 = x.get("a").unwrap();
+                OpCode::MemorySet.as_byte(), 1, 0,
+                // x.insert("b", dummy);
+                // Load x
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                // "b"
+                OpCode::Constant.as_byte(), 2, 0,
+                // Load dummy
+                OpCode::MemoryLoad.as_byte(), 1, 0,
+                // insert (u16 id, on type map, params u8)
+                OpCode::SysCall.as_byte(), 79, 0, 1, 2,
+                // Expected POP
+                OpCode::Pop.as_byte(),
+
+                // return 0
+                OpCode::Constant.as_byte(), 3, 0,
                 OpCode::Return.as_byte()
             ]
         );

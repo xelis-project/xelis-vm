@@ -35,13 +35,13 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
 
-    Ok(Some(array.remove(index).into_inner()))
+    Ok(Some(array.remove(index).take_value()))
 }
 
 fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(mut value) = array.pop() {
-        Ok(Some(value.into_inner()))
+        Ok(Some(value.take_value()))
     } else {
         Ok(Some(Value::Optional(None)))
     }

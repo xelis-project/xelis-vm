@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 thiserror = "2.0.1"
+
+[features]
+value_pointer_drop = []
