@@ -1,7 +1,10 @@
 # XELIS VM
-XVM is a virtual machine with its own interpreted language for the XELIS network developed in Rust.
-It supports constants, functions, while/foreach loops, arrays and structures.
-The syntax is strongly inspired by Rust.
+XVM (XELIS Virtual Machine) is a fully customizable VM proposed with its suite including Lexer, Parser, Assembler, Compiler and the Virtual Machine.
+
+The name of the language used is **Silex**, which its syntax is inspired by Rust.
+
+Unlike other VMs, XVM is designed to be fully customizable (including the default std!), allowing you to define your own types, functions, structures, enums.
+It is also designed to directly include primitive types.
 
 ## Tasks
 
