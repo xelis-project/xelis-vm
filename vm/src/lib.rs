@@ -2,8 +2,10 @@ mod chunk;
 mod error;
 mod iterator;
 mod stack;
+mod validator;
 
 pub mod instructions;
+pub use validator::*;
 
 use xelis_environment::{Environment, Context};
 use instructions::{InstructionResult, InstructionTable};
