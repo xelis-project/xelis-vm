@@ -32,16 +32,6 @@ impl Module {
         }
     }
 
-    // Validate the module
-    pub fn validate(&self) -> bool {
-        let max = u16::MAX as usize;
-
-        self.constants.len() < max
-        && self.chunks.len() < max
-        && self.structs.len() < max
-        && self.enums.len() < max
-    }
-
     // Get the constants declared in the module
     #[inline]
     pub fn constants(&self) -> &IndexSet<Value> {

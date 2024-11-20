@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{hash::{Hash, Hasher}, rc::Rc};
 
 use crate::IdentifierType;
 use super::Type;
@@ -22,10 +22,22 @@ impl EnumVariant {
 
 // Represents an enum like in Rust with variants
 // Support up to 255 variants
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub struct Enum {
     id: IdentifierType,
     variants: Vec<EnumVariant>,
+}
+
+impl Hash for Enum {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Enum {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 // Selected enum variant with associated type

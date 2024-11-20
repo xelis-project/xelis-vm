@@ -1,14 +1,26 @@
-use std::rc::Rc;
+use std::{hash::{Hash, Hasher}, rc::Rc};
 use crate::IdentifierType;
 use super::Type;
 
 // Represents a struct in the language
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub struct Struct {
     // Unique identifier for serialization
     id: IdentifierType,
     // Fields of the struct
     fields: Vec<Type>
+}
+
+impl Hash for Struct {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Struct {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
