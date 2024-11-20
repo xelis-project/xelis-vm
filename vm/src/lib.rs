@@ -204,11 +204,15 @@ mod tests {
 
     use super::*;
 
-    fn run(module: Module) -> Value {
+    fn run_internal(module: Module) -> Result<Value, VMError> {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        vm.run().unwrap()
+        vm.run()
+    }
+
+    fn run(module: Module) -> Value {
+        run_internal(module).unwrap()
     }
 
     #[test]
@@ -225,6 +229,80 @@ mod tests {
         module.add_chunk(chunk);
 
         assert_eq!(run(module), Value::String("10".to_string()));
+    }
+
+    #[test]
+    fn test_pop_empty_stack() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+        chunk.emit_opcode(OpCode::Pop);
+
+        module.add_chunk(chunk);
+
+        assert!(matches!(run_internal(module), Err(VMError::EmptyStack)));
+    }
+
+
+    #[test]
+    fn test_pop_constant() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+        let index = module.add_constant(Value::U8(10));
+
+        // Add a return 0
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(module.add_constant(Value::U8(0)) as u16);
+
+        // Constant to be poped
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(index as u16);
+
+        chunk.emit_opcode(OpCode::Pop);
+
+
+        chunk.emit_opcode(OpCode::Return);
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::U8(0));
+    }
+
+    #[test]
+    fn test_pop_n_out_of_bounds() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+        chunk.emit_opcode(OpCode::PopN);
+        chunk.write_u8(1);
+
+        module.add_chunk(chunk);
+
+        assert!(matches!(run_internal(module), Err(VMError::StackIndexOutOfBounds)));
+    }
+
+    #[test]
+    fn test_pop_n_constants() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+        let index = module.add_constant(Value::U8(10));
+
+        // 0 that will be returned
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(module.add_constant(Value::U8(0)) as u16);
+
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(index as u16);
+
+        let index = module.add_constant(Value::U8(20));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(index as u16);
+
+        chunk.emit_opcode(OpCode::PopN);
+        chunk.write_u8(2);
+
+        // Add a return 0
+        chunk.emit_opcode(OpCode::Return);
+        module.add_chunk(chunk);
+
+        assert_eq!(run(module), Value::U8(0));
     }
 
     #[test]
