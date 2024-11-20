@@ -34,7 +34,7 @@ impl<'a> Backend<'a> {
     #[inline]
     pub fn get_struct_with_id(&self, mut id: usize) -> Result<&StructType, VMError> {
         let env_structs = self.environment.get_structures();
-        if let Some(struct_type) = env_structs.get(id) {
+        if let Some(struct_type) = env_structs.get_index(id) {
             return Ok(struct_type);
         } else {
             id -= env_structs.len();
@@ -53,7 +53,7 @@ impl<'a> Backend<'a> {
     #[inline]
     pub fn get_enum_with_id(&self, mut id: usize) -> Result<&EnumType, VMError> {
         let env_enums = self.environment.get_enums();
-        if let Some(enum_type) = env_enums.get(id) {
+        if let Some(enum_type) = env_enums.get_index(id) {
             return Ok(enum_type);
         } else {
             id -= env_enums.len();
