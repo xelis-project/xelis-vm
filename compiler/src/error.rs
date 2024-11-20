@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CompilerError {
+    #[error("too many array values: {0}")]
+    TooManyArrayValues(usize),
+    #[error("too many map values: {0}")]
+    TooManyMapValues(usize),
     #[error("duplicated struct {0}")]
     DuplicatedStruct(u16),
     #[error("duplicated enum {0}")]

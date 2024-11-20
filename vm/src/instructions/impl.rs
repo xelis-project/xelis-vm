@@ -45,6 +45,14 @@ pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>
     Ok(InstructionResult::Nothing)
 }
 
+pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
+    let index = manager.read_u8()?;
+    let value = stack.get_stack_at(index as usize)?;
+    stack.push_stack(value.clone())?;
+
+    Ok(InstructionResult::Nothing)
+}
+
 pub fn pop<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     stack.pop_stack()?;
     Ok(InstructionResult::Nothing)
@@ -59,6 +67,14 @@ pub fn pop_n<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMana
 pub fn swap<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     stack.swap_stack(index as usize)?;
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
+    let index_a = manager.read_u8()?;
+    let index_b = manager.read_u8()?;
+
+    stack.swap_stack_both(index_a as usize, index_b as usize)?;
     Ok(InstructionResult::Nothing)
 }
 

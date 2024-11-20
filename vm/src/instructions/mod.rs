@@ -51,7 +51,11 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Pop.as_usize()] = (pop, 1);
         instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
         instructions[OpCode::Copy.as_usize()] = (copy, 1);
+        instructions[OpCode::CopyN.as_usize()] = (copy_n, 1);
+
         instructions[OpCode::Swap.as_usize()] = (swap, 1);
+        instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
+
         instructions[OpCode::ArrayCall.as_usize()] = (array_call, 2);
         instructions[OpCode::Cast.as_usize()] = (cast, 1);
         instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);

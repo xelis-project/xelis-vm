@@ -5,17 +5,17 @@ use xelis_bytecode::{Chunk, OpCode};
 // OpCode with Args
 #[derive(Debug)]
 pub enum OpCodeWithArgs {
-    // load constant
+    // load constant at index u16, push in stack
     Constant {
         // Constant id
         index: u16
     },
-    // load from registers, push in stack
+    // load at index u16 from registers, push in stack
     MemoryLoad {
         // Register index
         register_index: u16
     },
-    // pop, set in registers[index]
+    // pop last value from stack, set in registers[index]
     MemorySet {
         register_index: u16
     },
@@ -25,30 +25,28 @@ pub enum OpCodeWithArgs {
         // Sub index
         index: u16
     },
-    // pop value only
+    // pop value from stack only
     Pop,
     // Pop N values
     PopN {
         // Pop count
         count: u8
     },
-    // push copied value
+    // copy the last value on stack, and push copied value
     Copy,
-    // Copy N value
-    Copy2 {
-        stack_index: u16
+    // Copy N value in stack
+    CopyN {
+        stack_index: u8
     },
-
     // Swap top and N value
     Swap {
-        stack_index: u16
+        stack_index: u8
     },
     // Swap A and B values
     Swap2 {
-        a_stack_index: u16,
-        b_stack_index: u16
+        a_stack_index: u8,
+        b_stack_index: u8
     },
-
     // pop value, jump
     Jump {
         // Jump to address
@@ -103,7 +101,7 @@ pub enum OpCodeWithArgs {
     // pop length, pop N values => create array
     NewArray {
         // Array length
-        length: u32
+        length: u8
     },
     // pop type id, pop N values => create struct
     NewStruct {
@@ -114,7 +112,10 @@ pub enum OpCodeWithArgs {
     // pop start, pop end, push range
     NewRange,
     // pop length, pop N values => create map
-    NewMap,
+    NewMap {
+        // Pop N * 2 values from stack and create a map
+        length: u8
+    },
 
     // Operators
     // +
@@ -195,7 +196,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Pop => OpCode::Pop,
             OpCodeWithArgs::PopN { .. } => OpCode::PopN,
             OpCodeWithArgs::Copy => OpCode::Copy,
-            OpCodeWithArgs::Copy2 { .. } => OpCode::Copy2,
+            OpCodeWithArgs::CopyN { .. } => OpCode::CopyN,
             OpCodeWithArgs::Swap { .. } => OpCode::Swap,
             OpCodeWithArgs::Swap2 { .. } => OpCode::Swap2,
             OpCodeWithArgs::Jump { .. } => OpCode::Jump,
@@ -214,7 +215,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
             OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
             OpCodeWithArgs::NewRange => OpCode::NewRange,
-            OpCodeWithArgs::NewMap => OpCode::NewMap,
+            OpCodeWithArgs::NewMap { .. } => OpCode::NewMap,
 
             OpCodeWithArgs::Add => OpCode::Add,
             OpCodeWithArgs::Sub => OpCode::Sub,
@@ -262,11 +263,11 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::MemorySet { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::SubLoad { index } => chunk.write_u16(*index),
             OpCodeWithArgs::PopN { count } => chunk.write_u8(*count),
-            OpCodeWithArgs::Copy2 { stack_index } => chunk.write_u16(*stack_index),
-            OpCodeWithArgs::Swap { stack_index } => chunk.write_u16(*stack_index),
+            OpCodeWithArgs::CopyN { stack_index } => chunk.write_u8(*stack_index),
+            OpCodeWithArgs::Swap { stack_index } => chunk.write_u8(*stack_index),
             OpCodeWithArgs::Swap2 { a_stack_index, b_stack_index } => {
-                chunk.write_u16(*a_stack_index);
-                chunk.write_u16(*b_stack_index);
+                chunk.write_u8(*a_stack_index);
+                chunk.write_u8(*b_stack_index);
             },
             OpCodeWithArgs::Jump { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::JumpIfFalse { addr } => chunk.write_u32(*addr),
@@ -283,8 +284,9 @@ impl OpCodeWithArgs {
                 chunk.write_u8(*args_count);
             },
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
-            OpCodeWithArgs::NewArray { length } => chunk.write_u32(*length),
+            OpCodeWithArgs::NewArray { length } => chunk.write_u8(*length),
             OpCodeWithArgs::NewStruct { struct_id } => chunk.write_u16(*struct_id),
+            OpCodeWithArgs::NewMap { length } => chunk.write_u8(*length),
             _ => {}
         }
     }
@@ -354,12 +356,12 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Copy
             }
-            "COPY2" => {
+            "COPYN" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::Copy2 {
+                OpCodeWithArgs::CopyN {
                     stack_index: args[0].parse().map_err(|_| "Invalid stack index")?
                 }
             }
@@ -535,11 +537,13 @@ impl OpCodeWithArgs {
                 OpCodeWithArgs::NewRange
             },
             "NEWMAP" => {
-                if !args.is_empty() {
+                if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::NewMap
+                OpCodeWithArgs::NewMap {
+                    length: args[0].parse().map_err(|_| "Invalid length")?
+                }
             },
             "ADD" => {
                 if !args.is_empty() {

@@ -15,8 +15,8 @@ pub enum OpCode {
     PopN,
     // push copied value
     Copy,
-    // Copy N value
-    Copy2,
+    // Copy value at N
+    CopyN,
 
     // Swap top and N value
     Swap,
@@ -49,13 +49,13 @@ pub enum OpCode {
     InvokeChunk,
     // Same as InvokeChunk, but for system calls
     SysCall,
-    // pop length, pop N values => create array
+    // pop length, pop N values => create array with N values
     NewArray,
     // pop type id, pop N values => create struct
     NewStruct,
     // N..Y
     NewRange,
-    // pop length, pop N values => create map
+    // pop length, pop N entries (N * (key + value)) => create map with N entries
     NewMap,
     // read enum id u16, variant id u8, pop N values => create enum
     NewEnum,
@@ -147,7 +147,7 @@ impl OpCode {
             OpCode::Pop => 4,
             OpCode::PopN => 5,
             OpCode::Copy => 6,
-            OpCode::Copy2 => 7,
+            OpCode::CopyN => 7,
             OpCode::Swap => 8,
             OpCode::Swap2 => 9,
             OpCode::Jump => 10,
@@ -215,7 +215,7 @@ impl OpCode {
             4 => OpCode::Pop,
             5 => OpCode::PopN,
             6 => OpCode::Copy,
-            7 => OpCode::Copy2,
+            7 => OpCode::CopyN,
             8 => OpCode::Swap,
             9 => OpCode::Swap2,
             10 => OpCode::Jump,
@@ -273,6 +273,7 @@ impl OpCode {
         })
     }
 
+    // Convert an OpCode to an assign operator
     #[inline]
     pub const fn as_assign_operator(self) -> Option<Self> {
         Some(match self {
@@ -289,5 +290,36 @@ impl OpCode {
             OpCode::Shr => OpCode::AssignShr,
             _ => return None,
         })
-    } 
+    }
+
+    // Get how many arguments bytes (overhead) the OpCode takes
+    #[inline]
+    pub fn arguments_bytes(&self) -> usize {
+        match self {
+            OpCode::Constant => 2, // u16 id
+            OpCode::MemoryLoad => 2, // u16 id
+            OpCode::MemorySet => 2, // u16 id
+            OpCode::SubLoad => 2, // u16 id
+
+            OpCode::PopN => 1, // u8 count
+            OpCode::CopyN => 1, // u8 index
+            OpCode::Swap => 1, // u8 index
+            OpCode::Swap2 => 2, // u8 index, u8 index
+
+            OpCode::Jump => 4, // u32 addr
+            OpCode::JumpIfFalse => 4, // u32 addr
+            OpCode::IteratorNext => 4, // u32 addr
+            OpCode::ArrayCall => 4, // index u32
+            OpCode::Cast => 1, // primitive type id u8
+            OpCode::InvokeChunk => 4, // id u16, on_value bool, args u8
+            OpCode::SysCall => 4, // id u16, on_value bool, args u8
+
+            OpCode::NewArray => 1, // u8 initial values
+            OpCode::NewStruct => 2, // struct type id u16
+            OpCode::NewRange => 0,
+            OpCode::NewMap => 1, // u8 initial values
+
+            _ => 0,
+        }
+    }
 }

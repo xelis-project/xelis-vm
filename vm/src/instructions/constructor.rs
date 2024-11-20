@@ -6,7 +6,7 @@ use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
 
 pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
-    let length = manager.read_u32()?;
+    let length = manager.read_u8()?;
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
@@ -21,8 +21,9 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
     let id = manager.read_u16()?;
     let struct_type = backend.get_struct_with_id(id as usize)?;
 
-    let mut fields = VecDeque::new();
-    for _ in 0..struct_type.fields().len() {
+    let fields_count = struct_type.fields().len();
+    let mut fields = VecDeque::with_capacity(fields_count);
+    for _ in 0..fields_count {
         fields.push_front(stack.pop_stack()?.into_pointer());
     }
 
@@ -49,8 +50,8 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManage
 }
 
 pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
-    let len = manager.read_u32()?;
-    let mut map = HashMap::new();
+    let len = manager.read_u8()?;
+    let mut map = HashMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
         let key = stack.pop_stack()?.into_owned();
@@ -73,7 +74,7 @@ pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut 
     let variant = enum_type.get_variant(variant_id)
         .ok_or(VMError::InvalidEnumVariant)?;
 
-    let mut values = VecDeque::new();
+    let mut values = VecDeque::with_capacity(variant.fields().len());
     for _ in variant.fields() {
         values.push_front(stack.pop_stack()?.into_pointer());
     }

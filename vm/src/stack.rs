@@ -29,6 +29,12 @@ impl<'a> Stack<'a> {
         Ok(())
     }
 
+    // Get the value at a specific index
+    #[inline]
+    pub fn get_stack_at(&self, index: usize) -> Result<&Path<'a>, VMError> {
+        self.stack.get(index).ok_or(VMError::StackIndexOutOfBounds)
+    }
+
     // Push a value to the stack without checking the stack size
     #[inline(always)]
     pub fn push_stack_unchecked(&mut self, value: Path<'a>) {
@@ -44,6 +50,18 @@ impl<'a> Stack<'a> {
         }
 
         self.stack.swap(len - 1, len - 1 - index);
+        Ok(())
+    }
+
+    // Swap A and B in stack
+    #[inline]
+    pub fn swap_stack_both(&mut self, a: usize, b: usize) -> Result<(), VMError> {
+        let len = self.stack.len();
+        if len <= a || len <= b {
+            return Err(VMError::StackIndexOutOfBounds);
+        }
+
+        self.stack.swap(len - 1 - a, len - 1 - b);
         Ok(())
     }
 

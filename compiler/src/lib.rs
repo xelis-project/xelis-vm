@@ -137,11 +137,15 @@ impl<'a> Compiler<'a> {
                 self.add_value_on_stack(chunk.last_index())?;
             },
             Expression::ArrayConstructor(exprs) => {
+                if exprs.len() > u8::MAX as usize {
+                    return Err(CompilerError::TooManyArrayValues(exprs.len()));
+                }
+
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
                 chunk.emit_opcode(OpCode::NewArray);
-                chunk.write_u32(exprs.len() as u32);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -170,13 +174,17 @@ impl<'a> Compiler<'a> {
             },
             // Map types aren't forced in the VM, we ignore them
             Expression::MapConstructor(exprs, _, _) => {
+                if exprs.len() > u8::MAX as usize {
+                    return Err(CompilerError::TooManyMapValues(exprs.len()));
+                }
+
                 for (key, value) in exprs {
                     self.compile_expr(chunk, key)?;
                     self.compile_expr(chunk, value)?;
                 }
 
                 chunk.emit_opcode(OpCode::NewMap);
-                chunk.write_u32(exprs.len() as u32);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -932,13 +940,13 @@ mod tests {
                 // 3
                 OpCode::Constant.as_byte(), 2, 0,
                 // [1, 2, 3]
-                OpCode::NewArray.as_byte(), 3, 0, 0, 0,
+                OpCode::NewArray.as_byte(), 3,
                 OpCode::IteratorBegin.as_byte(),
-                OpCode::IteratorNext.as_byte(), 32, 0, 0, 0,
+                OpCode::IteratorNext.as_byte(), 29, 0, 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::Return.as_byte(),
-                OpCode::Jump.as_byte(), 15, 0, 0, 0,
+                OpCode::Jump.as_byte(), 12, 0, 0, 0,
                 OpCode::IteratorEnd.as_byte(),
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -1126,7 +1134,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 // let x: map<string, u64> = {};
-                OpCode::NewMap.as_byte(), 0, 0, 0, 0,
+                OpCode::NewMap.as_byte(), 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 // x.insert("a", 10);
                 // load

@@ -204,6 +204,7 @@ mod tests {
 
     use super::*;
 
+    #[track_caller]
     fn run_internal(module: Module) -> Result<Value, VMError> {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
@@ -211,6 +212,7 @@ mod tests {
         vm.run()
     }
 
+    #[track_caller]
     fn run(module: Module) -> Value {
         run_internal(module).unwrap()
     }
@@ -322,7 +324,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u32(2);
+        chunk.write_u8(2);
 
         // Load the first element
         let index = module.add_constant(Value::U16(0));
@@ -353,7 +355,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u32(1);
+        chunk.write_u8(1);
 
         // Load the first element of the first array
         let index = module.add_constant(Value::U16(0));
@@ -575,7 +577,7 @@ mod tests {
 
         // Create a new array with 2 elements
         chunk.emit_opcode(OpCode::NewArray);
-        chunk.write_u32(2);
+        chunk.write_u8(2);
 
         // Store the array in the memory
         chunk.emit_opcode(OpCode::MemorySet);
