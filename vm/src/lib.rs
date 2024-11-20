@@ -720,7 +720,7 @@ mod tests {
 mod full_tests {
     use super::*;
     use xelis_compiler::Compiler;
-    use xelis_environment::Environment;
+    use xelis_environment::{Environment, EnvironmentError};
     use xelis_builder::EnvironmentBuilder;
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
@@ -750,6 +750,24 @@ mod full_tests {
     #[track_caller]
     fn run_code(code: &str) -> Value {
         run_code_id(code, 0)
+    }
+
+    #[test]
+    fn test_max_gas() {
+        let code = r#"
+            entry main() {
+                while true {}
+
+                return 0
+            }
+        "#;
+
+        let (module, environment) = prepare_module(code);
+        let mut vm = VM::new(&module, &environment);
+        vm.context_mut().set_gas_limit(Some(1000));
+        vm.invoke_entry_chunk(0).unwrap();
+
+        assert!(matches!(vm.run(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
     }
 
     #[test]
