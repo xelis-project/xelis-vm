@@ -2,6 +2,7 @@ mod error;
 mod function;
 mod context;
 
+use indexmap::IndexSet;
 use xelis_types::{EnumType, StructType};
 
 pub use error::EnvironmentError;
@@ -15,17 +16,17 @@ pub struct Environment {
     // All functions provided by the Environment
     functions: Vec<NativeFunction>,
     // All structures provided by the Environment
-    structures: Vec<StructType>,
+    structures: IndexSet<StructType>,
     // All enums provided by the Environment
-    enums: Vec<EnumType>,
+    enums: IndexSet<EnumType>,
 }
 
 impl Default for Environment {
     fn default() -> Self {
         Self {
             functions: Vec::new(),
-            structures: Vec::new(),
-            enums: Vec::new(),
+            structures: IndexSet::new(),
+            enums: IndexSet::new(),
         }
     }
 }
@@ -44,13 +45,13 @@ impl Environment {
 
     // Get all the registered structures
     #[inline(always)]
-    pub fn get_structures(&self) -> &Vec<StructType> {
+    pub fn get_structures(&self) -> &IndexSet<StructType> {
         &self.structures
     }
 
     // Get all the registered enums
     #[inline(always)]
-    pub fn get_enums(&self) -> &Vec<EnumType> {
+    pub fn get_enums(&self) -> &IndexSet<EnumType> {
         &self.enums
     }
 
@@ -68,13 +69,13 @@ impl Environment {
     // Add a new structure to the environment
     #[inline(always)]
     pub fn add_structure(&mut self, structure: StructType) {
-        self.structures.push(structure);
+        self.structures.insert(structure);
     }
 
     // Add a new enum to the environment
     #[inline(always)]
     pub fn add_enum(&mut self, _enum: EnumType) {
-        self.enums.push(_enum);
+        self.enums.insert(_enum);
     }
 
     // Allow to change the cost of a function

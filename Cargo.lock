@@ -720,6 +720,7 @@ name = "xelis-environment"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "indexmap",
  "thiserror",
  "xelis-types",
 ]
