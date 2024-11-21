@@ -641,12 +641,13 @@ impl<'a> Parser<'a> {
             Operator::BitwiseOr => op_num_with_bool!(left, right, |),
             Operator::BitwiseLeft => op!(left, right, <<),
             Operator::BitwiseRight => op!(left, right, >>),
-            Operator::GreaterOrEqual => op_bool!(left, right, >),
+            Operator::GreaterOrEqual => op_bool!(left, right, >=),
             Operator::GreaterThan => op_bool!(left, right, >),
             Operator::LessOrEqual => op_bool!(left, right, <=),
             Operator::LessThan => op_bool!(left, right, <),
-            // Those are handled in the execute_expression function
-            Operator::And | Operator::Or | Operator::Assign(_) => return None,
+            Operator::And => Value::Boolean(left.as_bool().ok()? && right.as_bool().ok()?),
+            Operator::Or => Value::Boolean(left.as_bool().ok()? || right.as_bool().ok()?),
+            Operator::Assign(_) => return None,
         })
     }
 
