@@ -1004,6 +1004,25 @@ mod tests {
     }
 
     #[test]
+    fn test_struct_const() {
+        let (program, environment) = prepare_program("struct Test { a: u64, b: u64 } entry main() { return Test { a: 1, b: 2 }.a }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                // Load struct
+                OpCode::Constant.as_byte(), 0, 0,
+                // New struct
+                OpCode::SubLoad.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
     fn test_function_call() {
         let (program, environment) = prepare_program("fn test() -> u64 { return 1 } entry main() { return test() }");
         let compiler = Compiler::new(&program, &environment);

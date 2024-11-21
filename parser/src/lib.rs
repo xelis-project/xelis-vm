@@ -788,7 +788,22 @@ impl<'a> Parser<'a> {
                 } else {
                     r?
                 }
-            }
+            },
+            Expression::Path(left, right) => {
+                let l = self.try_convert_expr_to_value(left);
+                let r = self.try_convert_expr_to_value(right);
+
+                if let Some(l) = &l {
+                    *left.as_mut() = Expression::Value(l.clone());
+                }
+
+                if let Some(r) = &r {
+                    *right.as_mut() = Expression::Value(r.clone());
+                }
+
+                // TODO: find a way to get the value of the path
+                return None
+            },
             _ => return None
         })
     }
