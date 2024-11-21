@@ -90,6 +90,12 @@ impl DerefMut for ValuePointer {
     }
 }
 
+impl From<Value> for ValuePointer {
+    fn from(value: Value) -> Self {
+        Self::owned(value)
+    }
+}
+
 impl Hash for ValuePointer {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.handle()

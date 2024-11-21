@@ -976,8 +976,10 @@ impl<'a> Parser<'a> {
             }
 
             expr
-        } else {
+        } else if value_type.is_optional() {
             Expression::Value(Value::Null)
+        } else {
+            return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
 
         let id = if ignored {
@@ -1517,6 +1519,56 @@ mod tests {
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
         test_parser_statement_with(tokens, variables, &Some(return_type), env)
+    }
+
+    #[test]
+    fn test_array_upgraded_to_constant() {
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::OperatorAssign,
+            Token::BracketOpen,
+            Token::Value(Literal::U64(1)),
+            Token::Comma,
+            Token::Value(Literal::U64(2)),
+            Token::BracketClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: 0,
+                value_type: Type::Array(Box::new(Type::U64)),
+                value: Expression::Value(Value::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
+            })
+        )
+    }
+
+    #[test]
+    fn test_constant() {
+        let tokens = vec![
+            Token::Const,
+            Token::Identifier("A"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Value(Literal::U64(10)),
+        ];
+
+        let program = test_parser(tokens);
+        let constants = program.constants();
+        assert_eq!(constants.len(), 1);
+
+        let constant = constants.iter().next().unwrap();
+
+        assert_eq!(constant.id, 0);
+        assert_eq!(constant.value_type, Type::U64);
+        assert_eq!(constant.value, Expression::Value(Value::U64(10)));
     }
 
     #[test]
