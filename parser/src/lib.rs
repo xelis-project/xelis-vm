@@ -653,20 +653,39 @@ impl<'a> Parser<'a> {
 
     // Try to convert an expression to a value
     // By converting an expression to a constant value, we earn in performance as we have less operations to execute
-    fn try_convert_expr_to_value(&self, expr: &Expression) -> Option<Value> {
+    // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
+    // Example: 5 + 5 = 10 -> we only write 10
+    // if we have a if true { 5 } else { 10 } -> we write 5
+    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Value> {
         Some(match expr {
             Expression::Value(v) => v.clone(),
             Expression::ArrayConstructor(values) => {
                 let mut new_values = Vec::with_capacity(values.len());
                 for value in values {
                     let v = self.try_convert_expr_to_value(value)?;
+                    *value = Expression::Value(v.clone());
+
                     new_values.push(v.into());
                 }
                 Value::Array(new_values)
             },
             Expression::RangeConstructor(min, max) => {
-                let min = self.try_convert_expr_to_value(min)?;
-                let max = self.try_convert_expr_to_value(max)?;
+                let min_value = self.try_convert_expr_to_value(min);
+                let max_value = self.try_convert_expr_to_value(max);
+
+                if min_value.is_none() || max_value.is_none() {
+                    if let Some(v) = &min_value {
+                        *min.as_mut() = Expression::Value(v.clone());
+                    }
+
+                    if let Some(v) = &max_value {
+                        *max.as_mut() = Expression::Value(v.clone());
+                    }
+                }
+
+                let min = min_value?;
+                let max = max_value?;
+
                 let value_type = min.get_type().ok()?;
                 Value::Range(Box::new(min), Box::new(max), value_type)
             },
@@ -674,6 +693,7 @@ impl<'a> Parser<'a> {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
                     let v = self.try_convert_expr_to_value(field)?;
+                    *field = Expression::Value(v.clone());
                     new_fields.push(v.into());
                 }
                 Value::Struct(new_fields, struct_type.clone())
@@ -682,6 +702,7 @@ impl<'a> Parser<'a> {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
                     let v = self.try_convert_expr_to_value(field)?;
+                    *field = Expression::Value(v.clone());
                     new_fields.push(v.into());
                 }
                 Value::Enum(new_fields, enum_type.clone())
@@ -689,10 +710,18 @@ impl<'a> Parser<'a> {
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = HashMap::with_capacity(entries.len());
                 for (key, value) in entries {
-                    let k = self.try_convert_expr_to_value(key)?;
-                    let v = self.try_convert_expr_to_value(value)?;
+                    let k = self.try_convert_expr_to_value(key);
+                    let v = self.try_convert_expr_to_value(value);
 
-                    new_entries.insert(k, v.into());
+                    if let Some(k) = &k {
+                        *key = Expression::Value(k.clone());
+                    }
+
+                    if let Some(v) = &v {
+                        *value = Expression::Value(v.clone());
+                    }
+
+                    new_entries.insert(k?, v?.into());
                 }
                 Value::Map(new_entries)
             },
@@ -701,9 +730,19 @@ impl<'a> Parser<'a> {
                 v.checked_cast_to_primitive_type(_type).ok()?
             },
             Expression::ArrayCall(array_expr, value) => {
-                let array = self.try_convert_expr_to_value(array_expr)?;
-                let index = self.try_convert_expr_to_value(value)?;
-                let index = index.checked_cast_to_u32().ok()?;
+                let array = self.try_convert_expr_to_value(array_expr);
+                let index = self.try_convert_expr_to_value(value);
+
+                if let Some(array) = &array {
+                    *array_expr.as_mut() = Expression::Value(array.clone());
+                }
+
+                if let Some(index) = &index {
+                    *value.as_mut() = Expression::Value(index.clone());
+                }
+
+                let index = index?.checked_cast_to_u32().ok()?;
+                let array = array?;
                 let values = array.as_vec().ok()?;
                 values.get(index as usize).map(|v| v.to_value())?
             },
@@ -712,10 +751,44 @@ impl<'a> Parser<'a> {
                 Value::Boolean(!v.to_bool().ok()?)
             },
             Expression::Operator(op, left, right) => {
-                let left = self.try_convert_expr_to_value(left)?;
-                let right = self.try_convert_expr_to_value(right)?;
-                self.execute_operator(op, &left, &right)?
+                let l = self.try_convert_expr_to_value(left);
+                let r = self.try_convert_expr_to_value(right);
+            
+                if let Some(l) = &l {
+                    *left.as_mut() = Expression::Value(l.clone());
+                }
+
+                if let Some(r) = &r {
+                    *right.as_mut() = Expression::Value(r.clone());
+                }
+
+                self.execute_operator(op, &l?, &r?)?
             },
+            Expression::SubExpression(expr) => self.try_convert_expr_to_value(expr)?,
+            Expression::Ternary(condition, left, right) => {
+                let c = self.try_convert_expr_to_value(condition);
+
+                if let Some(c) = &c {
+                    *condition.as_mut() = Expression::Value(c.clone());
+                }
+
+                let l = self.try_convert_expr_to_value(left);
+                let r = self.try_convert_expr_to_value(right);
+
+                if let Some(l) = &l {
+                    *left.as_mut() = Expression::Value(l.clone());
+                }
+
+                if let Some(r) = &r {
+                    *right.as_mut() = Expression::Value(r.clone());
+                }
+
+                if c?.to_bool().ok()? {
+                    l?
+                } else {
+                    r?
+                }
+            }
             _ => return None
         })
     }
@@ -1027,7 +1100,7 @@ impl<'a> Parser<'a> {
         }
 
         match last_expression {
-            Some(v) => Ok(self.try_convert_expr_to_value(&v).map(Expression::Value).unwrap_or(v)),
+            Some(mut v) => Ok(self.try_convert_expr_to_value(&mut v).map(Expression::Value).unwrap_or(v)),
             None => Err(err!(self, ParserErrorKind::NotImplemented))
         }
     }
