@@ -780,7 +780,20 @@ mod tests {
     fn prepare_program(code: &str) -> (Program, Environment) {
         let tokens = Lexer::new(code).get().unwrap();
         let environment = EnvironmentBuilder::default();
-        let (program, _) = Parser::new(tokens, &environment).parse().unwrap();
+        let mut parser = Parser::new(tokens, &environment);
+        parser.set_disable_const_upgrading(true);
+
+        let (program, _) = parser.parse().unwrap();
+        (program, environment.build())
+    }
+
+    #[track_caller]
+    fn prepare_program_with_const_enabled(code: &str) -> (Program, Environment) {
+        let tokens = Lexer::new(code).get().unwrap();
+        let environment = EnvironmentBuilder::default();
+        let parser = Parser::new(tokens, &environment);
+
+        let (program, _) = parser.parse().unwrap();
         (program, environment.build())
     }
 
@@ -1005,7 +1018,7 @@ mod tests {
 
     #[test]
     fn test_struct_const() {
-        let (program, environment) = prepare_program("struct Test { a: u64, b: u64 } entry main() { return Test { a: 1, b: 2 }.a }");
+        let (program, environment) = prepare_program_with_const_enabled("struct Test { a: u64, b: u64 } entry main() { return Test { a: 1, b: 2 }.a }");
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
 

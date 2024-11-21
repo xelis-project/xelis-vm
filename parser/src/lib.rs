@@ -133,6 +133,8 @@ pub struct Parser<'a> {
     enum_manager: EnumManager<'a>,
     // Environment contains all the library linked to the program
     environment: &'a EnvironmentBuilder<'a>,
+    // Disable upgrading values to consts
+    disable_const_upgrading: bool,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
     // Used for errors, we track the line and column
@@ -164,10 +166,15 @@ impl<'a> Parser<'a> {
             struct_manager: StructManager::with_parent(environment.get_struct_manager()),
             enum_manager: EnumManager::with_parent(environment.get_enum_manager()),
             environment,
+            disable_const_upgrading: false,
             line: 0,
             column_start: 0,
-            column_end: 0
+            column_end: 0,
         }
+    }
+
+    pub fn set_disable_const_upgrading(&mut self, value: bool) {
+        self.disable_const_upgrading = value;
     }
 
     // Consume the next token
@@ -657,6 +664,10 @@ impl<'a> Parser<'a> {
     // Example: 5 + 5 = 10 -> we only write 10
     // if we have a if true { 5 } else { 10 } -> we write 5
     fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Value> {
+        if self.disable_const_upgrading {
+            return None
+        }
+
         Some(match expr {
             Expression::Value(v) => v.clone(),
             Expression::ArrayConstructor(values) => {
