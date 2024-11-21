@@ -23,7 +23,7 @@ fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let mut opt = zelf?.take_from_optional(&Type::T(0))?;
+    let opt = zelf?.take_from_optional(&Type::T(0))?;
     Ok(Some(opt.into_value()))
 }
 
@@ -31,7 +31,7 @@ fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
     let default = parameters.remove(0);
     let optional = zelf?.take_optional()?;
     match optional {
-        Some(mut value) => Ok(Some(value.into_value())),
+        Some(value) => Ok(Some(value.into_value())),
         None => Ok(Some(default.into_owned()))
     }
 }

@@ -20,16 +20,19 @@ pub use inner::ValuePointerInner;
 pub struct ValuePointer(ValuePointerInner);
 
 impl ValuePointer {
+    // Create a new value pointer from a value
     #[inline(always)]
     pub fn owned(value: Value) -> Self {
         Self(ValuePointerInner::Owned(Box::new(value)))
     }
 
+    // Create a shared value pointer
     #[inline(always)]
     pub fn shared(value: SubValue) -> Self {
         Self(ValuePointerInner::Shared(value))
     }
 
+    // Get the inner value pointer
     #[inline(always)]
     pub fn get_value_ptr(&self) -> *const Value {
         ptr::from_ref(self.handle().as_value())
@@ -42,6 +45,30 @@ impl ValuePointer {
         v.take_value()
     }
 
+    // Clone the inner value
+    #[inline(always)]
+    pub fn to_value(&self) -> Value {
+        self.handle().as_value().clone()
+    }
+}
+
+#[cfg(not(feature = "value_pointer_drop"))]
+impl ValuePointer {
+    // Convert into a owned Pointer to fully own the value
+    #[inline(always)]
+    pub fn into_owned(self) -> ValuePointer {
+        self.0.into_owned()
+    }
+
+    // Get the owned value or clone it if it's shared
+    #[inline(always)]
+    pub fn into_value(self) -> Value {
+        self.0.into_value()
+    }
+}
+
+#[cfg(feature = "value_pointer_drop")]
+impl ValuePointer {
     // Convert into a owned Pointer to fully own the value
     #[inline(always)]
     pub fn into_owned(&mut self) -> ValuePointer {
@@ -49,18 +76,11 @@ impl ValuePointer {
         v.into_owned()
     }
 
-    // Clone the inner value
-    #[inline(always)]
-    pub fn to_value(&self) -> Value {
-        self.handle().as_value().clone()
-    }
-
     // Get the owned value or clone it if it's shared
     #[inline(always)]
     pub fn into_value(&mut self) -> Value {
         let v = std::mem::take(&mut self.0);
         v.into_value()
-
     }
 }
 

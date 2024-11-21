@@ -97,7 +97,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => ValuePointer::owned(v),
             Self::Borrowed(v) => ValuePointer::owned(v.clone()),
-            Self::Wrapper(mut v) => v.into_owned()
+            Self::Wrapper(v) => v.into_owned()
         }
     }
 
