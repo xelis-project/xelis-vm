@@ -1491,6 +1491,10 @@ impl<'a> Parser<'a> {
         let parameters = self.read_parameters()?;
         self.expect_token(Token::ParenthesisClose)?;
 
+        if parameters.len() + for_type.is_some() as usize > u8::MAX as usize {
+            return Err(err!(self, ParserErrorKind::TooManyParameters))
+        }
+
         // all entries must return a u64 value without being specified
         let return_type: Option<Type> = if entry {
             // an entrypoint cannot be a method
@@ -1628,6 +1632,10 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceOpen)?;
         let params = self.read_parameters()?;
+        if params.len() > u8::MAX as usize {
+            return Err(err!(self, ParserErrorKind::TooManyParameters))
+        }
+
         let mut fields = Vec::with_capacity(params.len());
         for (name, param_type) in params {
             fields.push((name, param_type));
@@ -1680,6 +1688,9 @@ impl<'a> Parser<'a> {
             let fields = if self.peek_is(Token::BraceOpen) {
                 self.expect_token(Token::BraceOpen)?;
                 let fields = self.read_parameters()?;
+                if fields.len() > u8::MAX as usize {
+                    return Err(err!(self, ParserErrorKind::TooManyParameters))
+                }
 
                 self.expect_token(Token::BraceClose)?;
                 fields
@@ -1692,6 +1703,10 @@ impl<'a> Parser<'a> {
             if self.peek_is(Token::Comma) {
                 self.expect_token(Token::Comma)?;
             }
+        }
+
+        if variants.len() > u8::MAX as usize {
+            return Err(err!(self, ParserErrorKind::TooManyVariants))
         }
 
         self.expect_token(Token::BraceClose)?;

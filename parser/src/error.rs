@@ -16,6 +16,10 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("too many parameters")]
+    TooManyParameters,
+    #[error("too many variants")]
+    TooManyVariants,
     #[error("expected a value for variable '{0}' or an optional type")]
     NoValueForVariable(&'a str),
     #[error("cannot call this function, its an entry function")]
