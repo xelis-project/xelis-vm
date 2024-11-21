@@ -8,7 +8,7 @@ use xelis_types::{
 
 use super::Operator;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
@@ -41,23 +41,9 @@ pub enum Statement {
     Variable(DeclarationStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct DeclarationStatement {
     pub id: IdentifierType,
     pub value_type: Type,
     pub value: Expression,
 }
-
-impl std::hash::Hash for DeclarationStatement {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
-}
-
-impl std::cmp::PartialEq for DeclarationStatement {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl std::cmp::Eq for DeclarationStatement {}

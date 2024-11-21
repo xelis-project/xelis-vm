@@ -1539,13 +1539,13 @@ mod tests {
         ];
 
         let statements = test_parser_statement(tokens, Vec::new());
+        assert!(statements.len() == 1);
+        let Statement::Variable(DeclarationStatement { value, .. }) = &statements[0] else {
+            panic!("Expected a variable statement")
+        };
         assert_eq!(
-            statements[0],
-            Statement::Variable(DeclarationStatement {
-                id: 0,
-                value_type: Type::Array(Box::new(Type::U64)),
-                value: Expression::Value(Value::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
-            })
+            *value,
+            Expression::Value(Value::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
         )
     }
 
@@ -1596,7 +1596,7 @@ mod tests {
             Statement::Variable(
                 DeclarationStatement {
                     id: 0,
-                    value_type: Type::U64,
+                    value_type: Type::Range(Box::new(Type::U64)),
                     value: Expression::RangeConstructor(
                         Box::new(Expression::Value(Value::U64(0))),
                         Box::new(Expression::Value(Value::U64(10))),
