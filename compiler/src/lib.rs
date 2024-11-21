@@ -208,6 +208,8 @@ impl<'a> Compiler<'a> {
                 if let Expression::Variable(id) = right.as_ref() {
                     chunk.emit_opcode(OpCode::SubLoad);
                     chunk.write_u8(*id as u8);
+                    self.decrease_values_on_stack()?;
+                    self.add_value_on_stack(chunk.last_index())?;
                 } else {
                     return Err(CompilerError::ExpectedVariable);
                 }
