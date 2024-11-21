@@ -3,7 +3,7 @@ mod error;
 
 use std::{
     borrow::Cow,
-    collections::{HashSet, VecDeque}
+    collections::{HashMap, HashSet, VecDeque}
 };
 use error::ParserErrorKind;
 use log::trace;
@@ -30,6 +30,70 @@ macro_rules! err {
             kind: $kind
         }
     };
+}
+
+
+macro_rules! op {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a, $b) {
+            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            _ => return None
+        }
+    }};
+}
+
+macro_rules! op_div {
+    ($t: ident, $a: expr, $b: expr) => {
+        {
+            if *$b == 0 {
+                return None
+            }
+    
+            Value::$t($a / $b)
+        }
+    };
+    ($a: expr, $b: expr) => {
+        match ($a, $b) {
+            (Value::U8(a), Value::U8(b)) => op_div!(U8, a, b),
+            (Value::U16(a), Value::U16(b)) => op_div!(U16, a, b),
+            (Value::U32(a), Value::U32(b)) => op_div!(U32, a, b),
+            (Value::U64(a), Value::U64(b)) => op_div!(U64, a, b),
+            (Value::U128(a), Value::U128(b)) => op_div!(U128, a, b),
+            _ => return None
+        }
+    };
+}
+
+macro_rules! op_bool {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a, $b) {
+            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+            (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
+            (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
+            (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
+            (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
+            (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
+            _ => return None
+        }
+    }};
+}
+
+macro_rules! op_num_with_bool {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a, $b) {
+            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            _ => return None
+        }
+    }};
 }
 
 enum Function<'a> {
@@ -556,6 +620,105 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Execute the selected operator
+    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value) -> Option<Value> {
+        Some(match op {
+            Operator::Equals => Value::Boolean(left == right),
+            Operator::NotEquals => Value::Boolean(left != right),
+            Operator::Plus => {
+                if left.is_string() || right.is_string() {
+                    Value::String(format!("{}{}", left, right))
+                } else {
+                    op!(left, right, +)
+                }
+            },
+            Operator::Minus => op!(left, right, -),
+            Operator::Divide => op_div!(left, right),
+            Operator::Multiply => op!(left, right, *),
+            Operator::Rem => op!(left, right, %),
+            Operator::BitwiseXor => op!(left, right, ^),
+            Operator::BitwiseAnd => op_num_with_bool!(left, right, &),
+            Operator::BitwiseOr => op_num_with_bool!(left, right, |),
+            Operator::BitwiseLeft => op!(left, right, <<),
+            Operator::BitwiseRight => op!(left, right, >>),
+            Operator::GreaterOrEqual => op_bool!(left, right, >),
+            Operator::GreaterThan => op_bool!(left, right, >),
+            Operator::LessOrEqual => op_bool!(left, right, <=),
+            Operator::LessThan => op_bool!(left, right, <),
+            // Those are handled in the execute_expression function
+            Operator::And | Operator::Or | Operator::Assign(_) => return None,
+        })
+    }
+
+    // Try to convert an expression to a value
+    // By converting an expression to a constant value, we earn in performance as we have less operations to execute
+    fn try_convert_expr_to_value(&self, expr: &Expression) -> Option<Value> {
+        Some(match expr {
+            Expression::Value(v) => v.clone(),
+            Expression::ArrayConstructor(values) => {
+                let mut new_values = Vec::with_capacity(values.len());
+                for value in values {
+                    let v = self.try_convert_expr_to_value(value)?;
+                    new_values.push(v.into());
+                }
+                Value::Array(new_values)
+            },
+            Expression::RangeConstructor(min, max) => {
+                let min = self.try_convert_expr_to_value(min)?;
+                let max = self.try_convert_expr_to_value(max)?;
+                let value_type = min.get_type().ok()?;
+                Value::Range(Box::new(min), Box::new(max), value_type)
+            },
+            Expression::StructConstructor(fields, struct_type) => {
+                let mut new_fields = Vec::with_capacity(fields.len());
+                for field in fields {
+                    let v = self.try_convert_expr_to_value(field)?;
+                    new_fields.push(v.into());
+                }
+                Value::Struct(new_fields, struct_type.clone())
+            },
+            Expression::EnumConstructor(fields, enum_type) => {
+                let mut new_fields = Vec::with_capacity(fields.len());
+                for field in fields {
+                    let v = self.try_convert_expr_to_value(field)?;
+                    new_fields.push(v.into());
+                }
+                Value::Enum(new_fields, enum_type.clone())
+            },
+            Expression::MapConstructor(entries, _, _) => {
+                let mut new_entries = HashMap::with_capacity(entries.len());
+                for (key, value) in entries {
+                    let k = self.try_convert_expr_to_value(key)?;
+                    let v = self.try_convert_expr_to_value(value)?;
+
+                    new_entries.insert(k, v.into());
+                }
+                Value::Map(new_entries)
+            },
+            Expression::Cast(expr, _type) => {
+                let v = self.try_convert_expr_to_value(expr)?;
+                v.checked_cast_to_primitive_type(_type).ok()?
+            },
+            Expression::ArrayCall(array_expr, value) => {
+                let array = self.try_convert_expr_to_value(array_expr)?;
+                let index = self.try_convert_expr_to_value(value)?;
+                let index = index.checked_cast_to_u32().ok()?;
+                let values = array.as_vec().ok()?;
+                values.get(index as usize).map(|v| v.to_value())?
+            },
+            Expression::IsNot(expr) => {
+                let v = self.try_convert_expr_to_value(expr)?;
+                Value::Boolean(!v.to_bool().ok()?)
+            },
+            Expression::Operator(op, left, right) => {
+                let left = self.try_convert_expr_to_value(left)?;
+                let right = self.try_convert_expr_to_value(right)?;
+                self.execute_operator(op, &left, &right)?
+            },
+            _ => return None
+        })
+    }
+
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.read_expr(None, true, true, None, context)
@@ -863,7 +1026,7 @@ impl<'a> Parser<'a> {
         }
 
         match last_expression {
-            Some(v) => Ok(v),
+            Some(v) => Ok(self.try_convert_expr_to_value(&v).map(Expression::Value).unwrap_or(v)),
             None => Err(err!(self, ParserErrorKind::NotImplemented))
         }
     }
@@ -959,7 +1122,7 @@ impl<'a> Parser<'a> {
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
                     Some(v) => v,
-                    None => if value_type.is_optional() {
+                    None => if value_type.contains_sub_type() {
                         Cow::Owned(value_type.clone())
                     } else {
                         return Err(err!(self, ParserErrorKind::NoValueType))
@@ -1597,9 +1760,12 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Range(Box::new(Type::U64)),
-                    value: Expression::RangeConstructor(
-                        Box::new(Expression::Value(Value::U64(0))),
-                        Box::new(Expression::Value(Value::U64(10))),
+                    value: Expression::Value(
+                        Value::Range(
+                            Box::new(Value::U64(0)),
+                            Box::new(Value::U64(10)),
+                            Type::U64
+                        )
                     )
                 }
             )
@@ -1662,7 +1828,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::MapConstructor(Vec::new(), Type::U64, Type::String)
+                    value: Expression::Value(Value::Map(HashMap::new()))
                 }
             )
         );
@@ -1690,19 +1856,17 @@ mod tests {
         ];
 
         let statements = test_parser_statement(tokens, Vec::new());
+
+        let mut map = HashMap::new();
+        map.insert(Value::U64(0), Value::String("hello".to_owned()).into());
+
         assert_eq!(
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::MapConstructor(
-                        vec![
-                            (Expression::Value(Value::U64(0)), Expression::Value(Value::String("hello".to_owned())))
-                        ],
-                        Type::U64,
-                        Type::String
-                    )
+                    value: Expression::Value(Value::Map(map))
                 }
             )
         );
@@ -1770,7 +1934,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
-                    value: Expression::MapConstructor(Vec::new(), Type::U64, Type::Map(Box::new(Type::U64), Box::new(Type::String)))
+                    value: Expression::Value(Value::Map(HashMap::new()))
                 }
             )
         );
@@ -1796,9 +1960,12 @@ mod tests {
             statements[0],
             Statement::ForEach(
                 0,
-                Expression::RangeConstructor(
-                    Box::new(Expression::Value(Value::U64(0))),
-                    Box::new(Expression::Value(Value::U64(10))),
+                Expression::Value(
+                    Value::Range(
+                        Box::new(Value::U64(0)),
+                        Box::new(Value::U64(10)),
+                        Type::U64
+                    )
                 ),
                 Vec::new()
             )
@@ -1868,11 +2035,15 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Array(Box::new(Type::U64)),
-                    value: Expression::ArrayConstructor(vec![
-                        Expression::Value(Value::U64(1)),
-                        Expression::Value(Value::U64(2)),
-                        Expression::Value(Value::U64(3))
-                    ])
+                    value: Expression::Value(
+                        Value::Array(
+                            vec![
+                                Value::U64(1).into(),
+                                Value::U64(2).into(),
+                                Value::U64(3).into()
+                            ]
+                        )
+                    )
                 }
             ),
             Statement::Return(Some(Expression::Operator(

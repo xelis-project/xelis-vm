@@ -153,6 +153,14 @@ impl Type {
         }
     }
 
+    // check if the type contains a sub type
+    pub fn contains_sub_type(&self) -> bool {
+        match self {
+            Type::Array(_) | Type::Optional(_) | Type::Range(_) | Type::Map(_, _) => true,
+            _ => false
+        }
+    }
+
     // check if the type is an enum
     pub fn is_enum(&self) -> bool {
         match self {
