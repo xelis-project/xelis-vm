@@ -207,7 +207,7 @@ impl<'a> Compiler<'a> {
                 self.compile_expr(chunk, left)?;
                 if let Expression::Variable(id) = right.as_ref() {
                     chunk.emit_opcode(OpCode::SubLoad);
-                    chunk.write_u16(*id);
+                    chunk.write_u8(*id as u8);
                 } else {
                     return Err(CompilerError::ExpectedVariable);
                 }
@@ -997,7 +997,7 @@ mod tests {
                 OpCode::NewStruct.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
-                OpCode::SubLoad.as_byte(), 0, 0,
+                OpCode::SubLoad.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1016,7 +1016,7 @@ mod tests {
                 // Load struct
                 OpCode::Constant.as_byte(), 0, 0,
                 // New struct
-                OpCode::SubLoad.as_byte(), 0, 0,
+                OpCode::SubLoad.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );

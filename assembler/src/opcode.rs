@@ -23,7 +23,7 @@ pub enum OpCodeWithArgs {
     // used as array call and struct field access
     SubLoad {
         // Sub index
-        index: u16
+        index: u8
     },
     // pop value from stack only
     Pop,
@@ -261,7 +261,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Constant { index } => chunk.write_u16(*index),
             OpCodeWithArgs::MemoryLoad { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::MemorySet { register_index } => chunk.write_u16(*register_index),
-            OpCodeWithArgs::SubLoad { index } => chunk.write_u16(*index),
+            OpCodeWithArgs::SubLoad { index } => chunk.write_u8(*index),
             OpCodeWithArgs::PopN { count } => chunk.write_u8(*count),
             OpCodeWithArgs::CopyN { stack_index } => chunk.write_u8(*stack_index),
             OpCodeWithArgs::Swap { stack_index } => chunk.write_u8(*stack_index),

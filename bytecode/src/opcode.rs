@@ -6,8 +6,8 @@ pub enum OpCode {
     MemoryLoad,
     // pop, set in registers[index]
     MemorySet,
-    // load from stack, load u16, load sub value, push
-    // used as array call and struct field access
+    // load from stack, read u8, load sub value, push
+    // types are limited to max u8 sub values
     SubLoad,
     // pop value only
     Pop,
@@ -299,7 +299,7 @@ impl OpCode {
             OpCode::Constant => 2, // u16 id
             OpCode::MemoryLoad => 2, // u16 id
             OpCode::MemorySet => 2, // u16 id
-            OpCode::SubLoad => 2, // u16 id
+            OpCode::SubLoad => 1, // u8 id
 
             OpCode::PopN => 1, // u8 count
             OpCode::CopyN => 1, // u8 index

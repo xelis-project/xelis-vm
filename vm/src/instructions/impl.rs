@@ -30,7 +30,7 @@ pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chun
 }
 
 pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
-    let index = manager.read_u16()?;
+    let index = manager.read_u8()?;
     let path = stack.pop_stack()?;
     let sub = path.get_sub_variable(index as usize)?;
     stack.push_stack_unchecked(sub);
