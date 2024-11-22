@@ -1,51 +1,104 @@
+use std::collections::HashSet;
+
+use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, StructType, Type, Value};
+use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
 
+#[derive(Debug, Error)]
 pub enum ValidatorError<'a> {
+    #[error("too much memory usage in constants")]
+    TooMuchMemoryUsage,
+    #[error("too many constants")]
     TooManyConstants,
+    #[error("too many chunks")]
     TooManyChunks,
+    #[error("too many types")]
     TooManyTypes,
 
+    #[error("too many structs")]
     TooManyStructs,
+    #[error("too many struct fields")]
     TooManyStructFields(&'a StructType),
+    #[error("recursive struct")]
     RecursiveStruct(&'a StructType),
 
+    #[error("too many enums")]
     TooManyEnums,
+    #[error("too many enums variants")]
     TooManyEnumsVariants,
+    #[error("too many enums variants fields")]
     TooManyEnumsVariantsFields(&'a EnumVariant),
+    #[error("recursive enum")]
     RecursiveEnum(&'a EnumType),
 
+    #[error("incorrect fields")]
     IncorrectFields,
+    #[error("incorrect variant")]
     IncorrectVariant,
+    #[error("invalid op code")]
     InvalidOpCode,
+    #[error("invalid opcode arguments")]
     InvalidOpCodeArguments,
+    #[error("invalid range")]
+    InvalidRange,
+    #[error("invalid range type")]
+    InvalidRangeType,
+    #[error("reference not allowed")]
+    ReferenceNotAllowed,
+    #[error(transparent)]
+    ValueError(#[from] ValueError)
 }
 
 pub struct ModuleValidator<'a> {
     module: &'a Module,
     environment: &'a Environment,
+    constant_max_depth: usize,
+    constant_max_memory: usize
 }
 
 impl<'a> ModuleValidator<'a> {
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self { module, environment }
+        Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 }
     }
 
-    // Verify all the declared constants in the module
-    fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
-        for c in self.module.constants() {
-            match c {
+    // Due to the use of ValuePointer, we need to clone each value as we can't keep one reference
+    fn verify_value(&self, value: Value) -> Result<usize, ValidatorError<'a>> {
+        let mut stack = vec![(value, 0)];
+        let mut pointers = HashSet::new();
+        let mut memory_usage = 0;
+
+        while let Some((value, depth)) = stack.pop() {
+            if depth > self.constant_max_depth {
+                return Err(ValidatorError::TooManyConstants);
+            }
+
+            // Increase by one for the byte type of the value
+            memory_usage += 1;
+            if memory_usage > self.constant_max_memory {
+                return Err(ValidatorError::TooMuchMemoryUsage);
+            }
+
+            match value {
                 Value::Struct(fields, t) => {
                     if fields.len() != t.fields().len() {
                         return Err(ValidatorError::IncorrectFields);
                     }
         
-                    if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
+                    if !self.module.structs().contains(&t) && !self.environment.get_structures().contains(&t) {
                         return Err(ValidatorError::TooManyStructs);
                     }
+
+                    for field in fields {
+                        if !pointers.insert(field.get_value_ptr()) {
+                            return Err(ValidatorError::ReferenceNotAllowed);
+                        }
+                        
+                        stack.push((field.into_value(), depth + 1));
+                    }
+                    memory_usage += 8;
                 },
                 Value::Enum(fields, t) => {
                     let variant = t.enum_type()
@@ -60,19 +113,99 @@ impl<'a> ModuleValidator<'a> {
                     if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
                         return Err(ValidatorError::TooManyEnums);
                     }
+
+                    for field in fields {
+                        if !pointers.insert(field.get_value_ptr()) {
+                            return Err(ValidatorError::ReferenceNotAllowed);
+                        }
+
+                        stack.push((field.into_value(), depth + 1));
+                    }
+
+                    memory_usage += 10;
                 },
                 Value::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
+
+                    for element in elements {
+                        if !pointers.insert(element.get_value_ptr()) {
+                            return Err(ValidatorError::ReferenceNotAllowed);
+                        }
+
+                        stack.push((element.into_value(), depth + 1));
+                    }
+                    memory_usage += 4;
                 },
                 Value::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
+
+                    for (key, value) in map {
+                        if !pointers.insert(value.get_value_ptr()) {
+                            return Err(ValidatorError::ReferenceNotAllowed);
+                        }
+
+                        stack.push((key, depth + 1));
+                        stack.push((value.into_value(), depth + 1));
+                    }
+                    memory_usage += 16;
                 },
-                _ => {}
-            };
+                Value::Range(left, right, _type) => {
+                    if !left.is_number() || !right.is_number() {
+                        return Err(ValidatorError::InvalidRange);
+                    }
+
+                    let left_type = left.get_type()?;
+                    if left_type != right.get_type()? {
+                        return Err(ValidatorError::InvalidRange);
+                    }
+
+                    if left_type != _type {
+                        return Err(ValidatorError::InvalidRangeType);
+                    }
+
+                    stack.push((*left, depth + 1));
+                    stack.push((*right, depth + 1));
+
+                    memory_usage += 4;
+                },
+                Value::Optional(opt) => {
+                    if let Some(value) = opt {
+                        if !pointers.insert(value.get_value_ptr()) {
+                            return Err(ValidatorError::ReferenceNotAllowed);
+                        }
+
+                        memory_usage += 1;
+                        stack.push((value.into_value(), depth + 1));
+                    }
+                }
+                Value::Null => memory_usage += 1,
+                Value::Boolean(_) => memory_usage += 1,
+                Value::String(str) => memory_usage += str.len(),
+                Value::U8(_) => memory_usage += 1,
+                Value::U16(_) => memory_usage += 2,
+                Value::U32(_) => memory_usage += 4,
+                Value::U64(_) => memory_usage += 8,
+                Value::U128(_) => memory_usage += 16,
+                Value::U256(_) => memory_usage += 32,
+            }
+        }
+
+        Ok(memory_usage)
+    }
+
+    // Verify all the declared constants in the module
+    fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
+        let mut memory_usage = 0;
+        for c in self.module.constants() {
+            memory_usage += self.verify_value(c.clone())?;
+
+            if memory_usage > self.constant_max_memory {
+                return Err(ValidatorError::TooManyConstants);
+            }
         }
 
         Ok(())
