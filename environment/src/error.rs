@@ -1,5 +1,5 @@
 use thiserror::Error;
-use xelis_types::{ValueError, Value};
+use xelis_types::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {
@@ -12,7 +12,7 @@ pub enum EnvironmentError {
     #[error("Invalid function call: expected instance")]
     FnExpectedInstance,
     #[error("Panic: {0}")]
-    Panic(Value),
+    Panic(ValueCell),
     #[error("Out of bounds: {0} > {1}")]
     OutOfBounds(usize, usize),
     #[error("Invalid range: {0} > {1}")]
@@ -20,7 +20,7 @@ pub enum EnvironmentError {
     #[error("No value found at index: {0}")]
     NoValueFoundAtIndex(u32),
     #[error("Invalid type for value: {0}")]
-    InvalidType(Value),
+    InvalidType(ValueCell),
     #[error(transparent)]
     ValueError(#[from] ValueError),
     #[error("Invalid range: too large")]

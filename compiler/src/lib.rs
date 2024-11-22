@@ -820,7 +820,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(0))
+            Some(&Value::U64(0).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -852,12 +852,12 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(1))
+            Some(&Value::U64(1).into())
         );
 
         assert_eq!(
             module.get_constant_at(1),
-            Some(&Value::U64(2))
+            Some(&Value::U64(2).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();

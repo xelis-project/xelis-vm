@@ -53,7 +53,9 @@ pub enum VMError {
     #[error("stack overflow")]
     StackOverflow,
     #[error("call stack overflow")]
-    CallStackOverflow
+    CallStackOverflow,
+    #[error("unexpected type")]
+    UnexpectedType,
 }
 
 impl From<EnvironmentError> for VMError {

@@ -3,22 +3,21 @@ use std::{
     cell::{Ref, RefMut},
     ops::{Deref, DerefMut}
 };
-
-use crate::values::Value;
+use crate::ValueCell;
 
 pub enum ValueHandle<'a> {
-    Borrowed(&'a Value),
-    Ref(Ref<'a, Value>)
+    Borrowed(&'a ValueCell),
+    Ref(Ref<'a, ValueCell>)
 }
 
 pub enum ValueHandleMut<'a> {
-    Borrowed(&'a mut Value),
-    RefMut(RefMut<'a, Value>)
+    Borrowed(&'a mut ValueCell),
+    RefMut(RefMut<'a, ValueCell>)
 }
 
 impl<'a> ValueHandle<'a> {
     #[inline(always)]
-    pub fn as_value<'b>(&'b self) -> &'b Value {
+    pub fn as_value<'b>(&'b self) -> &'b ValueCell {
         match self {
             Self::Borrowed(v) => v,
             Self::Ref(v) => v
@@ -28,7 +27,7 @@ impl<'a> ValueHandle<'a> {
 
 impl<'a> ValueHandleMut<'a> {
     #[inline(always)]
-    pub fn as_value(&self) -> &Value {
+    pub fn as_value(&self) -> &ValueCell {
         match self {
             Self::Borrowed(v) => v,
             Self::RefMut(v) => v
@@ -36,7 +35,7 @@ impl<'a> ValueHandleMut<'a> {
     }
 
     #[inline(always)]
-    pub fn as_value_mut(&mut self) -> &mut Value {
+    pub fn as_value_mut(&mut self) -> &mut ValueCell {
         match self {
             Self::Borrowed(v) => v,
             Self::RefMut(v) => v
@@ -44,52 +43,52 @@ impl<'a> ValueHandleMut<'a> {
     }
 }
 
-impl<'a> From<&'a Value> for ValueHandle<'a> {
-    fn from(value: &'a Value) -> Self {
+impl<'a> From<&'a ValueCell> for ValueHandle<'a> {
+    fn from(value: &'a ValueCell) -> Self {
         Self::Borrowed(value)
     }
 }
 
-impl<'a> From<Ref<'a, Value>> for ValueHandle<'a> {
-    fn from(value: Ref<'a, Value>) -> Self {
+impl<'a> From<Ref<'a, ValueCell>> for ValueHandle<'a> {
+    fn from(value: Ref<'a, ValueCell>) -> Self {
         Self::Ref(value)
     }
 }
 
-impl AsRef<Value> for ValueHandle<'_> {
-    fn as_ref(&self) -> &Value {
+impl AsRef<ValueCell> for ValueHandle<'_> {
+    fn as_ref(&self) -> &ValueCell {
         self.as_value()
     }
 }
 
 impl Deref for ValueHandle<'_> {
-    type Target = Value;
+    type Target = ValueCell;
 
     fn deref(&self) -> &Self::Target {
         self.as_value()
     }
 }
 
-impl<'a> From<&'a mut Value> for ValueHandleMut<'a> {
-    fn from(value: &'a mut Value) -> Self {
+impl<'a> From<&'a mut ValueCell> for ValueHandleMut<'a> {
+    fn from(value: &'a mut ValueCell) -> Self {
         Self::Borrowed(value)
     }
 }
 
-impl<'a> From<RefMut<'a, Value>> for ValueHandleMut<'a> {
-    fn from(value: RefMut<'a, Value>) -> Self {
+impl<'a> From<RefMut<'a, ValueCell>> for ValueHandleMut<'a> {
+    fn from(value: RefMut<'a, ValueCell>) -> Self {
         Self::RefMut(value)
     }
 }
 
-impl AsRef<Value> for ValueHandleMut<'_> {
-    fn as_ref(&self) -> &Value {
+impl AsRef<ValueCell> for ValueHandleMut<'_> {
+    fn as_ref(&self) -> &ValueCell {
         self.as_value()
     }
 }
 
 impl Deref for ValueHandleMut<'_> {
-    type Target = Value;
+    type Target = ValueCell;
 
     fn deref(&self) -> &Self::Target {
         self.as_value()
@@ -102,8 +101,8 @@ impl DerefMut for ValueHandleMut<'_> {
     }
 }
 
-impl AsMut<Value> for ValueHandleMut<'_> {
-    fn as_mut(&mut self) -> &mut Value {
+impl AsMut<ValueCell> for ValueHandleMut<'_> {
+    fn as_mut(&mut self) -> &mut ValueCell {
         self.as_value_mut()
     }
 }

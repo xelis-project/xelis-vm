@@ -4,7 +4,7 @@ use xelis_environment::{
     FnReturnType,
     Context,
 };
-use xelis_types::{Type, Value, ValuePointer, U256 as u256};
+use xelis_types::{Type, Value, ValueCell, ValueType, ValuePointer, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -21,10 +21,10 @@ macro_rules! overflow_fn {
                 let (result, overflow) = value.[<overflowing_ $op>](other);
                 
                 Ok(Some(if overflow {
-                    Value::Optional(None)
+                    ValueCell::Optional(None)
                 } else {
-                    let inner = ValuePointer::owned(Value::$t(result));
-                    Value::Optional(Some(inner))
+                    let inner = ValuePointer::owned(Value::$t(result).into());
+                    ValueCell::Optional(Some(inner))
                 }))
             }
 
@@ -62,8 +62,8 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| ValuePointer::owned(Value::U8(*b))).collect();
-                Ok(Some(Value::Array(vec)))
+                let vec = bytes.iter().map(|b| ValuePointer::owned(Value::U8(*b).into())).collect();
+                Ok(Some(ValueCell::Array(vec)))
             }
 
             $env.register_native_function(
@@ -90,11 +90,11 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = ValuePointer::owned(Value::$t(min));
-        let max_inner = ValuePointer::owned(Value::$t(max));
+        let min_inner = ValueType::Default(Value::$t(min));
+        let max_inner = ValueType::Default(Value::$t(max));
 
-        $env.register_constant(Type::$t, "MIN", Value::Optional(Some(min_inner)));
-        $env.register_constant(Type::$t, "MAX", Value::Optional(Some(max_inner)));
+        $env.register_constant(Type::$t, "MIN", ValueType::Optional(Some(Box::new(min_inner))));
+        $env.register_constant(Type::$t, "MAX", ValueType::Optional(Some(Box::new(max_inner))));
     };
 }
 

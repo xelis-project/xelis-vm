@@ -1,4 +1,4 @@
-use xelis_types::{Type, Value};
+use xelis_types::{Type, Value, ValueCell};
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
@@ -17,7 +17,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 // native functions
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_vec()?.len();
-    Ok(Some(Value::U32(len as u32)))
+    Ok(Some(Value::U32(len as u32).into()))
 }
 
 fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -46,7 +46,7 @@ fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     if let Some(mut value) = array.pop() {
         Ok(Some(value.take_value()))
     } else {
-        Ok(Some(Value::Optional(None)))
+        Ok(Some(ValueCell::Optional(None)))
     }
 }
 
@@ -81,7 +81,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
         slice.push(value);
     }
 
-    Ok(Some(Value::Array(slice)))
+    Ok(Some(ValueCell::Array(slice)))
 }
 
 fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
@@ -93,33 +93,33 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.handle() == *expected).is_some())))
+    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.handle() == *expected).is_some()).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.get_mut(index) {
-        Ok(Some(Value::Optional(Some(value.transform()))))
+        Ok(Some(ValueCell::Optional(Some(value.transform()))))
     } else {
-        Ok(Some(Value::Optional(None)))
+        Ok(Some(ValueCell::Optional(None)))
     }
 }
 
 fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.first_mut() {
-        Ok(Some(Value::Optional(Some(value.transform()))))
+        Ok(Some(ValueCell::Optional(Some(value.transform()))))
     } else {
-        Ok(Some(Value::Optional(None)))
+        Ok(Some(ValueCell::Optional(None)))
     }
 }
 
 fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_mut_vec()?;
     if let Some(value) = vec.last_mut() {
-        Ok(Some(Value::Optional(Some(value.transform()))))
+        Ok(Some(ValueCell::Optional(Some(value.transform()))))
     } else {
-        Ok(Some(Value::Optional(None)))
+        Ok(Some(ValueCell::Optional(None)))
     }
 }

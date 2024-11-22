@@ -5,20 +5,23 @@ use crate::{
     Context,
     VMError
 };
-use xelis_types::{Value, Type, Path};
+use xelis_types::{Value, ValueCell, Type, Path};
 
 use super::InstructionResult;
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a.as_value(), $b.as_value()) {
-            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
-            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
+                _ => return Err(VMError::UnexpectedType)
+            }
+            _ => return Err(VMError::UnexpectedType)
         }
     }};
 }
@@ -26,14 +29,17 @@ macro_rules! op {
 macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a.as_value(), $b.as_value()) {
-            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-            (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
-            (Value::String(a), Value::String(b)) => Value::String(a.to_owned() $op &b),
-            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
+                (Value::String(a), Value::String(b)) => Value::String(a.to_owned() $op &b),
+                _ => return Err(VMError::UnexpectedType)
+            }
+            _ => return Err(VMError::UnexpectedType)
         }
     }};
 }
@@ -41,14 +47,17 @@ macro_rules! op_string {
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a.as_value(), $b.as_value()) {
-            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
-            (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
-            (Value::U256(a), Value::U256(b)) => Value::Boolean(a $op b),
-            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+                (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+                (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
+                (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
+                (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
+                (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
+                (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
+                (Value::U256(a), Value::U256(b)) => Value::Boolean(a $op b),
+                _ => return Err(VMError::UnexpectedType)
+            }
+            _ => return Err(VMError::UnexpectedType)
         }
     }};
 }
@@ -59,7 +68,7 @@ macro_rules! opcode_op {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
             // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op)));
+            $self.push_stack_unchecked(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op).into()));
         }
     };
 }
@@ -70,7 +79,7 @@ macro_rules! opcode_op_assign {
             let right = $self.pop_stack()?;
             let mut left = $self.pop_stack()?;
             let result = $macr!(left.as_ref(), right.as_ref(), $op);
-            *left.as_mut() = result;
+            *left.as_mut() = result.into();
         }
     };
 }
@@ -110,7 +119,7 @@ opcode_fn!(shr_assign, opcode_op_assign, op, >>);
 
 pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?)));
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?).into()));
     Ok(InstructionResult::Nothing)
 }
 
@@ -125,15 +134,18 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
     let right = stack.pop_stack()?.into_owned();
     let left = stack.pop_stack()?.into_owned();
     let result = match (left, right) {
-        (Value::U8(a), Value::U8(b)) => Value::U8(a.pow(b as u32)),
-        (Value::U16(a), Value::U16(b)) => Value::U16(a.pow(b as u32)),
-        (Value::U32(a), Value::U32(b)) => Value::U32(a.pow(b as u32)),
-        (Value::U64(a), Value::U64(b)) => Value::U64(a.pow(b as u32)),
-        (Value::U128(a), Value::U128(b)) => Value::U128(a.pow(b as u32)),
-        (Value::U256(a), Value::U256(b)) => Value::U256(a.pow(b.into())),
-        (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+        (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (Value::U8(a), Value::U8(b)) => Value::U8(a.pow(b as u32)),
+            (Value::U16(a), Value::U16(b)) => Value::U16(a.pow(b as u32)),
+            (Value::U32(a), Value::U32(b)) => Value::U32(a.pow(b as u32)),
+            (Value::U64(a), Value::U64(b)) => Value::U64(a.pow(b as u32)),
+            (Value::U128(a), Value::U128(b)) => Value::U128(a.pow(b as u32)),
+            (Value::U256(a), Value::U256(b)) => Value::U256(a.pow(b.into())),
+            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+        }
+        _ => return Err(VMError::UnexpectedType)
     };
-    stack.push_stack_unchecked(Path::Owned(result));
+    stack.push_stack_unchecked(Path::Owned(result.into()));
     Ok(InstructionResult::Nothing)
 }
 
@@ -153,7 +165,7 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManag
         _ => return Err(VMError::UnsupportedCastType)
     };
 
-    stack.push_stack(Path::Owned(value))?;
+    stack.push_stack(Path::Owned(value.into()))?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -161,7 +173,7 @@ pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
     let value = stack.pop_stack()?;
     let value = value.as_bool()?;
     let value = value && stack.pop_stack()?.as_bool()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value).into()));
 
     Ok(InstructionResult::Nothing)
 }
@@ -170,7 +182,7 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, 
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
     let value = left.as_bool()? || right.as_bool()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value)));
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value).into()));
 
     Ok(InstructionResult::Nothing)
 }

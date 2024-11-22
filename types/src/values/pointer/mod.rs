@@ -8,7 +8,7 @@ use std::{
     ptr,
 };
 
-use super::Value;
+use super::ValueCell;
 
 pub use sub_value::SubValue;
 pub use inner::ValuePointerInner;
@@ -22,7 +22,7 @@ pub struct ValuePointer(ValuePointerInner);
 impl ValuePointer {
     // Create a new value pointer from a value
     #[inline(always)]
-    pub fn owned(value: Value) -> Self {
+    pub fn owned(value: ValueCell) -> Self {
         Self(ValuePointerInner::Owned(Box::new(value)))
     }
 
@@ -34,20 +34,20 @@ impl ValuePointer {
 
     // Get the inner value pointer
     #[inline(always)]
-    pub fn get_value_ptr(&self) -> *const Value {
+    pub fn get_value_ptr(&self) -> *const ValueCell {
         ptr::from_ref(self.handle().as_value())
     }
 
     // Take the value, even if it's shared, replace it by Null
     #[inline(always)]
-    pub fn take_value(&mut self) -> Value {
+    pub fn take_value(&mut self) -> ValueCell {
         let v = std::mem::take(&mut self.0);
         v.take_value()
     }
 
     // Clone the inner value
     #[inline(always)]
-    pub fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> ValueCell {
         self.handle().as_value().clone()
     }
 }
@@ -62,7 +62,7 @@ impl ValuePointer {
 
     // Get the owned value or clone it if it's shared
     #[inline(always)]
-    pub fn into_value(self) -> Value {
+    pub fn into_value(self) -> ValueCell {
         self.0.into_value()
     }
 }
@@ -110,8 +110,8 @@ impl DerefMut for ValuePointer {
     }
 }
 
-impl From<Value> for ValuePointer {
-    fn from(value: Value) -> Self {
+impl From<ValueCell> for ValuePointer {
+    fn from(value: ValueCell) -> Self {
         Self::owned(value)
     }
 }
@@ -119,7 +119,7 @@ impl From<Value> for ValuePointer {
 impl Hash for ValuePointer {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.handle()
-            .hash_with_tracked_pointers(state, &mut HashSet::new());
+            .hash_with_pointers(state, &mut HashSet::new());
     }
 }
 

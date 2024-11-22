@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValuePointer};
+use xelis_types::{Type, Value, ValueCell, ValuePointer};
 
 use crate::EnvironmentBuilder;
 
@@ -19,7 +19,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_map()?.len();
-    Ok(Some(Value::U32(len as u32)))
+    Ok(Some(Value::U32(len as u32).into()))
 }
 
 fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -30,7 +30,7 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
     }
 
     let contains = zelf?.as_map()?.contains_key(&k);
-    Ok(Some(Value::Boolean(contains)))
+    Ok(Some(Value::Boolean(contains).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -41,7 +41,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     }
 
     let value = zelf?.as_map()?.get(&k).cloned();
-    Ok(Some(Value::Optional(value)))
+    Ok(Some(ValueCell::Optional(value)))
 }
 
 fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -53,7 +53,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     let value = parameters.remove(0);
     let previous = zelf?.as_mut_map()?
         .insert(key, value.into_pointer());
-    Ok(Some(Value::Optional(previous)))
+    Ok(Some(ValueCell::Optional(previous)))
 }
 
 fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -66,7 +66,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 
     let value = zelf?.as_mut_map()?
         .remove(&k);
-    Ok(Some(Value::Optional(value)))
+    Ok(Some(ValueCell::Optional(value)))
 }
 
 fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
@@ -84,7 +84,7 @@ fn keys(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
         .map(|key| ValuePointer::owned(key.clone()))
         .collect::<Vec<_>>();
 
-    Ok(Some(Value::Array(keys)))
+    Ok(Some(ValueCell::Array(keys)))
 }
 
 fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
@@ -97,5 +97,5 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
         .map(|v| v.transform())
         .collect::<Vec<_>>();
 
-    Ok(Some(Value::Array(values)))
+    Ok(Some(ValueCell::Array(values)))
 }

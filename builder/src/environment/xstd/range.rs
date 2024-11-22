@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValuePointer};
+use xelis_types::{Type, Value, ValueCell, ValuePointer};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -11,7 +11,7 @@ macro_rules! contains {
                 let start = $start.[<as_ $t>]()?;
                 let end = $end.[<as_ $t>]()?;
                 let value = $value.[<as_ $t>]()?;
-                Value::Boolean((start..end).contains(&value))
+                Value::Boolean((start..end).contains(&value)).into()
             }
         }
     };
@@ -25,7 +25,7 @@ macro_rules! collect {
                 let end = $end.[<as_ $type>]()?;
 
                 if start >= end {
-                    Value::Array(Vec::new())
+                    ValueCell::Array(Vec::new())
                 } else {
                     let diff = end - start;
                     if diff > u32::MAX as _ {
@@ -34,8 +34,8 @@ macro_rules! collect {
 
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (start..end).map(|i| ValuePointer::owned(Value::$t(i))).collect();
-                    Value::Array(vec)
+                    let vec = (start..end).map(|i| ValuePointer::owned(Value::$t(i).into())).collect();
+                    ValueCell::Array(vec)
                 }
             }
         }
@@ -49,7 +49,7 @@ macro_rules! count {
                 let start = $start.[<as_ $type>]()?;
                 let end = $end.[<as_ $type>]()?;
                 let count = end.checked_sub(start).unwrap_or(Default::default());
-                Value::$t(count)
+                Value::$t(count).into()
             }
         }
     };
@@ -105,11 +105,11 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
                 context.increase_gas_usage(diff as u64 * 8)?;
 
                 for i in 0..diff {
-                    vec.push(ValuePointer::owned(Value::U256(i.into())));
+                    vec.push(ValuePointer::owned(Value::U256(i.into()).into()));
                 }
             }
 
-            Value::Array(vec)
+            ValueCell::Array(vec)
         }
         _ => return Err(EnvironmentError::InvalidType(zelf.clone()))
     }))
@@ -118,13 +118,13 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
 fn max(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (_, end, _) = zelf.as_range()?;
-    Ok(Some(end.clone()))
+    Ok(Some(end.clone().into()))
 }
 
 fn min(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (start, _, _) = zelf.as_range()?;
-    Ok(Some(start.clone()))
+    Ok(Some(start.clone().into()))
 }
 
 fn count(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {

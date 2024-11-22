@@ -15,11 +15,11 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 fn is_none(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_none())))
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_none()).into()))
 }
 
 fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_some())))
+    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_some()).into()))
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {

@@ -1,20 +1,21 @@
-mod pointer;
 mod error;
+mod pointer;
+mod cell;
+mod value_type;
 
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
-    hash::{Hash, Hasher}, ptr,
+    hash::{Hash, Hasher},
 };
 use super::{
     Type,
-    EnumValueType,
-    StructType,
     U256
 };
 
 pub use pointer::*;
+pub use cell::*;
 pub use error::*;
+pub use value_type::*;
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -31,6 +32,7 @@ macro_rules! checked_cast {
     };
 }
 
+// This enum is dedicated for constants values / parser
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Null,
@@ -41,18 +43,9 @@ pub enum Value {
     U64(u64),
     U128(u128),
     U256(U256),
-
     String(String),
     Boolean(bool),
-    Struct(Vec<ValuePointer>, StructType),
-    Array(Vec<ValuePointer>),
-    Optional(Option<ValuePointer>),
-
-    // Use box directly because the range are primitive only
     Range(Box<Value>, Box<Value>, Type),
-    // Map cannot be used as a key in another map
-    Map(HashMap<Value, ValuePointer>),
-    Enum(Vec<ValuePointer>, EnumValueType),
 }
 
 impl PartialOrd for Value {
@@ -71,23 +64,6 @@ impl PartialOrd for Value {
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash_with_tracked_pointers(state, &mut HashSet::new());
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Null
-    }
-}
-
-impl Value {
-    fn hash_with_tracked_pointers<H: Hasher>(&self, state: &mut H, tracked_pointers: &mut HashSet<*const Value>) {
-        if !tracked_pointers.insert(ptr::from_ref(self)) {
-            // Cyclic reference detected
-            return;
-        }
-
         match self {
             Value::Null => 0.hash(state),
             Value::U8(n) => {
@@ -122,42 +98,23 @@ impl Value {
                 8.hash(state);
                 n.hash(state);
             },
-            Value::Struct(fields, struct_type) => {
-                9.hash(state);
-                fields.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
-                struct_type.hash(state);
-            },
-            Value::Array(values) => {
-                10.hash(state);
-                values.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
-            },
-            Value::Optional(opt) => {
-                11.hash(state);
-                if let Some(value) = opt {
-                    value.handle().hash_with_tracked_pointers(state, tracked_pointers);
-                }
-            },
             Value::Range(start, end, range_type) => {
-                12.hash(state);
-                start.hash_with_tracked_pointers(state, tracked_pointers);
-                end.hash_with_tracked_pointers(state, tracked_pointers);
+                9.hash(state);
+                start.hash(state);
+                end.hash(state);
                 range_type.hash(state);
             },
-            Value::Map(map) => {
-                13.hash(state);
-                for (key, value) in map {
-                    key.hash_with_tracked_pointers(state, tracked_pointers);
-                    value.handle().hash_with_tracked_pointers(state, tracked_pointers);
-                }
-            },
-            Value::Enum(fields, enum_type) => {
-                14.hash(state);
-                fields.iter().for_each(|f| f.handle().hash_with_tracked_pointers(state, tracked_pointers));
-                enum_type.hash(state);
-            }
         }
     }
+}
 
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
+    }
+}
+
+impl Value {
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
@@ -170,14 +127,6 @@ impl Value {
     pub fn is_string(&self) -> bool {
         match &self {
             Value::String(_) => true,
-            _ => false
-        }
-    }
-
-    #[inline]
-    pub fn is_map(&self) -> bool {
-        match &self {
-            Value::Map(_) => true,
             _ => false
         }
     }
@@ -247,63 +196,6 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Value, ValuePointer>, ValueError> {
-        match self {
-            Value::Map(map) => Ok(map),
-            v => Err(ValueError::InvalidStructValue(v.clone()))
-        }
-    }
-
-    #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Value, ValuePointer>, ValueError> {
-        match self {
-            Value::Map(map) => Ok(map),
-            v => Err(ValueError::InvalidStructValue(v.clone()))
-        }
-    }
-
-    #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<&Option<ValuePointer>, ValueError> {
-        match self {
-            Value::Null => Ok(&None),
-            Value::Optional(n) => Ok(n),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<ValuePointer, ValueError> {
-        match self {
-            Value::Optional(opt) => opt.take().ok_or(ValueError::OptionalIsNull),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<ValuePointer>, ValueError> {
-        match self {
-            Value::Optional(opt) => Ok(opt.take()),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Optional(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
     pub fn to_u8(self) -> Result<u8, ValueError> {
         match self {
             Value::U8(n) => Ok(n),
@@ -364,49 +256,6 @@ impl Value {
         match self {
             Value::Boolean(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Bool))
-        }
-    }
-
-    #[inline]
-    pub fn to_map(self) -> Result<Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Struct(fields, _) => Ok(fields),
-            v => Err(ValueError::InvalidStructValue(v.clone()))
-        }
-    }
-
-    #[inline]
-    pub fn to_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValue(v.clone(), Type::Array(Box::new(Type::Any))))
-        }
-    }
-    #[inline]
-
-    pub fn to_sub_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(values) => Ok(values),
-            Value::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(values) => Ok(values),
-            Value::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<ValuePointer>, ValueError> {
-        match self {
-            Value::Array(values) => Ok(values),
-            Value::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
         }
     }
 
@@ -497,14 +346,6 @@ impl Value {
             Type::U256 => self.checked_cast_to_u256().map(Value::U256),
             Type::String => self.cast_to_string().map(Value::String),
             Type::Bool => self.cast_to_bool().map(Value::Boolean),
-            Type::Optional(inner) => {
-                if let Value::Null = self {
-                    Ok(Value::Optional(None))
-                } else {
-                    self.checked_cast_to_primitive_type(inner)
-                        .map(|v| Value::Optional(Some(ValuePointer::owned(v))))
-                }
-            },
             Type::Range(inner) => {
                 let (start, end, _) = self.to_range()?;
                 let start = start.checked_cast_to_primitive_type(inner)?;
@@ -676,27 +517,7 @@ impl std::fmt::Display for Value {
             Value::U256(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Struct(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
-                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
-            },
-            Value::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.handle())).collect();
-                write!(f, "[{}]", s.join(", "))
-            },
-            Value::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", value.handle().to_string()),
-                None => write!(f, "optional<null>")
-            },
-            Value::Range(start, end, _type) => write!(f, "range<{}: {}..{}>", _type, start, end),
-            Value::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
-                write!(f, "map{}{}{}", "{", s.join(", "), "}")
-            },
-            Value::Enum(fields, enum_type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
-                write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
-            }
+            Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
         }
     }
 }
@@ -705,31 +526,18 @@ impl std::fmt::Display for Value {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_stackoverflow_std_hash() {
-        // Create a map that contains itself
-        let map = SubValue::new(Value::Map(HashMap::new()));
-        let cloned = {
-            let mut m = map.borrow_mut();
-            m.as_mut_map()
-            .unwrap()
-            .insert(Value::U8(10), ValuePointer::shared(map.clone()));
-            m.clone()
-        };
+    // #[test]
+    // fn test_stackoverflow_recursive_hash() {
+    //     // Create a map that contains a map that contains a map...
+    //     let mut map = Value::Map(HashMap::new());
+    //     for _ in 0..28000 {
+    //         let mut inner_map = HashMap::new();
+    //         inner_map.insert(Value::U8(10), map);
+    //         map = Value::Map(inner_map);
+    //     }
 
-        let mut inner_map: HashMap<Value, ValuePointer> = HashMap::new();
-        inner_map.insert(cloned, ValuePointer::owned(Value::U8(10)));
-    }
-
-    #[test]
-    fn test_stackoverflow_recursive_hash() {
-        // Create a map that contains a map that contains a map...
-        let mut map = Value::Map(HashMap::new());
-        for _ in 0..28000 {
-            let mut inner_map = HashMap::new();
-            inner_map.insert(Value::U8(10), ValuePointer::owned(map));
-            map = Value::Map(inner_map);
-            // println!("Map size: {}", map.get_memory_usage(0));
-        }
-    }
+    //     // Put the map as a key in another map
+    //     let mut outer_map = HashMap::new();
+    //     outer_map.insert(map, Value::U8(10));
+    // }
 }

@@ -11,7 +11,7 @@ use xelis_environment::{Environment, Context};
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use xelis_types::{EnumType, Path, StructType, Value};
+use xelis_types::{EnumType, Path, StructType, ValueType};
 use xelis_bytecode::Module;
 
 pub use error::VMError;
@@ -47,7 +47,7 @@ impl<'a> Backend<'a> {
 
     // Get a constant registered in the module using its id
     #[inline(always)]
-    pub fn get_constant_with_id(&self, id: usize) -> Result<&Value, VMError> {
+    pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueType, VMError> {
         self.module.get_constant_at(id).ok_or(VMError::ConstantNotFound)
     }
 
@@ -172,7 +172,7 @@ impl<'a> VM<'a> {
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
-    pub fn run(&mut self) -> Result<Value, VMError> {
+    pub fn run(&mut self) -> Result<ValueType, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
@@ -194,7 +194,7 @@ impl<'a> VM<'a> {
             return Err(VMError::StackNotCleaned);
         }
 
-        Ok(end_value)
+        Ok(end_value.into())
     }
 }
 
@@ -202,7 +202,7 @@ impl<'a> VM<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{Type, Value, ValuePointer};
+    use xelis_types::{Type, Value};
 
     use super::*;
 
@@ -211,7 +211,7 @@ mod tests {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        vm.run()
+        vm.run().map(|v| v.into_value().unwrap())
     }
 
     #[track_caller]
@@ -348,10 +348,10 @@ mod tests {
             Value::U8(10),
             Value::U8(20),
             Value::U8(30),
-        ].into_iter().map(|v| ValuePointer::owned(v)).collect();
+        ].into_iter().map(|v| v.into()).collect();
 
         // Push element 1
-        let index = module.add_constant(Value::Array(values));
+        let index = module.add_constant(ValueType::Array(values));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);
 
@@ -414,10 +414,10 @@ mod tests {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            Value::Struct(
+            ValueType::Struct(
                 vec![
-                    ValuePointer::owned(Value::U8(10)),
-                    ValuePointer::owned(Value::U16(20))
+                    Value::U8(10).into(),
+                    Value::U16(20).into()
                 ].into(),
                 new_struct
             )
@@ -458,7 +458,7 @@ mod tests {
 
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        assert_eq!(vm.run().unwrap(), Value::U16(30));
+        assert_eq!(vm.run().unwrap(), Value::U16(30).into());
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        assert_eq!(vm.run().unwrap(), Value::Boolean(true));
+        assert_eq!(vm.run().unwrap(), Value::Boolean(true).into());
     }
 
     #[test]
@@ -517,9 +517,9 @@ mod tests {
         // Main function
         let mut main = Chunk::new();
         // Create a struct
-        let index = module.add_constant(Value::Struct(vec![
-            ValuePointer::owned(Value::U64(10))
-        ].into(), new_struct));
+        let index = module.add_constant(ValueType::Struct(vec![
+            Value::U64(10).into()
+        ], new_struct));
 
         main.emit_opcode(OpCode::Constant);
         main.write_u16(index as u16);
@@ -536,7 +536,7 @@ mod tests {
         let env = Environment::new();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
-        assert_eq!(vm.run().unwrap(), Value::U64(10));
+        assert_eq!(vm.run().unwrap(), Value::U64(10).into());
     }
 
     #[test]
@@ -664,13 +664,13 @@ mod tests {
         let mut module = Module::new();
         let mut chunk = Chunk::new();
 
-        let index = module.add_constant(Value::Array(vec![
-            ValuePointer::owned(Value::U8(10)),
-            ValuePointer::owned(Value::U8(20)),
-            ValuePointer::owned(Value::U8(30)),
-            ValuePointer::owned(Value::U8(40)),
-            ValuePointer::owned(Value::U8(50)),
-        ].into()));
+        let index = module.add_constant(ValueType::Array(vec![
+            Value::U8(10).into(),
+            Value::U8(20).into(),
+            Value::U8(30).into(),
+            Value::U8(40).into(),
+            Value::U8(50).into(),
+        ]));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);
 
@@ -748,7 +748,7 @@ mod full_tests {
         let (module, environment) = prepare_module(code);
         let mut vm = VM::new(&module, &environment);
         vm.invoke_entry_chunk(id).unwrap();
-        vm.run().unwrap()
+        vm.run().unwrap().into_value().unwrap()
     }
     
     #[track_caller]

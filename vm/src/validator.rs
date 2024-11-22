@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError};
+use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError, ValueType};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -65,9 +63,8 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Due to the use of ValuePointer, we need to clone each value as we can't keep one reference
-    fn verify_value(&self, value: Value) -> Result<usize, ValidatorError<'a>> {
+    fn verify_value(&self, value: &ValueType) -> Result<usize, ValidatorError<'a>> {
         let mut stack = vec![(value, 0)];
-        let mut pointers = HashSet::new();
         let mut memory_usage = 0;
 
         while let Some((value, depth)) = stack.pop() {
@@ -82,25 +79,21 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                Value::Struct(fields, t) => {
+                ValueType::Struct(fields, t) => {
                     if fields.len() != t.fields().len() {
                         return Err(ValidatorError::IncorrectFields);
                     }
         
-                    if !self.module.structs().contains(&t) && !self.environment.get_structures().contains(&t) {
+                    if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
                         return Err(ValidatorError::TooManyStructs);
                     }
 
                     for field in fields {
-                        if !pointers.insert(field.get_value_ptr()) {
-                            return Err(ValidatorError::ReferenceNotAllowed);
-                        }
-                        
-                        stack.push((field.into_value(), depth + 1));
+                        stack.push((field, depth + 1));
                     }
                     memory_usage += 8;
                 },
-                Value::Enum(fields, t) => {
+                ValueType::Enum(fields, t) => {
                     let variant = t.enum_type()
                         .variants()
                         .get(t.variant_id() as usize)
@@ -115,82 +108,66 @@ impl<'a> ModuleValidator<'a> {
                     }
 
                     for field in fields {
-                        if !pointers.insert(field.get_value_ptr()) {
-                            return Err(ValidatorError::ReferenceNotAllowed);
-                        }
-
-                        stack.push((field.into_value(), depth + 1));
+                        stack.push((field, depth + 1));
                     }
 
                     memory_usage += 10;
                 },
-                Value::Array(elements) => {
+                ValueType::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
                     for element in elements {
-                        if !pointers.insert(element.get_value_ptr()) {
-                            return Err(ValidatorError::ReferenceNotAllowed);
-                        }
-
-                        stack.push((element.into_value(), depth + 1));
+                        stack.push((element, depth + 1));
                     }
                     memory_usage += 4;
                 },
-                Value::Map(map) => {
+                ValueType::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
                     for (key, value) in map {
-                        if !pointers.insert(value.get_value_ptr()) {
-                            return Err(ValidatorError::ReferenceNotAllowed);
-                        }
-
                         stack.push((key, depth + 1));
-                        stack.push((value.into_value(), depth + 1));
+                        stack.push((value, depth + 1));
                     }
                     memory_usage += 16;
                 },
-                Value::Range(left, right, _type) => {
-                    if !left.is_number() || !right.is_number() {
-                        return Err(ValidatorError::InvalidRange);
-                    }
 
-                    let left_type = left.get_type()?;
-                    if left_type != right.get_type()? {
-                        return Err(ValidatorError::InvalidRange);
-                    }
-
-                    if left_type != _type {
-                        return Err(ValidatorError::InvalidRangeType);
-                    }
-
-                    stack.push((*left, depth + 1));
-                    stack.push((*right, depth + 1));
-
-                    memory_usage += 4;
-                },
-                Value::Optional(opt) => {
+                ValueType::Optional(opt) => {
                     if let Some(value) = opt {
-                        if !pointers.insert(value.get_value_ptr()) {
-                            return Err(ValidatorError::ReferenceNotAllowed);
+                        memory_usage += 1;
+                        stack.push((value, depth + 1));
+                    }
+                },
+                ValueType::Default(v) => match v {
+                    Value::Range(left, right, _type) => {
+                        if !left.is_number() || !right.is_number() {
+                            return Err(ValidatorError::InvalidRange);
+                        }
+    
+                        let left_type = left.get_type()?;
+                        if left_type != right.get_type()? {
+                            return Err(ValidatorError::InvalidRange);
+                        }
+    
+                        if left_type != *_type {
+                            return Err(ValidatorError::InvalidRangeType);
                         }
 
-                        memory_usage += 1;
-                        stack.push((value.into_value(), depth + 1));
-                    }
+                        memory_usage += 4;
+                    },
+                    Value::Null => memory_usage += 1,
+                    Value::Boolean(_) => memory_usage += 1,
+                    Value::String(str) => memory_usage += str.len(),
+                    Value::U8(_) => memory_usage += 1,
+                    Value::U16(_) => memory_usage += 2,
+                    Value::U32(_) => memory_usage += 4,
+                    Value::U64(_) => memory_usage += 8,
+                    Value::U128(_) => memory_usage += 16,
+                    Value::U256(_) => memory_usage += 32,
                 }
-                Value::Null => memory_usage += 1,
-                Value::Boolean(_) => memory_usage += 1,
-                Value::String(str) => memory_usage += str.len(),
-                Value::U8(_) => memory_usage += 1,
-                Value::U16(_) => memory_usage += 2,
-                Value::U32(_) => memory_usage += 4,
-                Value::U64(_) => memory_usage += 8,
-                Value::U128(_) => memory_usage += 16,
-                Value::U256(_) => memory_usage += 32,
             }
         }
 
@@ -201,7 +178,7 @@ impl<'a> ModuleValidator<'a> {
     fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in self.module.constants() {
-            memory_usage += self.verify_value(c.clone())?;
+            memory_usage += self.verify_value(c)?;
 
             if memory_usage > self.constant_max_memory {
                 return Err(ValidatorError::TooManyConstants);

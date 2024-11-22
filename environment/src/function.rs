@@ -1,12 +1,12 @@
-use xelis_types::{Path, Type, Value};
+use xelis_types::{Path, Type, ValueCell};
 use crate::Context;
 
 use super::EnvironmentError;
 
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
-pub type FnReturnType = Result<Option<Value>, EnvironmentError>;
-pub type FnInstance<'a> = Result<&'a mut Value, EnvironmentError>;
+pub type FnReturnType = Result<Option<ValueCell>, EnvironmentError>;
+pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
 pub type FnParams<'a> = Vec<Path<'a>>;
 pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 
@@ -37,7 +37,7 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function(&self, instance_value: Option<&mut Value>, parameters: FnParams, context: &mut Context) -> Result<Option<Value>, EnvironmentError> {
+    pub fn call_function(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context) -> Result<Option<ValueCell>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
             return Err(EnvironmentError::InvalidFnCall)
         }

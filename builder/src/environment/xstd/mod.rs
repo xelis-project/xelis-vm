@@ -64,5 +64,5 @@ fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType 
 
 fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let same = parameters[0].is_same_ptr(&parameters[1]);
-    Ok(Some(Value::Boolean(same)))
+    Ok(Some(Value::Boolean(same).into()))
 }

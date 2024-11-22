@@ -1,17 +1,17 @@
 use std::rc::Rc;
 
-use crate::{Value, ValueHandle, ValueHandleMut};
+use crate::{values::cell::ValueCell, ValueHandle, ValueHandleMut};
 use super::{SubValue, ValuePointer};
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub enum ValuePointerInner {
-    Owned(Box<Value>),
+    Owned(Box<ValueCell>),
     Shared(SubValue)
 }
 
 impl Default for ValuePointerInner {
     fn default() -> Self {
-        Self::Owned(Box::new(Value::Null))
+        Self::Owned(Box::new(Default::default()))
     }
 }
 
@@ -19,7 +19,7 @@ impl ValuePointerInner {
     // Convert into a owned value
     // Take the value from the Rc
     // if it can't be taken, replace it by Value::Null
-    pub fn take_value(self) -> Value {
+    pub fn take_value(self) -> ValueCell {
         match self {
             Self::Owned(v) => *v,
             Self::Shared(v) => match Rc::try_unwrap(v.into_inner()) {
@@ -33,7 +33,7 @@ impl ValuePointerInner {
     }
 
     // Get the inner value, or clone it if it's shared
-    pub fn into_value(self) -> Value {
+    pub fn into_value(self) -> ValueCell {
         match self {
             Self::Owned(v) => *v,
             Self::Shared(v) => match Rc::try_unwrap(v.into_inner()) {

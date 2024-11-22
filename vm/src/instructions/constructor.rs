@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use xelis_environment::EnvironmentError;
-use xelis_types::{EnumValueType, Path, Value};
+use xelis_types::{EnumValueType, Path, Value, ValueCell};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -13,7 +13,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
         array.push_front(pop.into_pointer());
     }
 
-    stack.push_stack(Path::Owned(Value::Array(array.into())))?;
+    stack.push_stack(Path::Owned(ValueCell::Array(array.into())))?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -27,7 +27,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
         fields.push_front(stack.pop_stack()?.into_pointer());
     }
 
-    stack.push_stack(Path::Owned(Value::Struct(fields.into(), struct_type.clone())))?;
+    stack.push_stack(Path::Owned(ValueCell::Struct(fields.into(), struct_type.clone())))?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -35,17 +35,17 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManage
     let end = stack.pop_stack()?.into_owned();
     let start = stack.pop_stack()?.into_owned();
 
-    if !start.is_number() {
+    if !start.is_number() || !end.is_number() {
         return Err(VMError::InvalidRangeType);
     }
 
-    let start_type = start.get_type()?;
-    if start_type != end.get_type()? {
+    let start_type = start.as_value()?.get_type()?;
+    if start_type != end.as_value()?.get_type()? {
         return Err(VMError::InvalidRangeType);
     }
 
-    let value = Value::Range(Box::new(start), Box::new(end), start_type);
-    stack.push_stack_unchecked(Path::Owned(value));
+    let value = Value::Range(Box::new(start.into_value()?), Box::new(end.into_value()?), start_type);
+    stack.push_stack_unchecked(Path::Owned(ValueCell::Default(value)));
     Ok(InstructionResult::Nothing)
 }
 
@@ -62,7 +62,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
         map.insert(key, value.into_pointer());
     }
 
-    stack.push_stack_unchecked(Path::Owned(Value::Map(map)));
+    stack.push_stack_unchecked(Path::Owned(ValueCell::Map(map)));
     Ok(InstructionResult::Nothing)
 }
 
@@ -79,6 +79,6 @@ pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut 
         values.push_front(stack.pop_stack()?.into_pointer());
     }
 
-    stack.push_stack(Path::Owned(Value::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;
+    stack.push_stack(Path::Owned(ValueCell::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;
     Ok(InstructionResult::Nothing)
 }

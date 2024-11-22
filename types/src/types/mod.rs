@@ -4,7 +4,7 @@ mod r#enum;
 pub use r#struct::*;
 pub use r#enum::*;
 
-use crate::values::Value;
+use crate::{values::Value, ValueType};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -28,12 +28,13 @@ pub enum Type {
 
     String,
     Bool,
-    Struct(StructType),
-
+    
     Array(Box<Type>),
     Optional(Box<Type>),
     Range(Box<Type>),
     Map(Box<Type>, Box<Type>),
+
+    Struct(StructType),
     Enum(EnumType),
 }
 
@@ -83,7 +84,7 @@ impl Type {
 
     // Get a type from a value
     pub fn from_value(value: &Value) -> Option<Self> {
-        let _type = match value {
+        Some(match value {
             Value::Null => return None,
             Value::U8(_) => Type::U8,
             Value::U16(_) => Type::U16,
@@ -93,20 +94,25 @@ impl Type {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
-            Value::Optional(value) => Type::Optional(Box::new(Type::from_value(&value.as_ref()?.handle())?)),
-            Value::Array(values) => Type::Array(Box::new(Type::from_value(&values.first()?.handle())?)),
-            Value::Struct(_, _type) => Type::Struct(_type.clone()),
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
-            Value::Map(map) => {
+        })
+    }
+
+    // Get a type from a value type
+    pub fn from_value_type(value_type: &ValueType) -> Option<Self> {
+        Some(match value_type {
+            ValueType::Default(v) => Self::from_value(v)?,
+            ValueType::Optional(value) => Type::Optional(Box::new(Type::from_value_type(value.as_ref()?)?)),
+            ValueType::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
+            ValueType::Struct(_, _type) => Type::Struct(_type.clone()),
+            ValueType::Map(map) => {
                 let (key, value) = map.iter().next()?;
-                let key = Type::from_value(&key)?;
-                let value = Type::from_value(&value.handle())?;
+                let key = Type::from_value_type(&key)?;
+                let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
-            Value::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
-        };
-
-        Some(_type)
+            ValueType::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
+        })
     }
 
     // get the inner type of the type or fallback to self

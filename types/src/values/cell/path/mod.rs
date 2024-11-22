@@ -1,16 +1,18 @@
 mod handle;
 
-use crate::{values::{Value, ValueError}, SubValue, ValuePointer};
+use crate::{values::ValueError, SubValue, ValuePointer};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
 };
 
+use super::ValueCell;
+
 #[derive(Debug, Clone)]
 pub enum Path<'a> {
-    Owned(Value),
+    Owned(ValueCell),
     // Used for constants
-    Borrowed(&'a Value),
+    Borrowed(&'a ValueCell),
     Wrapper(ValuePointer)
 }
 
@@ -68,7 +70,7 @@ impl<'a> Path<'a> {
                     .get(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Wrapper(at_index.clone()))
+                Ok(Path::Owned(at_index.to_value()))
             },
             Self::Wrapper(mut v) => {
                 let mut values = v.handle_mut();
@@ -84,7 +86,7 @@ impl<'a> Path<'a> {
     }
 
     #[inline(always)]
-    pub fn into_owned(self) -> Value {
+    pub fn into_owned(self) -> ValueCell {
         match self {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
@@ -129,6 +131,6 @@ impl<'a> Path<'a> {
     // Verify if its the same pointer
     #[inline]
     pub fn is_same_ptr<'b>(&'b self, other: &'b Path<'a>) -> bool {
-        self.as_ref().as_value() as *const Value == other.as_ref().as_value() as *const Value
+        self.as_ref().as_value() as *const ValueCell == other.as_ref().as_value() as *const ValueCell
     }
 }
