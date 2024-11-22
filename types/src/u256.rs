@@ -345,6 +345,17 @@ impl U256 {
         self.0[0]
     }
 
+    /// Try to get a u64 value
+    pub fn as_u64(&self) -> Option<u64> {
+        for i in 1..4 {
+            if self.0[i] != 0 {
+                return None;
+            }
+        }
+
+        Some(self.0[0])
+    }
+
     // Get the high u64 value
     pub fn high_u64(&self) -> u64 {
         self.0[3]

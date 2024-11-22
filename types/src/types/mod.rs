@@ -241,6 +241,10 @@ impl Type {
                 Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 | Type::String => true,
                 _ => false
             },
+            Type::Range(inner) => match other {
+                Type::Range(inner2) => inner.is_castable_to(inner2),
+                _ => false
+            },
             _ => false
         }
     }

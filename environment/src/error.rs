@@ -3,6 +3,10 @@ use xelis_types::{ValueError, Value};
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {
+    #[error("Invalid parameter")]
+    InvalidParameter,
+    #[error("Assertion failed")]
+    AssertionFailed,
     #[error("Invalid function call")]
     InvalidFnCall,
     #[error("Invalid function call: expected instance")]

@@ -1405,4 +1405,28 @@ mod full_tests {
             Value::U64(10)
         );
     }
+
+    #[test]
+    fn test_array_slice() {
+        let code = r#"
+            entry main() {
+                let x: u64[] = [10, 20, 30, 40, 50];
+                let y: u64[] = x.slice(1..4);
+
+                assert(is_same_ptr(y[0], x[1]));
+                y.push(60);
+                assert(!is_same_ptr(y[3], x[4]));
+
+                y.push(x[4]);
+                assert(!is_same_ptr(y[4], x[4]));
+
+                return y[0] + y[1] + y[2]
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(90)
+        );
+    }
 }

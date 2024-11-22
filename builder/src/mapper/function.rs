@@ -108,9 +108,13 @@ impl<'a> FunctionMapper<'a> {
                     // We can only cast hardcoded values
                     if let Expression::Value(value) = &expressions[i] {
                         let cloned = value.clone();
-                        let v = cloned.checked_cast_to_primitive_type(a)?;
-                        updated_expressions.push(Expression::Value(v));
-                        continue;
+                        match cloned.checked_cast_to_primitive_type(a) {
+                            Ok(v) => {
+                                updated_expressions.push(Expression::Value(v));
+                                continue;
+                            },
+                            Err(_) => continue 'main
+                        };
                     } else {
                         continue 'main;
                     }

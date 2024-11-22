@@ -125,4 +125,10 @@ impl<'a> Path<'a> {
             Self::Wrapper(v) => v.handle_mut()
         }
     }
+
+    // Verify if its the same pointer
+    #[inline]
+    pub fn is_same_ptr<'b>(&'b self, other: &'b Path<'a>) -> bool {
+        self.as_ref().as_value() as *const Value == other.as_ref().as_value() as *const Value
+    }
 }

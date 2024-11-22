@@ -18,13 +18,25 @@ macro_rules! contains {
 }
 
 macro_rules! collect {
-    ($t: ident, $start: expr, $end: expr, $type: ident) => {
+    ($t: ident, $start: expr, $end: expr, $type: ident, $context: expr) => {
         paste! {
             {
                 let start = $start.[<as_ $type>]()?;
                 let end = $end.[<as_ $type>]()?;
-                let vec = (start..end).map(|i| ValuePointer::owned(Value::$t(i))).collect();
-                Value::Array(vec)
+
+                if start >= end {
+                    Value::Array(Vec::new())
+                } else {
+                    let diff = end - start;
+                    if diff > u32::MAX as _ {
+                        return Err(EnvironmentError::RangeTooLarge);
+                    }
+
+                    $context.increase_gas_usage(diff as u64 * 8)?;
+
+                    let vec = (start..end).map(|i| ValuePointer::owned(Value::$t(i))).collect();
+                    Value::Array(vec)
+                }
             }
         }
     };
@@ -46,7 +58,7 @@ macro_rules! count {
 pub fn register(env: &mut EnvironmentBuilder) {
     let _type = Type::Range(Box::new(Type::T(0)));
     env.register_native_function("contains", Some(_type.clone()), vec![("value", Type::T(0))], contains, 5, Some(Type::Bool));
-    env.register_native_function("collect", Some(_type.clone()), vec![], collect, 500, Some(Type::Array(Box::new(Type::T(0)))));
+    env.register_native_function("collect", Some(_type.clone()), vec![], collect, 20, Some(Type::Array(Box::new(Type::T(0)))));
     env.register_native_function("max", Some(_type.clone()), vec![], max, 1, Some(Type::T(0)));
     env.register_native_function("min", Some(_type.clone()), vec![], min, 1, Some(Type::T(0)));
     env.register_native_function("count", Some(_type.clone()), vec![], count, 5, Some(Type::T(0)));
@@ -69,27 +81,30 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
     }))
 }
 
-fn collect(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
     let zelf = zelf?;
     let (start, end, _type) = zelf.as_range()?;
     Ok(Some(match _type {
-        Type::U8 => collect!(U8, start, end, u8),
-        Type::U16 => collect!(U16, start, end, u16),
-        Type::U32 => collect!(U32, start, end, u32),
-        Type::U64 => collect!(U64, start, end, u64),
-        Type::U128 => collect!(U128, start, end, u128),
+        Type::U8 => collect!(U8, start, end, u8, context),
+        Type::U16 => collect!(U16, start, end, u16, context),
+        Type::U32 => collect!(U32, start, end, u32, context),
+        Type::U64 => collect!(U64, start, end, u64, context),
+        Type::U128 => collect!(U128, start, end, u128, context),
         Type::U256 => {
             let start = start.as_u256()?;
             let end = end.as_u256()?;
-            let mut vec = Vec::new();
             let (diff, overflow) = end.overflowing_sub(start);
+
+            let mut vec = Vec::new();
             if !overflow {
-                if diff.low_u64() > u32::MAX as u64 {
+                let diff = diff.as_u64().ok_or(EnvironmentError::InvalidParameter)?;
+                if diff > u32::MAX as u64 {
                     return Err(EnvironmentError::RangeTooLarge);
                 }
 
-                let max: u32 = diff.into();
-                for i in 0..max {
+                context.increase_gas_usage(diff as u64 * 8)?;
+
+                for i in 0..diff {
                     vec.push(ValuePointer::owned(Value::U256(i.into())));
                 }
             }

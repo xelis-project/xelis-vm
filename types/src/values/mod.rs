@@ -504,7 +504,13 @@ impl Value {
                     self.checked_cast_to_primitive_type(inner)
                         .map(|v| Value::Optional(Some(ValuePointer::owned(v))))
                 }
-            }
+            },
+            Type::Range(inner) => {
+                let (start, end, _) = self.to_range()?;
+                let start = start.checked_cast_to_primitive_type(inner)?;
+                let end = end.checked_cast_to_primitive_type(inner)?;
+                Ok(Value::Range(Box::new(start), Box::new(end), *inner.clone()))
+            },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }
     }
