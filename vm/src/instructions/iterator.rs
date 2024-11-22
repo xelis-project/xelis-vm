@@ -29,7 +29,7 @@ pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
     if let Some(value) = manager.next_iterator()? {
         stack.push_stack(value)?;
     } else {
-        manager.set_index(addr as usize);
+        manager.set_index(addr as usize)?;
     }
     Ok(InstructionResult::Nothing)
 }
