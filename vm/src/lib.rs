@@ -1376,6 +1376,8 @@ mod full_tests {
                 x.insert("b", dummy);
                 x.get("b").unwrap().x = 20;
 
+                assert(!is_same_ptr(x.get("a").unwrap(), x.get("b").unwrap()));
+
                 return x.get("a").unwrap().x
             }
         "#;
