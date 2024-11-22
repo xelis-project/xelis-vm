@@ -142,7 +142,7 @@ fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>, _
 
 fn jump<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
-    manager.set_index(addr as usize);
+    manager.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -150,7 +150,7 @@ fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     let addr = manager.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {
-        manager.set_index(addr as usize);
+        manager.set_index(addr as usize)?;
     }
     Ok(InstructionResult::Nothing)
 }

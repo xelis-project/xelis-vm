@@ -27,8 +27,25 @@ impl<'a> ChunkReader<'a> {
 
     // Set the current index in our reader
     #[inline]
-    pub fn set_index(&mut self, index: usize) {
+    pub fn set_index(&mut self, index: usize) -> Result<(), VMError> {
+        if self.chunk.get_instructions().len() < index {
+            return Err(VMError::OutOfBounds);
+        }
+
         self.ip = index;
+        Ok(())
+    }
+
+    // Advance the index by a given amount
+    // Check that we don't go out of bounds
+    #[inline]
+    pub fn advance(&mut self, amount: usize) -> Result<(), VMError> {
+        if self.ip + amount > self.chunk.get_instructions().len() {
+            return Err(VMError::OutOfBounds);
+        }
+
+        self.ip += amount;
+        Ok(())
     }
 
     // Get the op code at the given index
@@ -42,6 +59,17 @@ impl<'a> ChunkReader<'a> {
     #[inline]
     pub fn read_bool(&mut self) -> Result<bool, VMError> {
         self.read_u8().map(|v| v == 1)
+    }
+
+    #[inline(always)]
+    pub fn next_u8(&mut self) -> Option<u8> {
+        match self.chunk.get_instruction_at(self.ip) {
+            Some(byte) => {
+                self.ip += 1;
+                Some(*byte)
+            },
+            None => None
+        }
     }
 
     // Read a u8 from the instructions

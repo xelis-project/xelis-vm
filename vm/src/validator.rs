@@ -1,6 +1,8 @@
 use xelis_environment::Environment;
 use xelis_types::{EnumType, EnumVariant, StructType, Type, Value};
-use xelis_bytecode::Module;
+use xelis_bytecode::{Module, OpCode};
+
+use crate::ChunkReader;
 
 pub enum ValidatorError<'a> {
     TooManyConstants,
@@ -18,6 +20,8 @@ pub enum ValidatorError<'a> {
 
     IncorrectFields,
     IncorrectVariant,
+    InvalidOpCode,
+    InvalidOpCodeArguments,
 }
 
 pub struct ModuleValidator<'a> {
@@ -30,6 +34,7 @@ impl<'a> ModuleValidator<'a> {
         Self { module, environment }
     }
 
+    // Verify all the declared constants in the module
     fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
         for c in self.module.constants() {
             match c {
@@ -74,9 +79,17 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify all the declared chunks in the module
+    // We verify that the opcodes are valid and that the count of arguments are correct
     fn verify_chunks(&self) -> Result<(), ValidatorError<'a>> {
-        for _ in self.module.chunks() {
+        for chunk in self.module.chunks() {
+            let mut reader = ChunkReader::new(chunk);
+            while let Some(instruction) = reader.next_u8() {
+                let op = OpCode::from_byte(instruction)
+                    .ok_or(ValidatorError::InvalidOpCode)?;
 
+                reader.advance(op.arguments_bytes())
+                    .map_err(|_| ValidatorError::InvalidOpCodeArguments)?;
+            }
         }
 
         Ok(())

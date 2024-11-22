@@ -174,7 +174,7 @@ impl<'a> VM<'a> {
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<Value, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
-            while let Ok(opcode) = manager.read_u8() {
+            while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
                     InstructionResult::Nothing => {},
                     InstructionResult::InvokeChunk(id) => {

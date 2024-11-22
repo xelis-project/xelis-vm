@@ -48,7 +48,7 @@ impl Chunk {
     }
 
     // Get the instruction at a specific index
-    #[inline]
+    #[inline(always)]
     pub fn get_instruction_at(&self, index: usize) -> Option<&u8> {
         self.instructions.get(index)
     }
