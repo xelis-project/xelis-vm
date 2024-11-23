@@ -48,6 +48,8 @@ pub enum ValidatorError<'a> {
     InvalidRangeType,
     #[error("reference not allowed")]
     ReferenceNotAllowed,
+    #[error("map as key not allowed")]
+    MapAsKeyNotAllowed,
     #[error(transparent)]
     ValueError(#[from] ValueError)
 }
@@ -131,6 +133,10 @@ impl<'a> ModuleValidator<'a> {
                     }
 
                     for (key, value) in map {
+                        if key.is_map() {
+                            return Err(ValidatorError::MapAsKeyNotAllowed);
+                        }
+
                         stack.push((key, depth + 1));
                         stack.push((value, depth + 1));
                     }
