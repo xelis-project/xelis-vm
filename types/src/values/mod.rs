@@ -521,23 +521,3 @@ impl std::fmt::Display for Value {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // #[test]
-    // fn test_stackoverflow_recursive_hash() {
-    //     // Create a map that contains a map that contains a map...
-    //     let mut map = Value::Map(HashMap::new());
-    //     for _ in 0..28000 {
-    //         let mut inner_map = HashMap::new();
-    //         inner_map.insert(Value::U8(10), map);
-    //         map = Value::Map(inner_map);
-    //     }
-
-    //     // Put the map as a key in another map
-    //     let mut outer_map = HashMap::new();
-    //     outer_map.insert(map, Value::U8(10));
-    // }
-}

@@ -1,7 +1,7 @@
 
 use std::collections::HashSet;
 use indexmap::IndexSet;
-use xelis_types::{EnumType, StructType, ValueType};
+use xelis_types::{EnumType, StructType, ValueType, ValueWrapper};
 
 use super::Chunk;
 
@@ -10,7 +10,7 @@ use super::Chunk;
 #[derive(Debug, Clone)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<ValueType>,
+    constants: IndexSet<ValueWrapper>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
@@ -35,20 +35,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<ValueType> {
+    pub fn constants(&self) -> &IndexSet<ValueWrapper> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
     pub fn add_constant(&mut self, value: impl Into<ValueType>) -> usize {
-        self.constants.insert_full(value.into()).0
+        self.constants.insert_full(ValueWrapper(value.into())).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<&ValueType> {
-        self.constants.get_index(index)
+        self.constants.get_index(index).map(|v| &v.0)
     }
 
     // Get the chunks declared in the module

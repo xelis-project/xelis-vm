@@ -15,6 +15,34 @@ pub enum ValueType {
     Enum(Vec<ValueType>, EnumValueType),
 }
 
+// Wrapper to drop the value without stackoverflow
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct ValueWrapper(pub ValueType);
+
+impl Drop for ValueWrapper {
+    fn drop(&mut self) {
+        if matches!(self.0, ValueType::Default(_)) {
+            return
+        }
+
+        let mut stack = vec![std::mem::take(&mut self.0)];
+        while let Some(value) = stack.pop() {
+            match value {
+                ValueType::Default(_) => {},
+                ValueType::Struct(fields, _) => stack.extend(fields),
+                ValueType::Array(values) => stack.extend(values),
+                ValueType::Optional(opt) => {
+                    if let Some(value) = opt {
+                        stack.push(*value);
+                    }
+                },
+                ValueType::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
+                ValueType::Enum(fields, _) => stack.extend(fields),
+            }
+        }
+    }
+}
+
 impl Hash for ValueType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let mut stack = vec![self];
@@ -504,5 +532,44 @@ impl ValueType {
             Self::Default(v) => Ok(v),
             _ => Err(ValueError::InvalidValueType(self, Type::Any))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::DefaultHasher;
+
+    use super::*;
+
+    #[test]
+    fn test_huge_depth() {
+        let mut map = ValueType::Map(Default::default());
+        for _ in 0..100000 {
+            map = ValueType::Optional(Some(Box::new(map)));
+        }
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        map.hash(&mut hasher);
+
+        // To drop it without stackoverflow
+        let _wrapped = ValueWrapper(map);
+        drop(_wrapped);
+    }
+
+    #[test]
+    fn test_std_hash_map_as_key() {
+        let mut map = ValueType::Map(Default::default());
+        for _ in 0..5000 {
+            let mut m = HashMap::new();
+            m.insert(map, ValueType::Default(Value::U8(0)));
+            map = ValueType::Map(m);
+        }
+
+        let mut hasher = DefaultHasher::new();
+        map.hash(&mut hasher);
+
+        // To drop it without stackoverflow
+        let _wrapped = ValueWrapper(map);
+        drop(_wrapped);
     }
 }

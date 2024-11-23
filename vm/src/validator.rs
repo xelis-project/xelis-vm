@@ -11,6 +11,8 @@ pub enum ValidatorError<'a> {
     TooMuchMemoryUsage,
     #[error("too many constants")]
     TooManyConstants,
+    #[error("constant too deep")]
+    ConstantTooDeep,
     #[error("too many chunks")]
     TooManyChunks,
     #[error("too many types")]
@@ -69,7 +71,7 @@ impl<'a> ModuleValidator<'a> {
 
         while let Some((value, depth)) = stack.pop() {
             if depth > self.constant_max_depth {
-                return Err(ValidatorError::TooManyConstants);
+                return Err(ValidatorError::ConstantTooDeep);
             }
 
             // Increase by one for the byte type of the value
@@ -178,7 +180,7 @@ impl<'a> ModuleValidator<'a> {
     fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in self.module.constants() {
-            memory_usage += self.verify_value(c)?;
+            memory_usage += self.verify_value(&c.0)?;
 
             if memory_usage > self.constant_max_memory {
                 return Err(ValidatorError::TooManyConstants);
