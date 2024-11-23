@@ -1,6 +1,6 @@
 mod handle;
 
-use crate::{values::ValueError, SubValue, ValuePointer};
+use crate::{values::ValueError, SubValue};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -13,7 +13,7 @@ pub enum Path<'a> {
     Owned(ValueCell),
     // Used for constants
     Borrowed(&'a ValueCell),
-    Wrapper(ValuePointer)
+    Wrapper(SubValue)
 }
 
 impl<'a> Path<'a> {
@@ -37,12 +37,11 @@ impl<'a> Path<'a> {
             Self::Owned(v) => {
                 let dst = std::mem::take(v);
                 let inner = SubValue::new(dst);
-                let shared = ValuePointer::shared(inner);
-                *self = Self::Wrapper(shared.clone());
-                Self::Wrapper(shared)
+                *self = Self::Wrapper(inner.clone());
+                Self::Wrapper(inner)
             },
             Self::Borrowed(v) => { 
-                let shared = ValuePointer::shared(SubValue::new(v.clone()));
+                let shared = SubValue::new(v.clone());
                 *self = Self::Wrapper(shared.clone());
                 Self::Wrapper(shared)
             },
@@ -70,17 +69,17 @@ impl<'a> Path<'a> {
                     .get(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Owned(at_index.to_value()))
+                Ok(Path::Wrapper(at_index.clone()))
             },
-            Self::Wrapper(mut v) => {
-                let mut values = v.handle_mut();
-                let values = values.as_mut_sub_vec()?;
+            Self::Wrapper(v) => {
+                let values = v.borrow();
+                let values = values.as_sub_vec()?;
                 let len = values.len();
                 let at_index = values
-                    .get_mut(index)
+                    .get(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Wrapper(at_index.transform()))
+                Ok(Path::Wrapper(at_index.clone()))
             }
         }
     }
@@ -90,15 +89,6 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => v,
             Self::Borrowed(v) => v.clone(),
-            Self::Wrapper(v) => v.to_value()
-        }
-    }
-
-    #[inline(always)]
-    pub fn into_pointer(self) -> ValuePointer {
-        match self {
-            Self::Owned(v) => ValuePointer::owned(v),
-            Self::Borrowed(v) => ValuePointer::owned(v.clone()),
             Self::Wrapper(v) => v.into_owned()
         }
     }
@@ -108,7 +98,7 @@ impl<'a> Path<'a> {
         match self {
             Self::Owned(v) => ValueHandle::Borrowed(v),
             Self::Borrowed(v) => ValueHandle::Borrowed(v),
-            Self::Wrapper(v) => v.handle()
+            Self::Wrapper(v) => ValueHandle::Ref(v.borrow())
         }
     }
 
@@ -124,7 +114,7 @@ impl<'a> Path<'a> {
                     _ => unreachable!()
                 }
             },
-            Self::Wrapper(v) => v.handle_mut()
+            Self::Wrapper(v) => ValueHandleMut::RefMut(v.borrow_mut())
         }
     }
 

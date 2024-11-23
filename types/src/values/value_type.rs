@@ -97,11 +97,11 @@ impl From<ValueCell> for ValueType {
     fn from(cell: ValueCell) -> Self {
         match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_value().into()).collect(), struct_type),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_value().into()).collect()),
-            ValueCell::Optional(opt) => Self::Optional(opt.map(|v| Box::new(v.into_value().into()))),
-            ValueCell::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into_value().into())).collect()),
-            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_value().into()).collect(), enum_type),
+            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().into()).collect(), struct_type),
+            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().into()).collect()),
+            ValueCell::Optional(opt) => Self::Optional(opt.map(|v| Box::new(v.into_owned().into()))),
+            ValueCell::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into_owned().into())).collect()),
+            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().into()).collect(), enum_type),
         }
     }
 }

@@ -28,12 +28,12 @@ impl<'a> PathIterator<'a> {
         let index = self.index.clone();
         self.index.increment()?;
 
-        let mut value = self.inner.as_mut();
-        Ok(match value.as_value_mut() {
+        let value = self.inner.as_ref();
+        Ok(match value.as_value() {
             ValueCell::Array(v) => {
                 let index = index.to_u32()? as usize;
-                v.get_mut(index)
-                .map(|v| Path::Wrapper(v.transform()))
+                v.get(index)
+                .map(|v| Path::Wrapper(v.clone()))
             },
             ValueCell::Default(Value::Range(start, end, _type)) => {
                 if index >= **start && index < **end {

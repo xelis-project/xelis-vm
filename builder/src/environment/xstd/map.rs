@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueCell, ValuePointer};
+use xelis_types::{Type, Value, ValueCell};
 
 use crate::EnvironmentBuilder;
 
@@ -52,7 +52,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 
     let value = parameters.remove(0);
     let previous = zelf?.as_mut_map()?
-        .insert(key, value.into_pointer());
+        .insert(key, value.into_owned().into());
     Ok(Some(ValueCell::Optional(previous)))
 }
 
@@ -81,7 +81,7 @@ fn keys(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
     context.increase_gas_usage((map.len() as u64) * 8)?;
 
     let keys = map.keys()
-        .map(|key| ValuePointer::owned(key.clone()))
+        .map(|key| key.clone().into())
         .collect::<Vec<_>>();
 
     Ok(Some(ValueCell::Array(keys)))
@@ -93,8 +93,8 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
     // we need to go through all elements, thus we increase the gas usage
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
-    let values = map.values_mut()
-        .map(|v| v.transform())
+    let values = map.values()
+        .map(|v| v.clone())
         .collect::<Vec<_>>();
 
     Ok(Some(ValueCell::Array(values)))

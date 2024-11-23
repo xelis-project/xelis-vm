@@ -1,5 +1,5 @@
 use xelis_environment::Context;
-use xelis_types::{Type, Value, ValueCell, ValuePointer};
+use xelis_types::{Type, Value, ValueCell};
 use super::{
     FnInstance,
     FnParams,
@@ -71,7 +71,7 @@ fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
     let mut bytes = Vec::new();
     for b in s.as_bytes() {
-        bytes.push(ValuePointer::owned(Value::U8(*b).into()));
+        bytes.push(Value::U8(*b).into());
     }
 
     Ok(Some(ValueCell::Array(bytes)))
@@ -83,7 +83,7 @@ fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
     let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
-        let inner = ValuePointer::owned(Value::U32(index as u32).into());
+        let inner = Value::U32(index as u32).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
@@ -96,7 +96,7 @@ fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) ->
     let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
-        let inner = ValuePointer::owned(Value::U32(index as u32).into());
+        let inner = Value::U32(index as u32).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
@@ -137,7 +137,7 @@ fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetur
     let handle = param.as_ref();
     let value = handle.as_string()?;
     let values = s.split(value)
-        .map(|s| ValuePointer::owned(Value::String(s.to_string()).into()))
+        .map(|s| Value::String(s.to_string()).into())
         .collect();
 
     Ok(Some(ValueCell::Array(values)))
@@ -148,7 +148,7 @@ fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
     let index = param.as_u32()? as usize;
     let s: &String = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
-        let inner = ValuePointer::owned(Value::String(c.to_string()).into());
+        let inner = Value::String(c.to_string()).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
@@ -166,7 +166,7 @@ fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     let handle = param.as_ref();
     let value = handle.as_string()?;
     let m = s.matches(value);
-    Ok(Some(ValueCell::Array(m.map(|s| ValuePointer::owned(Value::String(s.to_string()).into())).collect())))
+    Ok(Some(ValueCell::Array(m.map(|s| Value::String(s.to_string()).into()).collect())))
 }
 
 fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -174,7 +174,7 @@ fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context)
     let param = parameters.remove(0);
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
-        let inner = ValuePointer::owned(Value::String(s.to_owned()).into());
+        let inner = Value::String(s.to_owned()).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
@@ -188,7 +188,7 @@ fn string_substring_range(zelf: FnInstance, mut parameters: FnParams, _: &mut Co
     let start = param1.as_u32()? as usize;
     let end = param2.as_u32()? as usize;
     if let Some(s) = s.get(start..end) {
-        let inner = ValuePointer::owned(Value::String(s.to_owned()).into());
+        let inner = Value::String(s.to_owned()).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
     } else {
         Ok(Some(ValueCell::Optional(None)))

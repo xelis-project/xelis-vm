@@ -2,7 +2,7 @@ mod path;
 
 use std::{collections::{HashMap, HashSet}, fmt, hash::{Hash, Hasher}, ptr};
 use crate::{EnumValueType, StructType, Type, U256};
-use super::{Value, ValueError, ValuePointer, ValueType};
+use super::{Value, ValueError, SubValue, ValueType};
 
 pub use path::*;
 
@@ -11,13 +11,13 @@ pub use path::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueCell {
     Default(Value),
-    Struct(Vec<ValuePointer>, StructType),
-    Array(Vec<ValuePointer>),
-    Optional(Option<ValuePointer>),
+    Struct(Vec<SubValue>, StructType),
+    Array(Vec<SubValue>),
+    Optional(Option<SubValue>),
 
     // Map cannot be used as a key in another map
-    Map(HashMap<ValueCell, ValuePointer>),
-    Enum(Vec<ValuePointer>, EnumValueType),
+    Map(HashMap<ValueCell, SubValue>),
+    Enum(Vec<SubValue>, EnumValueType),
 }
 
 impl Hash for ValueCell {
@@ -42,11 +42,11 @@ impl From<ValueType> for ValueCell {
     fn from(value: ValueType) -> Self {
         match value {
             ValueType::Default(v) => Self::Default(v),
-            ValueType::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| ValuePointer::owned(v.into())).collect(), _type),
-            ValueType::Array(values) => Self::Array(values.into_iter().map(|v| ValuePointer::owned(v.into())).collect()),
-            ValueType::Optional(value) => Self::Optional(value.map(|v| ValuePointer::owned((*v).into()))),
-            ValueType::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), ValuePointer::owned(v.into()))).collect()),
-            ValueType::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| ValuePointer::owned(v.into())).collect(), _type)
+            ValueType::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
+            ValueType::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
+            ValueType::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
+            ValueType::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+            ValueType::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type)
         }
     }
 }
@@ -64,19 +64,19 @@ impl ValueCell {
             },
             ValueCell::Struct(fields, _) => {
                 fields.iter()
-                    .for_each(|field| field.handle()
+                    .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
             ValueCell::Array(array) => {
                 array.iter()
-                .for_each(|field| field.handle()
+                .for_each(|field| field.borrow()
                     .hash_with_pointers(state, tracked_pointers)
                 );
             },
             ValueCell::Optional(v) => {
                 if let Some(v) = v {
-                    v.handle()
+                    v.borrow()
                         .hash_with_pointers(state, tracked_pointers);
                 } else {
                     Self::Default(Value::Null).hash(state);
@@ -86,13 +86,13 @@ impl ValueCell {
                 map.iter()
                     .for_each(|(k, v)| {
                         k.hash(state);
-                        v.handle()
+                        v.borrow()
                             .hash_with_pointers(state, tracked_pointers);
                     });
             },
             ValueCell::Enum(fields, _) => {
                 fields.iter()
-                    .for_each(|field| field.handle()
+                    .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             }
@@ -188,7 +188,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Self, ValuePointer>, ValueError> {
+    pub fn as_map(&self) -> Result<&HashMap<Self, SubValue>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -196,7 +196,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Self, ValuePointer>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Self, SubValue>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct),
@@ -204,7 +204,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValuePointer>, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -212,7 +212,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValuePointer>, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -220,7 +220,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<Option<&ValuePointer>, ValueError> {
+    pub fn as_optional(&self, expected: &Type) -> Result<Option<&SubValue>, ValueError> {
         match self {
             Self::Default(Value::Null) => Ok(None),
             Self::Optional(n) => Ok(n.as_ref()),
@@ -229,7 +229,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<ValuePointer, ValueError> {
+    pub fn take_from_optional(&mut self, expected: &Type) -> Result<SubValue, ValueError> {
         match self {
             Self::Optional(opt) => opt.take().ok_or(ValueError::OptionalIsNull),
             v => Err(ValueError::InvalidValueCell(v.clone(), Type::Optional(Box::new(expected.clone()))))
@@ -237,7 +237,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<ValuePointer>, ValueError> {
+    pub fn take_optional(&mut self) -> Result<Option<SubValue>, ValueError> {
         match self {
             Self::Optional(opt) => Ok(opt.take()),
             v => Err(ValueError::InvalidValueCell(v.clone(), Type::Optional(Box::new(Type::Any))))
@@ -309,7 +309,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<ValuePointer>, ValueError> {
+    pub fn to_map(self) -> Result<Vec<SubValue>, ValueError> {
         match self {
             Self::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::ExpectedStruct)
@@ -317,7 +317,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
+    pub fn to_vec(self) -> Result<Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
@@ -325,7 +325,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_sub_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
+    pub fn to_sub_vec(self) -> Result<Vec<SubValue>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -334,7 +334,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<ValuePointer>, ValueError> {
+    pub fn as_sub_vec(&self) -> Result<&Vec<SubValue>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -343,7 +343,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<ValuePointer>, ValueError> {
+    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<SubValue>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -532,23 +532,23 @@ impl fmt::Display for ValueCell {
         match self {
             Self::Default(v) => write!(f, "{}", v),
             Self::Struct(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
             },
             Self::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.handle())).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
                 write!(f, "[{}]", s.join(", "))
             },
             Self::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", value.handle().to_string()),
+                Some(value) => write!(f, "optional<{}>", value.borrow().to_string()),
                 None => write!(f, "optional<null>")
             },
             Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             },
             Self::Enum(fields, enum_type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.handle())).collect();
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
             }
         }
@@ -569,12 +569,12 @@ mod tests {
             let mut m = map.borrow_mut();
             m.as_mut_map()
             .unwrap()
-            .insert(Value::U8(10).into(), ValuePointer::shared(map.clone()));
+            .insert(Value::U8(10).into(), map.clone());
             m.clone()
         };
 
-        let mut inner_map: HashMap<ValueCell, ValuePointer> = HashMap::new();
-        inner_map.insert(cloned, ValuePointer::owned(Value::U8(10).into()));
+        let mut inner_map: HashMap<ValueCell, SubValue> = HashMap::new();
+        inner_map.insert(cloned, Value::U8(10).into());
     }
 
     #[test]
@@ -583,7 +583,7 @@ mod tests {
         let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..28000 {
             let mut inner_map = HashMap::new();
-            inner_map.insert(Value::U8(10).into(), ValuePointer::owned(map));
+            inner_map.insert(Value::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
     }

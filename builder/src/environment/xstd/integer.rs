@@ -4,7 +4,7 @@ use xelis_environment::{
     FnReturnType,
     Context,
 };
-use xelis_types::{Type, Value, ValueCell, ValueType, ValuePointer, U256 as u256};
+use xelis_types::{Type, Value, ValueCell, ValueType, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -23,7 +23,7 @@ macro_rules! overflow_fn {
                 Ok(Some(if overflow {
                     ValueCell::Optional(None)
                 } else {
-                    let inner = ValuePointer::owned(Value::$t(result).into());
+                    let inner = Value::$t(result).into();
                     ValueCell::Optional(Some(inner))
                 }))
             }
@@ -62,7 +62,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| ValuePointer::owned(Value::U8(*b).into())).collect();
+                let vec = bytes.iter().map(|b| Value::U8(*b).into()).collect();
                 Ok(Some(ValueCell::Array(vec)))
             }
 

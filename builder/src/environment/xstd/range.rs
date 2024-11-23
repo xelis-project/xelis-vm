@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueCell, ValuePointer};
+use xelis_types::{Type, Value, ValueCell};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -34,7 +34,7 @@ macro_rules! collect {
 
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (start..end).map(|i| ValuePointer::owned(Value::$t(i).into())).collect();
+                    let vec = (start..end).map(|i| Value::$t(i).into()).collect();
                     ValueCell::Array(vec)
                 }
             }
@@ -105,7 +105,7 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
                 context.increase_gas_usage(diff as u64 * 8)?;
 
                 for i in 0..diff {
-                    vec.push(ValuePointer::owned(Value::U256(i.into()).into()));
+                    vec.push(Value::U256(i.into()).into());
                 }
             }
 
