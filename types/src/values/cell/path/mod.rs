@@ -37,15 +37,15 @@ impl<'a> Path<'a> {
             Self::Owned(v) => {
                 let dst = std::mem::take(v);
                 let inner = SubValue::new(dst);
-                *self = Self::Wrapper(inner.clone());
+                *self = Self::Wrapper(inner.reference());
                 Self::Wrapper(inner)
             },
             Self::Borrowed(v) => { 
                 let shared = SubValue::new(v.clone());
-                *self = Self::Wrapper(shared.clone());
+                *self = Self::Wrapper(shared.reference());
                 Self::Wrapper(shared)
             },
-            Self::Wrapper(v) => Self::Wrapper(v.clone())
+            Self::Wrapper(v) => Self::Wrapper(v.reference())
         }
     }
 
@@ -69,7 +69,7 @@ impl<'a> Path<'a> {
                     .get(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Wrapper(at_index.clone()))
+                Ok(Path::Wrapper(at_index.reference()))
             },
             Self::Wrapper(v) => {
                 let values = v.borrow();
@@ -79,7 +79,7 @@ impl<'a> Path<'a> {
                     .get(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Path::Wrapper(at_index.clone()))
+                Ok(Path::Wrapper(at_index.reference()))
             }
         }
     }

@@ -94,7 +94,7 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
     let values = map.values()
-        .map(|v| v.clone())
+        .map(|v| v.reference())
         .collect::<Vec<_>>();
 
     Ok(Some(ValueCell::Array(values)))

@@ -75,7 +75,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
     for i in start..end {
         // due to ValuePointer, slice are connected.
         let value = match vec.get(i as usize) {
-            Some(v) => v.clone(),
+            Some(v) => v.reference(),
             None => return Err(EnvironmentError::NoValueFoundAtIndex(i))
         };
         slice.push(value);
@@ -100,7 +100,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(ValueCell::Optional(Some(value.clone()))))
+        Ok(Some(ValueCell::Optional(Some(value.reference()))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
     }
@@ -109,7 +109,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
 fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(ValueCell::Optional(Some(value.clone()))))
+        Ok(Some(ValueCell::Optional(Some(value.reference()))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
     }
@@ -118,7 +118,7 @@ fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(ValueCell::Optional(Some(value.clone()))))
+        Ok(Some(ValueCell::Optional(Some(value.reference()))))
     } else {
         Ok(Some(ValueCell::Optional(None)))
     }

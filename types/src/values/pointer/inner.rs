@@ -63,7 +63,7 @@ impl ValuePointerInner {
                 *self = shared.clone();
                 shared
             },
-            Self::Shared(v) => Self::Shared(v.clone())
+            Self::Shared(v) => Self::Shared(v.reference())
         })
     }
 

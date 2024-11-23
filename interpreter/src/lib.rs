@@ -452,7 +452,7 @@ impl<'a> Interpreter<'a> {
                             }
                         },
                         Path::Wrapper(v) => {
-                            let v = v.handle();
+                            let v = v.borrow();
                             for value in v.as_vec()? {
                                 execute_foreach!(self, statements, var.clone(), Path::Wrapper(value.clone()), stack, state);
                             }

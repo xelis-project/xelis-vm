@@ -5,7 +5,7 @@ use std::{
 };
 use crate::{Value, ValueCell, ValueType};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SubValue(Rc<RefCell<ValueCell>>);
 
 impl SubValue {
@@ -40,6 +40,17 @@ impl SubValue {
             Ok(value) => value.into_inner(),
             Err(rc) => rc.borrow().clone()
         }
+    }
+
+    #[inline(always)]
+    pub fn reference(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl Clone for SubValue {
+    fn clone(&self) -> Self {
+        self.0.borrow().clone().into()
     }
 }
 

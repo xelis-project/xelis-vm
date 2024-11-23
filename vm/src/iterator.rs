@@ -33,7 +33,7 @@ impl<'a> PathIterator<'a> {
             ValueCell::Array(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
-                .map(|v| Path::Wrapper(v.clone()))
+                .map(|v| Path::Wrapper(v.reference()))
             },
             ValueCell::Default(Value::Range(start, end, _type)) => {
                 if index >= **start && index < **end {
