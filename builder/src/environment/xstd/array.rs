@@ -21,9 +21,14 @@ fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 }
 
 fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+    let array =  zelf?.as_mut_vec()?;
+    if array.len() >= u32::MAX as usize {
+        return Err(EnvironmentError::OutOfMemory)
+    }
+
     let param = parameters.remove(0);
-    zelf?.as_mut_vec()?
-        .push(param.into_owned().into());
+    array.push(param.into_owned().into());
+
     Ok(None)
 }
 

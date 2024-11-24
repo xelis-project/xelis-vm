@@ -201,6 +201,7 @@ impl<'a> VM<'a> {
 
 #[cfg(test)]
 mod tests {
+    use xelis_builder::EnvironmentBuilder;
     use xelis_bytecode::{Chunk, Module, OpCode};
     use xelis_types::{Type, Value};
 
@@ -208,7 +209,7 @@ mod tests {
 
     #[track_caller]
     fn run_internal(module: Module) -> Result<Value, VMError> {
-        let env = Environment::new();
+        let env = EnvironmentBuilder::default().build();
         let mut vm = VM::new(&module, &env);
         vm.invoke_chunk_id(0).unwrap();
         vm.run().map(|v| v.into_value().unwrap())
@@ -718,6 +719,92 @@ mod tests {
         module.add_chunk(chunk);
         assert_eq!(run(module), Value::U8(150));
     }
+
+    #[test]
+    fn test_bad_program_recursive_infinite() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+
+        // Recursive call
+        chunk.emit_opcode(OpCode::InvokeChunk);
+        chunk.write_u16(0);
+        chunk.write_bool(false);
+        chunk.write_u8(0);
+
+        chunk.emit_opcode(OpCode::Return);
+
+        // Execute
+        module.add_chunk(chunk);
+        assert!(matches!(run_internal(module), Err(VMError::CallStackOverflow)));
+    }
+
+    #[test]
+    fn test_infinite_map_depth() {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+
+        // let map = {};
+        // foreach _ in 0..28000 {
+        //     let mut inner_map = {};
+        //     inner_map.insert("hello world", map);
+        //     map = inner_map;
+        // }
+
+        let constant_id = module.add_constant(Value::String("hello world".to_string())) as u16;
+
+        // Create the map
+        chunk.emit_opcode(OpCode::NewMap);
+        chunk.write_u8(0);
+
+        // Store in memory
+        chunk.emit_opcode(OpCode::MemorySet);
+        chunk.write_u16(0);
+
+        let jump_at = chunk.index();
+        // Create the inner map
+        chunk.emit_opcode(OpCode::NewMap);
+        chunk.write_u8(0);
+
+        // Store in memory
+        chunk.emit_opcode(OpCode::MemorySet);
+        chunk.write_u16(1);
+
+        // Load the map for insert
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(1);
+
+        // Insert the map into the inner map
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(constant_id);
+
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(0);
+
+        // Insert map
+        chunk.emit_opcode(OpCode::SysCall);
+        chunk.write_u16(79);
+        chunk.write_bool(true);
+        chunk.write_u8(2);
+
+        // Drop the returned value
+        chunk.emit_opcode(OpCode::Pop);
+
+        // Load again the map
+        chunk.emit_opcode(OpCode::MemoryLoad);
+        chunk.write_u16(1);
+
+        // Store it in memory at place of the map
+        chunk.emit_opcode(OpCode::MemorySet);
+        chunk.write_u16(0);
+
+        // jump to beginning
+        chunk.emit_opcode(OpCode::Jump);
+        chunk.write_u32(jump_at as u32);
+
+        // Execute
+        module.add_chunk(chunk);
+        assert!(matches!(run_internal(module), Err(VMError::StackOverflow)));
+    }
 }
 
 #[cfg(test)]
@@ -1035,7 +1122,22 @@ mod full_tests {
 
         assert_eq!(run_code(code), Value::U64(50));
     }
-    
+
+    #[test]
+    fn test_self_assign() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                x = x;
+                x = x + 10;
+                x += x;
+                return x
+            }
+        "#;
+
+        assert_eq!(run_code(code), Value::U64(40));
+    }
+
     #[test]
     fn test_function_call() {
         let code = r#"

@@ -50,8 +50,13 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         return Err(EnvironmentError::InvalidKeyType);
     }
 
+    let map = zelf?.as_mut_map()?;
+    if map.len() >= u32::MAX as usize {
+        return Err(EnvironmentError::OutOfMemory)
+    }
+
     let value = parameters.remove(0);
-    let previous = zelf?.as_mut_map()?
+    let previous = map
         .insert(key, value.into_owned().into());
     Ok(Some(ValueCell::Optional(previous)))
 }

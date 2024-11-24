@@ -35,5 +35,7 @@ pub enum EnvironmentError {
     #[error("Invalid key type")]
     InvalidKeyType,
     #[error(transparent)]
-    Any(#[from] anyhow::Error)
+    Any(#[from] anyhow::Error),
+    #[error("Out of memory")]
+    OutOfMemory,
 }

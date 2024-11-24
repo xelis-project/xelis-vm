@@ -1,6 +1,12 @@
 mod path;
 
-use std::{collections::{HashMap, HashSet}, fmt, hash::{Hash, Hasher}, ptr};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    hash::{Hash, Hasher},
+    ops::{Deref, DerefMut},
+    ptr
+};
 use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueError, SubValue, Constant};
 
@@ -18,6 +24,48 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     Map(HashMap<ValueCell, SubValue>),
     Enum(Vec<SubValue>, EnumValueType),
+}
+
+// Wrapper to drop the value without stackoverflow
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct ValueCellWrapper(pub ValueCell);
+
+impl Drop for ValueCellWrapper {
+    fn drop(&mut self) {
+        if matches!(self.0, ValueCell::Default(_)) {
+            return
+        }
+
+        let mut stack = vec![std::mem::take(&mut self.0)];
+        while let Some(value) = stack.pop() {
+            match value {
+                ValueCell::Default(_) => {},
+                ValueCell::Struct(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
+                ValueCell::Array(values) => stack.extend(values.into_iter().map(SubValue::into_owned)),
+                ValueCell::Optional(opt) => {
+                    if let Some(value) = opt {
+                        stack.push(value.into_owned());
+                    }
+                },
+                ValueCell::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v.into_owned()])),
+                ValueCell::Enum(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
+            }
+        }
+    }
+}
+
+impl Deref for ValueCellWrapper {
+    type Target = ValueCell;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ValueCellWrapper {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 impl Hash for ValueCell {
@@ -525,6 +573,43 @@ impl ValueCell {
             _ => Err(ValueError::InvalidValueCell(self, Type::Any))
         }
     }
+
+    // Clone all the SubValue into a new ValueCell
+    // We need to do it in iterative way to prevent any stackoverflow
+    pub fn into_owned(self) -> Self {
+        match self {
+            Self::Default(v) => Self::Default(v),
+            Self::Struct(fields, _type) => {
+                let mut new_fields = Vec::with_capacity(fields.len());
+                for field in fields {
+                    new_fields.push(field.into_owned().into());
+                }
+                Self::Struct(new_fields, _type)
+            },
+            Self::Array(values) => {
+                let mut new_values = Vec::with_capacity(values.len());
+                for value in values {
+                    new_values.push(value.into_owned().into());
+                }
+                Self::Array(new_values)
+            },
+            Self::Optional(value) => Self::Optional(value.map(|v| v.into_owned().into())),
+            Self::Map(map) => {
+                let mut new_map = HashMap::with_capacity(map.len());
+                for (k, v) in map {
+                    new_map.insert(k.into_owned(), v.into_owned().into());
+                }
+                Self::Map(new_map)
+            },
+            Self::Enum(fields, _type) => {
+                let mut new_fields = Vec::with_capacity(fields.len());
+                for field in fields {
+                    new_fields.push(field.into_owned().into());
+                }
+                Self::Enum(new_fields, _type)
+            }
+        }
+    }
 }
 
 impl fmt::Display for ValueCell {
@@ -562,23 +647,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_stackoverflow_std_hash() {
+    fn test_recursive_cycle() {
         // Create a map that contains itself
         let map = SubValue::new(ValueCell::Map(HashMap::new()));
-        let cloned = {
+        {
             let mut m = map.borrow_mut();
             m.as_mut_map()
                 .unwrap()
                 .insert(Value::U8(10).into(), map.reference());
-            m.clone()
-        };
+        }
 
-        let mut inner_map: HashMap<ValueCell, SubValue> = HashMap::new();
-        inner_map.insert(cloned, Value::U8(10).into());
+        let owned = map.into_owned();
+        let mut inner_map = HashMap::new();
+        inner_map.insert(ValueCellWrapper(owned), Value::U8(10));
     }
 
     #[test]
-    fn test_stackoverflow_recursive_hash() {
+    fn test_std_hash() {
         // Create a map that contains a map that contains a map...
         let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..28000 {
@@ -586,5 +671,11 @@ mod tests {
             inner_map.insert(Value::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
+
+        println!("Map");
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        println!("hash");
+        ValueCellWrapper(map).hash(&mut hasher);
+        println!("Hash: {}", hasher.finish());
     }
 }

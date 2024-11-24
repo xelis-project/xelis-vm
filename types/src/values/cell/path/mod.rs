@@ -32,6 +32,8 @@ impl<'a> Path<'a> {
         self.as_ref().as_u64()
     }
 
+    // Share the value
+    // This will create a new reference to the value
     pub fn shareable(&mut self) -> Path<'a> {
         match self {
             Self::Owned(v) => {
@@ -84,6 +86,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    // Get the value of the path
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
         match self {
@@ -93,6 +96,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    // Get a reference to the value
     #[inline(always)]
     pub fn as_ref<'b>(&'b self) -> ValueHandle<'b> {
         match self {
@@ -102,6 +106,7 @@ impl<'a> Path<'a> {
         }
     }
 
+    // Get a mutable reference to the value
     #[inline(always)]
     pub fn as_mut<'b>(&'b mut self) -> ValueHandleMut<'b> {
         match self {

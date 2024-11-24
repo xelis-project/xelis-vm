@@ -36,7 +36,15 @@ macro_rules! op_string {
                 (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
                 (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
                 (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
-                (Value::String(a), Value::String(b)) => Value::String(a.to_owned() $op &b),
+                (Value::String(a), Value::String(b)) => {
+                    // Verify the final len is less than u32::MAX
+                    let len = (a.len() as u32).checked_add(b.len() as u32);
+                    if len.is_none() {
+                        return Err(VMError::StringTooLarge);
+                    }
+
+                    Value::String(a.to_owned() $op b)
+                }
                 _ => return Err(VMError::UnexpectedType)
             }
             _ => return Err(VMError::UnexpectedType)

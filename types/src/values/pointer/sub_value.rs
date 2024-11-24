@@ -5,18 +5,13 @@ use std::{
 };
 use crate::{Value, ValueCell, Constant};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubValue(Rc<RefCell<ValueCell>>);
 
 impl SubValue {
     #[inline(always)]
     pub fn new(v: ValueCell) -> Self {
         Self(Rc::new(RefCell::new(v)))
-    }
-
-    #[inline(always)]
-    pub fn from(v: Rc<RefCell<ValueCell>>) -> Self {
-        Self(v)
     }
 
     #[inline(always)]
@@ -38,19 +33,13 @@ impl SubValue {
     pub fn into_owned(self) -> ValueCell {
         match Rc::try_unwrap(self.0) {
             Ok(value) => value.into_inner(),
-            Err(rc) => rc.borrow().clone()
+            Err(rc) => rc.borrow().clone().into_owned()
         }
     }
 
     #[inline(always)]
     pub fn reference(&self) -> Self {
         Self(self.0.clone())
-    }
-}
-
-impl Clone for SubValue {
-    fn clone(&self) -> Self {
-        self.0.borrow().clone().into()
     }
 }
 

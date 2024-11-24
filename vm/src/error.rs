@@ -4,6 +4,8 @@ use xelis_types::{Value, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("string too large")]
+    StringTooLarge,
     #[error("out of bounds")]
     OutOfBounds,
     #[error("enum not found")]
