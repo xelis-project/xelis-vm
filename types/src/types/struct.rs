@@ -1,4 +1,4 @@
-use std::{hash::{Hash, Hasher}, rc::Rc};
+use std::{hash::{Hash, Hasher}, sync::Arc};
 use crate::IdentifierType;
 use super::Type;
 
@@ -24,12 +24,12 @@ impl PartialEq for Struct {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct StructType(Rc<Struct>);
+pub struct StructType(Arc<Struct>);
 
 impl StructType {
     /// Create a new struct type
     pub fn new(id: IdentifierType, fields: Vec<Type>) -> Self {
-        Self(Rc::new(Struct { id, fields }))
+        Self(Arc::new(Struct { id, fields }))
     }
 
     /// Get the unique identifier of the struct

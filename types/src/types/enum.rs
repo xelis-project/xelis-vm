@@ -1,4 +1,4 @@
-use std::{hash::{Hash, Hasher}, rc::Rc};
+use std::{hash::{Hash, Hasher}, sync::Arc};
 
 use crate::IdentifierType;
 use super::Type;
@@ -42,7 +42,7 @@ impl PartialEq for Enum {
 
 // Selected enum variant with associated type
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct EnumType(Rc<Enum>);
+pub struct EnumType(Arc<Enum>);
 
 // Represents the type of an enum variant
 // This is embed in the value to determine easily which variant it is
@@ -55,7 +55,7 @@ pub struct EnumValueType {
 impl EnumType {
     // Create a new enum type
     pub fn new(id: IdentifierType, variants: Vec<EnumVariant>) -> Self {
-        Self(Rc::new(Enum { id, variants }))
+        Self(Arc::new(Enum { id, variants }))
     }
 
     // Get the unique identifier of the enum
