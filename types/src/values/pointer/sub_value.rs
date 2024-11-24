@@ -56,7 +56,8 @@ impl Clone for SubValue {
 
 impl Hash for SubValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.borrow().hash(state);
+        self.0.borrow()
+            .hash_with_pointers(state, &mut Default::default());
     }
 }
 

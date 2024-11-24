@@ -126,7 +126,8 @@ pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
 pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
-    *left.as_mut() = right.into_owned();
+    let owned = right.into_owned();
+    *left.as_mut() = owned;
     Ok(InstructionResult::Nothing)
 }
 

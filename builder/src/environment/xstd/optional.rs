@@ -31,7 +31,7 @@ fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
     let default = parameters.remove(0);
     let optional = zelf?.take_optional()?;
     match optional {
-        Some(value) => Ok(Some(value.into_owned().into())),
+        Some(value) => Ok(Some(value.into_owned())),
         None => Ok(Some(default.into_owned()))
     }
 }

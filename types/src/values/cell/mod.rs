@@ -70,9 +70,9 @@ impl ValueCell {
             },
             ValueCell::Array(array) => {
                 array.iter()
-                .for_each(|field| field.borrow()
-                    .hash_with_pointers(state, tracked_pointers)
-                );
+                    .for_each(|field| field.borrow()
+                        .hash_with_pointers(state, tracked_pointers)
+                    );
             },
             ValueCell::Optional(v) => {
                 if let Some(v) = v {
@@ -568,8 +568,8 @@ mod tests {
         let cloned = {
             let mut m = map.borrow_mut();
             m.as_mut_map()
-            .unwrap()
-            .insert(Value::U8(10).into(), map.clone());
+                .unwrap()
+                .insert(Value::U8(10).into(), map.reference());
             m.clone()
         };
 
