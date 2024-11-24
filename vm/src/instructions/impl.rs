@@ -7,7 +7,9 @@ use super::InstructionResult;
 
 pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()? as usize;
-    let constant = backend.module.get_constant_at(index).ok_or(VMError::ConstantNotFound)?;
+    let constant = backend.module.get_constant_at(index)
+        .ok_or(VMError::ConstantNotFound)?;
+
     stack.push_stack(Path::Owned(constant.clone().into()))?;
     Ok(InstructionResult::Nothing)
 }

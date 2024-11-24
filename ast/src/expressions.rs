@@ -3,7 +3,7 @@ use xelis_types::{
     IdentifierType,
     StructType,
     Type,
-    ValueType
+    Constant
 };
 
 use super::Operator;
@@ -18,7 +18,7 @@ pub enum Expression {
     MapConstructor(Vec<(Expression, Expression)>, Type, Type),
     EnumConstructor(Vec<Expression>, EnumValueType),
     Variable(IdentifierType), // variable name
-    Value(ValueType), // hardcoded value
+    Constant(Constant), // hardcoded value
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
     Path(Box<Expression>, Box<Expression>), // struct.value

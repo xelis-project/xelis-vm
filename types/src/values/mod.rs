@@ -1,7 +1,7 @@
 mod error;
 mod pointer;
 mod cell;
-mod value_type;
+mod constant;
 
 use std::{
     cmp::Ordering,
@@ -15,7 +15,7 @@ use super::{
 pub use pointer::*;
 pub use cell::*;
 pub use error::*;
-pub use value_type::*;
+pub use constant::*;
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {

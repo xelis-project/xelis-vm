@@ -2,7 +2,7 @@ mod path;
 
 use std::{collections::{HashMap, HashSet}, fmt, hash::{Hash, Hasher}, ptr};
 use crate::{EnumValueType, StructType, Type, U256};
-use super::{Value, ValueError, SubValue, ValueType};
+use super::{Value, ValueError, SubValue, Constant};
 
 pub use path::*;
 
@@ -38,15 +38,15 @@ impl From<Value> for ValueCell {
     }
 }
 
-impl From<ValueType> for ValueCell {
-    fn from(value: ValueType) -> Self {
+impl From<Constant> for ValueCell {
+    fn from(value: Constant) -> Self {
         match value {
-            ValueType::Default(v) => Self::Default(v),
-            ValueType::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
-            ValueType::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
-            ValueType::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
-            ValueType::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            ValueType::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type)
+            Constant::Default(v) => Self::Default(v),
+            Constant::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
+            Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
+            Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
+            Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type)
         }
     }
 }

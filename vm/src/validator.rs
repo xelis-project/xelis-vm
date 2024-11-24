@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError, ValueType};
+use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError, Constant};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -67,7 +67,7 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Due to the use of ValuePointer, we need to clone each value as we can't keep one reference
-    fn verify_value(&self, value: &ValueType) -> Result<usize, ValidatorError<'a>> {
+    fn verify_value(&self, value: &Constant) -> Result<usize, ValidatorError<'a>> {
         let mut stack = vec![(value, 0)];
         let mut memory_usage = 0;
 
@@ -83,7 +83,7 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                ValueType::Struct(fields, t) => {
+                Constant::Struct(fields, t) => {
                     if fields.len() != t.fields().len() {
                         return Err(ValidatorError::IncorrectFields);
                     }
@@ -97,7 +97,7 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 8;
                 },
-                ValueType::Enum(fields, t) => {
+                Constant::Enum(fields, t) => {
                     let variant = t.enum_type()
                         .variants()
                         .get(t.variant_id() as usize)
@@ -117,7 +117,7 @@ impl<'a> ModuleValidator<'a> {
 
                     memory_usage += 10;
                 },
-                ValueType::Array(elements) => {
+                Constant::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
@@ -127,7 +127,7 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 4;
                 },
-                ValueType::Map(map) => {
+                Constant::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
@@ -143,13 +143,13 @@ impl<'a> ModuleValidator<'a> {
                     memory_usage += 16;
                 },
 
-                ValueType::Optional(opt) => {
+                Constant::Optional(opt) => {
                     if let Some(value) = opt {
                         memory_usage += 1;
                         stack.push((value, depth + 1));
                     }
                 },
-                ValueType::Default(v) => match v {
+                Constant::Default(v) => match v {
                     Value::Range(left, right, _type) => {
                         if !left.is_number() || !right.is_number() {
                             return Err(ValidatorError::InvalidRange);

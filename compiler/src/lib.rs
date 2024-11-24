@@ -128,7 +128,7 @@ impl<'a> Compiler<'a> {
     fn compile_expr(&mut self, chunk: &mut Chunk, expr: &Expression) -> Result<(), CompilerError> {
         trace!("Compiling expression: {:?}", expr);
         match expr {
-            Expression::Value(v) => {
+            Expression::Constant(v) => {
                 // Compile the value
                 let index = self.module.add_constant(v.clone());
                 chunk.emit_opcode(OpCode::Constant);

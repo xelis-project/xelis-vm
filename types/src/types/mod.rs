@@ -4,7 +4,7 @@ mod r#enum;
 pub use r#struct::*;
 pub use r#enum::*;
 
-use crate::{values::Value, ValueType};
+use crate::{values::Value, Constant};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -99,19 +99,19 @@ impl Type {
     }
 
     // Get a type from a value type
-    pub fn from_value_type(value_type: &ValueType) -> Option<Self> {
+    pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
-            ValueType::Default(v) => Self::from_value(v)?,
-            ValueType::Optional(value) => Type::Optional(Box::new(Type::from_value_type(value.as_ref()?)?)),
-            ValueType::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
-            ValueType::Struct(_, _type) => Type::Struct(_type.clone()),
-            ValueType::Map(map) => {
+            Constant::Default(v) => Self::from_value(v)?,
+            Constant::Optional(value) => Type::Optional(Box::new(Type::from_value_type(value.as_ref()?)?)),
+            Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
+            Constant::Struct(_, _type) => Type::Struct(_type.clone()),
+            Constant::Map(map) => {
                 let (key, value) = map.iter().next()?;
                 let key = Type::from_value_type(&key)?;
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
-            ValueType::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
+            Constant::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
         })
     }
 

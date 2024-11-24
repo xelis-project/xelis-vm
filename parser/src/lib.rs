@@ -399,7 +399,7 @@ impl<'a> Parser<'a> {
                 }
             },
             // we have to clone everything due to this
-            Expression::Value(ref val) => match Type::from_value_type(val) {
+            Expression::Constant(ref val) => match Type::from_value_type(val) {
                 Some(v) => Cow::Owned(v),
                 None => return Ok(None)
             },
@@ -535,7 +535,7 @@ impl<'a> Parser<'a> {
         let _type = self.get_type_from_expression(None, &expr, context)?.into_owned();
         if _type != *expected_type {
             match expr {
-                Expression::Value(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
+                Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
                     .map_err(|e| err!(self, e.into()))?,
                 _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type, expected_type.clone())))
             }
@@ -622,7 +622,7 @@ impl<'a> Parser<'a> {
         } else {
             trace!("Read type constant: {:?}::{}", _type, constant_name);
             self.environment.get_constant_by_name(&_type, &constant_name)
-                .map(|v| Expression::Value(v.clone()))
+                .map(|v| Expression::Constant(v.clone()))
                 .ok_or_else(|| err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
         }
     }
@@ -663,22 +663,22 @@ impl<'a> Parser<'a> {
     // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
     // Example: 5 + 5 = 10 -> we only write 10
     // if we have a if true { 5 } else { 10 } -> we write 5
-    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<ValueType> {
+    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Constant> {
         if self.disable_const_upgrading {
             return None
         }
 
         Some(match expr {
-            Expression::Value(v) => v.clone(),
+            Expression::Constant(v) => v.clone(),
             Expression::ArrayConstructor(values) => {
                 let mut new_values = Vec::with_capacity(values.len());
                 for value in values {
                     let v = self.try_convert_expr_to_value(value)?;
-                    *value = Expression::Value(v.clone());
+                    *value = Expression::Constant(v.clone());
 
                     new_values.push(v);
                 }
-                ValueType::Array(new_values)
+                Constant::Array(new_values)
             },
             Expression::RangeConstructor(min, max) => {
                 let min_value = self.try_convert_expr_to_value(min);
@@ -686,11 +686,11 @@ impl<'a> Parser<'a> {
 
                 if min_value.is_none() || max_value.is_none() {
                     if let Some(v) = &min_value {
-                        *min.as_mut() = Expression::Value(v.clone());
+                        *min.as_mut() = Expression::Constant(v.clone());
                     }
 
                     if let Some(v) = &max_value {
-                        *max.as_mut() = Expression::Value(v.clone());
+                        *max.as_mut() = Expression::Constant(v.clone());
                     }
                 }
 
@@ -698,25 +698,25 @@ impl<'a> Parser<'a> {
                 let max = max_value?.into_value().ok()?;
 
                 let value_type = min.get_type().ok()?;
-                ValueType::Default(Value::Range(Box::new(min), Box::new(max), value_type))
+                Constant::Default(Value::Range(Box::new(min), Box::new(max), value_type))
             },
             Expression::StructConstructor(fields, struct_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
                     let v = self.try_convert_expr_to_value(field)?;
-                    *field = Expression::Value(v.clone());
+                    *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
-                ValueType::Struct(new_fields, struct_type.clone())
+                Constant::Struct(new_fields, struct_type.clone())
             },
             Expression::EnumConstructor(fields, enum_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
                     let v = self.try_convert_expr_to_value(field)?;
-                    *field = Expression::Value(v.clone());
+                    *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
-                ValueType::Enum(new_fields, enum_type.clone())
+                Constant::Enum(new_fields, enum_type.clone())
             },
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = HashMap::with_capacity(entries.len());
@@ -725,16 +725,16 @@ impl<'a> Parser<'a> {
                     let v = self.try_convert_expr_to_value(value);
 
                     if let Some(k) = &k {
-                        *key = Expression::Value(k.clone());
+                        *key = Expression::Constant(k.clone());
                     }
 
                     if let Some(v) = &v {
-                        *value = Expression::Value(v.clone());
+                        *value = Expression::Constant(v.clone());
                     }
 
                     new_entries.insert(k?, v?);
                 }
-                ValueType::Map(new_entries)
+                Constant::Map(new_entries)
             },
             Expression::Cast(expr, _type) => {
                 let v = self.try_convert_expr_to_value(expr)?;
@@ -745,11 +745,11 @@ impl<'a> Parser<'a> {
                 let index = self.try_convert_expr_to_value(value);
 
                 if let Some(array) = &array {
-                    *array_expr.as_mut() = Expression::Value(array.clone());
+                    *array_expr.as_mut() = Expression::Constant(array.clone());
                 }
 
                 if let Some(index) = &index {
-                    *value.as_mut() = Expression::Value(index.clone());
+                    *value.as_mut() = Expression::Constant(index.clone());
                 }
 
                 let index = index?.checked_cast_to_u32().ok()?;
@@ -759,39 +759,39 @@ impl<'a> Parser<'a> {
             },
             Expression::IsNot(expr) => {
                 let v = self.try_convert_expr_to_value(expr)?;
-                ValueType::Default(Value::Boolean(!v.to_bool().ok()?))
+                Constant::Default(Value::Boolean(!v.to_bool().ok()?))
             },
             Expression::Operator(op, left, right) => {
                 let l = self.try_convert_expr_to_value(left);
                 let r = self.try_convert_expr_to_value(right);
             
                 if let Some(l) = &l {
-                    *left.as_mut() = Expression::Value(l.clone());
+                    *left.as_mut() = Expression::Constant(l.clone());
                 }
 
                 if let Some(r) = &r {
-                    *right.as_mut() = Expression::Value(r.clone());
+                    *right.as_mut() = Expression::Constant(r.clone());
                 }
 
-                ValueType::Default(self.execute_operator(op, l?.as_value().ok()?, r?.as_value().ok()?)?)
+                Constant::Default(self.execute_operator(op, l?.as_value().ok()?, r?.as_value().ok()?)?)
             },
             Expression::SubExpression(expr) => self.try_convert_expr_to_value(expr)?,
             Expression::Ternary(condition, left, right) => {
                 let c = self.try_convert_expr_to_value(condition);
 
                 if let Some(c) = &c {
-                    *condition.as_mut() = Expression::Value(c.clone());
+                    *condition.as_mut() = Expression::Constant(c.clone());
                 }
 
                 let l = self.try_convert_expr_to_value(left);
                 let r = self.try_convert_expr_to_value(right);
 
                 if let Some(l) = &l {
-                    *left.as_mut() = Expression::Value(l.clone());
+                    *left.as_mut() = Expression::Constant(l.clone());
                 }
 
                 if let Some(r) = &r {
-                    *right.as_mut() = Expression::Value(r.clone());
+                    *right.as_mut() = Expression::Constant(r.clone());
                 }
 
                 if c?.to_bool().ok()? {
@@ -805,11 +805,11 @@ impl<'a> Parser<'a> {
                 let r = self.try_convert_expr_to_value(right);
 
                 if let Some(l) = &l {
-                    *left.as_mut() = Expression::Value(l.clone());
+                    *left.as_mut() = Expression::Constant(l.clone());
                 }
 
                 if let Some(r) = &r {
-                    *right.as_mut() = Expression::Value(r.clone());
+                    *right.as_mut() = Expression::Constant(r.clone());
                 }
 
                 // TODO: find a way to get the value of the path
@@ -933,7 +933,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::Value(value) => {
-                    Expression::Value(ValueType::Default(match value {
+                    Expression::Constant(Constant::Default(match value {
                         Literal::U8(n) => Value::U8(n),
                         Literal::U16(n) => Value::U16(n),
                         Literal::U32(n) => Value::U32(n),
@@ -1059,13 +1059,13 @@ impl<'a> Parser<'a> {
                                     | Operator::GreaterOrEqual => {
                                         if left_type != *right_type {
                                             // It is an hardcoded value, lets map it to the correct type
-                                            if let Expression::Value(value) = previous_expr {
-                                                previous_expr = Expression::Value(
+                                            if let Expression::Constant(value) = previous_expr {
+                                                previous_expr = Expression::Constant(
                                                     value.checked_cast_to_primitive_type(&right_type)
                                                         .map_err(|e| err!(self, e.into()))?
                                                 );
-                                            } else if let Expression::Value(value) = expr {
-                                                expr = Expression::Value(
+                                            } else if let Expression::Constant(value) = expr {
+                                                expr = Expression::Constant(
                                                     value.checked_cast_to_primitive_type(&left_type)
                                                         .map_err(|e| err!(self, e.into()))?
                                                 );
@@ -1126,7 +1126,7 @@ impl<'a> Parser<'a> {
         }
 
         match last_expression {
-            Some(mut v) => Ok(self.try_convert_expr_to_value(&mut v).map(Expression::Value).unwrap_or(v)),
+            Some(mut v) => Ok(self.try_convert_expr_to_value(&mut v).map(Expression::Constant).unwrap_or(v)),
             None => Err(err!(self, ParserErrorKind::NotImplemented))
         }
     }
@@ -1240,7 +1240,7 @@ impl<'a> Parser<'a> {
 
             expr
         } else if value_type.is_optional() {
-            Expression::Value(ValueType::Default(Value::Null))
+            Expression::Constant(Constant::Default(Value::Null))
         } else {
             return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
@@ -1823,7 +1823,7 @@ mod tests {
         };
         assert_eq!(
             *value,
-            Expression::Value(ValueType::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
+            Expression::Constant(Constant::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
         )
     }
 
@@ -1846,7 +1846,7 @@ mod tests {
 
         assert_eq!(constant.id, 0);
         assert_eq!(constant.value_type, Type::U64);
-        assert_eq!(constant.value, Expression::Value(Value::U64(10).into()));
+        assert_eq!(constant.value, Expression::Constant(Value::U64(10).into()));
     }
 
     #[test]
@@ -1875,7 +1875,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Range(Box::new(Type::U64)),
-                    value: Expression::Value(
+                    value: Expression::Constant(
                         Value::Range(
                             Box::new(Value::U64(0)),
                             Box::new(Value::U64(10)),
@@ -1912,7 +1912,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Optional(Box::new(Type::Optional(Box::new(Type::U64)))),
-                    value: Expression::Value(Value::Null.into())
+                    value: Expression::Constant(Value::Null.into())
                 }
             )
         );
@@ -1943,7 +1943,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::Value(ValueType::Map(HashMap::new()))
+                    value: Expression::Constant(Constant::Map(HashMap::new()))
                 }
             )
         );
@@ -1981,7 +1981,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::Value(ValueType::Map(map))
+                    value: Expression::Constant(Constant::Map(map))
                 }
             )
         );
@@ -2049,7 +2049,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
-                    value: Expression::Value(ValueType::Map(HashMap::new()))
+                    value: Expression::Constant(Constant::Map(HashMap::new()))
                 }
             )
         );
@@ -2075,7 +2075,7 @@ mod tests {
             statements[0],
             Statement::ForEach(
                 0,
-                Expression::Value(
+                Expression::Constant(
                     Value::Range(
                         Box::new(Value::U64(0)),
                         Box::new(Value::U64(10)),
@@ -2150,8 +2150,8 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Array(Box::new(Type::U64)),
-                    value: Expression::Value(
-                        ValueType::Array(
+                    value: Expression::Constant(
+                        Constant::Array(
                             vec![
                                 Value::U64(1).into(),
                                 Value::U64(2).into(),
@@ -2163,7 +2163,7 @@ mod tests {
             ),
             Statement::Return(Some(Expression::Operator(
                 Operator::GreaterThan,
-                Box::new(Expression::Value(Value::U32(0).into())),
+                Box::new(Expression::Constant(Value::U32(0).into())),
                 Box::new(Expression::FunctionCall(
                     Some(Box::new(Expression::Variable(0))),
                     0,
@@ -2403,7 +2403,7 @@ mod tests {
                     Expression::Operator(
                         Operator::LessThan,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Value(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
                     Vec::new(),
                     None
@@ -2423,12 +2423,12 @@ mod tests {
                     Expression::Operator(
                         Operator::LessThan,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Value(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
                     Vec::new(),
                     None
                 ),
-                Statement::Return(Some(Expression::Value(Value::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Value::U64(0).into())))
             ])
         ]);
     }
@@ -2466,7 +2466,7 @@ mod tests {
                     Expression::Operator(
                         Operator::LessThan,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Value(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
                     Vec::new(),
                     Some(vec![
@@ -2474,51 +2474,51 @@ mod tests {
                             Expression::Operator(
                                 Operator::LessThan,
                                 Box::new(Expression::Variable(0)),
-                                Box::new(Expression::Value(Value::U64(20).into()))
+                                Box::new(Expression::Constant(Value::U64(20).into()))
                             ),
                             Vec::new(),
                             Some(Vec::new())
                         )
                     ])
                 ),
-                Statement::Return(Some(Expression::Value(Value::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Value::U64(0).into())))
             ])                
         ]);
     }
 
     #[test]
     fn test_ends_with_return() {
-        const RETURN: Statement = Statement::Return(Some(Expression::Value(ValueType::Default(Value::U64(0)))));
+        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Default(Value::U64(0)))));
         let statements = vec![RETURN];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
-        let statements = vec![RETURN, Statement::Expression(Expression::Value(Value::U64(0).into()))];
+        let statements = vec![RETURN, Statement::Expression(Expression::Constant(Value::U64(0).into()))];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if ... return
-        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true).into()), Vec::new(), None), RETURN];
+        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), None), RETURN];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
-        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true).into()), Vec::new(), None)];
+        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), None)];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if else
-        let statements = vec![Statement::If(Expression::Value(Value::Boolean(true).into()), Vec::new(), Some(Vec::new()))];
+        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), Some(Vec::new()))];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if return else return
         let statements = vec![
-            Statement::If(Expression::Value(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
+            Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
         ];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
         // if return else if return else no return
         let statements = vec![
             Statement::If(
-                Expression::Value(Value::Boolean(true).into()),
+                Expression::Constant(Value::Boolean(true).into()),
                 vec![RETURN],
                 Some(vec![
-                    Statement::If(Expression::Value(Value::Boolean(true).into()), vec![RETURN], None)
+                    Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], None)
                 ])
             )
         ];
@@ -2527,10 +2527,10 @@ mod tests {
         // if return else if return else return
         let statements = vec![
             Statement::If(
-                Expression::Value(Value::Boolean(true).into()),
+                Expression::Constant(Value::Boolean(true).into()),
                 vec![RETURN],
                 Some(vec![
-                    Statement::If(Expression::Value(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
+                    Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
                 ])
             )
         ];

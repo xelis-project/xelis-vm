@@ -106,11 +106,11 @@ impl<'a> FunctionMapper<'a> {
                 // If cast is needed, cast it, if we fail, we continue to the next signature
                 if let Some(a) = cast_to_type {
                     // We can only cast hardcoded values
-                    if let Expression::Value(value) = &expressions[i] {
+                    if let Expression::Constant(value) = &expressions[i] {
                         let cloned = value.clone();
                         match cloned.checked_cast_to_primitive_type(a) {
                             Ok(v) => {
-                                updated_expressions.push(Expression::Value(v));
+                                updated_expressions.push(Expression::Constant(v));
                                 continue;
                             },
                             Err(_) => continue 'main

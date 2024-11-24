@@ -11,7 +11,7 @@ use xelis_environment::{Environment, Context};
 use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use xelis_types::{EnumType, Path, StructType, ValueType};
+use xelis_types::{EnumType, Path, StructType, Constant};
 use xelis_bytecode::Module;
 
 pub use error::VMError;
@@ -47,7 +47,7 @@ impl<'a> Backend<'a> {
 
     // Get a constant registered in the module using its id
     #[inline(always)]
-    pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueType, VMError> {
+    pub fn get_constant_with_id(&self, id: usize) -> Result<&Constant, VMError> {
         self.module.get_constant_at(id).ok_or(VMError::ConstantNotFound)
     }
 
@@ -172,7 +172,7 @@ impl<'a> VM<'a> {
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
-    pub fn run(&mut self) -> Result<ValueType, VMError> {
+    pub fn run(&mut self) -> Result<Constant, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
@@ -351,7 +351,7 @@ mod tests {
         ].into_iter().map(|v| v.into()).collect();
 
         // Push element 1
-        let index = module.add_constant(ValueType::Array(values));
+        let index = module.add_constant(Constant::Array(values));
         chunk.emit_opcode(OpCode::Constant);
         chunk.write_u16(index as u16);
 
@@ -414,7 +414,7 @@ mod tests {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            ValueType::Struct(
+            Constant::Struct(
                 vec![
                     Value::U8(10).into(),
                     Value::U16(20).into()
@@ -517,7 +517,7 @@ mod tests {
         // Main function
         let mut main = Chunk::new();
         // Create a struct
-        let index = module.add_constant(ValueType::Struct(vec![
+        let index = module.add_constant(Constant::Struct(vec![
             Value::U64(10).into()
         ], new_struct));
 
@@ -664,7 +664,7 @@ mod tests {
         let mut module = Module::new();
         let mut chunk = Chunk::new();
 
-        let index = module.add_constant(ValueType::Array(vec![
+        let index = module.add_constant(Constant::Array(vec![
             Value::U8(10).into(),
             Value::U8(20).into(),
             Value::U8(30).into(),

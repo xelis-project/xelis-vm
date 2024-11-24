@@ -4,7 +4,7 @@ use xelis_environment::{
     FnReturnType,
     Context,
 };
-use xelis_types::{Type, Value, ValueCell, ValueType, U256 as u256};
+use xelis_types::{Type, Value, ValueCell, Constant, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -90,11 +90,11 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = ValueType::Default(Value::$t(min));
-        let max_inner = ValueType::Default(Value::$t(max));
+        let min_inner = Constant::Default(Value::$t(min));
+        let max_inner = Constant::Default(Value::$t(max));
 
-        $env.register_constant(Type::$t, "MIN", ValueType::Optional(Some(Box::new(min_inner))));
-        $env.register_constant(Type::$t, "MAX", ValueType::Optional(Some(Box::new(max_inner))));
+        $env.register_constant(Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
+        $env.register_constant(Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
     };
 }
 

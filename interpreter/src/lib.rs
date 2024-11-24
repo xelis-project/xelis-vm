@@ -174,7 +174,7 @@ impl<'a> Interpreter<'a> {
         // Fast path on no-depth expressions       
         match path {
             Expression::Variable(name) => return stack.get_variable_path(name),
-            Expression::Value(v) => return Ok(Path::Borrowed(v)),
+            Expression::Constant(v) => return Ok(Path::Borrowed(v)),
             Expression::FunctionCall(_, _, _) => return self.execute_expression_and_expect_value(path, stack, state),
             _ => ()
         };
@@ -201,7 +201,7 @@ impl<'a> Interpreter<'a> {
     
                         local_result.push(inner_value);
                     },
-                    Expression::Value(v) => {
+                    Expression::Constant(v) => {
                         local_result.push(Path::Borrowed(v));
                     },
                     Expression::FunctionCall(_, _, _) => {
@@ -314,7 +314,7 @@ impl<'a> Interpreter<'a> {
                     Ok(Some(self.execute_expression_and_expect_value(&right, stack, state)?))
                 }
             }
-            Expression::Value(v) => Ok(Some(Path::Borrowed(v))),
+            Expression::Constant(v) => Ok(Some(Path::Borrowed(v))),
             Expression::Operator(op, expr_left, expr_right) => {
                 match op {
                     Operator::Assign(op) => {

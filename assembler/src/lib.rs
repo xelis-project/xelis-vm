@@ -4,7 +4,7 @@ use log::{debug, trace};
 use opcode::OpCodeWithArgs;
 
 use thiserror::Error;
-use xelis_types::ValueType;
+use xelis_types::Constant;
 use xelis_bytecode::{Chunk, Module};
 
 #[derive(Debug, Error)]
@@ -35,7 +35,7 @@ impl<'a> Assembler<'a> {
     }
 
     // Add a constant to the module and return its index
-    pub fn add_constant(&mut self, value: ValueType) -> usize {
+    pub fn add_constant(&mut self, value: Constant) -> usize {
         trace!("Adding constant: {:?}", value);
         self.module.add_constant(value)
     }

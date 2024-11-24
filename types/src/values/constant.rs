@@ -3,47 +3,47 @@ use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueType {
+pub enum Constant {
     Default(Value),
-    Struct(Vec<ValueType>, StructType),
-    Array(Vec<ValueType>),
-    Optional(Option<Box<ValueType>>),
+    Struct(Vec<Constant>, StructType),
+    Array(Vec<Constant>),
+    Optional(Option<Box<Constant>>),
 
     // Use box directly because the range are primitive only
     // Map cannot be used as a key in another map
-    Map(HashMap<ValueType, ValueType>),
-    Enum(Vec<ValueType>, EnumValueType),
+    Map(HashMap<Constant, Constant>),
+    Enum(Vec<Constant>, EnumValueType),
 }
 
 // Wrapper to drop the value without stackoverflow
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct ValueWrapper(pub ValueType);
+pub struct ConstantWrapper(pub Constant);
 
-impl Drop for ValueWrapper {
+impl Drop for ConstantWrapper {
     fn drop(&mut self) {
-        if matches!(self.0, ValueType::Default(_)) {
+        if matches!(self.0, Constant::Default(_)) {
             return
         }
 
         let mut stack = vec![std::mem::take(&mut self.0)];
         while let Some(value) = stack.pop() {
             match value {
-                ValueType::Default(_) => {},
-                ValueType::Struct(fields, _) => stack.extend(fields),
-                ValueType::Array(values) => stack.extend(values),
-                ValueType::Optional(opt) => {
+                Constant::Default(_) => {},
+                Constant::Struct(fields, _) => stack.extend(fields),
+                Constant::Array(values) => stack.extend(values),
+                Constant::Optional(opt) => {
                     if let Some(value) = opt {
                         stack.push(*value);
                     }
                 },
-                ValueType::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
-                ValueType::Enum(fields, _) => stack.extend(fields),
+                Constant::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
+                Constant::Enum(fields, _) => stack.extend(fields),
             }
         }
     }
 }
 
-impl Hash for ValueType {
+impl Hash for Constant {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let mut stack = vec![self];
         while let Some(value) = stack.pop() {
@@ -81,19 +81,19 @@ impl Hash for ValueType {
     }
 }
 
-impl Default for ValueType {
+impl Default for Constant {
     fn default() -> Self {
         Self::Default(Default::default())
     }
 }
 
-impl From<Value> for ValueType {
+impl From<Value> for Constant {
     fn from(value: Value) -> Self {
         Self::Default(value)
     }
 }
 
-impl From<ValueCell> for ValueType {
+impl From<ValueCell> for Constant {
     fn from(cell: ValueCell) -> Self {
         match cell {
             ValueCell::Default(v) => Self::Default(v),
@@ -106,7 +106,7 @@ impl From<ValueCell> for ValueType {
     }
 }
 
-impl ValueType {
+impl Constant {
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
@@ -543,33 +543,33 @@ mod tests {
 
     #[test]
     fn test_huge_depth() {
-        let mut map = ValueType::Map(Default::default());
+        let mut map = Constant::Map(Default::default());
         for _ in 0..100000 {
-            map = ValueType::Optional(Some(Box::new(map)));
+            map = Constant::Optional(Some(Box::new(map)));
         }
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         map.hash(&mut hasher);
 
         // To drop it without stackoverflow
-        let _wrapped = ValueWrapper(map);
+        let _wrapped = ConstantWrapper(map);
         drop(_wrapped);
     }
 
     #[test]
     fn test_std_hash_map_as_key() {
-        let mut map = ValueType::Map(Default::default());
+        let mut map = Constant::Map(Default::default());
         for _ in 0..5000 {
             let mut m = HashMap::new();
-            m.insert(map, ValueType::Default(Value::U8(0)));
-            map = ValueType::Map(m);
+            m.insert(map, Constant::Default(Value::U8(0)));
+            map = Constant::Map(m);
         }
 
         let mut hasher = DefaultHasher::new();
         map.hash(&mut hasher);
 
         // To drop it without stackoverflow
-        let _wrapped = ValueWrapper(map);
+        let _wrapped = ConstantWrapper(map);
         drop(_wrapped);
     }
 }

@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     rc::Rc
 };
-use crate::{Value, ValueCell, ValueType};
+use crate::{Value, ValueCell, Constant};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SubValue(Rc<RefCell<ValueCell>>);
@@ -72,8 +72,8 @@ impl From<Value> for SubValue {
     }
 }
 
-impl From<ValueType> for SubValue {
-    fn from(v: ValueType) -> Self {
+impl From<Constant> for SubValue {
+    fn from(v: Constant) -> Self {
         Self::new(v.into())
     }
 }

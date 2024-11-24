@@ -2,7 +2,7 @@ pub mod xstd;
 
 use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
-use xelis_types::{Type, ValueType};
+use xelis_types::{Type, Constant};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
 
@@ -13,7 +13,7 @@ pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
-    constants: HashMap<Type, HashMap<&'a str, ValueType>>,
+    constants: HashMap<Type, HashMap<&'a str, Constant>>,
     env: Environment
 }
 
@@ -61,13 +61,13 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a constant in the environment
     // Panic if the constant name is already used
-    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: ValueType) {
+    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant) {
         let constants = self.constants.entry(_type.clone()).or_insert_with(HashMap::new);
         constants.insert(name, value.clone());
     }
 
     // Get a constant by name
-    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&ValueType> {
+    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&Constant> {
         self.constants.get(_type).and_then(|v| v.get(name))
     }
 
