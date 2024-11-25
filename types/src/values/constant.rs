@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::{Hash, Hasher}};
+use std::{collections::HashMap, fmt, hash::{Hash, Hasher}};
 use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
@@ -531,6 +531,34 @@ impl Constant {
         match self {
             Self::Default(v) => Ok(v),
             _ => Err(ValueError::InvalidValueType(self, Type::Any))
+        }
+    }
+}
+
+impl fmt::Display for Constant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Default(v) => write!(f, "{}", v),
+            Self::Struct(fields, _type) => {
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
+            },
+            Self::Array(values) => {
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", s.join(", "))
+            },
+            Self::Optional(value) => match value.as_ref() {
+                Some(value) => write!(f, "optional<{}>", value.to_string()),
+                None => write!(f, "optional<null>")
+            },
+            Self::Map(map) => {
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "map{}{}{}", "{", s.join(", "), "}")
+            },
+            Self::Enum(fields, enum_type) => {
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
+            }
         }
     }
 }
