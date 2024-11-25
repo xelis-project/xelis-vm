@@ -144,4 +144,12 @@ impl FunctionType {
             FunctionType::Entry(f) => f.set_statements(statements)
         }
     }
+
+    // Set the count of variables declared in the function
+    pub fn set_max_variables_count(&mut self, count: u16) {
+        match self {
+            FunctionType::Declared(f) => f.set_max_variables_count(count),
+            FunctionType::Entry(f) => f.set_max_variables_count(count)
+        }
+    }
 }

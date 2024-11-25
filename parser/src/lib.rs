@@ -1555,7 +1555,7 @@ impl<'a> Parser<'a> {
                 new_params,
                 Vec::new(),
                 return_type.clone(),
-                context.max_variables_count() as u16
+                0
             ))
         };
 
@@ -1571,10 +1571,12 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoReturnFound))
         }
 
-        self.functions
+        let last = self.functions
             .last_mut()
-            .ok_or(err!(self, ParserErrorKind::UnknownError))?
-            .set_statements(statements);
+            .ok_or(err!(self, ParserErrorKind::UnknownError))?;
+
+        last.set_statements(statements);
+        last.set_max_variables_count(context.max_variables_count() as u16);
 
         Ok(())
     }

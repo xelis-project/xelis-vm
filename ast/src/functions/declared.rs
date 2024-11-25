@@ -51,6 +51,10 @@ impl DeclaredFunction {
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         self.statements = statements;
     }
+
+    pub fn set_max_variables_count(&mut self, variables_count: u16) {
+        self.variables_count = variables_count;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -87,5 +91,9 @@ impl EntryFunction {
 
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         self.statements = statements;
+    }
+
+    pub fn set_max_variables_count(&mut self, variables_count: u16) {
+        self.variables_count = variables_count;
     }
 }
