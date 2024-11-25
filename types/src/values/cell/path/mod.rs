@@ -1,6 +1,6 @@
 mod handle;
 
-use crate::{values::ValueError, SubValue};
+use crate::{values::ValueError, SubValue, Value};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -127,5 +127,29 @@ impl<'a> Path<'a> {
     #[inline]
     pub fn is_same_ptr<'b>(&'b self, other: &'b Path<'a>) -> bool {
         self.as_ref().as_value() as *const ValueCell == other.as_ref().as_value() as *const ValueCell
+    }
+}
+
+impl From<ValueCell> for Path<'_> {
+    fn from(value: ValueCell) -> Self {
+        Self::Owned(value)
+    }
+}
+
+impl<'a> From<&'a ValueCell> for Path<'a> {
+    fn from(value: &'a ValueCell) -> Self {
+        Self::Borrowed(value)
+    }
+}
+
+impl From<SubValue> for Path<'_> {
+    fn from(value: SubValue) -> Self {
+        Self::Wrapper(value)
+    }
+}
+
+impl From<Value> for Path<'_> {
+    fn from(value: Value) -> Self {
+        Self::Owned(value.into())
     }
 }
