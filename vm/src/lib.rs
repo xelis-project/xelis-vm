@@ -149,8 +149,8 @@ impl<'a> VM<'a> {
     }
 
     // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
-        self.stack.extend_stack(args.into_iter())?;
+    pub fn invoke_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+        self.stack.extend_stack(args.map(Into::into))?;
         self.invoke_chunk_id(id)
     }
 
@@ -163,9 +163,9 @@ impl<'a> VM<'a> {
     }
 
     // Invoke an entry chunk using its id
-    pub fn invoke_entry_chunk_with_args(&mut self, id: u16, args: Vec<Path<'a>>) -> Result<(), VMError> {
+    pub fn invoke_entry_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
-        self.stack.extend_stack(args.into_iter())?;
+        self.stack.extend_stack(args.map(Into::into))?;
         Ok(())
     }
 
