@@ -149,6 +149,11 @@ impl ValueCell {
 
     // Calculate the depth of the value
     pub fn calculate_depth(&self, max_depth: usize) -> Result<usize, ValueError> {
+        // Prevent allocation if the value is a default value
+        if matches!(self, Self::Default(_)) {
+            return Ok(0);
+        }
+
         let mut stack = vec![(Path::Borrowed(self), 0)];
         let mut biggest_depth = 0;
 
