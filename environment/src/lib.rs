@@ -12,6 +12,7 @@ pub use context::*;
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
+#[derive(Debug, Clone)]
 pub struct Environment {
     // All functions provided by the Environment
     functions: Vec<NativeFunction>,

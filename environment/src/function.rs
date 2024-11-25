@@ -12,7 +12,7 @@ pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 
 // Native function that is implemented in Rust
 // This is used to register functions in the environment
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NativeFunction {
     // function on type
     for_type: Option<Type>,
