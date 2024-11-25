@@ -1559,7 +1559,7 @@ mod full_tests {
         "#;
 
         assert_eq!(
-            run_code(code),
+            run_code_id(code, 1),
             Value::U64(55)
         );
     }

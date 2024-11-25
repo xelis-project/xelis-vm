@@ -1535,9 +1535,24 @@ impl<'a> Parser<'a> {
             new_params.push(Parameter::new(id, param_type));
         }
 
+
+        let function = match entry {
+            true => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
+            false => FunctionType::Declared(DeclaredFunction::new(
+                for_type,
+                instance_name,
+                new_params,
+                Vec::new(),
+                return_type.clone(),
+                context.max_variables_count() as u16
+            ))
+        };
+
+        // push function before reading statements to allow recursive calls
+        self.functions.push(function);
+
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, &return_type)?;
-
         context.end_scope();
 
         // verify that the function ends with a return
@@ -1545,20 +1560,10 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoReturnFound))
         }
 
-        let function = match entry {
-            true => FunctionType::Entry(EntryFunction::new(new_params, statements, context.max_variables_count() as u16)),
-            false => FunctionType::Declared(DeclaredFunction::new(
-                for_type,
-                instance_name,
-                new_params,
-                statements,
-                return_type,
-                context.max_variables_count() as u16
-            ))
-        };
-
-        // push function before reading statements to allow recursive calls
-        self.functions.push(function);
+        self.functions
+            .last_mut()
+            .ok_or(err!(self, ParserErrorKind::UnknownError))?
+            .set_statements(statements);
 
         Ok(())
     }

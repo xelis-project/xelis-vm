@@ -47,6 +47,10 @@ impl DeclaredFunction {
     pub fn get_variables_count(&self) -> u16 {
         self.variables_count
     }
+
+    pub fn set_statements(&mut self, statements: Vec<Statement>) {
+        self.statements = statements;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,5 +83,9 @@ impl EntryFunction {
     // Get the variables count of the function
     pub fn get_variables_count(&self) -> u16 {
         self.variables_count
+    }
+
+    pub fn set_statements(&mut self, statements: Vec<Statement>) {
+        self.statements = statements;
     }
 }

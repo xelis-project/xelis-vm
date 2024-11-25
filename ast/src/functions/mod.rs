@@ -136,4 +136,12 @@ impl FunctionType {
             FunctionType::Entry(f) => f.get_variables_count()
         }
     }
+
+    // Set the statements of the function
+    pub fn set_statements(&mut self, statements: Vec<Statement>) {
+        match self {
+            FunctionType::Declared(f) => f.set_statements(statements),
+            FunctionType::Entry(f) => f.set_statements(statements)
+        }
+    }
 }
