@@ -74,6 +74,9 @@ pub struct Context<'a> {
     max_gas: Option<u64>,
     // Price per byte of memory
     memory_price_per_byte: u64,
+    // Max value depth allowed
+    // This is used to prevent stack overflow attacks
+    max_value_depth: usize,
     // Current gas used in the execution
     current_gas: u64,
 }
@@ -92,6 +95,7 @@ impl<'a> Context<'a> {
             max_gas: None,
             current_gas: 0,
             memory_price_per_byte: 0,
+            max_value_depth: 16,
         }
     }
 
@@ -117,6 +121,19 @@ impl<'a> Context<'a> {
     #[inline(always)]
     pub fn current_gas_usage(&self) -> u64 {
         self.current_gas
+    }
+
+    // Get the max value depth allowed
+    #[inline(always)]
+    pub fn max_value_depth(&self) -> usize {
+        self.max_value_depth
+    }
+
+    // Set the max value depth allowed
+    #[inline(always)]
+    pub fn set_max_value_depth(&mut self, depth: usize) {
+        assert!(depth > 0, "Max value depth must be greater than 0");
+        self.max_value_depth = depth;
     }
 
     // Increase the gas usage by a specific amount

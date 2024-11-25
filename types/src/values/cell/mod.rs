@@ -147,6 +147,56 @@ impl ValueCell {
         }
     }
 
+    // Calculate the depth of the value
+    pub fn calculate_depth(&self, max_depth: usize) -> Result<usize, ValueError> {
+        let mut stack = vec![(Path::Borrowed(self), 0)];
+        let mut biggest_depth = 0;
+
+        while let Some((next, depth)) = stack.pop() {
+            if depth > max_depth {
+                return Err(ValueError::MaxDepthReached);
+            }
+
+            if depth > biggest_depth {
+                biggest_depth = depth;
+            }
+
+            let handle = next.as_ref();
+            let value = handle.as_value();
+            match value {
+                ValueCell::Default(_) => {},
+                ValueCell::Array(values) => {
+                    for value in values {
+                        stack.push((Path::Wrapper(value.clone()), depth + 1));
+                    }
+                },
+                ValueCell::Struct(fields, _) => {
+                    for field in fields {
+                        stack.push((Path::Wrapper(field.clone()), depth + 1));
+                    }
+                },
+                ValueCell::Optional(opt) => {
+                    if let Some(value) = opt {
+                        stack.push((Path::Wrapper(value.clone()), depth + 1));
+                    }
+                },
+                ValueCell::Map(map) => {
+                    for (k, v) in map {
+                        stack.push((Path::Owned(k.clone()), depth + 1));
+                        stack.push((Path::Wrapper(v.clone()), depth + 1));
+                    }
+                },
+                ValueCell::Enum(fields, _) => {
+                    for field in fields {
+                        stack.push((Path::Wrapper(field.clone()), depth + 1));
+                    }
+                }
+            };
+        }
+
+        Ok(biggest_depth)
+    }
+
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
@@ -645,6 +695,19 @@ mod tests {
     use crate::SubValue;
 
     use super::*;
+
+    #[test]
+    fn test_max_depth() {
+        let mut map = ValueCell::Map(HashMap::new());
+        for _ in 0..100 {
+            let mut inner_map = HashMap::new();
+            inner_map.insert(Value::U8(10).into(), SubValue::new(map));
+            map = ValueCell::Map(inner_map);
+        }
+
+        assert!(matches!(map.calculate_depth(100), Ok(100)));
+        assert!(matches!(map.calculate_depth(99), Err(ValueError::MaxDepthReached)));
+    }
 
     #[test]
     fn test_recursive_cycle() {

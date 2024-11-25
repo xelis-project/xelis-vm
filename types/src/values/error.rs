@@ -6,6 +6,8 @@ use super::{constant::Constant, Value, ValueCell};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
+    #[error("max depth reached")]
+    MaxDepthReached,
     #[error("Invalid value: {0:?} is not of type {1:?}")]
     InvalidValue(Value, Type),
     #[error("Invalid value type: {0:?} is not of type {1:?}")]

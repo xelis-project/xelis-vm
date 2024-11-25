@@ -203,7 +203,8 @@ impl<'a> VM<'a> {
 mod tests {
     use xelis_builder::EnvironmentBuilder;
     use xelis_bytecode::{Chunk, Module, OpCode};
-    use xelis_types::{Type, Value};
+    use xelis_environment::EnvironmentError;
+    use xelis_types::{Type, Value, ValueError};
 
     use super::*;
 
@@ -803,7 +804,8 @@ mod tests {
 
         // Execute
         module.add_chunk(chunk);
-        assert!(matches!(run_internal(module), Err(VMError::StackOverflow)));
+
+        assert!(matches!(run_internal(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
     }
 }
 

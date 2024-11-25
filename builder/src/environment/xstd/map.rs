@@ -44,7 +44,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     Ok(Some(ValueCell::Optional(value)))
 }
 
-fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
     let key = parameters.remove(0).into_owned();
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
@@ -55,7 +55,15 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         return Err(EnvironmentError::OutOfMemory)
     }
 
+    let max_depth = context.max_value_depth() - 1;
+    // Verify the depth of the key
+    key.calculate_depth(max_depth)?;
+
     let value = parameters.remove(0);
+    // Verify the depth of the value
+    value.as_ref()
+        .calculate_depth(max_depth)?;
+
     let previous = map
         .insert(key, value.into_owned().into());
     Ok(Some(ValueCell::Optional(previous)))
