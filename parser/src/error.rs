@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("invalid constant value")]
+    InvalidConstantValue,
     #[error("too many parameters")]
     TooManyParameters,
     #[error("too many variants")]

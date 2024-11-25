@@ -800,6 +800,31 @@ mod tests {
     }
 
     #[test]
+    fn test_program_with_constants() {
+        let (program, environment) = prepare_program_with_const_enabled("const A: u64 = 1; const B: u64 = 2; entry main() { return A + B }");
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+        assert_eq!(module.chunks().len(), 1);
+        assert!(module.is_entry_chunk(0));
+        assert_eq!(module.constants().len(), 1);
+
+        assert_eq!(
+            module.get_constant_at(0),
+            Some(&Value::U64(3).into())
+        );
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                // The program did the opt to add the constants
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
+            ]
+        );
+    }
+
+    #[test]
     fn test_simple_program() {
         let (program, environment) = prepare_program("fn main() {}");
         let compiler = Compiler::new(&program, &environment);

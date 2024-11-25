@@ -921,7 +921,11 @@ impl<'a> Parser<'a> {
                                 },
                                 None => {
                                     if let Some(id) = context.get_variable_id(id) {
-                                        Expression::Variable(id)
+                                        if let Some(constant) = context.get_const_value_for_id(id as usize) {
+                                            Expression::Constant(constant.clone())
+                                        } else {
+                                            Expression::Variable(id)
+                                        }
                                     } else if let Ok(builder) = self.struct_manager.get_by_name(&id) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else {
@@ -1215,7 +1219,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
-        let value: Expression = if self.peek_is(Token::OperatorAssign) {
+        let mut value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(None, true, true, Some(&value_type), context)?;
 
@@ -1245,10 +1249,17 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
 
-        let id = if ignored {
-            context.register_variable_unchecked(name, value_type.clone())
+        let const_value = if is_const {
+            Some(self.try_convert_expr_to_value(&mut value)
+                .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?)
         } else {
-            context.register_variable(name, value_type.clone()).ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+            None
+        };
+
+        let id = if ignored {
+            context.register_variable_unchecked(name, value_type.clone(), None)
+        } else {
+            context.register_variable(name, value_type.clone(), const_value).ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
         };
 
         Ok(DeclarationStatement {
@@ -1306,7 +1317,7 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::NotIterable(expr_type.into_owned())))
                     }
 
-                    let id = context.register_variable(variable, expr_type.get_inner_type().clone())
+                    let id = context.register_variable(variable, expr_type.get_inner_type().clone(), None)
                         .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(variable)))?;
                     let statements = self.read_loop_body(context, return_type)?;
                     context.end_scope();
@@ -1485,7 +1496,7 @@ impl<'a> Parser<'a> {
         let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
-            let id = context.register_variable(instance_name, for_type.clone())
+            let id = context.register_variable(instance_name, for_type.clone(), None)
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(instance_name)))?;
 
             self.expect_token(Token::ParenthesisClose)?;
@@ -1530,7 +1541,7 @@ impl<'a> Parser<'a> {
         let has_return_type = return_type.is_some();
         let mut new_params = Vec::with_capacity(parameters.len());
         for (name, param_type) in parameters {
-            let id = context.register_variable(name, param_type.clone())
+            let id = context.register_variable(name, param_type.clone(), None)
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
             new_params.push(Parameter::new(id, param_type));
         }
@@ -1792,7 +1803,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
         for (name, t) in variables {
-            context.register_variable(name, t).unwrap();
+            context.register_variable(name, t, None).unwrap();
         }
 
         parser.read_statements(&mut context, return_type).unwrap()

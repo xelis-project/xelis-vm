@@ -1,9 +1,9 @@
-use xelis_types::{Type, IdentifierType};
+use xelis_types::{Constant, IdentifierType, Type};
 
 #[derive(Clone, Debug)]
 pub struct Context<'a> {
     // scopes are used to store variables
-    scopes: Vec<(&'a str, Type)>,
+    scopes: Vec<(&'a str, Type, Option<Constant>)>,
     // checkpoints are used to manage scopes
     checkpoints: Vec<usize>,
     // max variables count for each scope depth
@@ -42,21 +42,25 @@ impl<'a> Context<'a> {
     }
 
     pub fn get_variable_id(&self, key: &str) -> Option<IdentifierType> {
-        self.scopes.iter().position(|(k, _)| *k == key).map(|v| v as IdentifierType)
+        self.scopes.iter().position(|(k, _, _)| *k == key).map(|v| v as IdentifierType)
+    }
+
+    pub fn get_const_value_for_id(&self, id: usize) -> Option<Constant> {
+        self.scopes.get(id).and_then(|(_, _, v)| v.clone())
     }
 
     // register a variable in the current scope
-    pub fn register_variable(&mut self, key: &'a str, var_type: Type) -> Option<IdentifierType> {
+    pub fn register_variable(&mut self, key: &'a str, var_type: Type, const_value: Option<Constant>) -> Option<IdentifierType> {
         if self.has_variable(&key) {
             return None
         }
 
-        Some(self.register_variable_unchecked(key, var_type))
+        Some(self.register_variable_unchecked(key, var_type, const_value))
     }
 
     // register a variable in the current scope unchecked
-    pub fn register_variable_unchecked(&mut self, key: &'a str, var_type: Type) -> IdentifierType {
-        self.scopes.push((key, var_type));
+    pub fn register_variable_unchecked(&mut self, key: &'a str, var_type: Type, const_value: Option<Constant>) -> IdentifierType {
+        self.scopes.push((key, var_type, const_value));
 
         (self.scopes.len() - 1) as IdentifierType
     }
