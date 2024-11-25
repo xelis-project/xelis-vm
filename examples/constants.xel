@@ -1,9 +1,5 @@
-fn hello() -> string {
-    return "Hello World!"
-}
-
 const ZERO: u64 = 0
-const HELLO_WORLD: string = hello()
+const HELLO_WORLD: string = "Hello World"
 
 entry main() {
     let message: string = HELLO_WORLD + " " + ZERO

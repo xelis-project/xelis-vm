@@ -17,7 +17,7 @@ entry main() {
     println(value)
 
     // slices are connected
-    let slice: u64[] = array.slice(0, 2)
+    let slice: u64[] = array.slice(0..2)
     println(array)
     println(slice)
 

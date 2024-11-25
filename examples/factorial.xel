@@ -1,12 +1,12 @@
-fn factorial(n: u128) -> u128 {
-    if n == 0L {
-        return 1L
+fn factorial(n: u64) -> u64 {
+    if n == 0 {
+        return 1
     }
     return n * factorial(n - 1L)
 }
 
 entry main() {
-    let a: u128 = 30L
+    let a = 30
     println(factorial(a))
 
     return 0
