@@ -81,7 +81,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Mul.as_usize()] = (mul, 3);
         instructions[OpCode::Div.as_usize()] = (div, 8);
         instructions[OpCode::Mod.as_usize()] = (rem, 8);
-        instructions[OpCode::Pow.as_usize()] = (pow, 15);
+        instructions[OpCode::Pow.as_usize()] = (pow, 35);
         instructions[OpCode::And.as_usize()] = (and, 2);
         instructions[OpCode::Or.as_usize()] = (or, 1);
         instructions[OpCode::Xor.as_usize()] = (xor, 1);
