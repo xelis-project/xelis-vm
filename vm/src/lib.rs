@@ -178,6 +178,10 @@ impl<'a> VM<'a> {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
                     InstructionResult::Nothing => {},
                     InstructionResult::InvokeChunk(id) => {
+                        if self.backend.module.is_entry_chunk(id as usize) {
+                            return Err(VMError::EntryChunkCalled);
+                        }
+
                         self.call_stack.push(manager);
                         self.invoke_chunk_id(id)?;
                         break;
@@ -1533,6 +1537,30 @@ mod full_tests {
         assert_eq!(
             run_code(code),
             Value::U64(90)
+        );
+    }
+
+    #[test]
+    fn test_recursive_call() {
+        let code = r#"
+            fn fib(n: u64) -> u64 {
+                if n == 0 {
+                    return 0
+                } else if n == 1 {
+                    return 1
+                }
+
+                return fib(n - 1) + fib(n - 2)
+            }
+
+            entry main() {
+                return fib(10)
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(55)
         );
     }
 }
