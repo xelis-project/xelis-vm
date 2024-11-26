@@ -131,6 +131,10 @@ Errors occur if the argument count or format is invalid.
 - **Arguments**:
   - `length` (integer): Number of key-value pairs.
 
+#### **NEG**
+- **Description**: Negates the top value on the stack.
+- **Arguments**: None.
+
 ---
 
 ### **Arithmetic Operations**
