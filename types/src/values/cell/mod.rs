@@ -1,6 +1,7 @@
 mod path;
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
@@ -495,6 +496,15 @@ impl ValueCell {
         match self {
             Self::Default(v) => v.cast_to_string(),
             _ => Err(ValueError::InvalidCastType(Type::String))
+        }
+    }
+
+    // Transform a value to a string
+    #[inline]
+    pub fn as_string_formatted<'a>(&'a self) -> Result<Cow<'a, str>, ValueError> {
+        match self {
+            Self::Default(v) => v.as_string_formatted(),
+            _ => Err(ValueError::InvalidValueCell(self.clone(), Type::String))
         }
     }
 

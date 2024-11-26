@@ -4,8 +4,9 @@ mod cell;
 mod constant;
 
 use std::{
+    borrow::Cow,
     cmp::Ordering,
-    hash::{Hash, Hasher},
+    hash::{Hash, Hasher}
 };
 use super::{
     Type,
@@ -322,6 +323,21 @@ impl Value {
             Value::U256(n) => Ok(n.to_string()),
             Value::String(s) => Ok(s),
             Value::Boolean(b) => Ok(b.to_string()),
+            _ => Err(ValueError::InvalidCastType(Type::String))
+        }
+    }
+
+    // transform the value into as string
+    pub fn as_string_formatted<'a>(&'a self) -> Result<Cow<'a, str>, ValueError> {
+        match self {
+            Value::String(s) => Ok(Cow::Borrowed(s)),
+            Value::U8(n) => Ok(Cow::Owned(n.to_string())),
+            Value::U16(n) => Ok(Cow::Owned(n.to_string())),
+            Value::U32(n) => Ok(Cow::Owned(n.to_string())),
+            Value::U64(n) => Ok(Cow::Owned(n.to_string())),
+            Value::U128(n) => Ok(Cow::Owned(n.to_string())),
+            Value::U256(n) => Ok(Cow::Owned(n.to_string())),
+            Value::Boolean(b) => Ok(Cow::Owned(b.to_string())),
             _ => Err(ValueError::InvalidCastType(Type::String))
         }
     }

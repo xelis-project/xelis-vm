@@ -45,7 +45,22 @@ macro_rules! op_string {
 
                     Value::String(a.to_owned() $op b)
                 }
-                _ => return Err(VMError::UnexpectedType)
+                _ => {
+                    // we need to handle if one of the values is a string
+                    if a.is_string() || b.is_string() {
+                        let left = a.as_string_formatted()?.into_owned();
+                        let right = b.as_string_formatted()?;
+                        // Verify the final len is less than u32::MAX
+                        let len = (left.len() as u32).checked_add(right.len() as u32);
+                        if len.is_none() {
+                            return Err(VMError::StringTooLarge);
+                        }
+
+                        Value::String(left $op &right)
+                    } else {
+                        return Err(VMError::UnexpectedType)
+                    }
+                }
             }
             _ => return Err(VMError::UnexpectedType)
         }
