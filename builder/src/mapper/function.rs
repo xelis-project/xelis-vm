@@ -134,4 +134,23 @@ impl<'a> FunctionMapper<'a> {
 
         Err(BuilderError::MappingNotFound)
     }
+
+    pub fn get_functions_for_type(&self, on_type: &Type) -> Vec<&Function<'a>> {
+        let mut functions = Vec::new();
+        if let Some(parent) = self.parent {
+            functions.extend(parent.get_functions_for_type(on_type));
+        }
+
+        functions.extend(self.mappings.iter().filter_map(|(_, f)| {
+            if let Some(t) = f.parameters.first().map(|(_, t)| t) {
+                if t.is_compatible_with(on_type) {
+                    return Some(f);
+                }
+            }
+
+            None
+        }));
+
+        functions
+    }
 }

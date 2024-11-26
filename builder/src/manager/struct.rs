@@ -34,8 +34,8 @@ impl<'a> Builder<'a> for StructBuilder<'a> {
         &self.inner
     }
 
-    fn into_type(self) -> Self::Type {
-        self.inner
+    fn to_type(&self) -> Self::Type {
+        self.inner.clone()
     }
 
     fn type_id(&self) -> IdentifierType {

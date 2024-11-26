@@ -1,5 +1,6 @@
 mod context;
 mod error;
+mod mapper;
 
 use std::{
     borrow::Cow,
@@ -7,13 +8,8 @@ use std::{
 };
 use error::ParserErrorKind;
 use log::trace;
-use xelis_builder::{
-    Builder,
-    EnumManager,
-    EnvironmentBuilder,
-    FunctionMapper,
-    StructManager
-};
+use mapper::GlobalMapper;
+use xelis_builder::{Builder, EnvironmentBuilder};
 use xelis_ast::*;
 use xelis_environment::NativeFunction;
 use xelis_types::*;
@@ -124,13 +120,7 @@ pub struct Parser<'a> {
     constants: HashSet<DeclarationStatement>,
     // All functions registered by the program
     functions: Vec<FunctionType>,
-    // Functions mapper
-    // It will contains all the functions declared in the program
-    // with the matching id <-> function signature
-    functions_mapper: FunctionMapper<'a>,
-    // Struct manager
-    struct_manager: StructManager<'a>,
-    enum_manager: EnumManager<'a>,
+    global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
     environment: &'a EnvironmentBuilder<'a>,
     // Disable upgrading values to consts
@@ -156,15 +146,11 @@ impl<'a> Parser<'a> {
 
     // Create a new parser with a list of tokens and the environment
     pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
-        let functions_mapper = FunctionMapper::with_parent(environment.get_functions_mapper());
-
         Self {
             tokens: tokens.collect(),
             constants: HashSet::new(),
             functions: Vec::new(),
-            functions_mapper,
-            struct_manager: StructManager::with_parent(environment.get_struct_manager()),
-            enum_manager: EnumManager::with_parent(environment.get_enum_manager()),
+            global_mapper: GlobalMapper::with(environment),
             environment,
             disable_const_upgrading: false,
             line: 0,
@@ -294,9 +280,9 @@ impl<'a> Parser<'a> {
                 Type::Map(Box::new(key), Box::new(value))
             }
             Token::Identifier(id) => {
-                if let Ok(builder) = self.struct_manager.get_by_name(id) {
+                if let Ok(builder) = self.global_mapper.structs().get_by_name(id) {
                     Type::Struct(builder.get_type().clone())
-                } else if let Ok(builder) = self.enum_manager.get_by_name(id) {
+                } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
                     Type::Enum(builder.get_type().clone())
                 } else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
@@ -490,7 +476,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let id = self.functions_mapper.get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
+        let id = self.global_mapper
+            .functions()
+            .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
         // Entry are only callable by external
@@ -557,7 +545,7 @@ impl<'a> Parser<'a> {
         }
 
         // Now verify that it match our struct
-        let builder = self.struct_manager.get_by_ref(&struct_type)
+        let builder = self.global_mapper.structs().get_by_ref(&struct_type)
             .map_err(|e| err!(self, e.into()))?;
         let mut fields_expressions = Vec::with_capacity(fields.len());
         for ((field_name, mut field_expr), (field_type, field_name_expected)) in fields.into_iter().zip(struct_type.fields().iter().zip(builder.names())) {
@@ -586,7 +574,8 @@ impl<'a> Parser<'a> {
             Vec::new()
         };
 
-        let builder = self.enum_manager.get_by_ref(&enum_type)
+        let builder = self.global_mapper.enums()
+            .get_by_ref(&enum_type)
             .map_err(|e| err!(self, e.into()))?;
         let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
             .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
@@ -909,7 +898,7 @@ impl<'a> Parser<'a> {
                                 // mostly an access to a struct field
                                 Some(t) => {
                                     if let Type::Struct(_type) = t {
-                                        let builder = self.struct_manager.get_by_ref(_type)
+                                        let builder = self.global_mapper.structs().get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
                                         match builder.get_id_for_field(id) {
                                             Some(v) => Expression::Variable(v),
@@ -926,7 +915,7 @@ impl<'a> Parser<'a> {
                                         } else {
                                             Expression::Variable(id)
                                         }
-                                    } else if let Ok(builder) = self.struct_manager.get_by_name(&id) {
+                                    } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
@@ -1532,7 +1521,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let id = self.functions_mapper.register(name, for_type.clone(), parameters.clone())
+        let id = self.global_mapper.functions_mut().register(name, for_type.clone(), parameters.clone())
             .map_err(|e| err!(self, e.into()))?;
         if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
@@ -1631,8 +1620,8 @@ impl<'a> Parser<'a> {
     // Verify that a type name is not already used
     fn is_name_available(&self, name: &str) -> bool {
         trace!("Check if name is available: {}", name);
-        self.struct_manager.get_by_name(name).is_err()
-            && self.enum_manager.get_by_name(name).is_err()
+        self.global_mapper.structs().get_by_name(name).is_err()
+            && self.global_mapper.enums().get_by_name(name).is_err()
     }
 
     /**
@@ -1672,7 +1661,9 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        self.struct_manager.add(Cow::Borrowed(name), fields)
+        self.global_mapper
+            .structs_mut()
+            .add(Cow::Borrowed(name), fields)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -1740,7 +1731,9 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        self.enum_manager.add(Cow::Borrowed(name), variants)
+        self.global_mapper
+            .enums_mut()
+            .add(Cow::Borrowed(name), variants)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -1748,7 +1741,7 @@ impl<'a> Parser<'a> {
 
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
-    pub fn parse(mut self) -> Result<(Program, FunctionMapper<'a>), ParserError<'a>> {
+    pub fn parse(mut self) -> Result<(Program, GlobalMapper<'a>), ParserError<'a>> {
         let mut context: Context = Context::new();
         while let Some(token) = self.next() {
             match token {
@@ -1771,8 +1764,8 @@ impl<'a> Parser<'a> {
             };
         }
 
-        let program = Program::with(self.constants, self.struct_manager.finalize(), self.enum_manager.finalize(), self.functions);
-        Ok((program, self.functions_mapper))
+        let program = Program::with(self.constants, self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
+        Ok((program, self.global_mapper))
     }
 }
 

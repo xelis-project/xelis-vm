@@ -54,8 +54,8 @@ impl<'a> Builder<'a> for EnumBuilder<'a> {
         &self.inner.inner
     }
 
-    fn into_type(self) -> Self::Type {
-        self.inner.inner
+    fn to_type(&self) -> Self::Type {
+        self.inner.inner.clone()
     }
 
     fn type_id(&self) -> IdentifierType {

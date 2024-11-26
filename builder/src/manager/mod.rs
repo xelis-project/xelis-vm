@@ -34,7 +34,7 @@ pub trait Builder<'a> {
         self.names().iter().position(|k| *k == name).map(|v| v as IdentifierType)
     }
 
-    fn into_type(self) -> Self::Type;
+    fn to_type(&self) -> Self::Type;
 
     fn type_id(&self) -> IdentifierType;
 }
@@ -124,8 +124,8 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
     }
 
     // Convert the struct manager into a list of structs
-    pub fn finalize(self) -> Vec<T::Type> {
-        self.types.into_iter().map(T::into_type).collect()
+    pub fn finalize(&self) -> Vec<T::Type> {
+        self.types.iter().map(T::to_type).collect()
     }
 }
 
