@@ -246,9 +246,9 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManag
 
 pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    let value = value.as_bool()?;
-    let value = value && stack.pop_stack()?.as_bool()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value).into()));
+    let left = value.as_bool()?;
+    let right = stack.pop_stack()?.as_bool()?;
+    stack.push_stack_unchecked(Path::Owned(Value::Boolean(left && right).into()));
 
     Ok(InstructionResult::Nothing)
 }
