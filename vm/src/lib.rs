@@ -1563,4 +1563,38 @@ mod full_tests {
             Value::U64(55)
         );
     }
+
+    #[test]
+    fn test_const() {
+        let code = r#"
+            const X: u64 = 10;
+
+            entry main() {
+                return X
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_const_add() {
+        let code = r#"
+            const ZERO: u64 = 0
+            const HELLO_WORLD: string = "Hello World"
+
+            entry main() {
+                let message: string = HELLO_WORLD + " " + ZERO
+                return message.len() as u64
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(13)
+        );
+    }
 }

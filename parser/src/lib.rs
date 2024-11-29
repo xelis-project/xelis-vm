@@ -4,7 +4,7 @@ mod mapper;
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque}
+    collections::{HashMap, VecDeque}
 };
 use error::ParserErrorKind;
 use log::trace;
@@ -117,7 +117,7 @@ pub struct Parser<'a> {
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
-    constants: HashSet<DeclarationStatement>,
+    constants: HashMap<&'a str, ConstantDeclaration>,
     // All functions registered by the program
     functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
     pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
         Self {
             tokens: tokens.collect(),
-            constants: HashSet::new(),
+            constants: HashMap::new(),
             functions: Vec::new(),
             global_mapper: GlobalMapper::with(environment),
             environment,
@@ -910,11 +910,9 @@ impl<'a> Parser<'a> {
                                 },
                                 None => {
                                     if let Some(id) = context.get_variable_id(id) {
-                                        if let Some(constant) = context.get_const_value_for_id(id as usize) {
-                                            Expression::Constant(constant.clone())
-                                        } else {
-                                            Expression::Variable(id)
-                                        }
+                                        Expression::Variable(id)
+                                    } else if let Some(constant) = self.constants.get(id) {
+                                        Expression::Constant(constant.value.clone())
                                     } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else {
@@ -1182,15 +1180,8 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    /**
-     * Example: let hello: string = "hello";
-     * Rules:
-     * - Every variable must be declared with 'let' keyword
-     * - Variable name must be alphanumeric characters
-     * - Must provide a value type
-     * - If no value is set, Null is set by default
-     */
-    fn read_variable(&mut self, context: &mut Context<'a>, is_const: bool) -> Result<DeclarationStatement, ParserError<'a>> {
+    // Read a variable declaration
+    fn read_variable_internal(&mut self, context: &mut Context<'a>, is_const: bool) -> Result<(&'a str, Type, Expression), ParserError<'a>> {
         let name: &'a str = self.next_identifier()?;
         trace!("Read variable: {}", name);
 
@@ -1206,9 +1197,13 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)))
         }
 
+        if ignored && is_const {
+            return Err(err!(self, ParserErrorKind::InvalidConstName(name)))
+        }
+
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
-        let mut value: Expression = if self.peek_is(Token::OperatorAssign) {
+        let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let expr = self.read_expr(None, true, true, Some(&value_type), context)?;
 
@@ -1238,17 +1233,24 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
 
-        let const_value = if is_const {
-            Some(self.try_convert_expr_to_value(&mut value)
-                .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?)
-        } else {
-            None
-        };
+        Ok((name, value_type, value))
+    }
 
-        let id = if ignored {
-            context.register_variable_unchecked(name, value_type.clone(), None)
+    /**
+     * Example: let hello: string = "hello";
+     * Rules:
+     * - Every variable must be declared with 'let' keyword
+     * - Variable name must be alphanumeric characters
+     * - Must provide a value type
+     * - If no value is set, Null is set by default
+     */
+    fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
+        let (name, value_type, value) = self.read_variable_internal(context, false)?;
+        let id = if name != "_" {
+            context.register_variable_unchecked(name, value_type.clone())
         } else {
-            context.register_variable(name, value_type.clone(), const_value).ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+            context.register_variable(name, value_type.clone())
+                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
         };
 
         Ok(DeclarationStatement {
@@ -1256,6 +1258,21 @@ impl<'a> Parser<'a> {
             value_type,
             value
         })
+    }
+
+
+    fn read_const(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
+        let (name, value_type, mut value) = self.read_variable_internal(context, true)?;
+
+        let const_value = self.try_convert_expr_to_value(&mut value)
+                .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?;
+
+        self.constants.insert(name, ConstantDeclaration {
+            value: const_value,
+            value_type
+        });
+
+        Ok(())
     }
 
     fn read_loop_body(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError<'a>> {
@@ -1276,7 +1293,7 @@ impl<'a> Parser<'a> {
                 Token::BraceClose => return Ok(None),
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
-                    let var = self.read_variable(context, false)?;
+                    let var = self.read_variable(context)?;
                     let condition = self.read_expression(context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
@@ -1306,7 +1323,7 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::NotIterable(expr_type.into_owned())))
                     }
 
-                    let id = context.register_variable(variable, expr_type.get_inner_type().clone(), None)
+                    let id = context.register_variable(variable, expr_type.get_inner_type().clone())
                         .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(variable)))?;
                     let statements = self.read_loop_body(context, return_type)?;
                     context.end_scope();
@@ -1349,7 +1366,7 @@ impl<'a> Parser<'a> {
                     Statement::If(condition, body, else_statement)
                 },
                 Token::BraceOpen => Statement::Scope(self.read_body(context, return_type)?),
-                Token::Let => Statement::Variable(self.read_variable(context, false)?),
+                Token::Let => Statement::Variable(self.read_variable(context)?),
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, true, true, Some(return_type), context)?;
@@ -1485,7 +1502,7 @@ impl<'a> Parser<'a> {
         let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
-            let id = context.register_variable(instance_name, for_type.clone(), None)
+            let id = context.register_variable(instance_name, for_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(instance_name)))?;
 
             self.expect_token(Token::ParenthesisClose)?;
@@ -1530,7 +1547,7 @@ impl<'a> Parser<'a> {
         let has_return_type = return_type.is_some();
         let mut new_params = Vec::with_capacity(parameters.len());
         for (name, param_type) in parameters {
-            let id = context.register_variable(name, param_type.clone(), None)
+            let id = context.register_variable(name, param_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
             new_params.push(Parameter::new(id, param_type));
         }
@@ -1749,13 +1766,7 @@ impl<'a> Parser<'a> {
                     self.read_import()?;
                     continue;
                 }
-                Token::Const => {
-                    let var = self.read_variable(&mut context, true)?;
-                    let id = var.id;
-                    if !self.constants.insert(var) {
-                        return Err(err!(self, ParserErrorKind::VariableIdAlreadyUsed(id)))
-                    }
-                },
+                Token::Const => self.read_const(&mut context)?,
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct()?,
@@ -1764,7 +1775,7 @@ impl<'a> Parser<'a> {
             };
         }
 
-        let program = Program::with(self.constants, self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
+        let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
         Ok((program, self.global_mapper))
     }
 }
@@ -1798,7 +1809,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
         for (name, t) in variables {
-            context.register_variable(name, t, None).unwrap();
+            context.register_variable(name, t).unwrap();
         }
 
         parser.read_statements(&mut context, return_type).unwrap()
@@ -1855,9 +1866,8 @@ mod tests {
 
         let constant = constants.iter().next().unwrap();
 
-        assert_eq!(constant.id, 0);
         assert_eq!(constant.value_type, Type::U64);
-        assert_eq!(constant.value, Expression::Constant(Value::U64(10).into()));
+        assert_eq!(constant.value, Value::U64(10).into());
     }
 
     #[test]

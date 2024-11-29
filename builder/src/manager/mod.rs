@@ -124,7 +124,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
     }
 
     // Convert the struct manager into a list of structs
-    pub fn finalize(&self) -> Vec<T::Type> {
+    pub fn finalize<B: FromIterator<T::Type>>(&self) -> B {
         self.types.iter().map(T::to_type).collect()
     }
 }

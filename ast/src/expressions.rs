@@ -47,3 +47,9 @@ pub struct DeclarationStatement {
     pub value_type: Type,
     pub value: Expression,
 }
+
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct ConstantDeclaration {
+    pub value: Constant,
+    pub value_type: Type,
+}
