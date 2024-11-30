@@ -1205,7 +1205,7 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(None, true, true, Some(&value_type), context)?;
+            let mut expr = self.read_expr(None, true, true, Some(&value_type), context)?;
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -1223,7 +1223,18 @@ impl<'a> Parser<'a> {
             };
 
             if !expr_type.is_compatible_with(&value_type) {
-                return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
+                // If its an optional type, we can assign a value of the inner type
+                if let Type::Optional(inner) = &value_type {
+                    if !expr_type.is_compatible_with(inner) {
+                        return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
+                    }
+
+                    if let Expression::Constant(c) = expr {
+                        expr = Expression::Constant(c.to_optional());
+                    }
+                } else {
+                    return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
+                }
             }
 
             expr

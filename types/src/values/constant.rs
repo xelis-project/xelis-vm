@@ -317,6 +317,13 @@ impl Constant {
     }
 
     #[inline]
+    pub fn to_optional(self) -> Self {
+        match self {
+            _ => Self::Optional(Some(Box::new(self)))
+        }
+    }
+
+    #[inline]
     pub fn to_map(self) -> Result<Vec<Self>, ValueError> {
         match self {
             Self::Struct(fields, _) => Ok(fields),

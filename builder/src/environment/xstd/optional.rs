@@ -1,9 +1,9 @@
-use xelis_types::{Type, Value};
+use xelis_types::{Type, Value, ValueError};
 use xelis_environment::{
+    Context,
     FnInstance,
     FnParams,
-    FnReturnType,
-    Context
+    FnReturnType
 };
 use super::EnvironmentBuilder;
 
@@ -15,21 +15,21 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 fn is_none(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_none()).into()))
+    Ok(Some(Value::Boolean(zelf?.is_null()).into()))
 }
 
 fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.as_optional(&Type::T(0))?.is_some()).into()))
+    Ok(Some(Value::Boolean(!zelf?.is_null()).into()))
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let opt = zelf?.take_from_optional(&Type::T(0))?;
-    Ok(Some(opt.into_owned()))
+    let opt = zelf?.take_as_optional().ok_or(ValueError::OptionalIsNull)?;
+    Ok(Some(opt))
 }
 
 fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let default = parameters.remove(0);
-    let optional = zelf?.take_optional()?;
+    let optional = zelf?.take_as_optional();
     match optional {
         Some(value) => Ok(Some(value.into_owned())),
         None => Ok(Some(default.into_owned()))

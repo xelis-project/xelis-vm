@@ -207,6 +207,7 @@ impl ValueCell {
     pub fn is_null(&self) -> bool {
         match &self {
             Self::Default(Value::Null) => true,
+            Self::Optional(opt) => opt.is_none(),
             _ => false
         }
     }
@@ -324,27 +325,14 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<Option<&SubValue>, ValueError> {
+    pub fn take_as_optional(&mut self) -> Option<Self> {
         match self {
-            Self::Default(Value::Null) => Ok(None),
-            Self::Optional(n) => Ok(n.as_ref()),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<SubValue, ValueError> {
-        match self {
-            Self::Optional(opt) => opt.take().ok_or(ValueError::OptionalIsNull),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<SubValue>, ValueError> {
-        match self {
-            Self::Optional(opt) => Ok(opt.take()),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Optional(Box::new(Type::Any))))
+            Self::Default(Value::Null) => None,
+            Self::Optional(opt) => opt.take().map(SubValue::into_owned),
+            v => {
+                let value = std::mem::take(v);
+                Some(value)
+            }
         }
     }
 

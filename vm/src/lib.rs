@@ -1597,4 +1597,38 @@ mod full_tests {
             Value::U64(13)
         );
     }
+
+    #[test]
+    fn test_optional_cast() {
+        let code = r#"
+            struct Test { value: u64 }
+            entry main() {
+                let x: optional<Test> = Test { value: 10 };
+                let y: optional<u64> = x.unwrap().value;
+                let v: u64 = y.unwrap();
+                return v
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
+
+
+    #[test]
+    fn test_optional_unwrap_or() {
+        let code = r#"
+            entry main() {
+                let x: optional<u8> = null;
+                return x.unwrap_or(10) as u64
+            }
+        "#;
+
+        assert_eq!(
+            run_code(code),
+            Value::U64(10)
+        );
+    }
 }
