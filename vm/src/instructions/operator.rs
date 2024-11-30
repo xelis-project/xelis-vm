@@ -96,6 +96,53 @@ macro_rules! opcode_op {
     };
 }
 
+macro_rules! op_div {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a.as_value(), $b.as_value()) {
+            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+                (Value::U8(a), Value::U8(b)) => {
+                    if *b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U8(a $op b)
+                },
+                (Value::U16(a), Value::U16(b)) => {
+                    if *b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U16(a $op b)
+                },
+                (Value::U32(a), Value::U32(b)) => {
+                    if *b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U32(a $op b)
+                },
+                (Value::U64(a), Value::U64(b)) => {
+                    if *b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U64(a $op b)
+                },
+                (Value::U128(a), Value::U128(b)) => {
+                    if *b == 0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U128(a $op b)
+                },
+                (Value::U256(a), Value::U256(b)) => {
+                    if b.is_zero() {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    Value::U256(*a $op *b)
+                },
+                _ => return Err(VMError::UnexpectedType)
+            }
+            _ => return Err(VMError::UnexpectedType)
+        }
+    }};
+}
+
 macro_rules! opcode_op_assign {
     ($self: expr, $macr: tt, $op: tt) => {
         {
@@ -119,7 +166,7 @@ macro_rules! opcode_fn {
 opcode_fn!(add, opcode_op, op_string, +);
 opcode_fn!(sub, opcode_op, op, -);
 opcode_fn!(mul, opcode_op, op, *);
-opcode_fn!(div, opcode_op, op, /);
+opcode_fn!(div, opcode_op, op_div, /);
 opcode_fn!(rem, opcode_op, op, %);
 opcode_fn!(xor, opcode_op, op, ^);
 opcode_fn!(shl, opcode_op, op, <<);

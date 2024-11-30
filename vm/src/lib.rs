@@ -837,13 +837,18 @@ mod full_tests {
 
     
     #[track_caller]
-    fn run_code_id(code: &str, id: u16) -> Value {
+    fn run_code_id_internal(code: &str, id: u16) -> Result<Value, VMError> {
         let (module, environment) = prepare_module(code);
         let mut vm = VM::new(&module, &environment);
         vm.invoke_entry_chunk(id).unwrap();
-        vm.run().unwrap().into_value().unwrap()
+        vm.run().map(|v| v.into_value().unwrap())
     }
-    
+
+    #[track_caller]
+    fn run_code_id(code: &str, id: u16) -> Value {
+        run_code_id_internal(code, id).unwrap()
+    }
+
     #[track_caller]
     fn run_code(code: &str) -> Value {
         run_code_id(code, 0)
@@ -1629,6 +1634,24 @@ mod full_tests {
         assert_eq!(
             run_code(code),
             Value::U64(10)
+        );
+    }
+
+    #[test]
+    fn test_div_by_zero() {
+        let code = r#"
+            entry main() {
+                let x: u64 = 10;
+                let y: u64 = 0;
+                return x / y
+            }
+        "#;
+
+        assert!(
+            matches!(
+                run_code_id_internal(code, 0),
+                Err(VMError::DivisionByZero)
+            )
         );
     }
 }
