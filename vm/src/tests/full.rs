@@ -1,11 +1,10 @@
-use crate::*;
-
 use xelis_compiler::Compiler;
 use xelis_environment::{Environment, EnvironmentError};
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_types::Value;
+use super::*;
 
 #[track_caller]
 fn prepare_module(code: &str) -> (Module, Environment) {
@@ -20,16 +19,14 @@ fn prepare_module(code: &str) -> (Module, Environment) {
 }
 
 #[track_caller]
-fn run_code_id_internal(code: &str, id: u16) -> Result<Value, VMError> {
+fn try_run_code(code: &str, id: u16) -> Result<Value, VMError> {
     let (module, environment) = prepare_module(code);
-    let mut vm = VM::new(&module, &environment);
-    vm.invoke_entry_chunk(id).unwrap();
-    vm.run().map(|v| v.into_value().unwrap())
+    run_internal(module, &environment, id)
 }
 
 #[track_caller]
 fn run_code_id(code: &str, id: u16) -> Value {
-    run_code_id_internal(code, id).unwrap()
+    try_run_code(code, id).unwrap()
 }
 
 #[track_caller]
@@ -832,7 +829,7 @@ fn test_div_by_zero() {
 
     assert!(
         matches!(
-            run_code_id_internal(code, 0),
+            try_run_code(code, 0),
             Err(VMError::DivisionByZero)
         )
     );

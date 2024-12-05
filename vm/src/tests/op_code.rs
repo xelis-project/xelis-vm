@@ -1,21 +1,12 @@
-use crate::*;
+use super::*;
 
-use xelis_builder::EnvironmentBuilder;
 use xelis_bytecode::{Chunk, Module, OpCode};
 use xelis_environment::EnvironmentError;
 use xelis_types::{Type, Value, ValueError};
 
-#[track_caller]
-fn run_internal(module: Module) -> Result<Value, VMError> {
+fn try_run(module: Module) -> Result<Value, VMError> {
     let env = EnvironmentBuilder::default().build();
-    let mut vm = VM::new(&module, &env);
-    vm.invoke_chunk_id(0).unwrap();
-    vm.run().map(|v| v.into_value().unwrap())
-}
-
-#[track_caller]
-fn run(module: Module) -> Value {
-    run_internal(module).unwrap()
+    run_internal(module, &env, 0)
 }
 
 #[test]
@@ -42,7 +33,7 @@ fn test_pop_empty_stack() {
 
     module.add_chunk(chunk);
 
-    assert!(matches!(run_internal(module), Err(VMError::EmptyStack)));
+    assert!(matches!(try_run(module), Err(VMError::EmptyStack)));
 }
 
 
@@ -78,7 +69,7 @@ fn test_pop_n_out_of_bounds() {
 
     module.add_chunk(chunk);
 
-    assert!(matches!(run_internal(module), Err(VMError::StackIndexOutOfBounds)));
+    assert!(matches!(try_run(module), Err(VMError::StackIndexOutOfBounds)));
 }
 
 #[test]
@@ -533,7 +524,7 @@ fn test_bad_program_recursive_infinite() {
 
     // Execute
     module.add_chunk(chunk);
-    assert!(matches!(run_internal(module), Err(VMError::CallStackOverflow)));
+    assert!(matches!(try_run(module), Err(VMError::CallStackOverflow)));
 }
 
 #[test]
@@ -602,5 +593,5 @@ fn test_infinite_map_depth() {
     // Execute
     module.add_chunk(chunk);
 
-    assert!(matches!(run_internal(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
+    assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
 }
