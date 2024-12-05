@@ -168,9 +168,12 @@ opcode_fn!(sub, opcode_op, op, -);
 opcode_fn!(mul, opcode_op, op, *);
 opcode_fn!(div, opcode_op, op_div, /);
 opcode_fn!(rem, opcode_op, op, %);
-opcode_fn!(xor, opcode_op, op, ^);
-opcode_fn!(shl, opcode_op, op, <<);
-opcode_fn!(shr, opcode_op, op, >>);
+
+opcode_fn!(bitwise_and, opcode_op, op, &);
+opcode_fn!(bitwise_or, opcode_op, op, |);
+opcode_fn!(bitwise_xor, opcode_op, op, ^);
+opcode_fn!(bitwise_shl, opcode_op, op, <<);
+opcode_fn!(bitwise_shr, opcode_op, op, >>);
 
 opcode_fn!(eq, opcode_op, op_bool, ==);
 opcode_fn!(gt, opcode_op, op_bool, >);
@@ -183,9 +186,12 @@ opcode_fn!(sub_assign, opcode_op_assign, op, -);
 opcode_fn!(mul_assign, opcode_op_assign ,op, *);
 opcode_fn!(div_assign, opcode_op_assign, op, /);
 opcode_fn!(rem_assign, opcode_op_assign, op, %);
-opcode_fn!(xor_assign, opcode_op_assign, op, ^);
-opcode_fn!(shl_assign, opcode_op_assign, op, <<);
-opcode_fn!(shr_assign, opcode_op_assign, op, >>);
+
+opcode_fn!(bitwise_and_assign, opcode_op_assign, op, &);
+opcode_fn!(bitwise_or_assign, opcode_op_assign, op, |);
+opcode_fn!(bitwise_xor_assign, opcode_op_assign, op, ^);
+opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
+opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
 pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
@@ -209,18 +215,47 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
     let right = stack.pop_stack()?.into_owned();
     let left = stack.pop_stack()?.into_owned();
     let result = match (left, right) {
-        (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-            (Value::U8(a), Value::U8(b)) => Value::U8(a.pow(b as u32)),
-            (Value::U16(a), Value::U16(b)) => Value::U16(a.pow(b as u32)),
-            (Value::U32(a), Value::U32(b)) => Value::U32(a.pow(b as u32)),
-            (Value::U64(a), Value::U64(b)) => Value::U64(a.pow(b as u32)),
-            (Value::U128(a), Value::U128(b)) => Value::U128(a.pow(b as u32)),
-            (Value::U256(a), Value::U256(b)) => Value::U256(a.pow(b.into())),
-            (a, b) => return Err(VMError::IncompatibleValues(a.clone(), b.clone()))
+        (ValueCell::Default(a), ValueCell::Default(b)) => {
+            let pow_n = b.as_u32()?;
+            match a {
+                Value::U8(a) => Value::U8(a.pow(pow_n)),
+                Value::U16(a) => Value::U16(a.pow(pow_n)),
+                Value::U32(a) => Value::U32(a.pow(pow_n)),
+                Value::U64(a) => Value::U64(a.pow(pow_n)),
+                Value::U128(a) => Value::U128(a.pow(pow_n)),
+                Value::U256(a) => Value::U256(a.pow(pow_n)),
+                _ => return Err(VMError::UnexpectedType)
+            }
         }
         _ => return Err(VMError::UnexpectedType)
     };
     stack.push_stack_unchecked(Path::Owned(result.into()));
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a>) -> Result<InstructionResult, VMError> {
+    let right = stack.pop_stack()?.into_owned();
+    let mut left = stack.pop_stack()?;
+    let result = {
+        let left_value = left.as_ref();
+        match (left_value.as_value(), right) {
+            (ValueCell::Default(a), ValueCell::Default(b)) => {
+                let pow_n = b.as_u32()?;
+                match a {
+                    Value::U8(a) => Value::U8(a.pow(pow_n)),
+                    Value::U16(a) => Value::U16(a.pow(pow_n)),
+                    Value::U32(a) => Value::U32(a.pow(pow_n)),
+                    Value::U64(a) => Value::U64(a.pow(pow_n)),
+                    Value::U128(a) => Value::U128(a.pow(pow_n)),
+                    Value::U256(a) => Value::U256(a.pow(pow_n)),
+                    _ => return Err(VMError::UnexpectedType)
+                }
+            }
+            _ => return Err(VMError::UnexpectedType)
+        }
+    };
+
+    *left.as_mut() = result.into();
     Ok(InstructionResult::Nothing)
 }
 

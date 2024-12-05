@@ -84,9 +84,12 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Pow.as_usize()] = (pow, 35);
         instructions[OpCode::And.as_usize()] = (and, 2);
         instructions[OpCode::Or.as_usize()] = (or, 1);
-        instructions[OpCode::Xor.as_usize()] = (xor, 1);
-        instructions[OpCode::Shl.as_usize()] = (shl, 5);
-        instructions[OpCode::Shr.as_usize()] = (shr, 5);
+
+        instructions[OpCode::BitwiseAnd.as_usize()] = (bitwise_and, 1);
+        instructions[OpCode::BitwiseOr.as_usize()] = (bitwise_or, 1);
+        instructions[OpCode::BitwiseXor.as_usize()] = (bitwise_xor, 1);
+        instructions[OpCode::BitwiseShl.as_usize()] = (bitwise_shl, 5);
+        instructions[OpCode::BitwiseShr.as_usize()] = (bitwise_shr, 5);
 
         instructions[OpCode::Eq.as_usize()] = (eq, 2);
         instructions[OpCode::Neg.as_usize()] = (neg, 1);
@@ -101,9 +104,13 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::AssignMul.as_usize()] = (mul_assign, 5);
         instructions[OpCode::AssignDiv.as_usize()] = (div_assign, 10);
         instructions[OpCode::AssignMod.as_usize()] = (rem_assign, 10);
-        instructions[OpCode::AssignXor.as_usize()] = (xor_assign, 3);
-        instructions[OpCode::AssignShl.as_usize()] = (shl_assign, 7);
-        instructions[OpCode::AssignShr.as_usize()] = (shr_assign, 7);
+        instructions[OpCode::AssignPow.as_usize()] = (pow_assign, 35);
+
+        instructions[OpCode::AssignBitwiseAnd.as_usize()] = (bitwise_and_assign, 3);
+        instructions[OpCode::AssignBitwiseOr.as_usize()] = (bitwise_or_assign, 3);
+        instructions[OpCode::AssignBitwiseXor.as_usize()] = (bitwise_xor_assign, 3);
+        instructions[OpCode::AssignBitwiseShl.as_usize()] = (bitwise_shl_assign, 7);
+        instructions[OpCode::AssignBitwiseShr.as_usize()] = (bitwise_shr_assign, 7);
 
         instructions[OpCode::Inc.as_usize()] = (increment, 1);
         instructions[OpCode::Dec.as_usize()] = (decrement, 1);

@@ -61,11 +61,14 @@ impl<'a> Compiler<'a> {
             Operator::Multiply => OpCode::Mul,
             Operator::Divide => OpCode::Div,
             Operator::Rem => OpCode::Mod,
-            Operator::And => OpCode::And,
-            Operator::Or => OpCode::Or,
-            Operator::BitwiseXor => OpCode::Xor,
-            Operator::BitwiseLeft => OpCode::Shl,
-            Operator::BitwiseRight => OpCode::Shr,
+            Operator::Pow => OpCode::Pow,
+
+            Operator::BitwiseAnd => OpCode::And,
+            Operator::BitwiseOr => OpCode::BitwiseOr,
+            Operator::BitwiseXor => OpCode::BitwiseXor,
+            Operator::BitwiseLeft => OpCode::BitwiseShl,
+            Operator::BitwiseRight => OpCode::BitwiseShr,
+
             Operator::Equals => OpCode::Eq,
             Operator::NotEquals => OpCode::Neg,
             Operator::GreaterThan => OpCode::Gt,
@@ -77,7 +80,9 @@ impl<'a> Compiler<'a> {
             Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner)?
                 .as_assign_operator()
                 .ok_or(CompilerError::ExpectedOperatorAssignment)?,
-            _ => return Err(CompilerError::UnexpectedOperator)
+            Operator::Assign(None)
+            | Operator::And
+            | Operator::Or => return Err(CompilerError::UnexpectedOperator(op.clone())),
         })
     }
 

@@ -73,16 +73,20 @@ pub enum OpCode {
     Mod,
     // **
     Pow,
-    // &
+    // &&
     And,
-    // |
+    // ||
     Or,
+    // &
+    BitwiseAnd,
+    // |
+    BitwiseOr,
     // ^
-    Xor,
+    BitwiseXor,
     // <<
-    Shl,
+    BitwiseShl,
     // >>
-    Shr,
+    BitwiseShr,
     // ==
     Eq,
     // !
@@ -113,15 +117,15 @@ pub enum OpCode {
     // **=
     AssignPow,
     // &=
-    AssignAnd,
+    AssignBitwiseAnd,
     // |=
-    AssignOr,
+    AssignBitwiseOr,
     // ^=
-    AssignXor,
+    AssignBitwiseXor,
     // <<=
-    AssignShl,
+    AssignBitwiseShl,
     // >>=
-    AssignShr,
+    AssignBitwiseShr,
 
     // ++
     Inc,
@@ -174,33 +178,38 @@ impl OpCode {
             OpCode::Div => 29,
             OpCode::Mod => 30,
             OpCode::Pow => 31,
-            OpCode::And => 32,
-            OpCode::Or => 33,
-            OpCode::Xor => 34,
-            OpCode::Shl => 35,
-            OpCode::Shr => 36,
-            OpCode::Eq => 37,
-            OpCode::Neg => 38,
-            OpCode::Gt => 39,
-            OpCode::Lt => 40,
-            OpCode::Gte => 41,
-            OpCode::Lte => 42,
+            
+            OpCode::BitwiseAnd => 32,
+            OpCode::BitwiseOr => 33,
+            OpCode::BitwiseXor => 34,
+            OpCode::BitwiseShl => 35,
+            OpCode::BitwiseShr => 36,
+            
+            OpCode::And => 37,
+            OpCode::Or => 38,
+            OpCode::Eq => 39,
+            OpCode::Neg => 40,
+            OpCode::Gt => 41,
+            OpCode::Lt => 42,
+            OpCode::Gte => 43,
+            OpCode::Lte => 44,
 
-            OpCode::Assign => 43,
-            OpCode::AssignAdd => 44,
-            OpCode::AssignSub => 45,
-            OpCode::AssignMul => 46,
-            OpCode::AssignDiv => 47,
-            OpCode::AssignMod => 48,
-            OpCode::AssignPow => 49,
-            OpCode::AssignAnd => 50,
-            OpCode::AssignOr => 51,
-            OpCode::AssignXor => 52,
-            OpCode::AssignShl => 53,
-            OpCode::AssignShr => 54,
+            OpCode::Assign => 45,
+            OpCode::AssignAdd => 46,
+            OpCode::AssignSub => 47,
+            OpCode::AssignMul => 48,
+            OpCode::AssignDiv => 49,
+            OpCode::AssignMod => 50,
+            OpCode::AssignPow => 51,
 
-            OpCode::Inc => 55,
-            OpCode::Dec => 56,
+            OpCode::AssignBitwiseAnd => 52,
+            OpCode::AssignBitwiseOr => 53,
+            OpCode::AssignBitwiseXor => 54,
+            OpCode::AssignBitwiseShl => 55,
+            OpCode::AssignBitwiseShr => 56,
+
+            OpCode::Inc => 57,
+            OpCode::Dec => 58,
         }
     }
 
@@ -220,10 +229,12 @@ impl OpCode {
             9 => OpCode::Swap2,
             10 => OpCode::Jump,
             11 => OpCode::JumpIfFalse,
+
             12 => OpCode::IterableLength,
             13 => OpCode::IteratorBegin,
             14 => OpCode::IteratorNext,
             15 => OpCode::IteratorEnd,
+
             16 => OpCode::Return,
             17 => OpCode::ArrayCall,
             18 => OpCode::Cast,
@@ -242,33 +253,38 @@ impl OpCode {
             29 => OpCode::Div,
             30 => OpCode::Mod,
             31 => OpCode::Pow,
-            32 => OpCode::And,
-            33 => OpCode::Or,
-            34 => OpCode::Xor,
-            35 => OpCode::Shl,
-            36 => OpCode::Shr,
-            37 => OpCode::Eq,
-            38 => OpCode::Neg,
-            39 => OpCode::Gt,
-            40 => OpCode::Lt,
-            41 => OpCode::Gte,
-            42 => OpCode::Lte,
-            43 => OpCode::Assign,
 
-            44 => OpCode::AssignAdd,
-            45 => OpCode::AssignSub,
-            46 => OpCode::AssignMul,
-            47 => OpCode::AssignDiv,
-            48 => OpCode::AssignMod,
-            49 => OpCode::AssignPow,
-            50 => OpCode::AssignAnd,
-            51 => OpCode::AssignOr,
-            52 => OpCode::AssignXor,
-            53 => OpCode::AssignShl,
-            54 => OpCode::AssignShr,
+            32 => OpCode::BitwiseAnd,
+            33 => OpCode::BitwiseOr,
+            34 => OpCode::BitwiseXor,
+            35 => OpCode::BitwiseShl,
+            36 => OpCode::BitwiseShr,
 
-            55 => OpCode::Inc,
-            56 => OpCode::Dec,
+            37 => OpCode::And,
+            38 => OpCode::Or,
+            39 => OpCode::Eq,
+            40 => OpCode::Neg,
+            41 => OpCode::Gt,
+            42 => OpCode::Lt,
+            43 => OpCode::Gte,
+            44 => OpCode::Lte,
+
+            45 => OpCode::Assign,
+            46 => OpCode::AssignAdd,
+            47 => OpCode::AssignSub,
+            48 => OpCode::AssignMul,
+            49 => OpCode::AssignDiv,
+            50 => OpCode::AssignMod,
+            51 => OpCode::AssignPow,
+
+            52 => OpCode::AssignBitwiseAnd,
+            53 => OpCode::AssignBitwiseOr,
+            54 => OpCode::AssignBitwiseXor,
+            55 => OpCode::AssignBitwiseShl,
+            56 => OpCode::AssignBitwiseShr,
+
+            57 => OpCode::Inc,
+            58 => OpCode::Dec,
             _ => return None,
         })
     }
@@ -283,11 +299,12 @@ impl OpCode {
             OpCode::Div => OpCode::AssignDiv,
             OpCode::Mod => OpCode::AssignMod,
             OpCode::Pow => OpCode::AssignPow,
-            OpCode::And => OpCode::AssignAnd,
-            OpCode::Or => OpCode::AssignOr,
-            OpCode::Xor => OpCode::AssignXor,
-            OpCode::Shl => OpCode::AssignShl,
-            OpCode::Shr => OpCode::AssignShr,
+
+            OpCode::BitwiseAnd => OpCode::AssignBitwiseAnd,
+            OpCode::BitwiseOr => OpCode::AssignBitwiseOr,
+            OpCode::BitwiseXor => OpCode::AssignBitwiseXor,
+            OpCode::BitwiseShl => OpCode::AssignBitwiseShl,
+            OpCode::BitwiseShr => OpCode::AssignBitwiseShr,
             _ => return None,
         })
     }

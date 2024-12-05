@@ -131,15 +131,20 @@ pub enum OpCodeWithArgs {
     // **
     Pow,
     // &
-    And,
+    BitwiseAnd,
     // |
-    Or,
+    BitwiseOr,
     // ^
-    Xor,
+    BitwiseXor,
     // <<
-    Shl,
+    BitwiseShl,
     // >>
-    Shr,
+    BitwiseShr,
+
+    // &&
+    And,
+    // ||
+    Or,
     // ==
     Eq,
     // !
@@ -169,9 +174,9 @@ pub enum OpCodeWithArgs {
     // **=
     AssignPow,
     // &=
-    AssignAnd,
+    AssignBitwiseAnd,
     // |=
-    AssignOr,
+    AssignBitwiseOr,
     // ^=
     AssignXor,
     // <<=
@@ -223,11 +228,15 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Div => OpCode::Div,
             OpCodeWithArgs::Mod => OpCode::Mod,
             OpCodeWithArgs::Pow => OpCode::Pow,
+
+            OpCodeWithArgs::BitwiseAnd => OpCode::BitwiseAnd,
+            OpCodeWithArgs::BitwiseOr => OpCode::BitwiseOr,
+            OpCodeWithArgs::BitwiseXor => OpCode::BitwiseXor,
+            OpCodeWithArgs::BitwiseShl => OpCode::BitwiseShl,
+            OpCodeWithArgs::BitwiseShr => OpCode::BitwiseShr,
+
             OpCodeWithArgs::And => OpCode::And,
             OpCodeWithArgs::Or => OpCode::Or,
-            OpCodeWithArgs::Xor => OpCode::Xor,
-            OpCodeWithArgs::Shl => OpCode::Shl,
-            OpCodeWithArgs::Shr => OpCode::Shr,
             OpCodeWithArgs::Eq => OpCode::Eq,
             OpCodeWithArgs::Neg => OpCode::Neg,
             OpCodeWithArgs::Gt => OpCode::Gt,
@@ -242,11 +251,11 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::AssignDiv => OpCode::AssignDiv,
             OpCodeWithArgs::AssignMod => OpCode::AssignMod,
             OpCodeWithArgs::AssignPow => OpCode::AssignPow,
-            OpCodeWithArgs::AssignAnd => OpCode::AssignAnd,
-            OpCodeWithArgs::AssignOr => OpCode::AssignOr,
-            OpCodeWithArgs::AssignXor => OpCode::AssignXor,
-            OpCodeWithArgs::AssignShl => OpCode::AssignShl,
-            OpCodeWithArgs::AssignShr => OpCode::AssignShr,
+            OpCodeWithArgs::AssignBitwiseAnd => OpCode::AssignBitwiseAnd,
+            OpCodeWithArgs::AssignBitwiseOr => OpCode::AssignBitwiseOr,
+            OpCodeWithArgs::AssignXor => OpCode::AssignBitwiseXor,
+            OpCodeWithArgs::AssignShl => OpCode::AssignBitwiseShl,
+            OpCodeWithArgs::AssignShr => OpCode::AssignBitwiseShr,
             
 
             OpCodeWithArgs::Inc => OpCode::Inc,
@@ -587,6 +596,41 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Pow
             },
+            "BITWISE_AND" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::BitwiseAnd
+            },
+            "BITWISE_OR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::BitwiseOr
+            },
+            "BITWISE_XOR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::BitwiseXor
+            },
+            "BITWISE_SHL" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::BitwiseShl
+            },
+            "BITWISE_SHR" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::BitwiseShr
+            },
             "AND" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
@@ -600,27 +644,6 @@ impl OpCodeWithArgs {
                 }
 
                 OpCodeWithArgs::Or
-            },
-            "XOR" => {
-                if !args.is_empty() {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::Xor
-            },
-            "SHL" => {
-                if !args.is_empty() {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::Shl
-            },
-            "SHR" => {
-                if !args.is_empty() {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::Shr
             },
             "EQ" => {
                 if !args.is_empty() {
@@ -718,14 +741,14 @@ impl OpCodeWithArgs {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::AssignAnd
+                OpCodeWithArgs::AssignBitwiseAnd
             },
             "ASSIGNOR" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::AssignOr
+                OpCodeWithArgs::AssignBitwiseOr
             },
             "ASSIGNXOR" => {
                 if !args.is_empty() {

@@ -15,6 +15,7 @@ pub enum Operator {
     Multiply, // *
     Divide, // /
     Rem, // %
+    Pow, // **
 
     BitwiseXor, // ^
     BitwiseAnd, // &
@@ -23,17 +24,6 @@ pub enum Operator {
     BitwiseRight, // >>
 
     Assign(Option<Box<Operator>>),
-    // Assign, // =
-    // AssignPlus, // +=
-    // AssignMinus, // -=
-    // AssignDivide, // /=
-    // AssignMultiply, // *=
-    // AssignRem, // %=
-    // AssignBitwiseXor, // ^=
-    // AssignBitwiseAnd, // &=
-    // AssignBitwiseOr, // |=
-    // AssignBitwiseLeft, // <<=
-    // AssignBitwiseRight, // >>=
 }
 
 impl Operator {

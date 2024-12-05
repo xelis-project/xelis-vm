@@ -1,4 +1,5 @@
 use thiserror::Error;
+use xelis_ast::Operator;
 
 #[derive(Debug, Error)]
 pub enum CompilerError {
@@ -22,8 +23,8 @@ pub enum CompilerError {
     MemoryStoreNotEmpty,
     #[error("expected a assignment operator")]
     ExpectedOperatorAssignment,
-    #[error("expected a comparison operator")]
-    UnexpectedOperator,
+    #[error("unexpected operator {0:?}")]
+    UnexpectedOperator(Operator),
     #[error("expected a memory store id")]
     ExpectedMemstoreId,
     #[error("expected a variable")]

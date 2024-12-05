@@ -441,6 +441,20 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type.into_owned(), right_type.into_owned())))
                     }
                     left_type
+                },
+                Operator::Pow => {
+                    let left_type = self.get_type_from_expression(on_type, left, context)?;
+                    let right_type = self.get_type_from_expression(on_type, right, context)?;
+
+                    if !left_type.is_number() || !right_type.is_number() {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type.into_owned(), right_type.into_owned())))
+                    }
+
+                    if *right_type != Type::U32 {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(Type::U32, right_type.into_owned())))
+                    }
+
+                    left_type
                 }
             },
             Expression::IsNot(_) => Cow::Owned(Type::Bool),
@@ -632,6 +646,17 @@ impl<'a> Parser<'a> {
             Operator::Divide => op_div!(left, right),
             Operator::Multiply => op!(left, right, *),
             Operator::Rem => op!(left, right, %),
+            Operator::Pow => {
+                let pow_n = right.as_u32().ok()?;
+                match left {
+                    Value::U8(v) => Value::U8(v.pow(pow_n)),
+                    Value::U16(v) => Value::U16(v.pow(pow_n)),
+                    Value::U32(v) => Value::U32(v.pow(pow_n)),
+                    Value::U64(v) => Value::U64(v.pow(pow_n)),
+                    Value::U128(v) => Value::U128(v.pow(pow_n)),
+                    _ => return None
+                }
+            }
             Operator::BitwiseXor => op!(left, right, ^),
             Operator::BitwiseAnd => op_num_with_bool!(left, right, &),
             Operator::BitwiseOr => op_num_with_bool!(left, right, |),
