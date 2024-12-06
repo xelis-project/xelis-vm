@@ -46,7 +46,7 @@ fn test_max_gas() {
 
     let (module, environment) = prepare_module(code);
     let mut vm = VM::new(&module, &environment);
-    vm.context_mut().set_gas_limit(Some(1000));
+    vm.context_mut().set_gas_limit(1000);
     vm.invoke_entry_chunk(0).unwrap();
 
     assert!(matches!(vm.run(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));

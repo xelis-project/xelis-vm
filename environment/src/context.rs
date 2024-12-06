@@ -71,7 +71,9 @@ impl<'a> Data<'a> {
 pub struct Context<'a> {
     data: HashMap<TypeId, Data<'a>, BuildHasherDefault<NoOpHasher>>,
     // Configurable gas limit for an execution
-    max_gas: Option<u64>,
+    // By default, set to u64::MAX because
+    // no program should be able to run indefinitely
+    max_gas: u64,
     // Price per byte of memory
     memory_price_per_byte: u64,
     // Max value depth allowed
@@ -92,7 +94,7 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             data: HashMap::default(),
-            max_gas: None,
+            max_gas: u64::MAX,
             current_gas: 0,
             memory_price_per_byte: 0,
             max_value_depth: 16,
@@ -101,7 +103,7 @@ impl<'a> Context<'a> {
 
     // Set a gas limit for the Context
     #[inline(always)]
-    pub fn set_gas_limit(&mut self, gas: Option<u64>) {
+    pub fn set_gas_limit(&mut self, gas: u64) {
         self.max_gas = gas;
     }
 
@@ -142,10 +144,8 @@ impl<'a> Context<'a> {
         self.current_gas = self.current_gas.checked_add(gas)
             .ok_or(EnvironmentError::GasOverflow)?;
 
-        if let Some(max_gas) = self.max_gas {
-            if self.current_gas > max_gas {
-                return Err(EnvironmentError::NotEnoughGas { limit: max_gas, actual: self.current_gas });
-            }
+        if self.current_gas > self.max_gas {
+            return Err(EnvironmentError::NotEnoughGas { limit: self.max_gas, actual: self.current_gas });
         }
 
         Ok(())
