@@ -953,26 +953,28 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::Value(value) => {
-                    Expression::Constant(Constant::Default(match value {
-                        Literal::U8(n) => Value::U8(n),
-                        Literal::U16(n) => Value::U16(n),
-                        Literal::U32(n) => Value::U32(n),
-                        Literal::U64(n) => Value::U64(n),
-                        Literal::U128(n) => Value::U128(n),
-                        Literal::U256(n) => Value::U256(n),
-                        Literal::Number(n) => match expected_type {
-                            Some(Type::U8) => Value::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
-                            Some(Type::U16) => Value::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
-                            Some(Type::U32) => Value::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
-                            Some(Type::U64) => Value::U64(n),
-                            Some(Type::U128) => Value::U128(n as u128),
-                            Some(Type::U256) => Value::U256(U256::from(n)),
-                            _ => Value::U64(n)
-                        },
-                        Literal::String(s) => Value::String(s.into_owned()),
-                        Literal::Bool(b) => Value::Boolean(b),
-                        Literal::Null => Value::Null
-                    }))
+                    Expression::Constant(
+                        Constant::Default(match value {
+                            Literal::U8(n) => Value::U8(n),
+                            Literal::U16(n) => Value::U16(n),
+                            Literal::U32(n) => Value::U32(n),
+                            Literal::U64(n) => Value::U64(n),
+                            Literal::U128(n) => Value::U128(n),
+                            Literal::U256(n) => Value::U256(n),
+                            Literal::Number(n) => match expected_type {
+                                Some(Type::U8) => Value::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
+                                Some(Type::U16) => Value::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
+                                Some(Type::U32) => Value::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
+                                Some(Type::U64) => Value::U64(n),
+                                Some(Type::U128) => Value::U128(n as u128),
+                                Some(Type::U256) => Value::U256(U256::from(n)),
+                                _ => Value::U64(n)
+                            },
+                            Literal::String(s) => Value::String(s.into_owned()),
+                            Literal::Bool(b) => Value::Boolean(b),
+                            Literal::Null => Value::Null
+                        })
+                    )
                 },
                 Token::Dot => {
                     match last_expression {
