@@ -47,6 +47,8 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Range(Box<Value>, Box<Value>, Type),
+    // Blob represents a binary data
+    Blob(Vec<u8>),
 }
 
 impl PartialOrd for Value {
@@ -105,6 +107,10 @@ impl Hash for Value {
                 end.hash(state);
                 range_type.hash(state);
             },
+            Value::Blob(n) => {
+                10.hash(state);
+                n.hash(state);
+            }
         }
     }
 }
@@ -534,6 +540,7 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
+            Value::Blob(b) => write!(f, "{:?}", b),
         }
     }
 }

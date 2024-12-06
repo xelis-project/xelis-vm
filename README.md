@@ -50,10 +50,11 @@ The different primitive types are:
 - `optional<T>` where T is another type (it allow the value to be nullable)
 - `range<T>` where T is a number type (it allow to iterate over a range of values in a foreach, or have some functions like `contains`)
 - `map<K, V>` where K is a key type and V is a value type (it allow to have a key-value store)
+- `blob` is a raw data type allowing to store any kind of data (like images, files..)
 
 Arrays of any type are also supported, but they must contain only one type of value (example: `u64[]` and with multi-depth too).
 
-File extension is `.xel`
+File extension is `.slx` for the source code.
 
 ## OpCodes
 

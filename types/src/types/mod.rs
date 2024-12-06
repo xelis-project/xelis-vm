@@ -28,7 +28,9 @@ pub enum Type {
 
     String,
     Bool,
-    
+
+    Blob,
+
     Array(Box<Type>),
     Optional(Box<Type>),
     Range(Box<Type>),
@@ -94,6 +96,7 @@ impl Type {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
+            Value::Blob(_type) => Type::Blob,
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
         })
     }
@@ -332,6 +335,7 @@ impl fmt::Display for Type {
             Type::U256 => write!(f, "u256"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
+            Type::Blob => write!(f, "blob"),
             Type::Struct(id) => write!(f, "struct({:?})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),

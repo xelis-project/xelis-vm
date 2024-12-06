@@ -62,6 +62,7 @@ pub enum Token<'a> {
     // Types supported
     Number(NumberType),
     Bool,
+    Blob,
     String,
     Optional,
     Range,
@@ -195,6 +196,7 @@ impl Token<'_> {
             ":" => Colon,
 
             "bool" => Bool,
+            "blob" => Blob,
             "string" => String,
             "struct" => Struct,
             "optional" => Optional,
@@ -302,7 +304,10 @@ impl Token<'_> {
             | Identifier(_)
             | Optional
             | Range
-            | Map => true,
+            | Map
+            | Enum
+            | Blob
+            | Struct => true,
             _ => false,
         }
     }
