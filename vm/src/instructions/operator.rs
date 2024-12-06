@@ -78,6 +78,7 @@ macro_rules! op_bool {
                 (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
                 (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
                 (Value::U256(a), Value::U256(b)) => Value::Boolean(a $op b),
+                (Value::String(a), Value::String(b)) => Value::Boolean(a $op b),
                 _ => return Err(VMError::UnexpectedType)
             }
             _ => return Err(VMError::UnexpectedType)
@@ -181,7 +182,7 @@ opcode_fn!(lt, opcode_op, op_bool, <);
 opcode_fn!(gte, opcode_op, op_bool, >=);
 opcode_fn!(lte, opcode_op, op_bool, <=);
 
-opcode_fn!(add_assign, opcode_op_assign, op, +);
+opcode_fn!(add_assign, opcode_op_assign, op_string, +);
 opcode_fn!(sub_assign, opcode_op_assign, op, -);
 opcode_fn!(mul_assign, opcode_op_assign ,op, *);
 opcode_fn!(div_assign, opcode_op_assign, op, /);

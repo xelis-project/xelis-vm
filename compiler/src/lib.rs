@@ -80,6 +80,8 @@ impl<'a> Compiler<'a> {
             Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner)?
                 .as_assign_operator()
                 .ok_or(CompilerError::ExpectedOperatorAssignment)?,
+
+            // These operators are handled differently
             Operator::Assign(None)
             | Operator::And
             | Operator::Or => return Err(CompilerError::UnexpectedOperator(op.clone())),
@@ -697,11 +699,13 @@ impl<'a> Compiler<'a> {
             .extend(iter::repeat(0).take(total_on_stack));
 
         if function.get_instance_name().is_some() {
+            trace!("Adding instance variable");
             self.memstore(&mut chunk)?;
         }
 
         // Store the parameters
-        for _ in function.get_parameters() {
+        for param in function.get_parameters() {
+            trace!("Adding parameter: {:?}", param);
             self.memstore(&mut chunk)?;
         }
 

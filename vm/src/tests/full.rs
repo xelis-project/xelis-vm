@@ -858,3 +858,37 @@ fn test_div_by_zero() {
         )
     );
 }
+
+#[test]
+fn test_path() {
+    let code = r#"
+        struct Value {
+            value: string
+        }
+
+        fn (v Value) my_value() -> string {
+            return v.value
+        }
+
+        struct Message {
+            value: Value
+        }
+
+        fn (m Message) to_string() -> string {
+            return m.value.value
+        }
+
+        entry main() {
+            let message: Message = Message { value: Value { value: "Hello World!" } }
+            assert(message.to_string() == "Hello World!")
+            message.value.value += " from path"
+            assert(message.to_string() == "Hello World! from path")
+            return 0
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 2),
+        Value::U64(0)
+    );
+}
