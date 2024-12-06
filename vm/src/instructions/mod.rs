@@ -55,6 +55,15 @@ impl<'a> InstructionTable<'a> {
 
         instructions[OpCode::Swap.as_usize()] = (swap, 1);
         instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
+        instructions[OpCode::Jump.as_usize()] = (jump, 2);
+        instructions[OpCode::JumpIfFalse.as_usize()] = (jump_if_false, 3);
+
+        instructions[OpCode::IterableLength.as_usize()] = (iterable_length, 3);
+        instructions[OpCode::IteratorBegin.as_usize()] = (iterator_begin, 5);
+        instructions[OpCode::IteratorNext.as_usize()] = (iterator_next, 1);
+        instructions[OpCode::IteratorEnd.as_usize()] = (iterator_end, 1);
+
+        instructions[OpCode::Return.as_usize()] = (return_fn, 1);
 
         instructions[OpCode::ArrayCall.as_usize()] = (array_call, 2);
         instructions[OpCode::Cast.as_usize()] = (cast, 1);
@@ -65,16 +74,6 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
         instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
         instructions[OpCode::NewEnum.as_usize()] = (new_enum, 1);
-
-        instructions[OpCode::Jump.as_usize()] = (jump, 2);
-        instructions[OpCode::JumpIfFalse.as_usize()] = (jump_if_false, 3);
-
-        instructions[OpCode::IterableLength.as_usize()] = (iterable_length, 3);
-        instructions[OpCode::IteratorBegin.as_usize()] = (iterator_begin, 5);
-        instructions[OpCode::IteratorNext.as_usize()] = (iterator_next, 1);
-        instructions[OpCode::IteratorEnd.as_usize()] = (iterator_end, 1);
-
-        instructions[OpCode::Return.as_usize()] = (return_fn, 1);
 
         instructions[OpCode::Add.as_usize()] = (add, 1);
         instructions[OpCode::Sub.as_usize()] = (sub, 1);
