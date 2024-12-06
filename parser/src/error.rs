@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("number is too big for type '{0}'")]
+    NumberTooBigForType(Type),
     #[error("invalid constant name '{0}'")]
     InvalidConstName(&'a str),
     #[error("invalid constant value")]
