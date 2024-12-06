@@ -56,25 +56,25 @@ impl<'a> Compiler<'a> {
     fn map_operator_to_opcode(op: &Operator) -> Result<OpCode, CompilerError> {
         trace!("Mapping operator to opcode: {:?}", op);
         Ok(match op {
-            Operator::Plus => OpCode::Add,
-            Operator::Minus => OpCode::Sub,
-            Operator::Multiply => OpCode::Mul,
-            Operator::Divide => OpCode::Div,
-            Operator::Rem => OpCode::Mod,
+            Operator::Add => OpCode::Add,
+            Operator::Sub => OpCode::Sub,
+            Operator::Mul => OpCode::Mul,
+            Operator::Div => OpCode::Div,
+            Operator::Mod => OpCode::Mod,
             Operator::Pow => OpCode::Pow,
 
             Operator::BitwiseAnd => OpCode::And,
             Operator::BitwiseOr => OpCode::BitwiseOr,
             Operator::BitwiseXor => OpCode::BitwiseXor,
-            Operator::BitwiseLeft => OpCode::BitwiseShl,
-            Operator::BitwiseRight => OpCode::BitwiseShr,
+            Operator::BitwiseShl => OpCode::BitwiseShl,
+            Operator::BitwiseShr => OpCode::BitwiseShr,
 
-            Operator::Equals => OpCode::Eq,
-            Operator::NotEquals => OpCode::Neg,
-            Operator::GreaterThan => OpCode::Gt,
-            Operator::GreaterOrEqual => OpCode::Gte,
-            Operator::LessThan => OpCode::Lt,
-            Operator::LessOrEqual => OpCode::Lte,
+            Operator::Eq => OpCode::Eq,
+            Operator::Neq => OpCode::Neg,
+            Operator::Gt => OpCode::Gt,
+            Operator::Gte => OpCode::Gte,
+            Operator::Lt => OpCode::Lt,
+            Operator::Lte => OpCode::Lte,
 
             // Assigns
             Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner)?
@@ -384,7 +384,7 @@ impl<'a> Compiler<'a> {
                         self.decrease_values_on_stack_by(2)?;
                         self.add_value_on_stack(chunk.last_index())?;
                     },
-                    Operator::NotEquals => {
+                    Operator::Neq => {
                         self.compile_expr(chunk, left)?;
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Eq);

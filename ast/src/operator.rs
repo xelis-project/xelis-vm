@@ -2,26 +2,27 @@ use super::Token;
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum Operator {
-    Equals, // ==
-    NotEquals, // !=
+    Eq, // ==
+    Neq, // !=
     And, // &&
     Or, // ||
-    GreaterThan, // >
-    LessThan, // <
-    GreaterOrEqual, // >=
-    LessOrEqual, // <=
-    Plus, // +
-    Minus, // -
-    Multiply, // *
-    Divide, // /
-    Rem, // %
+    Gt, // >
+    Lt, // <
+    Gte, // >=
+    Lte, // <=
+
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
+    Mod, // %
     Pow, // **
 
     BitwiseXor, // ^
     BitwiseAnd, // &
     BitwiseOr, // |
-    BitwiseLeft, // <<
-    BitwiseRight, // >>
+    BitwiseShl, // <<
+    BitwiseShr, // >>
 
     Assign(Option<Box<Operator>>),
 }
@@ -30,37 +31,40 @@ impl Operator {
     pub fn value_of(token: &Token) -> Option<Operator> {
         use Operator::*;
         let value = match token {
-            Token::OperatorEquals => Equals,
-            Token::OperatorNotEquals => NotEquals,
+            Token::OperatorEquals => Eq,
+            Token::OperatorNotEquals => Neq,
             Token::OperatorAnd => And,
             Token::OperatorOr => Or,
-            Token::OperatorGreaterThan => GreaterThan,
-            Token::OperatorLessThan => LessThan,
-            Token::OperatorGreaterOrEqual => GreaterOrEqual,
-            Token::OperatorLessOrEqual => LessOrEqual,
-            Token::OperatorPlus => Plus,
-            Token::OperatorMinus => Minus,
-            Token::OperatorMultiply => Multiply,
-            Token::OperatorDivide => Divide,
-            Token::OperatorModulo => Rem,
+            Token::OperatorGreaterThan => Gt,
+            Token::OperatorLessThan => Lt,
+            Token::OperatorGreaterOrEqual => Gte,
+            Token::OperatorLessOrEqual => Lte,
+            Token::OperatorPlus => Add,
+            Token::OperatorMinus => Sub,
+            Token::OperatorMultiply => Mul,
+            Token::OperatorDivide => Div,
+            Token::OperatorModulo => Mod,
+            Token::OperatorPow => Pow,
 
             Token::OperatorBitwiseXor => BitwiseXor,
             Token::OperatorBitwiseAnd => BitwiseAnd,
             Token::OperatorBitwiseOr => BitwiseOr,
-            Token::OperatorBitwiseLeft => BitwiseLeft,
-            Token::OperatorBitwiseRight => BitwiseRight,
+            Token::OperatorBitwiseShl => BitwiseShl,
+            Token::OperatorBitwiseShr => BitwiseShr,
 
             Token::OperatorAssign => Assign(None),
-            Token::OperatorPlusAssign => Assign(Some(Box::new(Plus))),
-            Token::OperatorMinusAssign => Assign(Some(Box::new(Minus))),
-            Token::OperatorDivideAssign => Assign(Some(Box::new(Divide))),
-            Token::OperatorMultiplyAssign => Assign(Some(Box::new(Multiply))),
-            Token::OperatorModuloAssign => Assign(Some(Box::new(Rem))),
+            Token::OperatorPlusAssign => Assign(Some(Box::new(Add))),
+            Token::OperatorMinusAssign => Assign(Some(Box::new(Sub))),
+            Token::OperatorDivideAssign => Assign(Some(Box::new(Div))),
+            Token::OperatorMultiplyAssign => Assign(Some(Box::new(Mul))),
+            Token::OperatorModuloAssign => Assign(Some(Box::new(Mod))),
+            Token::OperatorPowAssign => Assign(Some(Box::new(Pow))),
+
             Token::OperatorBitwiseXorAssign => Assign(Some(Box::new(BitwiseXor))),
             Token::OperatorBitwiseAndAssign => Assign(Some(Box::new(BitwiseAnd))),
             Token::OperatorBitwiseOrAssign => Assign(Some(Box::new(BitwiseOr))),
-            Token::OperatorBitwiseLeftAssign => Assign(Some(Box::new(BitwiseLeft))),
-            Token::OperatorBitwiseRightAssign => Assign(Some(Box::new(BitwiseRight))),
+            Token::OperatorBitwiseShlAssign => Assign(Some(Box::new(BitwiseShl))),
+            Token::OperatorBitwiseShrAssign => Assign(Some(Box::new(BitwiseShr))),
 
             _ => return None,
         };
@@ -76,33 +80,36 @@ impl Operator {
 
     pub fn is_number_operator(&self) -> bool {
         match &self {
-            | Operator::Minus
-            | Operator::Divide
-            | Operator::Multiply
-            | Operator::Rem
+            | Operator::Sub
+            | Operator::Div
+            | Operator::Mul
+            | Operator::Mod
+            | Operator::Pow
+
             | Operator::BitwiseXor
             | Operator::BitwiseAnd
             | Operator::BitwiseOr
-            | Operator::BitwiseLeft
-            | Operator::BitwiseRight
-            | Operator::GreaterOrEqual
-            | Operator::GreaterThan
-            | Operator::LessOrEqual
-            | Operator::LessThan => true,
+            | Operator::BitwiseShl
+            | Operator::BitwiseShr
+
+            | Operator::Gte
+            | Operator::Gt
+            | Operator::Lte
+            | Operator::Lt => true,
             _ => false
         }
     }
 
     pub fn is_bool_operator(&self) -> bool {
         match &self {
-            Operator::Equals
-            | Operator::NotEquals
+            Operator::Eq
+            | Operator::Neq
             | Operator::And
             | Operator::Or
-            | Operator::GreaterThan
-            | Operator::LessThan
-            | Operator::GreaterOrEqual
-            | Operator::LessOrEqual => true,
+            | Operator::Gt
+            | Operator::Lt
+            | Operator::Gte
+            | Operator::Lte => true,
             _ => false
         }
     }

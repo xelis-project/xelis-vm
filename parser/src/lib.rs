@@ -4,7 +4,8 @@ mod mapper;
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque}
+    collections::{HashMap, VecDeque},
+    mem
 };
 use error::ParserErrorKind;
 use log::trace;
@@ -405,17 +406,17 @@ impl<'a> Parser<'a> {
             Expression::Operator(op, left, right) => match op {
                 // Condition operators
                 Operator::Or
-                | Operator::Equals
-                | Operator::NotEquals
-                | Operator::GreaterOrEqual
-                | Operator::GreaterThan
-                | Operator::LessOrEqual
-                | Operator::LessThan
+                | Operator::Eq
+                | Operator::Neq
+                | Operator::Gte
+                | Operator::Gt
+                | Operator::Lte
+                | Operator::Lt
                 | Operator::And => Cow::Owned(Type::Bool),
                 // Assign operators
                 Operator::Assign(_) => return Err(err!(self, ParserErrorKind::AssignReturnNothing)),
                 // String compatible operators
-                Operator::Plus | Operator::Minus => {
+                Operator::Add => {
                     let left_type = self.get_type_from_expression(on_type, left, context)?;
                     let right_type = self.get_type_from_expression(on_type, right, context)?;
 
@@ -426,14 +427,15 @@ impl<'a> Parser<'a> {
                     }
                 },
                 // Number only operators
-                Operator::Multiply
-                | Operator::Divide
+                Operator::Sub
+                | Operator::Mul
+                | Operator::Div
+                | Operator::Mod
                 | Operator::BitwiseXor
                 | Operator::BitwiseAnd
                 | Operator::BitwiseOr
-                | Operator::BitwiseLeft
-                | Operator::BitwiseRight
-                | Operator::Rem => {
+                | Operator::BitwiseShl
+                | Operator::BitwiseShr => {
                     let left_type = self.get_type_from_expression(on_type, left, context)?;
                     let right_type = self.get_type_from_expression(on_type, right, context)?;
 
@@ -633,19 +635,17 @@ impl<'a> Parser<'a> {
     // Execute the selected operator
     fn execute_operator(&self, op: &Operator, left: &Value, right: &Value) -> Option<Value> {
         Some(match op {
-            Operator::Equals => Value::Boolean(left == right),
-            Operator::NotEquals => Value::Boolean(left != right),
-            Operator::Plus => {
+            Operator::Add => {
                 if left.is_string() || right.is_string() {
                     Value::String(format!("{}{}", left, right))
                 } else {
                     op!(left, right, +)
                 }
             },
-            Operator::Minus => op!(left, right, -),
-            Operator::Divide => op_div!(left, right),
-            Operator::Multiply => op!(left, right, *),
-            Operator::Rem => op!(left, right, %),
+            Operator::Sub => op!(left, right, -),
+            Operator::Div => op_div!(left, right),
+            Operator::Mul => op!(left, right, *),
+            Operator::Mod => op!(left, right, %),
             Operator::Pow => {
                 let pow_n = right.as_u32().ok()?;
                 match left {
@@ -656,16 +656,20 @@ impl<'a> Parser<'a> {
                     Value::U128(v) => Value::U128(v.pow(pow_n)),
                     _ => return None
                 }
-            }
+            },
+
             Operator::BitwiseXor => op!(left, right, ^),
             Operator::BitwiseAnd => op_num_with_bool!(left, right, &),
             Operator::BitwiseOr => op_num_with_bool!(left, right, |),
-            Operator::BitwiseLeft => op!(left, right, <<),
-            Operator::BitwiseRight => op!(left, right, >>),
-            Operator::GreaterOrEqual => op_bool!(left, right, >=),
-            Operator::GreaterThan => op_bool!(left, right, >),
-            Operator::LessOrEqual => op_bool!(left, right, <=),
-            Operator::LessThan => op_bool!(left, right, <),
+            Operator::BitwiseShl => op!(left, right, <<),
+            Operator::BitwiseShr => op!(left, right, >>),
+
+            Operator::Eq => Value::Boolean(left == right),
+            Operator::Neq => Value::Boolean(left != right),
+            Operator::Gte => op_bool!(left, right, >=),
+            Operator::Gt => op_bool!(left, right, >),
+            Operator::Lte => op_bool!(left, right, <=),
+            Operator::Lt => op_bool!(left, right, <),
             Operator::And => Value::Boolean(left.as_bool().ok()? && right.as_bool().ok()?),
             Operator::Or => Value::Boolean(left.as_bool().ok()? || right.as_bool().ok()?),
             Operator::Assign(_) => return None,
@@ -1068,52 +1072,14 @@ impl<'a> Parser<'a> {
 
                             let mut expr = self.read_expr(on_type, false, true, Some(&left_type), context)?;
                             if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context)? {
-                                match &op {
-                                    Operator::Minus | Operator::Rem | Operator::Divide | Operator::Multiply
-                                    | Operator::Assign(_) | Operator::BitwiseLeft | Operator::BitwiseRight
-                                    | Operator::GreaterThan | Operator::LessThan | Operator::LessOrEqual
-                                    | Operator::GreaterOrEqual => {
-                                        if left_type != *right_type {
-                                            // It is an hardcoded value, lets map it to the correct type
-                                            if let Expression::Constant(value) = previous_expr {
-                                                previous_expr = Expression::Constant(
-                                                    value.checked_cast_to_primitive_type(&right_type)
-                                                        .map_err(|e| err!(self, e.into()))?
-                                                );
-                                            } else if let Expression::Constant(value) = expr {
-                                                expr = Expression::Constant(
-                                                    value.checked_cast_to_primitive_type(&left_type)
-                                                        .map_err(|e| err!(self, e.into()))?
-                                                );
-                                            } else {
-                                                return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type.into_owned())))
-                                            }
-                                        }
-                                    },
-                                    Operator::Plus => {
-                                        if left_type != *right_type && !(left_type == Type::String || *right_type == Type::String) {
-                                            return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type.into_owned())))
-                                        }
-                                    },
-                                    Operator::And | Operator::Or => {
-                                        if left_type != Type::Bool {
-                                            return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, Type::Bool)))
-                                        }
-
-                                        if *right_type != Type::Bool {
-                                            return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(right_type.into_owned(), Type::Bool)))
-                                        }
-                                    },
-                                    _ => if left_type != *right_type {
-                                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type.into_owned())))
-                                    }
-                                };
-
+                                self.verify_operator(&op, left_type, right_type.into_owned(), &mut previous_expr, &mut expr)?;
                                 Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
                             } else {
                                 match op {
-                                    Operator::Equals | Operator::NotEquals |
-                                    Operator::Assign(None) if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
+                                    Operator::Eq
+                                    | Operator::Neq
+                                    | Operator::Assign(None)
+                                    if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
                                     _ => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type)))
                                 }
                             }
@@ -1145,6 +1111,102 @@ impl<'a> Parser<'a> {
             Some(mut v) => Ok(self.try_convert_expr_to_value(&mut v).map(Expression::Constant).unwrap_or(v)),
             None => Err(err!(self, ParserErrorKind::NotImplemented))
         }
+    }
+
+    fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
+        if let Expression::Constant(v) = expr {
+            let taken = mem::take(v); 
+            *v = taken.checked_cast_to_primitive_type(expected_type)
+                .map_err(|e| err!(self, e.into()))?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn verify_operator(&self, op: &Operator, left_type: Type, right_type: Type, left_expr: &mut Expression, right_expr: &mut Expression) -> Result<(), ParserError<'a>> {
+        match op {
+            Operator::Sub
+            | Operator::Mod
+            | Operator::Div
+            | Operator::Mul
+
+            | Operator::BitwiseXor
+            | Operator::BitwiseAnd
+            | Operator::BitwiseOr
+            | Operator::BitwiseShl
+            | Operator::BitwiseShr
+
+            | Operator::Gt
+            | Operator::Lt
+            | Operator::Lte
+            | Operator::Gte => {
+                if left_type != right_type {
+                    let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
+                        && !self.try_map_expr_to_type(right_expr, &left_type)?;
+
+                    if throw {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                    }
+                }
+            }
+            Operator::Add => {
+                if left_type != right_type && !(left_type == Type::String || right_type == Type::String) {
+                    let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
+                        && !self.try_map_expr_to_type(right_expr, &left_type)?;
+
+                    if throw {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                    }
+                }
+            },
+            Operator::And | Operator::Or => {
+                if left_type != Type::Bool {
+                    return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, Type::Bool)))
+                }
+
+                if right_type != Type::Bool {
+                    return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(right_type, Type::Bool)))
+                }
+            },
+            Operator::Pow => {
+                if !left_type.is_number() || !right_type.is_number() {
+                    return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                }
+
+                if right_type != Type::U32 {
+                    // Try to convert the right expression to a u32
+                    if !self.try_map_expr_to_type(right_expr, &Type::U32)? {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                    }
+                }
+            },
+            Operator::Eq
+            | Operator::Neq => {
+                if left_type != right_type {
+                    let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
+                        && !self.try_map_expr_to_type(right_expr, &left_type)?;
+
+                    if throw {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                    }
+                }
+            },
+            Operator::Assign(None) => {
+                if left_type != right_type {
+                    let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
+                        && !self.try_map_expr_to_type(right_expr, &left_type)?;
+
+                    if throw {
+                        return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
+                    }
+                }
+            },
+            Operator::Assign(Some(inner)) => self.verify_operator(inner, left_type, right_type, left_expr, right_expr)?,
+        };
+
+        Ok(())
     }
 
     // Read a map constructor with the following syntax:
@@ -2219,7 +2281,7 @@ mod tests {
                 }
             ),
             Statement::Return(Some(Expression::Operator(
-                Operator::GreaterThan,
+                Operator::Gt,
                 Box::new(Expression::Constant(Value::U32(0).into())),
                 Box::new(Expression::FunctionCall(
                     Some(Box::new(Expression::Variable(0))),
@@ -2458,7 +2520,7 @@ mod tests {
             Statement::Scope(vec![
                 Statement::If(
                     Expression::Operator(
-                        Operator::LessThan,
+                        Operator::Lt,
                         Box::new(Expression::Variable(0)),
                         Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
@@ -2478,7 +2540,7 @@ mod tests {
             Statement::Scope(vec![
                 Statement::If(
                     Expression::Operator(
-                        Operator::LessThan,
+                        Operator::Lt,
                         Box::new(Expression::Variable(0)),
                         Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
@@ -2521,7 +2583,7 @@ mod tests {
             Statement::Scope(vec![
                 Statement::If(
                     Expression::Operator(
-                        Operator::LessThan,
+                        Operator::Lt,
                         Box::new(Expression::Variable(0)),
                         Box::new(Expression::Constant(Value::U64(10).into()))
                     ),
@@ -2529,7 +2591,7 @@ mod tests {
                     Some(vec![
                         Statement::If(
                             Expression::Operator(
-                                Operator::LessThan,
+                                Operator::Lt,
                                 Box::new(Expression::Variable(0)),
                                 Box::new(Expression::Constant(Value::U64(20).into()))
                             ),

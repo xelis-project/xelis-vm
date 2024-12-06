@@ -496,8 +496,8 @@ mod tests {
             Token::OperatorBitwiseXor,
             Token::OperatorBitwiseOr,
             Token::OperatorBitwiseAnd,
-            Token::OperatorBitwiseLeft,
-            Token::OperatorBitwiseRight,
+            Token::OperatorBitwiseShl,
+            Token::OperatorBitwiseShr,
             Token::OperatorEquals,
             Token::OperatorNotEquals,
             Token::OperatorGreaterThan,
@@ -514,7 +514,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Identifier("a"),
-            Token::OperatorBitwiseRightAssign,
+            Token::OperatorBitwiseShrAssign,
             Token::Value(Literal::Number(10)),
             Token::OperatorPlus,
             Token::Value(Literal::Number(7)),
@@ -538,8 +538,8 @@ mod tests {
             Token::OperatorBitwiseXorAssign,
             Token::OperatorBitwiseOrAssign,
             Token::OperatorBitwiseAndAssign,
-            Token::OperatorBitwiseLeftAssign,
-            Token::OperatorBitwiseRightAssign
+            Token::OperatorBitwiseShlAssign,
+            Token::OperatorBitwiseShrAssign
         ]);
     }
 
@@ -822,7 +822,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Identifier("a"),
-            Token::OperatorBitwiseRight,
+            Token::OperatorBitwiseShr,
             Token::Identifier("b")
         ]);
     }
@@ -834,7 +834,7 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Identifier("a"),
-            Token::OperatorBitwiseLeft,
+            Token::OperatorBitwiseShl,
             Token::Identifier("b")
         ]);
     }
@@ -846,9 +846,9 @@ mod tests {
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
             Token::Identifier("a"),
-            Token::OperatorBitwiseLeft,
+            Token::OperatorBitwiseShl,
             Token::Identifier("b"),
-            Token::OperatorBitwiseRight,
+            Token::OperatorBitwiseShr,
             Token::Identifier("c")
         ]);
     }
@@ -1127,5 +1127,17 @@ mod tests {
         assert_eq!(token.token, Token::Value(Literal::String(Cow::Borrowed("hello\nworld"))));
         assert_eq!(token.line, 1);
         assert_eq!(token.column_start, 1);
+    }
+
+    #[test]
+    fn test_pow() {
+        let code = "a ** b";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Identifier("a"),
+            Token::OperatorPow,
+            Token::Identifier("b")
+        ]);
     }
 }

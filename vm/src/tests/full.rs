@@ -53,6 +53,30 @@ fn test_max_gas() {
 }
 
 #[test]
+fn test_pow() {
+    let code = r#"
+        entry main() {
+            return 2u64 ** 10
+        }
+    "#;
+
+    assert_eq!(run_code(code), Value::U64(1024));
+}
+
+#[test]
+fn test_pow_assign() {
+    let code = r#"
+        entry main() {
+            let x: u64 = 2;
+            x **= 10;
+            return x
+        }
+    "#;
+
+    assert_eq!(run_code(code), Value::U64(1024));
+}
+
+#[test]
 fn test_u256() {
     let code = r#"
         entry main() {
