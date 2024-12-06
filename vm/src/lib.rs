@@ -3,20 +3,20 @@ mod error;
 mod iterator;
 mod stack;
 mod validator;
+mod instructions;
 
 #[cfg(test)]
 mod tests;
 
-pub mod instructions;
-pub use validator::*;
-
-use xelis_environment::{Environment, Context};
-use instructions::{InstructionResult, InstructionTable};
 use stack::Stack;
 
-use xelis_types::{EnumType, Path, StructType, Constant};
-use xelis_bytecode::Module;
+// Re-export the necessary types
+pub use xelis_environment::{Environment, Context};
+pub use xelis_types::{EnumType, Path, StructType, Constant};
+pub use xelis_bytecode::Module;
 
+pub use validator::*;
+pub use instructions::*;
 pub use error::VMError;
 pub use chunk::*;
 
