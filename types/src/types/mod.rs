@@ -349,7 +349,7 @@ impl fmt::Display for Type {
 // We can retrieve a type from a TypeId
 // if its stored in an IndexMap
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TypeId(u16);
+pub struct TypeId(pub u16);
 
 impl Hash for TypeId {
     fn hash<H: Hasher>(&self, state: &mut H) {
