@@ -175,7 +175,13 @@ impl<'a> ModuleValidator<'a> {
                     Value::U64(_) => memory_usage += 8,
                     Value::U128(_) => memory_usage += 16,
                     Value::U256(_) => memory_usage += 32,
-                    Value::Blob(blob) => memory_usage += blob.len(),
+                    Value::Blob(blob) => {
+                        if blob.len() > u32::MAX as usize {
+                            return Err(ValidatorError::TooManyConstants);
+                        }
+
+                        memory_usage += blob.len();
+                    },
                 }
             }
         }
