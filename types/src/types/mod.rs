@@ -1,16 +1,13 @@
 mod r#struct;
 mod r#enum;
 
+use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
 
 use crate::{values::Value, Constant};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-    hash::{BuildHasher, Hash},
-};
+use std::{fmt, hash::{Hash, Hasher}};
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -348,18 +345,49 @@ impl fmt::Display for Type {
     }
 }
 
-pub trait HasKey<K> {
-    fn has(&self, key: &K) -> bool;
-}
+// TypeId is used to identify a type
+// We can retrieve a type from a TypeId
+// if its stored in an IndexMap
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TypeId(u16);
 
-impl<K: Hash + Eq> HasKey<K> for HashSet<K> {
-    fn has(&self, key: &K) -> bool {
-        self.contains(key)
+impl Hash for TypeId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
-impl<K: Hash + Eq, V, S: BuildHasher> HasKey<K> for HashMap<K, V, S> {
-    fn has(&self, key: &K) -> bool {
-        self.contains_key(key)
+impl Equivalent<EnumType> for TypeId {
+    fn equivalent(&self, key: &EnumType) -> bool {
+        key.id() == self.0
+    }
+}
+
+impl Equivalent<StructType> for TypeId {
+    fn equivalent(&self, key: &StructType) -> bool {
+        key.id() == self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    use super::*;
+
+    #[test]
+    fn test_type_id_equivalent() {
+        let id = TypeId(1);
+        let struct_type = StructType::new(1,vec![]);
+        assert!(id.equivalent(&struct_type));
+
+        // Also test hash
+        let mut left_hasher = DefaultHasher::new();
+        id.hash(&mut left_hasher);
+        let left_hash = left_hasher.finish();
+
+        let mut right_hasher = DefaultHasher::new();
+        struct_type.id().hash(&mut right_hasher);
+        let right_hash = right_hasher.finish();
+        assert_eq!(left_hash, right_hash);
     }
 }
