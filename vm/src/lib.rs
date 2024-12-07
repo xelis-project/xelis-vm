@@ -12,7 +12,13 @@ use stack::Stack;
 
 // Re-export the necessary types
 pub use xelis_environment::{Environment, Context};
-pub use xelis_types::{EnumType, Path, StructType, Constant};
+pub use xelis_types::{
+    EnumType,
+    StructType,
+    Path,
+    Constant,
+    Value,
+};
 pub use xelis_bytecode::Module;
 
 pub use validator::*;
