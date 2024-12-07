@@ -232,7 +232,7 @@ impl ValueCell {
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
             Self::Default(Value::U8(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U8))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
 
@@ -240,7 +240,7 @@ impl ValueCell {
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
             Self::Default(Value::U16(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U16))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
 
@@ -248,7 +248,7 @@ impl ValueCell {
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
             Self::Default(Value::U32(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U32))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
 
@@ -256,7 +256,7 @@ impl ValueCell {
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
             Self::Default(Value::U64(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U64))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
 
@@ -264,7 +264,7 @@ impl ValueCell {
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
             Self::Default(Value::U128(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U128))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
 
@@ -272,7 +272,7 @@ impl ValueCell {
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
             Self::Default(Value::U256(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U256))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
 
@@ -280,7 +280,7 @@ impl ValueCell {
     pub fn as_string(&self) -> Result<&String, ValueError> {
         match self {
             Self::Default(Value::String(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::String))
+            _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
 
@@ -288,7 +288,7 @@ impl ValueCell {
     pub fn as_bool(&self) -> Result<bool, ValueError> {
         match self {
             Self::Default(Value::Boolean(n)) => Ok(*n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Bool))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
@@ -312,7 +312,7 @@ impl ValueCell {
     pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
 
@@ -320,7 +320,7 @@ impl ValueCell {
     pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
 
@@ -340,7 +340,7 @@ impl ValueCell {
     pub fn to_u8(self) -> Result<u8, ValueError> {
         match self {
             Self::Default(Value::U8(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U8))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
 
@@ -348,7 +348,7 @@ impl ValueCell {
     pub fn to_u16(self) -> Result<u16, ValueError> {
         match self {
             Self::Default(Value::U16(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U16))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
 
@@ -356,7 +356,7 @@ impl ValueCell {
     pub fn to_u32(self) -> Result<u32, ValueError> {
         match self {
             Self::Default(Value::U32(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U32))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
 
@@ -364,7 +364,7 @@ impl ValueCell {
     pub fn to_u64(self) -> Result<u64, ValueError> {
         match self {
             Self::Default(Value::U64(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U64))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
 
@@ -372,7 +372,7 @@ impl ValueCell {
     pub fn to_u128(self) -> Result<u128, ValueError> {
         match self {
             Self::Default(Value::U128(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U128))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
 
@@ -380,7 +380,7 @@ impl ValueCell {
     pub fn to_u256(self) -> Result<U256, ValueError> {
         match self {
             Self::Default(Value::U256(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::U256))
+            _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
 
@@ -388,7 +388,7 @@ impl ValueCell {
     pub fn to_string(self) -> Result<String, ValueError> {
         match self {
             Self::Default(Value::String(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::String))
+            _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
 
@@ -396,7 +396,7 @@ impl ValueCell {
     pub fn to_bool(self) -> Result<bool, ValueError> {
         match self {
             Self::Default(Value::Boolean(n)) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Bool))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
@@ -412,7 +412,7 @@ impl ValueCell {
     pub fn to_vec(self) -> Result<Vec<SubValue>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
-            v => Err(ValueError::InvalidValueCell(v.clone(), Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
 
@@ -492,7 +492,7 @@ impl ValueCell {
     pub fn as_string_formatted<'a>(&'a self) -> Result<Cow<'a, str>, ValueError> {
         match self {
             Self::Default(v) => v.as_string_formatted(),
-            _ => Err(ValueError::InvalidValueCell(self.clone(), Type::String))
+            _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
 
@@ -615,7 +615,7 @@ impl ValueCell {
     pub fn as_value(&self) -> Result<&Value, ValueError> {
         match self {
             Self::Default(v) => Ok(v),
-            _ => Err(ValueError::InvalidValueCell(self.clone(), Type::Any))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }
 
@@ -623,7 +623,7 @@ impl ValueCell {
     pub fn into_value(self) -> Result<Value, ValueError> {
         match self {
             Self::Default(v) => Ok(v),
-            _ => Err(ValueError::InvalidValueCell(self, Type::Any))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }
 

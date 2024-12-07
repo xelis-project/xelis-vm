@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::Type;
-use super::{constant::Constant, Value, ValueCell};
+use super::{constant::Constant, Value};
 
 
 #[derive(Debug, Error)]
@@ -12,8 +12,8 @@ pub enum ValueError {
     InvalidValue(Value, Type),
     #[error("Invalid value type: {0:?} is not of type {1:?}")]
     InvalidValueType(Constant, Type),
-    #[error("Invalid value cell: {0:?} is not of type {1:?}")]
-    InvalidValueCell(ValueCell, Type),
+    #[error("Expected a value of type {0:?}")]
+    ExpectedValueOfType(Type),
     #[error("expected a struct")]
     ExpectedStruct,
     #[error("Invalid cast type: {0:?}")]
