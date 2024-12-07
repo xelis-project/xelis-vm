@@ -11,15 +11,9 @@ mod tests;
 use stack::Stack;
 
 // Re-export the necessary types
-pub use xelis_environment::{Environment, Context};
-pub use xelis_types::{
-    EnumType,
-    StructType,
-    Path,
-    Constant,
-    Value,
-};
-pub use xelis_bytecode::Module;
+pub use xelis_environment::*;
+pub use xelis_types::*;
+pub use xelis_bytecode::*;
 
 pub use validator::*;
 pub use instructions::*;
