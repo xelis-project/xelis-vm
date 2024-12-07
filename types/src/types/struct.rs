@@ -1,9 +1,11 @@
 use std::{hash::{Hash, Hasher}, sync::Arc};
+use serde::{Deserialize, Serialize};
+
 use crate::IdentifierType;
 use super::Type;
 
 // Represents a struct in the language
-#[derive(Clone, Eq, Debug)]
+#[derive(Clone, Eq, Debug, Serialize, Deserialize)]
 pub struct Struct {
     // Unique identifier for serialization
     id: IdentifierType,
@@ -42,5 +44,21 @@ impl StructType {
     #[inline(always)]
     pub fn fields(&self) -> &Vec<Type> {
         &self.0.fields
+    }
+}
+
+impl Serialize for StructType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+// Deserialize the struct type by providing only the identifier
+impl<'a> Deserialize<'a> for StructType {
+    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self(Arc::new(Struct {
+            id: IdentifierType::deserialize(deserializer)?,
+            fields: Vec::new()
+        })))
     }
 }

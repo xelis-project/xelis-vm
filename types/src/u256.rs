@@ -1,30 +1,11 @@
 use core::fmt;
 use std::{
     cmp::Ordering,
-    ops::{
-        Add,
-        AddAssign,
-        BitAnd,
-        BitAndAssign,
-        BitOr,
-        BitOrAssign,
-        BitXor,
-        BitXorAssign,
-        Div,
-        DivAssign,
-        Mul,
-        MulAssign,
-        Rem,
-        RemAssign,
-        Shl,
-        ShlAssign,
-        Shr,
-        ShrAssign,
-        Sub,
-        SubAssign
-    },
+    ops::*,
     str::FromStr
 };
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Hash, Eq, Ord)]
 pub struct U256([u64; 4]);
@@ -32,6 +13,19 @@ pub struct U256([u64; 4]);
 impl Default for U256 {
     fn default() -> Self {
         U256([0, 0, 0, 0])
+    }
+}
+
+impl Serialize for U256 {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'a> Deserialize<'a> for U256 {
+    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        U256::from_str(&s).map_err(|_| serde::de::Error::custom("Invalid U256 string"))
     }
 }
 

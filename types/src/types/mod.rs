@@ -1,6 +1,7 @@
 mod r#struct;
 mod r#enum;
 
+use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
 
@@ -11,8 +12,9 @@ use std::{
     hash::{BuildHasher, Hash},
 };
 
-
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value")]
+#[serde(rename_all = "snake_case")]
 pub enum Type {
     // Any Type is accepted
     Any,

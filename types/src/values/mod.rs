@@ -17,6 +17,7 @@ pub use pointer::*;
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
+use serde::{Deserialize, Serialize};
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -34,7 +35,8 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum Value {
     Null,
     // number types
