@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.93"
-indexmap = "2.6.0"
+indexmap = "2.7.0"
 thiserror = "2.0.1"
 xelis-types = { path = "../types" }

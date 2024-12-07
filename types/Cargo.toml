@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-indexmap = { version = "1.7.0", features = ["serde"] }
+indexmap = { version = "2.7.0", features = ["serde"] }
 serde = { version = "1.0.215", features = ["derive"] }
 thiserror = "2.0.1"
 
