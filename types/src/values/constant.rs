@@ -1,10 +1,12 @@
-use std::{collections::HashMap, fmt, hash::{Hash, Hasher}};
+use std::{fmt, hash::{Hash, Hasher}};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Constant {
     Default(Value),
     Struct(Vec<Constant>, StructType),
@@ -13,7 +15,7 @@ pub enum Constant {
 
     // Use box directly because the range are primitive only
     // Map cannot be used as a key in another map
-    Map(HashMap<Constant, Constant>),
+    Map(IndexMap<Constant, Constant>),
     Enum(Vec<Constant>, EnumValueType),
 }
 
@@ -198,7 +200,7 @@ impl Constant {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Self, Self>, ValueError> {
+    pub fn as_map(&self) -> Result<&IndexMap<Self, Self>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -206,7 +208,7 @@ impl Constant {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Self, Self>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<Self, Self>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -575,7 +577,6 @@ impl fmt::Display for Constant {
 #[cfg(test)]
 mod tests {
     use std::hash::DefaultHasher;
-
     use super::*;
 
     #[test]
@@ -597,7 +598,7 @@ mod tests {
     fn test_std_hash_map_as_key() {
         let mut map = Constant::Map(Default::default());
         for _ in 0..5000 {
-            let mut m = HashMap::new();
+            let mut m = IndexMap::new();
             m.insert(map, Constant::Default(Value::U8(0)));
             map = Constant::Map(m);
         }

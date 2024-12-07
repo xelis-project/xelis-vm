@@ -206,6 +206,12 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+
+[[package]]
+name = "hashbrown"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a9bfc1af68b1726ea47d3d5109de126281def866b33970e10fbab11b5dafab3"
@@ -218,12 +224,23 @@ checksum = "fbf6a919d6cf397374f7dfeeea91d974c7c0a7221d0d0f4f20d859d329e53fcc"
 
 [[package]]
 name = "indexmap"
-version = "2.6.0"
+version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "707907fe3c25f5424cce2cb7e1cbcafee6bdbe735ca90ef77c29e84591e5b9da"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown 0.12.3",
+ "serde",
+]
+
+[[package]]
+name = "indexmap"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.15.1",
 ]
 
 [[package]]
@@ -678,7 +695,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 name = "xelis-ast"
 version = "0.1.0"
 dependencies = [
- "indexmap",
+ "indexmap 2.7.0",
  "xelis-types",
 ]
 
@@ -697,7 +714,7 @@ dependencies = [
 name = "xelis-bytecode"
 version = "0.1.0"
 dependencies = [
- "indexmap",
+ "indexmap 2.7.0",
  "xelis-types",
 ]
 
@@ -721,7 +738,7 @@ name = "xelis-environment"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "indexmap",
+ "indexmap 2.7.0",
  "thiserror",
  "xelis-types",
 ]
@@ -740,6 +757,7 @@ dependencies = [
 name = "xelis-parser"
 version = "0.1.0"
 dependencies = [
+ "indexmap 1.9.3",
  "log",
  "thiserror",
  "xelis-ast",
@@ -752,6 +770,7 @@ dependencies = [
 name = "xelis-types"
 version = "0.1.0"
 dependencies = [
+ "indexmap 1.9.3",
  "serde",
  "thiserror",
 ]

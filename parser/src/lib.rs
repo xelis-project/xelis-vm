@@ -8,6 +8,7 @@ use std::{
     mem
 };
 use error::ParserErrorKind;
+use indexmap::IndexMap;
 use log::trace;
 use mapper::GlobalMapper;
 use xelis_builder::{Builder, EnvironmentBuilder};
@@ -737,7 +738,7 @@ impl<'a> Parser<'a> {
                 Constant::Enum(new_fields, enum_type.clone())
             },
             Expression::MapConstructor(entries, _, _) => {
-                let mut new_entries = HashMap::with_capacity(entries.len());
+                let mut new_entries = IndexMap::with_capacity(entries.len());
                 for (key, value) in entries {
                     let k = self.try_convert_expr_to_value(key);
                     let v = self.try_convert_expr_to_value(value);
@@ -2064,7 +2065,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::Constant(Constant::Map(HashMap::new()))
+                    value: Expression::Constant(Constant::Map(IndexMap::new()))
                 }
             )
         );
@@ -2093,7 +2094,7 @@ mod tests {
 
         let statements = test_parser_statement(tokens, Vec::new());
 
-        let mut map = HashMap::new();
+        let mut map = IndexMap::new();
         map.insert(Value::U64(0).into(), Value::String("hello".to_owned()).into());
 
         assert_eq!(
@@ -2170,7 +2171,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
-                    value: Expression::Constant(Constant::Map(HashMap::new()))
+                    value: Expression::Constant(Constant::Map(IndexMap::new()))
                 }
             )
         );
