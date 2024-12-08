@@ -1,5 +1,3 @@
-
-use std::collections::HashSet;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 use xelis_types::{EnumType, StructType, Constant};
@@ -15,7 +13,7 @@ pub struct Module {
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
-    entry_chunk_ids: HashSet<usize>,
+    entry_chunk_ids: IndexSet<usize>,
     // registered structs
     structs: IndexSet<StructType>,
     // registered enums
@@ -28,7 +26,7 @@ impl Module {
         Self {
             constants: IndexSet::new(),
             chunks: Vec::new(),
-            entry_chunk_ids: HashSet::new(),
+            entry_chunk_ids: IndexSet::new(),
             structs: IndexSet::new(),
             enums: IndexSet::new()
         }
@@ -59,7 +57,7 @@ impl Module {
     }
 
     // Get the chunks ids callable from externals
-    pub fn chunks_entry_ids(&self) -> &HashSet<usize> {
+    pub fn chunks_entry_ids(&self) -> &IndexSet<usize> {
         &self.entry_chunk_ids
     }
 
