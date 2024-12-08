@@ -32,6 +32,23 @@ impl Module {
         }
     }
 
+    // Create a new module with all needed data
+    pub fn with(
+        constants: IndexSet<Constant>,
+        chunks: Vec<Chunk>,
+        entry_chunk_ids: IndexSet<usize>,
+        structs: IndexSet<StructType>,
+        enums: IndexSet<EnumType>
+    ) -> Self {
+        Self {
+            constants,
+            chunks,
+            entry_chunk_ids,
+            structs,
+            enums
+        }
+    }
+
     // Get the constants declared in the module
     #[inline]
     pub fn constants(&self) -> &IndexSet<Constant> {
