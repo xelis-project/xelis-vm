@@ -1,16 +1,17 @@
 
 use std::collections::HashSet;
 use indexmap::IndexSet;
-use xelis_types::{EnumType, StructType, Constant, ConstantWrapper};
+use serde::{Deserialize, Serialize};
+use xelis_types::{EnumType, StructType, Constant};
 
 use super::Chunk;
 
 // A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<ConstantWrapper>,
+    constants: IndexSet<Constant>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
@@ -35,20 +36,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<ConstantWrapper> {
+    pub fn constants(&self) -> &IndexSet<Constant> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
     pub fn add_constant(&mut self, value: impl Into<Constant>) -> usize {
-        self.constants.insert_full(ConstantWrapper(value.into())).0
+        self.constants.insert_full(value.into()).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<&Constant> {
-        self.constants.get_index(index).map(|v| &v.0)
+        self.constants.get_index(index)
     }
 
     // Get the chunks declared in the module

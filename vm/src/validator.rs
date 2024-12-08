@@ -67,8 +67,8 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Due to the use of ValuePointer, we need to clone each value as we can't keep one reference
-    fn verify_value(&self, value: &Constant) -> Result<usize, ValidatorError<'a>> {
-        let mut stack = vec![(value, 0)];
+    fn verify_constant(&self, constant: &Constant) -> Result<usize, ValidatorError<'a>> {
+        let mut stack = vec![(constant, 0)];
         let mut memory_usage = 0;
 
         while let Some((value, depth)) = stack.pop() {
@@ -193,7 +193,7 @@ impl<'a> ModuleValidator<'a> {
     fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in self.module.constants() {
-            memory_usage += self.verify_value(&c.0)?;
+            memory_usage += self.verify_constant(&c)?;
 
             if memory_usage > self.constant_max_memory {
                 return Err(ValidatorError::TooManyConstants);
