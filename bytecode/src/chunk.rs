@@ -14,8 +14,16 @@ impl Chunk {
     // Create a new chunk
     #[inline]
     pub fn new() -> Self {
-        Chunk {
+        Self {
             instructions: Vec::new()
+        }
+    }
+
+    // Create a new chunk with all needed data
+    #[inline]
+    pub fn from_instructions(instructions: Vec<u8>) -> Self {
+        Self {
+            instructions
         }
     }
 
