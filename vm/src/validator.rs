@@ -66,8 +66,8 @@ impl<'a> ModuleValidator<'a> {
         Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 }
     }
 
-    // Due to the use of ValuePointer, we need to clone each value as we can't keep one reference
-    fn verify_constant(&self, constant: &Constant) -> Result<usize, ValidatorError<'a>> {
+    // Verify a constant and return the memory usage
+    pub fn verify_constant(&self, constant: &Constant) -> Result<usize, ValidatorError<'a>> {
         let mut stack = vec![(constant, 0)];
         let mut memory_usage = 0;
 
@@ -190,9 +190,9 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify all the declared constants in the module
-    fn verify_constants(&self) -> Result<(), ValidatorError<'a>> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b Constant>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
-        for c in self.module.constants() {
+        for c in constants {
             memory_usage += self.verify_constant(&c)?;
 
             if memory_usage > self.constant_max_memory {
@@ -295,7 +295,7 @@ impl<'a> ModuleValidator<'a> {
 
         self.verify_enums()?;
         self.verify_structs()?;
-        self.verify_constants()?;
+        self.verify_constants(self.module.constants().iter())?;
         self.verify_chunks()?;
 
         Ok(())
