@@ -120,4 +120,66 @@ impl Operator {
             _ => false
         }
     }
+
+    pub fn is_left_associative(&self) -> bool {
+        match &self {
+            Operator::Eq
+            | Operator::Neq
+            | Operator::And
+            | Operator::Or
+            | Operator::Gt
+            | Operator::Lt
+            | Operator::Gte
+            | Operator::Lte
+            | Operator::Add
+            | Operator::Sub
+            | Operator::Mul
+            | Operator::Div
+            | Operator::Mod
+            | Operator::BitwiseXor
+            | Operator::BitwiseAnd
+            | Operator::BitwiseOr
+            | Operator::BitwiseShl
+            | Operator::BitwiseShr => true,
+
+            Operator::Assign(_)
+            | Operator::Pow => false
+        }
+    }
+    
+    pub fn precedence(&self) -> u8 {
+        match &self {
+            Operator::Assign(_) => 1,
+            
+            Operator::Or => 2,
+            
+            Operator::And => 3,
+            
+            Operator::BitwiseOr => 4,
+            
+            Operator::BitwiseXor => 5,
+            
+            Operator::BitwiseAnd => 6,
+            
+            Operator::Eq
+            | Operator::Neq => 7,
+            
+            Operator::Gt
+            | Operator::Lt
+            | Operator::Gte
+            | Operator::Lte => 8,
+            
+            Operator::BitwiseShl
+            | Operator::BitwiseShr => 9,
+            
+            Operator::Add
+            | Operator::Sub => 10,
+            
+            Operator::Mul
+            | Operator::Div
+            | Operator::Mod => 11,
+
+            Operator::Pow => 12,
+        }
+    }
 }

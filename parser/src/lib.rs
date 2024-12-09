@@ -1536,6 +1536,98 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
+    fn shunting_yard(&mut self, tokens: Vec<Token<'a>>) -> Result<Vec<Token<'a>>, ParserError<'a>> {
+        let mut output_queue: Vec<Token<'a>> = Vec::new();
+        let mut operator_stack: Vec<Token<'a>> = Vec::new();
+        for token in tokens {
+            match token {
+                Token::Value(_) | Token::Identifier(_) => {
+                    output_queue.push(token);
+                }
+                Token::OperatorPlus | Token::OperatorMinus | Token::OperatorMultiply | Token::OperatorDivide => {
+                    while let Some(op) = operator_stack.last() {
+                        if let Some(op1) = Operator::value_of(&token) {
+                            if let Some(op2) = Operator::value_of(op) {
+                                if (op1.precedence() < op2.precedence()) || 
+                                   (op1.precedence() == op2.precedence() && op1.is_left_associative()) {
+                                    output_queue.push(operator_stack.pop().unwrap());
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    operator_stack.push(token);
+                }
+                Token::ParenthesisOpen => {
+                    operator_stack.push(token);
+                }
+                Token::ParenthesisClose => {
+                    while let Some(op) = operator_stack.pop() {
+                        if op == Token::ParenthesisOpen {
+                            break;
+                        }
+                        output_queue.push(op);
+                    }
+                }
+                _ => return Err(err!(self, ParserErrorKind::UnexpectedToken(token))),
+            }
+        }
+    
+        while let Some(op) = operator_stack.pop() {
+            if op == Token::ParenthesisOpen || op == Token::ParenthesisClose {
+                return Err(err!(self, ParserErrorKind::MismatchedParentheses));
+            }
+            output_queue.push(op);
+        }
+    
+        Ok(output_queue)
+    }
+
+    fn evaluate_rpn(&mut self, tokens: Vec<Token>) -> Result<u64, String> {
+        let mut stack: Vec<u64> = Vec::new();
+    
+        for token in tokens {
+            match token {
+                Token::Value(Literal::Number(n)) | Token::Value(Literal::U64(n)) => stack.push(n as u64),
+                Token::OperatorPlus => {
+                    let right = stack.pop().ok_or("Missing operand for +")?;
+                    let left = stack.pop().ok_or("Missing operand for +")?;
+                    stack.push(left + right);
+                }
+                Token::OperatorMinus => {
+                    let right = stack.pop().ok_or("Missing operand for -")?;
+                    let left = stack.pop().ok_or("Missing operand for -")?;
+                    stack.push(left - right);
+                }
+                Token::OperatorMultiply => {
+                    let right = stack.pop().ok_or("Missing operand for *")?;
+                    let left = stack.pop().ok_or("Missing operand for *")?;
+                    stack.push(left * right);
+                }
+                Token::OperatorDivide => {
+                    let right = stack.pop().ok_or("Missing operand for /")?;
+                    let left = stack.pop().ok_or("Missing operand for /")?;
+                    if right == 0 {
+                        return Err("Division by zero".into());
+                    }
+                    stack.push(left / right);
+                }
+                _ => return Err(format!("Unexpected token: {:?}", token)),
+            }
+        }
+    
+        if stack.len() != 1 {
+            return Err("Invalid expression".into());
+        }
+    
+        Ok(stack.pop().unwrap())
+    }
+
     // Read the parameters for a function
     fn read_parameters(&mut self) -> Result<Vec<(&'a str, Type)>, ParserError<'a>> {
         let mut parameters = Vec::new();
@@ -1920,6 +2012,49 @@ mod tests {
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
         test_parser_statement_with(tokens, variables, &Some(return_type), env)
+    }
+
+    #[test]
+    fn test_shunting_yard_and_evaluate_rpn() {
+        // Example infix expression: "3 + 4 * 2 / ( 5 - 1 )"
+        let tokens = vec![
+            Token::Value(Literal::Number(3)),
+            Token::OperatorPlus,
+            Token::Value(Literal::Number(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::Number(2)),
+            Token::OperatorDivide,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::Number(5)),
+            Token::OperatorMinus,
+            Token::Value(Literal::Number(1)),
+            Token::ParenthesisClose,
+        ];
+
+        // Expected RPN: "3 4 2 * 1 5 - / +"
+        let expected_rpn = vec![
+            Token::Value(Literal::Number(3)),
+            Token::Value(Literal::Number(4)),
+            Token::Value(Literal::Number(2)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::Number(5)),
+            Token::Value(Literal::Number(1)),
+            Token::OperatorMinus,
+            Token::OperatorDivide,
+            Token::OperatorPlus,
+        ];
+
+        let env = EnvironmentBuilder::new();
+        let mut parser = Parser::new(VecDeque::from(tokens.clone()), &env);
+        let rpn = parser.shunting_yard(tokens).unwrap();
+    
+        assert_eq!(rpn, expected_rpn);
+    
+        // Evaluate the RPN expression
+        let result = parser.evaluate_rpn(rpn).unwrap();
+    
+        // Expected result of the expression "3 + 4 * 2 / ( 1 - 5 )" is 1
+        assert_eq!(result, 5);
     }
 
     #[test]
