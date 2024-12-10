@@ -50,6 +50,10 @@ pub enum ValidatorError<'a> {
     ReferenceNotAllowed,
     #[error("map as key not allowed")]
     MapAsKeyNotAllowed,
+    #[error("empty module")]
+    EmptyModule,
+    #[error("invalid entry id")]
+    InvalidEntryId,
     #[error(transparent)]
     ValueError(#[from] ValueError)
 }
@@ -206,6 +210,12 @@ impl<'a> ModuleValidator<'a> {
     // Verify all the declared chunks in the module
     // We verify that the opcodes are valid and that the count of arguments are correct
     fn verify_chunks(&self) -> Result<(), ValidatorError<'a>> {
+        let len = self.module.chunks().len();
+        if len == 0 {
+            return Err(ValidatorError::EmptyModule);
+        }
+
+        // Verify all the chunks
         for chunk in self.module.chunks() {
             let mut reader = ChunkReader::new(chunk);
             while let Some(instruction) = reader.next_u8() {
@@ -214,6 +224,13 @@ impl<'a> ModuleValidator<'a> {
 
                 reader.advance(op.arguments_bytes())
                     .map_err(|_| ValidatorError::InvalidOpCodeArguments)?;
+            }
+        }
+
+        // Verify that the entry ids are valid
+        for entry_id in self.module.chunks_entry_ids() {
+            if len >= *entry_id {
+                return Err(ValidatorError::InvalidEntryId);
             }
         }
 
