@@ -166,6 +166,11 @@ impl<'a> VM<'a> {
         self.invoke_chunk_id(id)
     }
 
+    // Push a value to the stack
+    pub fn push_stack<V: Into<Path<'a>>>(&mut self, value: V) -> Result<(), VMError> {
+        self.stack.push_stack(value.into())
+    }
+
     // Invoke an entry chunk using its id
     pub fn invoke_entry_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
