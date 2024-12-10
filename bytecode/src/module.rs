@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use xelis_types::{EnumType, StructType, Constant};
+use xelis_types::{Constant, ConstantWrapper, EnumType, StructType};
 
 use super::Chunk;
 
@@ -9,7 +9,7 @@ use super::Chunk;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<Constant>,
+    constants: IndexSet<ConstantWrapper>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
@@ -34,7 +34,7 @@ impl Module {
 
     // Create a new module with all needed data
     pub fn with(
-        constants: IndexSet<Constant>,
+        constants: IndexSet<ConstantWrapper>,
         chunks: Vec<Chunk>,
         entry_chunk_ids: IndexSet<usize>,
         structs: IndexSet<StructType>,
@@ -51,20 +51,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<Constant> {
+    pub fn constants(&self) -> &IndexSet<ConstantWrapper> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
     pub fn add_constant(&mut self, value: impl Into<Constant>) -> usize {
-        self.constants.insert_full(value.into()).0
+        self.constants.insert_full(ConstantWrapper(value.into())).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<&Constant> {
-        self.constants.get_index(index)
+        self.constants.get_index(index).map(|wrapper| &wrapper.0)
     }
 
     // Get the chunks declared in the module

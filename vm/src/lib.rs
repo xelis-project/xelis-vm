@@ -51,7 +51,8 @@ impl<'a> Backend<'a> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&Constant, VMError> {
-        self.module.get_constant_at(id).ok_or(VMError::ConstantNotFound)
+        self.module.get_constant_at(id)
+            .ok_or(VMError::ConstantNotFound)
     }
 
     // Get an enum with an id

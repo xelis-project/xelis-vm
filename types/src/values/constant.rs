@@ -20,7 +20,8 @@ pub enum Constant {
 }
 
 // Wrapper to drop the value without stackoverflow
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ConstantWrapper(pub Constant);
 
 impl Drop for ConstantWrapper {

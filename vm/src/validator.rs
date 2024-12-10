@@ -295,7 +295,7 @@ impl<'a> ModuleValidator<'a> {
 
         self.verify_enums()?;
         self.verify_structs()?;
-        self.verify_constants(self.module.constants().iter())?;
+        self.verify_constants(self.module.constants().iter().map(|v| &v.0))?;
         self.verify_chunks()?;
 
         Ok(())
