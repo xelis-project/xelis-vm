@@ -1,6 +1,6 @@
 mod handle;
 
-use crate::{values::ValueError, SubValue, Value};
+use crate::{values::ValueError, Constant, SubValue, Value};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -150,6 +150,12 @@ impl From<SubValue> for Path<'_> {
 
 impl From<Value> for Path<'_> {
     fn from(value: Value) -> Self {
+        Self::Owned(value.into())
+    }
+}
+
+impl From<Constant> for Path<'_> {
+    fn from(value: Constant) -> Self {
         Self::Owned(value.into())
     }
 }
