@@ -36,6 +36,7 @@ macro_rules! checked_cast {
 
 // This enum is dedicated for constants values / parser
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Value {
     Null,
     // number types
