@@ -319,4 +319,12 @@ impl Token<'_> {
             _ => false,
         }
     }
+
+    pub fn is_value(&self) -> bool {
+        matches!(self, Token::Value(_) | Token::Identifier(_))
+    }
+
+    pub fn is_parenthesis(&self) -> bool {
+        matches!(self, Token::ParenthesisOpen | Token::ParenthesisClose)
+    }
 }

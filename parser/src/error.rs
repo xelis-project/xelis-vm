@@ -147,5 +147,7 @@ pub enum ParserErrorKind<'a> {
     #[error("invalid map key type")]
     InvalidMapKeyType,
     #[error("unknown error")]
+    MismatchedParentheses,
+    #[error("unknown error")]
     UnknownError,
 }
