@@ -6,7 +6,6 @@ use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
 pub enum Constant {
     Default(Value),
     Struct(Vec<Constant>, StructType),

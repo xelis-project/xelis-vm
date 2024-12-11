@@ -36,7 +36,6 @@ macro_rules! checked_cast {
 
 // This enum is dedicated for constants values / parser
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
 pub enum Value {
     Null,
     // number types
