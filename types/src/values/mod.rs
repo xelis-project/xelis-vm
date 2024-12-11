@@ -71,45 +71,45 @@ impl Hash for Value {
         match self {
             Value::Null => 0.hash(state),
             Value::U8(n) => {
-                1.hash(state);
+                1u8.hash(state);
                 n.hash(state);
             },
             Value::U16(n) => {
-                2.hash(state);
+                2u8.hash(state);
                 n.hash(state);
             },
             Value::U32(n) => {
-                3.hash(state);
+                3u8.hash(state);
                 n.hash(state);
             },
             Value::U64(n) => {
-                4.hash(state);
+                4u8.hash(state);
                 n.hash(state);
             },
             Value::U128(n) => {
-                5.hash(state);
+                5u8.hash(state);
                 n.hash(state);
             },
             Value::U256(n) => {
-                6.hash(state);
+                6u8.hash(state);
                 n.hash(state);
             },
             Value::String(n) => {
-                7.hash(state);
+                7u8.hash(state);
                 n.hash(state);
             },
             Value::Boolean(n) => {
-                8.hash(state);
+                8u8.hash(state);
                 n.hash(state);
             },
             Value::Range(start, end, range_type) => {
-                9.hash(state);
+                9u8.hash(state);
                 start.hash(state);
                 end.hash(state);
                 range_type.hash(state);
             },
             Value::Blob(n) => {
-                10.hash(state);
+                10u8.hash(state);
                 n.hash(state);
             }
         }

@@ -112,18 +112,21 @@ impl ValueCell {
                 v.hash(state);
             },
             ValueCell::Struct(fields, _) => {
+                11u8.hash(state);
                 fields.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
             ValueCell::Array(array) => {
+                12u8.hash(state);
                 array.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
             ValueCell::Optional(v) => {
+                13u8.hash(state);
                 if let Some(v) = v {
                     v.borrow()
                         .hash_with_pointers(state, tracked_pointers);
@@ -132,6 +135,7 @@ impl ValueCell {
                 }
             },
             ValueCell::Map(map) => {
+                14u8.hash(state);
                 map.iter()
                     .for_each(|(k, v)| {
                         k.hash(state);
@@ -140,6 +144,7 @@ impl ValueCell {
                     });
             },
             ValueCell::Enum(fields, _) => {
+                15u8.hash(state);
                 fields.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)

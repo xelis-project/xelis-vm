@@ -54,29 +54,29 @@ impl Hash for Constant {
             match value {
                 Self::Default(v) => v.hash(state),
                 Self::Struct(fields, struct_type) => {
-                    10.hash(state);
+                    11u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     struct_type.hash(state);
                 },
                 Self::Array(values) => {
-                    11.hash(state);
+                    12u8.hash(state);
                     values.iter().for_each(|f| stack.push(f));
                 },
                 Self::Optional(opt) => {
-                    12.hash(state);
+                    13u8.hash(state);
                     if let Some(value) = opt {
                         stack.push(value);
                     }
                 },
                 Self::Map(map) => {
-                    13.hash(state);
+                    14u8.hash(state);
                     for (key, value) in map {
                         stack.push(&key);
                         stack.push(&value);
                     }
                 },
                 Self::Enum(fields, enum_type) => {
-                    14.hash(state);
+                    15u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     enum_type.hash(state);
                 }
