@@ -2,7 +2,7 @@ pub mod xstd;
 
 use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
-use xelis_types::{Type, Constant};
+use xelis_types::{Constant, EnumType, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
 
@@ -47,16 +47,18 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a structure in the environment
     // Panic if the structure name is already used
-    pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) {
+    pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) -> StructType {
         let _type = self.struct_manager.build(Cow::Borrowed(name), fields).unwrap();
-        self.env.add_structure(_type);
+        self.env.add_structure(_type.clone());
+        _type
     }
 
     // Register an enum in the environment
     // Panic if the enum name is already used
-    pub fn register_enum(&mut self, name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) {
+    pub fn register_enum(&mut self, name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) -> EnumType {
         let _type = self.enum_manager.build(Cow::Borrowed(name), variants).unwrap();
-        self.env.add_enum(_type);
+        self.env.add_enum(_type.clone());
+        _type
     }
 
     // Register a constant in the environment
