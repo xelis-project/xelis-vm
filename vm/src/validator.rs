@@ -53,7 +53,7 @@ pub enum ValidatorError<'a> {
     #[error("empty module")]
     EmptyModule,
     #[error("invalid entry id")]
-    InvalidEntryId,
+    InvalidEntryId(usize),
     #[error(transparent)]
     ValueError(#[from] ValueError)
 }
@@ -230,7 +230,7 @@ impl<'a> ModuleValidator<'a> {
         // Verify that the entry ids are valid
         for entry_id in self.module.chunks_entry_ids() {
             if len >= *entry_id {
-                return Err(ValidatorError::InvalidEntryId);
+                return Err(ValidatorError::InvalidEntryId(*entry_id));
             }
         }
 
