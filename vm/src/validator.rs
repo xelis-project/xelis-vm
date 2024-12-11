@@ -52,7 +52,7 @@ pub enum ValidatorError<'a> {
     MapAsKeyNotAllowed,
     #[error("empty module")]
     EmptyModule,
-    #[error("invalid entry id")]
+    #[error("invalid entry id {0}")]
     InvalidEntryId(usize),
     #[error(transparent)]
     ValueError(#[from] ValueError)
