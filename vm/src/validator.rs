@@ -229,7 +229,7 @@ impl<'a> ModuleValidator<'a> {
 
         // Verify that the entry ids are valid
         for entry_id in self.module.chunks_entry_ids() {
-            if len >= *entry_id {
+            if *entry_id >= len {
                 return Err(ValidatorError::InvalidEntryId(*entry_id));
             }
         }
