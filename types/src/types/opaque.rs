@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{any::{Any, TypeId}, fmt::{Debug, Display}, rc::Rc};
+use std::{any::{Any, TypeId}, fmt::{Debug, Display}, sync::Arc};
 
 pub trait OpaqueValue: Any + Debug {
     fn as_any(&self) -> &dyn Any;
@@ -12,11 +12,11 @@ pub trait OpaqueValue: Any + Debug {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct OpaqueType(Rc<TypeId>);
+pub struct OpaqueType(Arc<TypeId>);
 
 impl OpaqueType {
     pub fn new<T: OpaqueValue + 'static>() -> Self {
-        Self(Rc::new(TypeId::of::<T>()))
+        Self(Arc::new(TypeId::of::<T>()))
     }
 }
 
