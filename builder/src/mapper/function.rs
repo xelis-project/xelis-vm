@@ -7,6 +7,7 @@ use super::Mapper;
 
 /// Function structure
 /// It contains the name of the function and its parameters
+#[derive(Debug)]
 pub struct Function<'a> {
     pub name: &'a str,
     pub parameters: Vec<(&'a str, Type)>,
@@ -14,6 +15,7 @@ pub struct Function<'a> {
 
 /// FunctionMapper is used to store the mapping between function signatures and their identifiers
 /// So we can reduce the memory footprint of the VM by using an incremented id
+#[derive(Debug)]
 pub struct FunctionMapper<'a> {
     mapper: Mapper<'a, Signature>,
     parent: Option<&'a FunctionMapper<'a>>,

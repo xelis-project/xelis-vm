@@ -4,6 +4,8 @@ use xelis_types::{Value, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("invalid return value")]
+    InvalidReturnValue,
     #[error("division by zero")]
     DivisionByZero,
     #[error("illegal call: entry chunk")]

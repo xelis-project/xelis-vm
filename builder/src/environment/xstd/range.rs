@@ -77,7 +77,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
         Type::U64 => contains!(u64, start, end, value),
         Type::U128 => contains!(u128, start, end, value),
         Type::U256 => contains!(u256, start, end, value),
-        _ => return Err(EnvironmentError::InvalidType(zelf.clone().into()))
+        _ => return Err(EnvironmentError::InvalidType(_type.clone()))
     }))
 }
 
@@ -111,7 +111,7 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
 
             ValueCell::Array(vec)
         }
-        _ => return Err(EnvironmentError::InvalidType(zelf.clone().into()))
+        _ => return Err(EnvironmentError::InvalidType(_type.clone()))
     }))
 }
 
@@ -138,6 +138,6 @@ fn count(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
         Type::U64 => count!(U64, start, end, u64),
         Type::U128 => count!(U128, start, end, u128),
         Type::U256 => count!(U256, start, end, u256),
-        _ => return Err(EnvironmentError::InvalidType(zelf.clone().into()))
+        _ => return Err(EnvironmentError::InvalidType(_type.clone()))
     }))
 }

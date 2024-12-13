@@ -1,11 +1,13 @@
 use xelis_types::{EnumType, EnumVariant, IdentifierType, Type};
 use super::{Builder, BuilderType, TypeManager};
 
+#[derive(Debug)]
 pub struct EnumBuilder<'a> {
     inner: EnumTypeBuilder<'a>,
     variants_names: Vec<&'a str>
 }
 
+#[derive(Debug)]
 pub struct EnumTypeBuilder<'a> {
     inner: EnumType,
     variants: Vec<EnumVariantBuilder<'a>>

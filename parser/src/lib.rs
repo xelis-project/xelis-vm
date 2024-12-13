@@ -286,7 +286,10 @@ impl<'a> Parser<'a> {
                     Type::Struct(builder.get_type().clone())
                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
                     Type::Enum(builder.get_type().clone())
-                } else {
+                } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
+                    Type::Opaque(ty.clone())
+                }
+                else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
             },
@@ -1584,6 +1587,15 @@ impl<'a> Parser<'a> {
         Ok(ok)
     }
 
+    // Verify if we allow function declaration on a type
+    fn allow_fn_declaration_on_type(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Struct(ty) => self.global_mapper.structs().is_defined(ty),
+            Type::Enum(ty) => self.global_mapper.enums().is_defined(ty),
+            _ => false
+        }
+    }
+
     /**
      * Examples:
      * - entry foo() { ... }
@@ -1603,6 +1615,11 @@ impl<'a> Parser<'a> {
         let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
+
+            if !self.allow_fn_declaration_on_type(&for_type) {
+                return Err(err!(self, ParserErrorKind::InvalidFunctionType(for_type)))
+            }
+
             let id = context.register_variable(instance_name, for_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(instance_name)))?;
 
@@ -2320,7 +2337,7 @@ mod tests {
     }
 
     #[test]
-    fn test_function_on_type() {
+    fn test_function_on_type_err() {
         // fn (f Foo) bar() {}
         let tokens = vec![
             Token::Function,
@@ -2337,7 +2354,36 @@ mod tests {
 
         let mut env = EnvironmentBuilder::new();
         env.register_structure("Foo", Vec::new());
-        let program = test_parser_with_env(tokens, &env);
+        let parser = Parser::new(tokens, &env);
+        let err = parser.parse().unwrap_err();
+        assert!(
+            matches!(err.kind, ParserErrorKind::InvalidFunctionType(_))
+        )
+    }
+
+    #[test]
+    fn test_function_on_declared_type() {
+        // struct Foo {}
+        // fn (f Foo) bar() {}
+        let tokens = vec![
+            Token::Struct,
+            Token::Identifier("Foo"),
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Function,
+            Token::ParenthesisOpen,
+            Token::Identifier("f"),
+            Token::Identifier("Foo"),
+            Token::ParenthesisClose,
+            Token::Identifier("bar"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.structures().len(), 1);
         assert_eq!(program.functions().len(), 1);
     }
 

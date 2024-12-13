@@ -66,6 +66,10 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         }
     }
 
+    pub fn is_defined(&self, ty: &T::Type) -> bool {
+        self.types.iter().any(|v| v.get_type() == ty)
+    }
+
     fn build_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<T, BuilderError> {
         if self.mapper.has_variable(&name) {
             return Err(BuilderError::StructNameAlreadyUsed);

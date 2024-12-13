@@ -181,7 +181,7 @@ impl<'a> VM<'a> {
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
-    pub fn run(&mut self) -> Result<Constant, VMError> {
+    pub fn run(&mut self) -> Result<ValueCell, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
@@ -207,6 +207,6 @@ impl<'a> VM<'a> {
             return Err(VMError::StackNotCleaned);
         }
 
-        Ok(end_value.into())
+        Ok(end_value)
     }
 }

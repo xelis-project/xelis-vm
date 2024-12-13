@@ -98,16 +98,27 @@ impl From<Value> for Constant {
     }
 }
 
-impl From<ValueCell> for Constant {
-    fn from(cell: ValueCell) -> Self {
-        match cell {
+impl TryFrom<ValueCell> for Constant {
+    type Error = &'static str;
+
+    fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
+        Ok(match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().into()).collect(), struct_type),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().into()).collect()),
-            ValueCell::Optional(opt) => Self::Optional(opt.map(|v| Box::new(v.into_owned().into()))),
-            ValueCell::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into_owned().into())).collect()),
-            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().into()).collect(), enum_type),
-        }
+            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
+            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?),
+            ValueCell::Optional(opt) => match opt {
+                Some(value) => Self::Optional(Some(Box::new(value.into_owned().try_into()?))),
+                None => Self::Optional(None)
+            },
+            ValueCell::Map(map) => {
+                let m = map.into_iter()
+                    .map(|(k, v)| Ok((k.into_owned().try_into()?, v.into_owned().try_into()?)))
+                    .collect::<Result<IndexMap<_, _>, _>>()?;
+                Self::Map(m)
+            },
+            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
+            ValueCell::Opaque(_, _) => return Err("Cannot convert opaque value to constant")            
+        })
     }
 }
 

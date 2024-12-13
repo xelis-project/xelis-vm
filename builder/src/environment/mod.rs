@@ -2,7 +2,7 @@ pub mod xstd;
 
 use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
-use xelis_types::{Constant, EnumType, StructType, Type};
+use xelis_types::{Constant, EnumType, OpaqueType, OpaqueValue, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
 
@@ -13,6 +13,7 @@ pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
+    opaque_manager: HashMap<&'a str, OpaqueType>,
     constants: HashMap<Type, HashMap<&'a str, Constant>>,
     env: Environment
 }
@@ -24,6 +25,7 @@ impl<'a> EnvironmentBuilder<'a> {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
             enum_manager: EnumManager::new(),
+            opaque_manager: HashMap::new(),
             constants: HashMap::new(),
             env: Environment::new(),
         }
@@ -59,6 +61,20 @@ impl<'a> EnvironmentBuilder<'a> {
         let _type = self.enum_manager.build(Cow::Borrowed(name), variants).unwrap();
         self.env.add_enum(_type.clone());
         _type
+    }
+
+    // Register an opaque type in the environment
+    // Panic if the opaque name is already used
+    pub fn register_opaque<T: OpaqueValue>(&mut self, name: &'a str) -> OpaqueType {
+        let _type = OpaqueType::new::<T>();
+        self.opaque_manager.insert(name, _type.clone());
+        self.env.add_opaque(_type.clone());
+        _type
+    }
+
+    // Get an opaque type by name
+    pub fn get_opaque_by_name(&self, name: &str) -> Option<&OpaqueType> {
+        self.opaque_manager.get(name)
     }
 
     // Register a constant in the environment

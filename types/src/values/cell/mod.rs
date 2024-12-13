@@ -8,8 +8,8 @@ use std::{
     ops::{Deref, DerefMut},
     ptr
 };
-use crate::{EnumValueType, StructType, Type, U256};
-use super::{Value, ValueError, SubValue, Constant};
+use crate::{EnumValueType, Opaque, OpaqueType, StructType, Type, U256};
+use super::{Constant, SubValue, Value, ValueError};
 
 pub use path::*;
 
@@ -25,6 +25,7 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     Map(HashMap<ValueCell, SubValue>),
     Enum(Vec<SubValue>, EnumValueType),
+    Opaque(Opaque, OpaqueType)
 }
 
 // Wrapper to drop the value without stackoverflow
@@ -33,14 +34,14 @@ pub struct ValueCellWrapper(pub ValueCell);
 
 impl Drop for ValueCellWrapper {
     fn drop(&mut self) {
-        if matches!(self.0, ValueCell::Default(_)) {
+        if matches!(self.0, ValueCell::Default(_) | ValueCell::Opaque(_, _)) {
             return
         }
 
         let mut stack = vec![std::mem::take(&mut self.0)];
         while let Some(value) = stack.pop() {
             match value {
-                ValueCell::Default(_) => {},
+                ValueCell::Default(_) | ValueCell::Opaque(_, _) => {},
                 ValueCell::Struct(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
                 ValueCell::Array(values) => stack.extend(values.into_iter().map(SubValue::into_owned)),
                 ValueCell::Optional(opt) => {
@@ -149,6 +150,10 @@ impl ValueCell {
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
+            },
+            ValueCell::Opaque(_, ty) => {
+                16u8.hash(state);
+                ty.hash(state);
             }
         }
     }
@@ -175,7 +180,7 @@ impl ValueCell {
             let handle = next.as_ref();
             let value = handle.as_value();
             match value {
-                ValueCell::Default(_) => {},
+                ValueCell::Default(_) | ValueCell::Opaque(_, _) => {},
                 ValueCell::Array(values) => {
                     for value in values {
                         stack.push((Path::Wrapper(value.clone()), depth + 1));
@@ -201,7 +206,7 @@ impl ValueCell {
                     for field in fields {
                         stack.push((Path::Wrapper(field.clone()), depth + 1));
                     }
-                }
+                },
             };
         }
 
@@ -665,7 +670,8 @@ impl ValueCell {
                     new_fields.push(field.into_owned().into());
                 }
                 Self::Enum(new_fields, _type)
-            }
+            },
+            Self::Opaque(opaque, ty) => Self::Opaque(opaque, ty)
         }
     }
 }
@@ -693,7 +699,8 @@ impl fmt::Display for ValueCell {
             Self::Enum(fields, enum_type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
-            }
+            },
+            Self::Opaque(opaque, _) => write!(f, "{}", opaque)
         }
     }
 }
