@@ -1,5 +1,5 @@
 use thiserror::Error;
-use xelis_types::{Type, ValueError};
+use xelis_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {
@@ -19,8 +19,8 @@ pub enum EnvironmentError {
     InvalidRange(u32, u32),
     #[error("No value found at index: {0}")]
     NoValueFoundAtIndex(u32),
-    #[error("Invalid type: {0}")]
-    InvalidType(Type),
+    #[error("Invalid type")]
+    InvalidType,
     #[error(transparent)]
     ValueError(#[from] ValueError),
     #[error("Invalid range: too large")]
