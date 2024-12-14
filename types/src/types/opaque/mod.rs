@@ -1,3 +1,6 @@
+mod hash;
+mod r#type;
+
 use core::fmt;
 use std::{
     any::{Any, TypeId},
@@ -9,7 +12,10 @@ use serde_json::Value;
 
 use crate::ValueError;
 
-pub trait Opaque: Any + Debug + Send + Sync {
+pub use hash::DynHash;
+pub use r#type::OpaqueType;
+
+pub trait Opaque: Any + Debug + DynHash {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -25,22 +31,17 @@ pub trait Opaque: Any + Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 
     fn to_json(&self) -> Value;
-
-    fn try_hash(&self, _: &mut dyn Hasher) {}
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct OpaqueType(TypeId);
-
-impl OpaqueType {
-    pub fn new<T: Opaque>() -> Self {
-        Self(TypeId::of::<T>())
+impl Hash for dyn Opaque {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dyn_hash(state);
     }
 }
 
 /// An Opaque value that can be used to store any type
 /// This allow environments to provide custom types to the VM
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub struct OpaqueWrapper(Box<dyn Opaque>);
 
 impl OpaqueWrapper {
@@ -49,19 +50,13 @@ impl OpaqueWrapper {
     }
 
     pub fn get_type(&self) -> OpaqueType {
-        OpaqueType(self.0.type_id())
+        OpaqueType::from(self.0.get_type())
     }
 
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
         self.0.as_any()
             .downcast_ref::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
-    }
-}
-
-impl Hash for OpaqueWrapper {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.try_hash(state)
     }
 }
 
@@ -81,6 +76,10 @@ impl Clone for OpaqueWrapper {
 
 impl PartialEq for OpaqueWrapper {
     fn eq(&self, other: &Self) -> bool {
+        if self.0.get_type() != other.0.get_type() {
+            return false;
+        }
+
         self.0.is_equal(other.0.as_ref())
     }
 }
@@ -92,3 +91,42 @@ impl Display for OpaqueWrapper {
 }
 
 impl Eq for OpaqueWrapper {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, Hash)]
+    struct CustomOpaque {
+        value: i32,
+    }
+
+    impl Opaque for CustomOpaque {
+        fn get_type(&self) -> TypeId {
+            TypeId::of::<CustomOpaque>()
+        }
+
+        fn clone_box(&self) -> Box<dyn Opaque> {
+            Box::new(self.clone())
+        }
+
+        fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "CustomOpaque({})", self.value)
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn to_json(&self) -> Value {
+            Value::Number(self.value.into())
+        }
+    }
+
+    #[test]
+    fn test_opaque_wrapper() {
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        assert_eq!(opaque.to_string(), "CustomOpaque(42)");
+        assert_eq!(opaque.get_type().as_type_id(), TypeId::of::<CustomOpaque>());
+    }
+}

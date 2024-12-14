@@ -101,6 +101,7 @@ impl Type {
             Value::Boolean(_) => Type::Bool,
             Value::Blob(_type) => Type::Blob,
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
+            Value::Opaque(opaque) => Type::Opaque(opaque.get_type()),
         })
     }
 
@@ -118,7 +119,6 @@ impl Type {
                 Type::Map(Box::new(key), Box::new(value))
             },
             Constant::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
-            Constant::Opaque(opaque) => Type::Opaque(opaque.get_type()),
         })
     }
 

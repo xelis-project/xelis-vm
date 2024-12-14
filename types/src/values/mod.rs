@@ -8,6 +8,8 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher}
 };
+use crate::OpaqueWrapper;
+
 use super::{
     Type,
     U256
@@ -17,7 +19,7 @@ pub use pointer::*;
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -35,7 +37,7 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Value {
     Null,
@@ -51,6 +53,9 @@ pub enum Value {
     Range(Box<Value>, Box<Value>, Type),
     // Blob represents a binary data
     Blob(Vec<u8>),
+
+    // Opaque Type injected by the environment
+    Opaque(OpaqueWrapper)
 }
 
 impl PartialOrd for Value {
@@ -111,6 +116,10 @@ impl Hash for Value {
             },
             Value::Blob(n) => {
                 10u8.hash(state);
+                n.hash(state);
+            },
+            Value::Opaque(n) => {
+                11u8.hash(state);
                 n.hash(state);
             }
         }
@@ -543,6 +552,7 @@ impl std::fmt::Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
             Value::Blob(b) => write!(f, "{:?}", b),
+            Value::Opaque(o) => write!(f, "{}", o)
         }
     }
 }

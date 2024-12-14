@@ -97,7 +97,6 @@ impl From<Constant> for ValueCell {
             Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
             Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
-            Constant::Opaque(opaque) => Self::Opaque(opaque)
         }
     }
 }

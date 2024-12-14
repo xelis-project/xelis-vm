@@ -186,8 +186,8 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += blob.len();
                     },
+                    Value::Opaque(_) => memory_usage += 8, // TODO
                 },
-                Constant::Opaque(_) => memory_usage += 1,
             }
         }
 
