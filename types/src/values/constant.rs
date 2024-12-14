@@ -117,7 +117,7 @@ impl TryFrom<ValueCell> for Constant {
                 Self::Map(m)
             },
             ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
-            ValueCell::Opaque(_, _) => return Err("Cannot convert opaque value to constant")            
+            ValueCell::Opaque(_) => return Err("Cannot convert opaque value to constant")            
         })
     }
 }

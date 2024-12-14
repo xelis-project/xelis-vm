@@ -84,8 +84,12 @@ pub struct VM<'a> {
 
 impl<'a> VM<'a> {
     // Create a new VM
+    // Insert the environment as a reference in the context
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self::with(module, environment, InstructionTable::new(), Context::default())
+        let mut context = Context::default();
+        context.insert_ref(environment);
+
+        Self::with(module, environment, InstructionTable::new(), context)
     }
 
     // Create a new VM with a given table and context
