@@ -452,6 +452,14 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn as_mut_opaque(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+        match self {
+            Self::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
     pub fn as_sub_vec(&self) -> Result<&Vec<SubValue>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
