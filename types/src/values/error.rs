@@ -14,6 +14,8 @@ pub enum ValueError {
     InvalidValueType(Constant, Type),
     #[error("Expected a value of type {0:?}")]
     ExpectedValueOfType(Type),
+    #[error("Expected opaque value")]
+    ExpectedOpaque,
     #[error("expected a struct")]
     ExpectedStruct,
     #[error("Invalid cast type: {0:?}")]
