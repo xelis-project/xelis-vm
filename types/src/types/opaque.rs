@@ -30,7 +30,7 @@ impl OpaqueType {
 pub struct OpaqueWrapper(Box<dyn Opaque>);
 
 impl OpaqueWrapper {
-    pub fn new<T: Opaque + 'static>(value: T) -> Self {
+    pub fn new<T: Opaque>(value: T) -> Self {
         Self(Box::new(value))
     }
 
