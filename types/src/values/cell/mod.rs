@@ -25,7 +25,6 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     Map(HashMap<ValueCell, SubValue>),
     Enum(Vec<SubValue>, EnumValueType),
-    Opaque(OpaqueWrapper)
 }
 
 // Wrapper to drop the value without stackoverflow
@@ -34,14 +33,14 @@ pub struct ValueCellWrapper(pub ValueCell);
 
 impl Drop for ValueCellWrapper {
     fn drop(&mut self) {
-        if matches!(self.0, ValueCell::Default(_) | ValueCell::Opaque(_)) {
+        if matches!(self.0, ValueCell::Default(_)) {
             return
         }
 
         let mut stack = vec![std::mem::take(&mut self.0)];
         while let Some(value) = stack.pop() {
             match value {
-                ValueCell::Default(_) | ValueCell::Opaque(_) => {},
+                ValueCell::Default(_) => {},
                 ValueCell::Struct(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
                 ValueCell::Array(values) => stack.extend(values.into_iter().map(SubValue::into_owned)),
                 ValueCell::Optional(opt) => {
@@ -151,17 +150,13 @@ impl ValueCell {
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
-            ValueCell::Opaque(opaque) => {
-                16u8.hash(state);
-                opaque.hash(state);
-            }
         }
     }
 
     // Calculate the depth of the value
     pub fn calculate_depth(&self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
-        if matches!(self, Self::Default(_) | Self::Opaque(_)) {
+        if matches!(self, Self::Default(_)) {
             return Ok(0);
         }
 
@@ -180,7 +175,7 @@ impl ValueCell {
             let handle = next.as_ref();
             let value = handle.as_value();
             match value {
-                ValueCell::Default(_) | ValueCell::Opaque(_) => {},
+                ValueCell::Default(_) => {},
                 ValueCell::Array(values) => {
                     for value in values {
                         stack.push((Path::Wrapper(value.clone()), depth + 1));
@@ -438,7 +433,7 @@ impl ValueCell {
     #[inline]
     pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
         match self {
-            Self::Opaque(opaque) => Ok(opaque),
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -446,15 +441,15 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
         match self {
-            Self::Opaque(opaque) => Ok(opaque),
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
 
     #[inline]
-    pub fn as_mut_opaque(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+    pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
-            Self::Opaque(opaque) => Ok(opaque),
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -694,8 +689,7 @@ impl ValueCell {
                     new_fields.push(field.into_owned().into());
                 }
                 Self::Enum(new_fields, _type)
-            },
-            Self::Opaque(opaque) => Self::Opaque(opaque)
+            }
         }
     }
 }
@@ -723,8 +717,7 @@ impl fmt::Display for ValueCell {
             Self::Enum(fields, enum_type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
                 write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
-            },
-            Self::Opaque(opaque) => write!(f, "{}", opaque)
+            }
         }
     }
 }

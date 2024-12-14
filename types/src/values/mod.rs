@@ -302,6 +302,27 @@ impl Value {
         }
     }
 
+    pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
     // Increment the value
     pub fn increment(&mut self) -> Result<(), ValueError> {
         Ok(match self {

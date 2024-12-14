@@ -30,6 +30,8 @@ pub trait Opaque: Any + Debug + DynHash {
 
     fn as_any(&self) -> &dyn Any;
 
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
     fn to_json(&self) -> Value;
 }
 
@@ -56,6 +58,12 @@ impl OpaqueWrapper {
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
         self.0.as_any()
             .downcast_ref::<T>()
+            .ok_or(ValueError::InvalidOpaqueTypeMismatch)
+    }
+
+    pub fn as_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
+        self.0.as_any_mut()
+            .downcast_mut::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 }
@@ -115,6 +123,10 @@ mod tests {
         }
 
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
 
