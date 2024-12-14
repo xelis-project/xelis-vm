@@ -1,11 +1,11 @@
 use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use crate::{EnumValueType, StructType, Type, U256};
+use crate::{EnumValueType, OpaqueWrapper, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Constant {
     Default(Value),
@@ -17,10 +17,12 @@ pub enum Constant {
     // Map cannot be used as a key in another map
     Map(IndexMap<Constant, Constant>),
     Enum(Vec<Constant>, EnumValueType),
+
+    Opaque(OpaqueWrapper),
 }
 
 // Wrapper to drop the value without stackoverflow
-#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct ConstantWrapper(pub Constant);
 
@@ -33,7 +35,7 @@ impl Drop for ConstantWrapper {
         let mut stack = vec![std::mem::take(&mut self.0)];
         while let Some(value) = stack.pop() {
             match value {
-                Constant::Default(_) => {},
+                Constant::Default(_) | Constant::Opaque(_) => {},
                 Constant::Struct(fields, _) => stack.extend(fields),
                 Constant::Array(values) => stack.extend(values),
                 Constant::Optional(opt) => {
@@ -80,6 +82,10 @@ impl Hash for Constant {
                     15u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     enum_type.hash(state);
+                },
+                Self::Opaque(opaque) => {
+                    16u8.hash(state);
+                    opaque.hash(state);
                 }
             }
         }
@@ -581,7 +587,8 @@ impl fmt::Display for Constant {
             Self::Enum(fields, enum_type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
-            }
+            },
+            Self::Opaque(opaque) => write!(f, "{}", opaque)
         }
     }
 }

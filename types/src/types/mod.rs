@@ -118,6 +118,7 @@ impl Type {
                 Type::Map(Box::new(key), Box::new(value))
             },
             Constant::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
+            Constant::Opaque(opaque) => Type::Opaque(opaque.get_type()),
         })
     }
 

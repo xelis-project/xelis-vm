@@ -2,11 +2,14 @@ use core::fmt;
 use std::{
     any::{Any, TypeId},
     fmt::{Debug, Display},
-    sync::Arc
+    hash::{Hash, Hasher},
 };
+use serde::Serialize;
+use serde_json::Value;
+
 use crate::ValueError;
 
-pub trait Opaque: Any + Debug {
+pub trait Opaque: Any + Debug + Send + Sync {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -20,14 +23,18 @@ pub trait Opaque: Any + Debug {
     }
 
     fn as_any(&self) -> &dyn Any;
+
+    fn to_json(&self) -> Value;
+
+    fn try_hash(&self, _: &mut dyn Hasher) {}
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct OpaqueType(Arc<TypeId>);
+pub struct OpaqueType(TypeId);
 
 impl OpaqueType {
-    pub fn new<T: Opaque + 'static>() -> Self {
-        Self(Arc::new(TypeId::of::<T>()))
+    pub fn new<T: Opaque>() -> Self {
+        Self(TypeId::of::<T>())
     }
 }
 
@@ -41,14 +48,28 @@ impl OpaqueWrapper {
         Self(Box::new(value))
     }
 
-    pub fn get_type(&self) -> TypeId {
-        self.0.type_id()
+    pub fn get_type(&self) -> OpaqueType {
+        OpaqueType(self.0.type_id())
     }
 
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
         self.0.as_any()
             .downcast_ref::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
+    }
+}
+
+impl Hash for OpaqueWrapper {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.try_hash(state)
+    }
+}
+
+impl Serialize for OpaqueWrapper {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0
+            .to_json()
+            .serialize(serializer)
     }
 }
 

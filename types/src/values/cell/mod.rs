@@ -96,7 +96,8 @@ impl From<Constant> for ValueCell {
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type)
+            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
+            Constant::Opaque(opaque) => Self::Opaque(opaque)
         }
     }
 }
@@ -153,7 +154,7 @@ impl ValueCell {
             },
             ValueCell::Opaque(opaque) => {
                 16u8.hash(state);
-                opaque.get_type().hash(state);
+                opaque.hash(state);
             }
         }
     }
