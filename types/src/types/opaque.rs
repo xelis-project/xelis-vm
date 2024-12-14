@@ -1,5 +1,10 @@
 use core::fmt;
-use std::{any::{Any, TypeId}, fmt::{Debug, Display}, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    fmt::{Debug, Display},
+    sync::Arc
+};
+use crate::ValueError;
 
 pub trait Opaque: Any + Debug {
     fn get_type(&self) -> TypeId;
@@ -13,6 +18,8 @@ pub trait Opaque: Any + Debug {
     fn is_equal(&self, _: &dyn Opaque) -> bool {
         false
     }
+
+    fn as_any(&self) -> &dyn Any;
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -36,6 +43,12 @@ impl OpaqueWrapper {
 
     pub fn get_type(&self) -> TypeId {
         self.0.type_id()
+    }
+
+    pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
+        self.0.as_any()
+            .downcast_ref::<T>()
+            .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 }
 
