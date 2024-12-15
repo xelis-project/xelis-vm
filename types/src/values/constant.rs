@@ -1,11 +1,11 @@
 use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Constant {
     Default(Value),
@@ -20,7 +20,7 @@ pub enum Constant {
 }
 
 // Wrapper to drop the value without stackoverflow
-#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ConstantWrapper(pub Constant);
 

@@ -19,7 +19,7 @@ pub use pointer::*;
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -37,7 +37,7 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Value {
     Null,

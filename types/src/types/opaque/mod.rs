@@ -2,6 +2,7 @@ mod hash;
 mod eq;
 mod any;
 mod r#type;
+mod json;
 
 use core::fmt;
 use std::{
@@ -9,7 +10,7 @@ use std::{
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
 };
-use serde::Serialize;
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ValueError;
@@ -18,8 +19,9 @@ pub use hash::DynHash;
 pub use eq::DynEq;
 pub use any::AsAny;
 pub use r#type::OpaqueType;
+pub use json::*;
 
-pub trait Opaque: DynHash + DynEq + Debug + Sync + Send {
+pub trait Opaque: DynHash + DynEq + JSONHelper + Debug + Sync + Send {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -27,8 +29,6 @@ pub trait Opaque: DynHash + DynEq + Debug + Sync + Send {
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Opaque")
     }
-
-    fn to_json(&self) -> Value;
 }
 
 impl Hash for dyn Opaque {
@@ -76,9 +76,38 @@ impl OpaqueWrapper {
 
 impl Serialize for OpaqueWrapper {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0
-            .to_json()
-            .serialize(serializer)
+        let mut structure = serializer.serialize_struct("OpaqueWrapper", 2)?;
+        structure.serialize_field("type", &self.0.get_type_name())?;
+
+        let value = self.0.serialize_json()
+            .map_err(serde::ser::Error::custom)?;
+
+        structure.serialize_field("value", &value)?;
+        structure.end()
+    }
+}
+
+impl<'a> Deserialize<'a> for OpaqueWrapper {
+    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct OpaqueWrapperData {
+            #[serde(rename = "type")]
+            type_: String,
+            value: Value,
+        }
+
+        let data = OpaqueWrapperData::deserialize(deserializer)?;
+        let type_name = data.type_;
+        let value = data.value;
+
+        let registry = JSON_REGISTRY.read()
+            .map_err(serde::de::Error::custom)?;
+
+        let deserialize_fn = registry.get(&type_name.as_str())
+            .ok_or(serde::de::Error::custom("Unknown type"))?;
+
+        deserialize_fn(value)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -96,9 +125,11 @@ impl Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
+    use crate::register_opaque;
+
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct CustomOpaque {
         value: i32,
     }
@@ -115,10 +146,6 @@ mod tests {
         fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "CustomOpaque({})", self.value)
         }
-
-        fn to_json(&self) -> Value {
-            Value::Number(self.value.into())
-        }
     }
 
     #[test]
@@ -133,6 +160,18 @@ mod tests {
 
         // Test equality
         let opaque2 = opaque.clone();
+        assert_eq!(opaque, opaque2);
+    }
+
+    #[test]
+    fn test_opaque_serde() {
+        register_opaque!("CustomOpaque", CustomOpaque);
+
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let json = serde_json::to_string(&opaque).unwrap();
+        assert_eq!(json, r#"{"type":"CustomOpaque","value":{"value":42}}"#);
+
+        let opaque2: OpaqueWrapper = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque, opaque2);
     }
 }

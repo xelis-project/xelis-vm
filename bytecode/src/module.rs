@@ -1,12 +1,12 @@
 use indexmap::IndexSet;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use xelis_types::{Constant, ConstantWrapper, EnumType, StructType};
 
 use super::Chunk;
 
 // A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
     constants: IndexSet<ConstantWrapper>,
