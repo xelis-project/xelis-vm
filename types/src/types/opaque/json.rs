@@ -30,7 +30,7 @@ macro_rules! register_opaque {
                 let value: $type = serde_json::from_value(value)
                     .context("Failed to deserialize JSON")?;
 
-                Ok(OpaqueWrapper::new(value))
+                Ok($crate::types::opaque::OpaqueWrapper::new(value))
             }));
     };
 }
