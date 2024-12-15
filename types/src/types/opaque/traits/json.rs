@@ -46,7 +46,7 @@ pub trait JSONHelper {
 
     // Check if the type is supported by the JSON serialization
     // By default, return true
-    fn is_supported(&self) -> bool {
+    fn is_json_supported(&self) -> bool {
         true
     }
 }

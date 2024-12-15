@@ -455,6 +455,14 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn is_serializable(&self) -> bool {
+        match self {
+            Self::Default(Value::Opaque(op)) => op.is_serializable(),
+            _ => true
+        }
+    }
+
+    #[inline]
     pub fn as_sub_vec(&self) -> Result<&Vec<SubValue>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),

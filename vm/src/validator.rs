@@ -17,6 +17,8 @@ pub enum ValidatorError<'a> {
     TooManyChunks,
     #[error("too many types")]
     TooManyTypes,
+    #[error("invalid opaque")]
+    InvalidOpaque,
 
     #[error("too many structs")]
     TooManyStructs,
@@ -186,7 +188,13 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += blob.len();
                     },
-                    Value::Opaque(_) => memory_usage += 8, // TODO
+                    Value::Opaque(opaque) => {
+                        if !self.environment.get_opaques().contains(&opaque.get_type()) {
+                            return Err(ValidatorError::InvalidOpaque);
+                        }
+
+                        memory_usage += opaque.get_size();
+                    }
                 },
             }
         }

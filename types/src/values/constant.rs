@@ -268,6 +268,14 @@ impl Constant {
     }
 
     #[inline]
+    pub fn is_serializable(&self) -> bool {
+        match self {
+            Self::Default(Value::Opaque(op)) => op.is_serializable(),
+            _ => true
+        }
+    }
+
+    #[inline]
     pub fn to_u8(self) -> Result<u8, ValueError> {
         match self {
             Self::Default(Value::U8(n)) => Ok(n),

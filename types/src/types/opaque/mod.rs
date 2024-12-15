@@ -16,7 +16,7 @@ pub use r#type::OpaqueType;
 pub mod traits;
 use traits::*;
 
-pub trait Opaque: DynHash + DynEq + JSONHelper + Debug + Sync + Send {
+pub trait Opaque: DynHash + DynEq + JSONHelper + Serializable + Debug + Sync + Send {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -67,6 +67,14 @@ impl OpaqueWrapper {
             .downcast_mut::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
+
+    pub fn is_serializable(&self) -> bool {
+        self.0.is_serializable()
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.0.get_size()
+    }
 }
 
 impl Serialize for OpaqueWrapper {
@@ -74,7 +82,7 @@ impl Serialize for OpaqueWrapper {
         let mut structure = serializer.serialize_struct("OpaqueWrapper", 2)?;
         structure.serialize_field("type", &self.0.get_type_name())?;
 
-        let value = if self.0.is_supported() {
+        let value = if self.0.is_json_supported() {
             self.0.serialize_json()
                 .map_err(serde::ser::Error::custom)?
         } else {
@@ -130,6 +138,12 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct CustomOpaque {
         value: i32,
+    }
+
+    impl Serializable for CustomOpaque {
+        fn get_size(&self) -> usize {
+            4
+        }
     }
 
     impl Opaque for CustomOpaque {
