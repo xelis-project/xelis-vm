@@ -41,5 +41,12 @@ pub trait JSONHelper {
     // and match the string used in `register_json!`
     fn get_type_name(&self) -> &'static str;
 
+    // Serialize the type to JSON
     fn serialize_json(&self) -> Result<Value, anyhow::Error>;
+
+    // Check if the type is supported by the JSON serialization
+    // By default, return true
+    fn is_supported(&self) -> bool {
+        true
+    }
 }

@@ -74,8 +74,12 @@ impl Serialize for OpaqueWrapper {
         let mut structure = serializer.serialize_struct("OpaqueWrapper", 2)?;
         structure.serialize_field("type", &self.0.get_type_name())?;
 
-        let value = self.0.serialize_json()
-            .map_err(serde::ser::Error::custom)?;
+        let value = if self.0.is_supported() {
+            self.0.serialize_json()
+                .map_err(serde::ser::Error::custom)?
+        } else {
+            Value::String("JSON not supported".to_owned())
+        };
 
         structure.serialize_field("value", &value)?;
         structure.end()
