@@ -75,6 +75,10 @@ impl OpaqueWrapper {
     pub fn get_size(&self) -> usize {
         self.0.get_size()
     }
+
+    pub fn inner(&self) -> &dyn Opaque {
+        self.0.as_ref()
+    }
 }
 
 impl Serialize for OpaqueWrapper {
