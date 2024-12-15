@@ -17,7 +17,7 @@ macro_rules! register_opaque {
                 $name
             }
     
-            fn serialize_json(&self) -> Result<Value, anyhow::Error> {
+            fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
                 Ok(serde_json::to_value(&self)?)
             }
         }
@@ -27,7 +27,9 @@ macro_rules! register_opaque {
             .insert($name, Box::new(|value| {
                 use anyhow::Context;
 
-                let value: $type = serde_json::from_value(value).context("Failed to deserialize JSON")?;
+                let value: $type = serde_json::from_value(value)
+                    .context("Failed to deserialize JSON")?;
+
                 Ok(OpaqueWrapper::new(value))
             }));
     };
