@@ -6,7 +6,7 @@ use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
-use opaque::traits::OpaqueType;
+use opaque::OpaqueType;
 
 use crate::{values::Value, Constant};
 use std::{fmt, hash::{Hash, Hasher}};

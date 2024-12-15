@@ -1,3 +1,5 @@
+mod r#type;
+
 use core::fmt;
 use std::{
     any::TypeId,
@@ -8,6 +10,8 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ValueError;
+
+pub use r#type::OpaqueType;
 
 pub mod traits;
 use traits::*;
