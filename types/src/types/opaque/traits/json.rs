@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::RwLock};
 use lazy_static::lazy_static;
 use serde_json::Value;
-use super::OpaqueWrapper;
+use crate::opaque::OpaqueWrapper;
 
 pub type DeserializeFn = dyn Fn(Value) -> Result<OpaqueWrapper, anyhow::Error> + Send + Sync;
 
@@ -12,7 +12,7 @@ lazy_static! {
 #[macro_export]
 macro_rules! register_opaque {
     ($name:expr, $type:ty) => {
-        impl $crate::types::opaque::JSONHelper for $type {
+        impl $crate::opaque::traits::JSONHelper for $type {
             fn get_type_name(&self) -> &'static str {
                 $name
             }
@@ -22,7 +22,7 @@ macro_rules! register_opaque {
             }
         }
 
-        $crate::types::opaque::JSON_REGISTRY.write()
+        $crate::opaque::JSON_REGISTRY.write()
             .unwrap()
             .insert($name, Box::new(|value| {
                 use anyhow::Context;
@@ -30,7 +30,7 @@ macro_rules! register_opaque {
                 let value: $type = serde_json::from_value(value)
                     .context("Failed to deserialize JSON")?;
 
-                Ok($crate::types::opaque::OpaqueWrapper::new(value))
+                Ok($crate::opaque::OpaqueWrapper::new(value))
             }));
     };
 }

@@ -1,12 +1,12 @@
 mod r#struct;
 mod r#enum;
-mod opaque;
+pub mod opaque;
 
 use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
-pub use opaque::*;
+use opaque::traits::OpaqueType;
 
 use crate::{values::Value, Constant};
 use std::{fmt, hash::{Hash, Hasher}};

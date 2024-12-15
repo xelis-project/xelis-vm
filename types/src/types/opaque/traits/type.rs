@@ -1,6 +1,5 @@
 use std::any::TypeId;
-
-use super::Opaque;
+use crate::opaque::Opaque;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct OpaqueType(TypeId);

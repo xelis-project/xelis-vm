@@ -1,9 +1,3 @@
-mod hash;
-mod eq;
-mod any;
-mod r#type;
-mod json;
-
 use core::fmt;
 use std::{
     any::TypeId,
@@ -15,11 +9,8 @@ use serde_json::Value;
 
 use crate::ValueError;
 
-pub use hash::DynHash;
-pub use eq::DynEq;
-pub use any::AsAny;
-pub use r#type::OpaqueType;
-pub use json::*;
+pub mod traits;
+use traits::*;
 
 pub trait Opaque: DynHash + DynEq + JSONHelper + Debug + Sync + Send {
     fn get_type(&self) -> TypeId;
@@ -126,7 +117,6 @@ impl Display for OpaqueWrapper {
 #[cfg(test)]
 mod tests {
     use crate::register_opaque;
-
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

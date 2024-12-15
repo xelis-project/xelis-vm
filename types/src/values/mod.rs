@@ -8,7 +8,7 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher}
 };
-use crate::OpaqueWrapper;
+use crate::opaque::OpaqueWrapper;
 
 use super::{
     Type,
