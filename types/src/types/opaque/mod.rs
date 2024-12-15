@@ -19,7 +19,7 @@ pub use eq::DynEq;
 pub use any::AsAny;
 pub use r#type::OpaqueType;
 
-pub trait Opaque: DynHash + DynEq + Debug {
+pub trait Opaque: DynHash + DynEq + Debug + Sync + Send {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
