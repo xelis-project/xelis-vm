@@ -12,7 +12,7 @@ lazy_static! {
 #[macro_export]
 macro_rules! register_opaque {
     ($name:expr, $type:ty) => {
-        impl JSONHelper for $type {
+        impl $crate::types::opaque::JSONHelper for $type {
             fn get_type_name(&self) -> &'static str {
                 $name
             }
