@@ -22,7 +22,7 @@ macro_rules! register_opaque {
             }
         }
 
-        $crate::opaque::JSON_REGISTRY.write()
+        $crate::traits::JSON_REGISTRY.write()
             .unwrap()
             .insert($name, Box::new(|value| {
                 use anyhow::Context;
