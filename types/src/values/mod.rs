@@ -67,6 +67,8 @@ impl PartialOrd for Value {
             (Value::U64(a), Value::U64(b)) => a.partial_cmp(b),
             (Value::U128(a), Value::U128(b)) => a.partial_cmp(b),
             (Value::U256(a), Value::U256(b)) => a.partial_cmp(b),
+            (Value::String(a), Value::String(b)) => a.partial_cmp(b),
+            (Value::Boolean(a), Value::Boolean(b)) => a.partial_cmp(b),
             _ => None
         }
     }

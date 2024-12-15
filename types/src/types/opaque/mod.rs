@@ -1,9 +1,11 @@
 mod hash;
+mod eq;
+mod any;
 mod r#type;
 
 use core::fmt;
 use std::{
-    any::{Any, TypeId},
+    any::TypeId,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
 };
@@ -13,9 +15,11 @@ use serde_json::Value;
 use crate::ValueError;
 
 pub use hash::DynHash;
+pub use eq::DynEq;
+pub use any::AsAny;
 pub use r#type::OpaqueType;
 
-pub trait Opaque: Any + Debug + DynHash {
+pub trait Opaque: DynHash + DynEq + Debug {
     fn get_type(&self) -> TypeId;
 
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -23,14 +27,6 @@ pub trait Opaque: Any + Debug + DynHash {
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Opaque")
     }
-
-    fn is_equal(&self, _: &dyn Opaque) -> bool {
-        false
-    }
-
-    fn as_any(&self) -> &dyn Any;
-
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     fn to_json(&self) -> Value;
 }
@@ -45,6 +41,16 @@ impl Hash for dyn Opaque {
 /// This allow environments to provide custom types to the VM
 #[derive(Debug, Hash)]
 pub struct OpaqueWrapper(Box<dyn Opaque>);
+
+impl PartialEq for OpaqueWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        let other = other.0.as_eq();
+        self.0.as_ref()
+            .is_equal(other)
+    }
+}
+
+impl Eq for OpaqueWrapper {}
 
 impl OpaqueWrapper {
     pub fn new<T: Opaque>(value: T) -> Self {
@@ -82,29 +88,17 @@ impl Clone for OpaqueWrapper {
     }
 }
 
-impl PartialEq for OpaqueWrapper {
-    fn eq(&self, other: &Self) -> bool {
-        if self.0.get_type() != other.0.get_type() {
-            return false;
-        }
-
-        self.0.is_equal(other.0.as_ref())
-    }
-}
-
 impl Display for OpaqueWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.display(f)
     }
 }
 
-impl Eq for OpaqueWrapper {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     struct CustomOpaque {
         value: i32,
     }
@@ -122,14 +116,6 @@ mod tests {
             write!(f, "CustomOpaque({})", self.value)
         }
 
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
-        fn as_any_mut(&mut self) -> &mut dyn Any {
-            self
-        }
-
         fn to_json(&self) -> Value {
             Value::Number(self.value.into())
         }
@@ -140,5 +126,13 @@ mod tests {
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         assert_eq!(opaque.to_string(), "CustomOpaque(42)");
         assert_eq!(opaque.get_type().as_type_id(), TypeId::of::<CustomOpaque>());
+
+        // Test hashing
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        opaque.hash(&mut hasher);
+
+        // Test equality
+        let opaque2 = opaque.clone();
+        assert_eq!(opaque, opaque2);
     }
 }
