@@ -61,7 +61,7 @@ mod tests {
         let functions = global_mapper.functions_mut();
         functions.register("test", Some(Type::Any), vec![("name", Type::String)]).unwrap();
 
-        let results = functions.get_functions_for_type(&Type::Any);
+        let results = functions.get_functions_for_type(Some(&Type::String));
         assert_eq!(results.len(), 1);
 
         assert_eq!(
