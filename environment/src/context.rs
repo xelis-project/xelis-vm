@@ -151,6 +151,12 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
+    // Insert a value into the Context without checking the type
+    #[inline]
+    pub fn insert_unchecked(&mut self, key: TypeId, data: Data<'a>) {
+        self.data.insert(key, data);
+    }
+
     // Insert a borrowed value into the Context
     #[inline]
     pub fn insert_ref<T: 'static>(&mut self, value: &'a T) {
