@@ -2182,6 +2182,41 @@ mod tests {
     }
 
     #[test]
+    fn test_shunting_yard_nested() {
+        // Test 3 + 4 * 6 - ((4 / 2) + 10 - 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(10)),
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+    
+        // Build the expected AST
+        let expected_ast = Statement::Expression(
+            Expression::Constant(Constant::Default(xelis_types::Value::U64(25 - 8)))
+        );
+
+        // Compare the parsed AST to the expected AST
+        assert_eq!(statements[0], expected_ast);
+    }
+
+    #[test]
     fn test_shunting_yard_constant() {
         // Test 3 + u8::MAX as u64 + 4 * 6 - (4 / 2)
         let tokens = vec![
