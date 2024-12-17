@@ -35,7 +35,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // Panic if the function signature is already registered
     pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let _ = self.functions_mapper.register(name, for_type.clone(), parameters).unwrap();
+        let _ = self.functions_mapper.register(name, for_type.clone(), parameters, return_type.clone()).unwrap();
         self.env.add_function(NativeFunction::new(for_type, params, on_call, cost, return_type));
     }
 

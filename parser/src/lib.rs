@@ -1656,8 +1656,11 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let id = self.global_mapper.functions_mut().register(name, for_type.clone(), parameters.clone())
+        let id = self.global_mapper
+            .functions_mut()
+            .register(name, for_type.clone(), parameters.clone(), return_type.clone())
             .map_err(|e| err!(self, e.into()))?;
+
         if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
         }

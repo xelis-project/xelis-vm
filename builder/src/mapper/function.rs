@@ -12,7 +12,9 @@ use super::Mapper;
 #[derive(Debug)]
 pub struct Function<'a> {
     pub name: &'a str,
+    pub on_type: Option<Type>,
     pub parameters: Vec<(&'a str, Type)>,
+    pub return_type: Option<Type>
 }
 
 /// FunctionMapper is used to store the mapping between function signatures and their identifiers
@@ -49,9 +51,9 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Register a function signature
-    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<(&'a str, Type)>) -> Result<IdentifierType, BuilderError> {
+    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let signature = Signature::new(name.to_owned(), on_type, params);
+        let signature = Signature::new(name.to_owned(), on_type.clone(), params);
 
         if self.mapper.has_variable(&signature) {
             return Err(BuilderError::SignatureAlreadyRegistered);
@@ -62,7 +64,9 @@ impl<'a> FunctionMapper<'a> {
         // Register the mappings
         self.mappings.insert(id.clone(), Function {
             name,
-            parameters
+            on_type,
+            parameters,
+            return_type
         });
 
         Ok(id)
@@ -166,7 +170,7 @@ impl<'a> FunctionMapper<'a> {
         functions
     }
 
-    pub fn get_declared_functions(&'a self) -> HashMap<Option<&'a Type>, Vec<&Function<'a>>> {
+    pub fn get_declared_functions(&'a self) -> HashMap<Option<&'a Type>, Vec<&'a Function<'a>>> {
         let mut functions = HashMap::new();
         if let Some(parent) = self.parent {
             functions.extend(parent.get_declared_functions());
