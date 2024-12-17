@@ -10,7 +10,7 @@ lazy_static! {
 }
 
 #[macro_export]
-macro_rules! register_opaque {
+macro_rules! impl_opaque_json {
     ($name:expr, $type:ty) => {
         impl $crate::opaque::traits::JSONHelper for $type {
             fn get_type_name(&self) -> &'static str {
@@ -21,7 +21,12 @@ macro_rules! register_opaque {
                 Ok(serde_json::to_value(&self)?)
             }
         }
+    };
+}
 
+#[macro_export]
+macro_rules! register_opaque_json {
+    ($name:expr, $type:ty) => {
         $crate::traits::JSON_REGISTRY.write()
             .unwrap()
             .insert($name, Box::new(|value| {

@@ -136,13 +136,18 @@ impl Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
-    use crate::register_opaque;
+    use crate::{
+        impl_opaque_json,
+        register_opaque_json,
+    };
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct CustomOpaque {
         value: i32,
     }
+
+    impl_opaque_json!("CustomOpaque", CustomOpaque);
 
     impl Serializable for CustomOpaque {
         fn get_size(&self) -> usize {
@@ -181,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_opaque_serde() {
-        register_opaque!("CustomOpaque", CustomOpaque);
+        register_opaque_json!("CustomOpaque", CustomOpaque);
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let json = serde_json::to_string(&opaque).unwrap();
