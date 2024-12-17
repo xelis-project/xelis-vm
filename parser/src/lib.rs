@@ -2943,6 +2943,43 @@ mod tests {
     }
 
     #[test]
+    fn test_enum_optional() {
+        // enum Either { Left, Right }
+        let mut env = EnvironmentBuilder::default();
+        env.register_enum("Either", vec![
+            ("Left", Vec::new()),
+            ("Right", Vec::new())
+        ]);
+
+        // let value: optional<Either> = null;
+        // let v: Either = value.unwrap();
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Either"),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::Let,
+            Token::Identifier("v"),
+            Token::Colon,
+            Token::Identifier("Either"),
+            Token::OperatorAssign,
+            Token::Identifier("value"),
+            Token::Dot,
+            Token::Identifier("unwrap"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
     fn test_enum_with_fields() {
         // enum Message { HELLO { a: u64 }, WORLD { b: string } }
         let tokens = vec![

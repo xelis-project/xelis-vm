@@ -200,8 +200,7 @@ impl Type {
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
-                Type::Any => true,
-                _ => false
+                _ => self.is_generic(),
             },
             Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
