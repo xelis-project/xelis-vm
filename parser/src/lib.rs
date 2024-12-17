@@ -23,7 +23,7 @@ pub use error::ParserError;
 pub enum QueueItem {
   Operator(Operator),         // For operators, identifiers, or literals
   Expression(Expression),  // For finalized expressions or sub-expressions
-  Token(String), // For operators
+  Token(Token<'static>), // For operators
 }
 
 macro_rules! err {
@@ -869,32 +869,34 @@ impl<'a> Parser<'a> {
                     Ok(())
                 }
                 QueueItem::Token(token) => {
-                    let op = Operator::value_of(&Token::value_of(token.as_str()).unwrap()).unwrap();
-    
-                    if let Some(QueueItem::Expression(mut right)) = collapse_queue.pop() {
-                        if let Some(QueueItem::Expression(mut left)) = collapse_queue.pop() {
-                            let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
-                            if let Some(right_type) = self.get_type_from_expression_internal(on_type, &right, context)? {
-                                self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
-                                let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
-                                
-                                let result_expr = self.try_convert_expr_to_value(&mut result)
-                                    .map(Expression::Constant)
-                                    .unwrap_or(result);
-                                collapse_queue.push(QueueItem::Expression(result_expr));
-                                Ok(())
-                            } else {
-                                match op {
-                                    Operator::Eq | Operator::Neq | Operator::Assign(None) if left_type.allow_null() => {
-                                        let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
-                                        let result_expr = self.try_convert_expr_to_value(&mut result)
-                                            .map(Expression::Constant)
-                                            .unwrap_or(result);
-                                        collapse_queue.push(QueueItem::Expression(result_expr));
-                                        Ok(())
+                    if let Some(op) = Operator::value_of(token) {
+                        if let Some(QueueItem::Expression(mut right)) = collapse_queue.pop() {
+                            if let Some(QueueItem::Expression(mut left)) = collapse_queue.pop() {
+                                let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                                if let Some(right_type) = self.get_type_from_expression_internal(on_type, &right, context)? {
+                                    self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+                                    let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
+                                    
+                                    let result_expr = self.try_convert_expr_to_value(&mut result)
+                                        .map(Expression::Constant)
+                                        .unwrap_or(result);
+                                    collapse_queue.push(QueueItem::Expression(result_expr));
+                                    Ok(())
+                                } else {
+                                    match op {
+                                        Operator::Eq | Operator::Neq | Operator::Assign(None) if left_type.allow_null() => {
+                                            let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
+                                            let result_expr = self.try_convert_expr_to_value(&mut result)
+                                                .map(Expression::Constant)
+                                                .unwrap_or(result);
+                                            collapse_queue.push(QueueItem::Expression(result_expr));
+                                            Ok(())
+                                        }
+                                        _ => Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
                                     }
-                                    _ => Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
                                 }
+                            } else {
+                                Err(err!(self, ParserErrorKind::InvalidOperation))
                             }
                         } else {
                             Err(err!(self, ParserErrorKind::InvalidOperation))
@@ -917,7 +919,7 @@ impl<'a> Parser<'a> {
     }
 
     // Read an expression with a delimiter
-    fn read_expression_delimited(&mut self, delimiter: Token, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_expression_delimited(&mut self, delimiter: &Token, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
       self.read_expr(Some(delimiter), None, true, true, None, context)
     }
 
@@ -925,7 +927,7 @@ impl<'a> Parser<'a> {
     // number_type is used to force the type of a number
     fn read_expr(
       &mut self,
-      delimiter: Option<Token>, 
+      delimiter: Option<&Token>, 
       on_type: Option<&Type>, 
       allow_ternary: bool, 
       accept_operator: bool, 
@@ -943,8 +945,8 @@ impl<'a> Parser<'a> {
         while self.peek()
             .ok()
             .filter(|peek| {
-                if let Some(delimiter) = delimiter.clone() {
-                  if **peek == delimiter {
+                if let Some(delimiter) = delimiter.as_ref() {
+                  if **peek == **delimiter {
                     return false
                   }
                 }
@@ -1009,7 +1011,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::ParenthesisOpen => {
-                    let expr = self.read_expr(Some(Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                    let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
                     self.expect_token(Token::ParenthesisClose)?;
                     output_queue.push(QueueItem::Expression(expr.clone()));
                     Expression::SubExpression(Box::new(expr))
@@ -1155,9 +1157,8 @@ impl<'a> Parser<'a> {
                     Some(expr) => {
                         trace!("reached ternary");
 
-                        while let Some(top_op) = operator_stack.last() {
-                          let pop_op = operator_stack.pop().unwrap().to_token().clone().to_string();
-                          output_queue.push(QueueItem::Token(pop_op));
+                        while let Some(top_op) = operator_stack.pop() {
+                            output_queue.push(QueueItem::Token(top_op.to_token()));
                         }
                 
                         trace_postfix(&output_queue);
@@ -1178,7 +1179,7 @@ impl<'a> Parser<'a> {
                             }
                         }
 
-                        let valid_expr = self.read_expr(Some(Token::Colon), on_type, true, true, expected_type, context)?;
+                        let valid_expr = self.read_expr(Some(&Token::Colon), on_type, true, true, expected_type, context)?;
                         let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?.into_owned();
                         trace!("left expr: {:?}", valid_expr.clone());
 
@@ -1257,8 +1258,11 @@ impl<'a> Parser<'a> {
                           if top_op.precedence().0 > op.precedence().0
                               || (top_op.precedence().0 == op.precedence().0 && op.is_left_to_right())
                           {
-                              let pop_op = operator_stack.pop().unwrap().to_token().clone().to_string();
-                              output_queue.push(QueueItem::Token(pop_op));
+                              if let Some(pop_op) = operator_stack.pop() {
+                                  output_queue.push(QueueItem::Token(pop_op.to_token()));
+                              } else {
+                                  return Err(err!(self, ParserErrorKind::InvalidOperation))
+                              }
                           } else {
                               break;
                           }
@@ -1276,9 +1280,8 @@ impl<'a> Parser<'a> {
         }
 
         // Collapse remaining operators in the stack
-        while let Some(top_op) = operator_stack.last() {
-            let pop_op = operator_stack.pop().unwrap().to_token().clone().to_string();
-            output_queue.push(QueueItem::Token(pop_op));
+        while let Some(top_op) = operator_stack.pop() {
+            output_queue.push(QueueItem::Token(top_op.to_token()));
         }
 
         trace_postfix(&output_queue);
@@ -1410,7 +1413,7 @@ impl<'a> Parser<'a> {
 
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
-            let key = self.read_expr(Some(Token::Colon), None, true, true, key_type.as_ref(), context)?;
+            let key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
             let k_type = self.get_type_from_expression(None, &key, context)?;
             if let Some(t) = key_type.as_ref() {
                 if *k_type != *t {
@@ -1586,7 +1589,7 @@ impl<'a> Parser<'a> {
                     let var = self.read_variable(context)?;
                     self.expect_token(Token::SemiColon)?;
                     
-                    let condition = self.read_expression_delimited(Token::SemiColon, context)?;
+                    let condition = self.read_expression_delimited(&Token::SemiColon, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidCondition(condition_type.into_owned(), condition)))
@@ -1624,7 +1627,7 @@ impl<'a> Parser<'a> {
                     Statement::ForEach(id, expr, statements)
                 },
                 Token::While => { // Example: while i < 10 {}
-                    let condition = self.read_expression_delimited(Token::BraceOpen, context)?;
+                    let condition = self.read_expression_delimited(&Token::BraceOpen, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidCondition(condition_type.into_owned(), condition)))

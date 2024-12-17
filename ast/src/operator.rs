@@ -78,7 +78,7 @@ impl Operator {
         Some(value)
     }
 
-    pub fn to_token(&self) -> Token {
+    pub fn to_token(&self) -> Token<'static> {
         use Operator::*;
         match self {
             Eq => Token::OperatorEquals,
