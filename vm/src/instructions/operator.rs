@@ -86,6 +86,12 @@ macro_rules! op_bool {
     }};
 }
 
+macro_rules! op_bool_all {
+    ($a: expr, $b: expr, $op: tt) => {{
+        Value::Boolean($a.as_value() $op $b.as_value())
+    }};
+}
+
 macro_rules! opcode_op {
     ($self: expr, $macr: tt, $op: tt) => {
         {
@@ -176,7 +182,7 @@ opcode_fn!(bitwise_xor, opcode_op, op, ^);
 opcode_fn!(bitwise_shl, opcode_op, op, <<);
 opcode_fn!(bitwise_shr, opcode_op, op, >>);
 
-opcode_fn!(eq, opcode_op, op_bool, ==);
+opcode_fn!(eq, opcode_op, op_bool_all, ==);
 opcode_fn!(gt, opcode_op, op_bool, >);
 opcode_fn!(lt, opcode_op, op_bool, <);
 opcode_fn!(gte, opcode_op, op_bool, >=);
