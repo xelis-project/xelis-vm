@@ -123,12 +123,12 @@ impl<'a> Function<'a> {
 }
 
 fn trace_postfix(output_queue: &Vec<QueueItem>) {
-  let postfix: Vec<String> = output_queue.iter().map(|item| match item {
-      QueueItem::Expression(expr) => format!("{:?}", expr), // Customize the format for Expression
-      QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
-      QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
-  }).collect();
-  trace!("Postfix Expression: {}", postfix.join(" "));
+    let postfix: Vec<String> = output_queue.iter().map(|item| match item {
+        QueueItem::Expression(expr) => format!("{:?}", expr), // Customize the format for Expression
+        QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
+        QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
+    }).collect();
+    trace!("Postfix Expression: {}", postfix.join(" "));
 }
 
 pub struct Parser<'a> {
@@ -1227,8 +1227,15 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::InvalidExpression))
                     }
                 },
+                Token::SemiColon => {
+                    if let Some(ref expr) = last_expression {
+                        break;
+                    } else {
+                        Expression::Constant(Constant::Default(xelis_types::Value::U64(0)))
+                    }
+                },
                 token => {
-                    let mut final_expr = Expression::Constant(Constant::Default(xelis_types::Value::U64(0)));
+                    let mut final_expr = last_expression.unwrap_or(Expression::Constant(Constant::Default(xelis_types::Value::U64(0))));
                     if token.is_type() {
                         let val = self.read_type_constant(token.clone(), context)?;
                         output_queue.push(QueueItem::Expression(val.clone()));
@@ -2241,6 +2248,85 @@ mod tests {
 
         let statements = test_parser_statement(tokens, Vec::new());
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_shunting_yard_while() {
+        // Test while i < 10 - 2 / 2 {}
+        let tokens = vec![
+            Token::While,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::Value(Literal::U64(10)),
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(2)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_optional_semicolon() {
+        // Test let blank: optional<bool> = null;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("blank"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Bool,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::SemiColon,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Optional(Box::new(Type::Bool)),
+                    value: Expression::Constant(Value::Null.into())
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_ignore_semicolon() {
+        // Test let blank: optional<bool> = null;;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("blank"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Bool,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::SemiColon,
+            Token::SemiColon,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Optional(Box::new(Type::Bool)),
+                    value: Expression::Constant(Value::Null.into())
+                }
+            )
+        );
     }
 
     #[test]
