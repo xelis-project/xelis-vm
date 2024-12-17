@@ -68,6 +68,13 @@ impl OpaqueWrapper {
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 
+    pub fn into_inner<T: Opaque>(self) -> Result<T, ValueError> {
+        self.0.into_any()
+            .downcast::<T>()
+            .map(|value| *value)
+            .map_err(|_| ValueError::InvalidOpaqueTypeMismatch)
+    }
+
     pub fn is_serializable(&self) -> bool {
         self.0.is_serializable()
     }

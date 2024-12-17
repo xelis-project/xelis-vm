@@ -8,7 +8,7 @@ use std::{
     ops::{Deref, DerefMut},
     ptr
 };
-use crate::{opaque::OpaqueWrapper, EnumValueType, StructType, Type, U256};
+use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
 use super::{Constant, SubValue, Value, ValueError};
 
 pub use path::*;
@@ -450,6 +450,29 @@ impl ValueCell {
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
             Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.as_ref::<T>(),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.as_mut::<T>(),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
