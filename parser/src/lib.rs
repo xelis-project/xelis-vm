@@ -938,10 +938,10 @@ impl<'a> Parser<'a> {
                     Expression::SubExpression(Box::new(expr))
                 },
                 Token::Identifier(id) => {
-                    match self.peek()? {
+                    match self.peek() {
                         // function call
-                        Token::ParenthesisOpen => self.read_function_call(last_expression.take(), on_type, id, context)?,
-                        Token::Colon => self.read_type_constant(Token::Identifier(id), context)?,
+                        Ok(Token::ParenthesisOpen) => self.read_function_call(last_expression.take(), on_type, id, context)?,
+                        Ok(Token::Colon) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
@@ -1409,6 +1409,7 @@ impl<'a> Parser<'a> {
     // Read a single statement
     fn read_statement(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Option<Statement>, ParserError<'a>> {
         if let Some(token) = self.next() {
+            trace!("statement token: {:?}", token);
             let statement: Statement = match token {
                 Token::BraceClose => return Ok(None),
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
@@ -2837,6 +2838,43 @@ mod tests {
         context.begin_scope();
 
         assert!(parser.read_statements(&mut context, &None).is_err());
+    }
+
+    #[test]
+    fn test_struct_optional() {
+        // struct Message { message_id: u64 }
+        let mut env = EnvironmentBuilder::default();
+        env.register_structure("Message", vec![("message_id", Type::U64)]);
+
+        // let msg: optional<Message> = null;
+        // let id: u64 = msg.unwrap().message_id;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Message"),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+
+            Token::Let,
+            Token::Identifier("id"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Identifier("msg"),
+            Token::Dot,
+            Token::Identifier("unwrap"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::Dot,
+            Token::Identifier("message_id")
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
     }
 
     #[test]
