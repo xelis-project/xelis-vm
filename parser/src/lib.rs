@@ -586,40 +586,56 @@ impl<'a> Parser<'a> {
     // Or if no fields: enum_name::variant_name
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
+
+        let (variant_id, has_fields) = {
+            let builder = self.global_mapper.enums()
+                .get_by_ref(&enum_type)
+                .map_err(|e| err!(self, e.into()))?;
+            let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+
+            (variant_id, !variant_fields.is_empty())
+        };
+
         // If its an enum variant with fields
-        let fields = if self.peek_is(Token::BraceOpen) {
+        let exprs = if has_fields {
             self.expect_token(Token::BraceOpen)?;
-            self.read_constructor_fields(context)?
+            let fields = self.read_constructor_fields(context)?;
+
+            // Now we verify that we have all fields needed
+            let builder = self.global_mapper.enums()
+                .get_by_ref(&enum_type)
+                .map_err(|e| err!(self, e.into()))?;
+
+            let variant = builder.get_variant_by_id(variant_id)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+
+            if variant.len() != fields.len() {
+                return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+            }
+
+            let mut fields_expressions = Vec::with_capacity(variant.len());
+            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant) {
+                if field_name != *expected_name {
+                    return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
+                }
+
+                self.verify_type_of(&mut field_expr, expected_type, context)?;
+
+                fields_expressions.push(field_expr);
+            }
+
+            fields_expressions
         } else {
             Vec::new()
         };
 
-        let builder = self.global_mapper.enums()
-            .get_by_ref(&enum_type)
-            .map_err(|e| err!(self, e.into()))?;
-        let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
-            .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
-
-        if variant_fields.len() != fields.len() {
-            return Err(err!(self, ParserErrorKind::InvalidFieldCount))
-        }
-
-        let mut fields_expressions = Vec::with_capacity(variant_fields.len());
-        for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant_fields) {
-            if field_name != *expected_name {
-                return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
-            }
-
-            self.verify_type_of(&mut field_expr, expected_type, context)?;
-
-            fields_expressions.push(field_expr);
-        }
-
-        Ok(Expression::EnumConstructor(fields_expressions, EnumValueType::new(enum_type, variant_id)))
+        Ok(Expression::EnumConstructor(exprs, EnumValueType::new(enum_type, variant_id)))
     }
 
     // Read a constant from the environment
     fn read_type_constant(&mut self, token: Token<'a>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read type constant: {:?}", token);
         let _type = self.get_type_from_token(token)?;
         self.expect_token(Token::Colon)?;
         self.expect_token(Token::Colon)?;
@@ -2888,6 +2904,42 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_enum_operation() {
+        // enum Either { Left, Right }
+        let mut env = EnvironmentBuilder::new();
+        env.register_enum("Either", vec![
+            ("Left", Vec::new()),
+            ("Right", Vec::new())
+        ]);
+
+        // let value: Either = Either::Left;
+        // if value == Either::Left {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Identifier("Either"),
+            Token::OperatorAssign,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Left"),
+            Token::If,
+            Token::Identifier("value"),
+            Token::OperatorEquals,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Left"),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
     }
 
     #[test]
