@@ -27,6 +27,13 @@ pub enum Operator {
     Assign(Option<Box<Operator>>),
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Associativity {
+    LeftToRight,
+    RightToLeft,
+    RequireParentheses,
+}
+
 impl Operator {
     pub fn value_of(token: &Token) -> Option<Operator> {
         use Operator::*;
@@ -69,6 +76,80 @@ impl Operator {
             _ => return None,
         };
         Some(value)
+    }
+
+    pub fn to_token(&self) -> Token {
+        use Operator::*;
+        match self {
+            Eq => Token::OperatorEquals,
+            Neq => Token::OperatorNotEquals,
+            And => Token::OperatorAnd,
+            Or => Token::OperatorOr,
+            Gt => Token::OperatorGreaterThan,
+            Lt => Token::OperatorLessThan,
+            Gte => Token::OperatorGreaterOrEqual,
+            Lte => Token::OperatorLessOrEqual,
+            Add => Token::OperatorPlus,
+            Sub => Token::OperatorMinus,
+            Mul => Token::OperatorMultiply,
+            Div => Token::OperatorDivide,
+            Mod => Token::OperatorModulo,
+            Pow => Token::OperatorPow,
+            BitwiseXor => Token::OperatorBitwiseXor,
+            BitwiseAnd => Token::OperatorBitwiseAnd,
+            BitwiseOr => Token::OperatorBitwiseOr,
+            BitwiseShl => Token::OperatorBitwiseShl,
+            BitwiseShr => Token::OperatorBitwiseShr,
+
+            Assign(None) => Token::OperatorAssign,
+            Assign(Some(op)) => match **op {
+                Add => Token::OperatorPlusAssign,
+                Sub => Token::OperatorMinusAssign,
+                Div => Token::OperatorDivideAssign,
+                Mul => Token::OperatorMultiplyAssign,
+                Mod => Token::OperatorModuloAssign,
+                Pow => Token::OperatorPowAssign,
+                BitwiseXor => Token::OperatorBitwiseXorAssign,
+                BitwiseAnd => Token::OperatorBitwiseAndAssign,
+                BitwiseOr => Token::OperatorBitwiseOrAssign,
+                BitwiseShl => Token::OperatorBitwiseShlAssign,
+                BitwiseShr => Token::OperatorBitwiseShrAssign,
+                _ => unreachable!(), // Should not occur
+            },
+        }
+    }
+
+    pub fn precedence(&self) -> (u8, Associativity) {
+        use Associativity::*;
+        match self {
+            // Unary operators
+            Operator::Pow => (11, RightToLeft), // ** in Rust is right-associative
+            Operator::Mul | Operator::Div | Operator::Mod => (10, LeftToRight),
+            Operator::Add | Operator::Sub => (9, LeftToRight),
+            Operator::BitwiseShl | Operator::BitwiseShr => (8, LeftToRight),
+            Operator::BitwiseAnd => (7, LeftToRight),
+            Operator::BitwiseXor => (6, LeftToRight),
+            Operator::BitwiseOr => (5, LeftToRight),
+
+            // Comparison operators (Require Parentheses in Rust)
+            Operator::Eq | Operator::Neq | Operator::Gt | Operator::Lt | Operator::Gte | Operator::Lte => (4, RequireParentheses),
+
+            // Logical operators
+            Operator::And => (3, LeftToRight), // &&
+            Operator::Or => (2, LeftToRight),  // ||
+
+            // Assignment operators
+            Operator::Assign(_) => (1, RightToLeft),
+        }
+    }
+
+    /// Helper functions to check associativity
+    pub fn is_left_to_right(&self) -> bool {
+        matches!(self.precedence().1, Associativity::LeftToRight)
+    }
+
+    pub fn is_right_to_left(&self) -> bool {
+        matches!(self.precedence().1, Associativity::RightToLeft)
     }
 
     pub fn is_assignation(&self) -> bool {
