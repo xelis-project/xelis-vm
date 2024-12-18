@@ -1257,7 +1257,7 @@ impl<'a> Parser<'a> {
                         }
                     } else {
                         let op = match Operator::value_of(&token) {
-                          Some(op) => op,
+                            Some(op) => op,
                             None => {
                                 return Err(err!(self, ParserErrorKind::OperatorNotFound(token)))
                             }
@@ -2164,6 +2164,30 @@ mod tests {
             *value,
             Expression::Constant(Constant::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
         )
+    }
+
+    #[test]
+    fn test_shunting_yard_error() {
+        // Test 3 + - 4 * 6 - * - (4 / 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::OperatorPlus,
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let result = std::panic::catch_unwind(|| test_parser_statement(tokens, Vec::new()));
+        assert!(result.is_err(), "Expected parsing to fail, but it succeeded.");
     }
 
     #[test]
