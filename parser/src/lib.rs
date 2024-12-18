@@ -1231,7 +1231,7 @@ impl<'a> Parser<'a> {
                     if let Some(expr) = last_expression {
                         expr
                     } else {
-                        return Err(err!(self, ParserErrorKind::UnexpectedToken(token)));
+                        continue;
                     }
                 },
                 token => {
@@ -1608,14 +1608,12 @@ impl<'a> Parser<'a> {
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
                     let var = self.read_variable(context)?;
-                    self.expect_token(Token::SemiColon)?;
                     
                     let condition = self.read_expression_delimited(&Token::SemiColon, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidCondition(condition_type.into_owned(), condition)))
                     }
-                    self.expect_token(Token::SemiColon)?;
 
                     let increment = self.read_expression(context)?;
                     match &increment { // allow only assignations on this expr
