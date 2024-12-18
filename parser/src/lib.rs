@@ -993,7 +993,7 @@ impl<'a> Parser<'a> {
                             }
 
                             // Index must be of type u64
-                            let index = self.read_expr(delimiter.clone(), on_type, true, true, Some(&Type::U32), context)?;
+                            let index = self.read_expr(delimiter, on_type, true, true, Some(&Type::U32), context)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context)?;
                             if *index_type != Type::U32 {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
@@ -1007,7 +1007,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while self.peek_is_not(Token::BracketClose) {
-                                let expr = self.read_expr(delimiter.clone(), on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
+                                let expr = self.read_expr(delimiter, on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
@@ -1130,7 +1130,7 @@ impl<'a> Parser<'a> {
                             // Read a type constant
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
-                                let end_expr = self.read_expr(delimiter.clone(), Some(&_type), false, false, expected_type, context)?;
+                                let end_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
                                 let end_type = self.get_type_from_expression(on_type, &end_expr, context)?;
                                 if _type != *end_type {
                                     return Err(err!(self, ParserErrorKind::InvalidRangeType(_type, end_type.into_owned())))
@@ -1145,7 +1145,7 @@ impl<'a> Parser<'a> {
                                 range
                             } else {
                                 // Read a variable access OR a function call
-                                let right_expr = self.read_expr(delimiter.clone(), Some(&_type), false, false, expected_type, context)?;
+                                let right_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
                                 if let Expression::FunctionCall(path, name, params) = right_expr {
                                     if path.is_some() {
                                         return Err(err!(self, ParserErrorKind::UnexpectedPathInFunctionCall))
