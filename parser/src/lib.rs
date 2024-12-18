@@ -954,26 +954,28 @@ impl<'a> Parser<'a> {
       context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
         trace!("Read expression");
-
-        let mut operator_stack: Vec<Operator> = Vec::new(); // Stack for operators
-        let mut output_queue: Vec<QueueItem> = Vec::new();   // Queue for operands and reordered tokens
-        let mut collapse_queue: Vec<QueueItem> = Vec::new();   // Queue for operands and reordered tokens
+        // Stack for operators
+        let mut operator_stack: Vec<Operator> = Vec::new();
+        // Queue for operands and reordered tokens
+        let mut output_queue: Vec<QueueItem> = Vec::new();
 
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while self.peek()
             .ok()
             .filter(|peek| {
-                if let Some(delimiter) = delimiter.as_ref() {
-                  if **peek == **delimiter {
+                if delimiter == Some(peek) {
                     return false
-                  }
                 }
 
                 if !allow_ternary && **peek == Token::OperatorTernary {
                     return false
                 }
-                
+
+                if !accept_operator && required_operator {
+                    return false
+                }
+
                 required_operator == peek.is_operator() 
                     || (**peek == Token::BracketOpen && last_expression.is_none())
 
@@ -1037,14 +1039,14 @@ impl<'a> Parser<'a> {
                 },
                 Token::Identifier(id) => {
                     trace!("identified {}", id);
-                    match self.peek()? {
+                    match self.peek() {
                         // function call
-                        Token::ParenthesisOpen => {
+                        Ok(Token::ParenthesisOpen) => {
                           let val = self.read_function_call(last_expression.take(), on_type, id, context)?;
                           output_queue.push(QueueItem::Expression(val.clone()));
                           val
                         },
-                        Token::Colon => {
+                        Ok(Token::Colon) => {
                           let val = self.read_type_constant(Token::Identifier(id), context)?;
                           output_queue.push(QueueItem::Expression(val.clone()));
                           val
@@ -1226,7 +1228,7 @@ impl<'a> Parser<'a> {
                     None => return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression))
                 },
                 Token::As => {
-                    if let Some(QueueItem::Expression(mut prev_expr)) = output_queue.pop() {
+                    if let Some(QueueItem::Expression(prev_expr)) = output_queue.pop() {
                         let left_type = self.get_type_from_expression(on_type, &prev_expr, context)?.into_owned();
                         let right_type = self.read_type()?;
 
@@ -1247,7 +1249,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::SemiColon => { // Force the parser to recognize a valid semicolon placement, or cut its losses and return an error
-                    if let Some(ref expr) = last_expression {
+                    if last_expression.is_some() {
                         break;
                     } else if !output_queue.is_empty() {
                         break;
@@ -1326,13 +1328,8 @@ impl<'a> Parser<'a> {
         // There is already enough data to safely parse a completed expression.
         //
         // Semicolons will never have unhandled data that is relevant left
-        while (self.peek()
-            .ok()
-            .filter(|peek| {
-                return **peek == Token::SemiColon
-            })
-        ).is_some() {
-            self.advance();
+        while self.peek_is(Token::SemiColon) {
+            self.advance()?;
         };
 
         if let Some(QueueItem::Expression(expr)) = collapsed_queue.first() {
