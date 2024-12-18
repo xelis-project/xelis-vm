@@ -3,7 +3,7 @@ mod function;
 mod context;
 
 use indexmap::IndexSet;
-use xelis_types::{EnumType, StructType};
+use xelis_types::{EnumType, OpaqueType, StructType};
 
 pub use error::EnvironmentError;
 pub use function::*;
@@ -20,6 +20,8 @@ pub struct Environment {
     structures: IndexSet<StructType>,
     // All enums provided by the Environment
     enums: IndexSet<EnumType>,
+    // All opaques types provided by the Environment
+    opaques: IndexSet<OpaqueType>,
 }
 
 impl Default for Environment {
@@ -28,6 +30,7 @@ impl Default for Environment {
             functions: Vec::new(),
             structures: IndexSet::new(),
             enums: IndexSet::new(),
+            opaques: IndexSet::new(),
         }
     }
 }
@@ -56,6 +59,12 @@ impl Environment {
         &self.enums
     }
 
+    // Get all the registered opaques
+    #[inline(always)]
+    pub fn get_opaques(&self) -> &IndexSet<OpaqueType> {
+        &self.opaques
+    }
+
     // Add a new function to the environment
     #[inline(always)]
     pub fn add_function(&mut self, function: NativeFunction) {
@@ -77,6 +86,12 @@ impl Environment {
     #[inline(always)]
     pub fn add_enum(&mut self, _enum: EnumType) {
         self.enums.insert(_enum);
+    }
+
+    // Add a new opaque type to the environment
+    #[inline(always)]
+    pub fn add_opaque(&mut self, opaque: OpaqueType) {
+        self.opaques.insert(opaque);
     }
 
     // Allow to change the cost of a function

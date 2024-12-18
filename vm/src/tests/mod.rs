@@ -1,6 +1,5 @@
 use xelis_builder::EnvironmentBuilder;
 use xelis_bytecode::Module;
-use xelis_types::Value;
 use crate::*;
 
 /// This module contains all the tests for the VM

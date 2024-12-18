@@ -8,6 +8,8 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher}
 };
+use crate::opaque::OpaqueWrapper;
+
 use super::{
     Type,
     U256
@@ -35,8 +37,8 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Value {
     Null,
     // number types
@@ -51,6 +53,9 @@ pub enum Value {
     Range(Box<Value>, Box<Value>, Type),
     // Blob represents a binary data
     Blob(Vec<u8>),
+
+    // Opaque Type injected by the environment
+    Opaque(OpaqueWrapper)
 }
 
 impl PartialOrd for Value {
@@ -62,6 +67,8 @@ impl PartialOrd for Value {
             (Value::U64(a), Value::U64(b)) => a.partial_cmp(b),
             (Value::U128(a), Value::U128(b)) => a.partial_cmp(b),
             (Value::U256(a), Value::U256(b)) => a.partial_cmp(b),
+            (Value::String(a), Value::String(b)) => a.partial_cmp(b),
+            (Value::Boolean(a), Value::Boolean(b)) => a.partial_cmp(b),
             _ => None
         }
     }
@@ -72,45 +79,49 @@ impl Hash for Value {
         match self {
             Value::Null => 0.hash(state),
             Value::U8(n) => {
-                1.hash(state);
+                1u8.hash(state);
                 n.hash(state);
             },
             Value::U16(n) => {
-                2.hash(state);
+                2u8.hash(state);
                 n.hash(state);
             },
             Value::U32(n) => {
-                3.hash(state);
+                3u8.hash(state);
                 n.hash(state);
             },
             Value::U64(n) => {
-                4.hash(state);
+                4u8.hash(state);
                 n.hash(state);
             },
             Value::U128(n) => {
-                5.hash(state);
+                5u8.hash(state);
                 n.hash(state);
             },
             Value::U256(n) => {
-                6.hash(state);
+                6u8.hash(state);
                 n.hash(state);
             },
             Value::String(n) => {
-                7.hash(state);
+                7u8.hash(state);
                 n.hash(state);
             },
             Value::Boolean(n) => {
-                8.hash(state);
+                8u8.hash(state);
                 n.hash(state);
             },
             Value::Range(start, end, range_type) => {
-                9.hash(state);
+                9u8.hash(state);
                 start.hash(state);
                 end.hash(state);
                 range_type.hash(state);
             },
             Value::Blob(n) => {
-                10.hash(state);
+                10u8.hash(state);
+                n.hash(state);
+            },
+            Value::Opaque(n) => {
+                11u8.hash(state);
                 n.hash(state);
             }
         }
@@ -290,6 +301,27 @@ impl Value {
         match self {
             Value::U8(_) | Value::U16(_) | Value::U32(_) | Value::U64(_) | Value::U128(_) | Value::U256(_) => true,
             _ => false
+        }
+    }
+
+    pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
+        match self {
+            Value::Opaque(opaque) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
         }
     }
 
@@ -543,6 +575,7 @@ impl std::fmt::Display for Value {
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
             Value::Blob(b) => write!(f, "{:?}", b),
+            Value::Opaque(o) => write!(f, "{}", o)
         }
     }
 }

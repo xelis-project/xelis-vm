@@ -1,10 +1,12 @@
 mod r#struct;
 mod r#enum;
+pub mod opaque;
 
 use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
+use opaque::OpaqueType;
 
 use crate::{values::Value, Constant};
 use std::{fmt, hash::{Hash, Hasher}};
@@ -37,6 +39,8 @@ pub enum Type {
 
     Struct(StructType),
     Enum(EnumType),
+    #[serde(skip)]
+    Opaque(OpaqueType),
 }
 
 impl Type {
@@ -97,6 +101,7 @@ impl Type {
             Value::Boolean(_) => Type::Bool,
             Value::Blob(_type) => Type::Blob,
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
+            Value::Opaque(opaque) => Type::Opaque(opaque.get_type()),
         })
     }
 
@@ -341,6 +346,7 @@ impl fmt::Display for Type {
             Type::Range(_type) => write!(f, "range<{}>", _type),
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(id) => write!(f, "enum({:?})", id),
+            Type::Opaque(id) => write!(f, "opaque({:?})", id),
         }
     }
 }

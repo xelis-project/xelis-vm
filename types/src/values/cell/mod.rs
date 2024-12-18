@@ -8,8 +8,8 @@ use std::{
     ops::{Deref, DerefMut},
     ptr
 };
-use crate::{EnumValueType, StructType, Type, U256};
-use super::{Value, ValueError, SubValue, Constant};
+use crate::{opaque::OpaqueWrapper, EnumValueType, StructType, Type, U256};
+use super::{Constant, SubValue, Value, ValueError};
 
 pub use path::*;
 
@@ -95,7 +95,7 @@ impl From<Constant> for ValueCell {
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type)
+            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
         }
     }
 }
@@ -112,18 +112,21 @@ impl ValueCell {
                 v.hash(state);
             },
             ValueCell::Struct(fields, _) => {
+                12u8.hash(state);
                 fields.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
             ValueCell::Array(array) => {
+                13u8.hash(state);
                 array.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
             },
             ValueCell::Optional(v) => {
+                14u8.hash(state);
                 if let Some(v) = v {
                     v.borrow()
                         .hash_with_pointers(state, tracked_pointers);
@@ -132,6 +135,7 @@ impl ValueCell {
                 }
             },
             ValueCell::Map(map) => {
+                15u8.hash(state);
                 map.iter()
                     .for_each(|(k, v)| {
                         k.hash(state);
@@ -140,11 +144,12 @@ impl ValueCell {
                     });
             },
             ValueCell::Enum(fields, _) => {
+                16u8.hash(state);
                 fields.iter()
                     .for_each(|field| field.borrow()
                         .hash_with_pointers(state, tracked_pointers)
                     );
-            }
+            },
         }
     }
 
@@ -196,7 +201,7 @@ impl ValueCell {
                     for field in fields {
                         stack.push((Path::Wrapper(field.clone()), depth + 1));
                     }
-                }
+                },
             };
         }
 
@@ -422,6 +427,38 @@ impl ValueCell {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::SubValue)
+        }
+    }
+
+    #[inline]
+    pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn is_serializable(&self) -> bool {
+        match self {
+            Self::Default(Value::Opaque(op)) => op.is_serializable(),
+            _ => true
         }
     }
 

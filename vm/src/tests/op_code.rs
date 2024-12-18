@@ -204,7 +204,7 @@ fn test_struct() {
     vm.invoke_chunk_id(0).unwrap();
     assert_eq!(
         vm.run().unwrap(),
-        Constant::Struct(
+        ValueCell::Struct(
             vec![
                 Value::U8(10).into(),
                 Value::U16(20).into()

@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("cannot create a method on type '{0}'")]
+    InvalidFunctionType(Type),
     #[error("number is too big for type '{0}'")]
     NumberTooBigForType(Type),
     #[error("invalid constant name '{0}'")]

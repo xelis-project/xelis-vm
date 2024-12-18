@@ -84,8 +84,12 @@ pub struct VM<'a> {
 
 impl<'a> VM<'a> {
     // Create a new VM
+    // Insert the environment as a reference in the context
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self::with(module, environment, InstructionTable::new(), Context::default())
+        let mut context = Context::default();
+        context.insert_ref(environment);
+
+        Self::with(module, environment, InstructionTable::new(), context)
     }
 
     // Create a new VM with a given table and context
@@ -181,7 +185,7 @@ impl<'a> VM<'a> {
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
-    pub fn run(&mut self) -> Result<Constant, VMError> {
+    pub fn run(&mut self) -> Result<ValueCell, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
@@ -207,6 +211,6 @@ impl<'a> VM<'a> {
             return Err(VMError::StackNotCleaned);
         }
 
-        Ok(end_value.into())
+        Ok(end_value)
     }
 }

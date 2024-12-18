@@ -48,7 +48,7 @@ fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnTy
     let param = parameters.remove(0);
     let value = param.into_owned();
 
-    Err(EnvironmentError::Panic(value.into()))
+    Err(EnvironmentError::Panic(format!("{:#}", value)))
 }
 
 fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {

@@ -6,7 +6,7 @@ use crate::{EnumValueType, StructType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Constant {
     Default(Value),
     Struct(Vec<Constant>, StructType),
@@ -55,32 +55,32 @@ impl Hash for Constant {
             match value {
                 Self::Default(v) => v.hash(state),
                 Self::Struct(fields, struct_type) => {
-                    10.hash(state);
+                    12u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     struct_type.hash(state);
                 },
                 Self::Array(values) => {
-                    11.hash(state);
+                    13u8.hash(state);
                     values.iter().for_each(|f| stack.push(f));
                 },
                 Self::Optional(opt) => {
-                    12.hash(state);
+                    14u8.hash(state);
                     if let Some(value) = opt {
                         stack.push(value);
                     }
                 },
                 Self::Map(map) => {
-                    13.hash(state);
+                    15u8.hash(state);
                     for (key, value) in map {
                         stack.push(&key);
                         stack.push(&value);
                     }
                 },
                 Self::Enum(fields, enum_type) => {
-                    14.hash(state);
+                    16u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     enum_type.hash(state);
-                }
+                },
             }
         }
     }
@@ -98,16 +98,26 @@ impl From<Value> for Constant {
     }
 }
 
-impl From<ValueCell> for Constant {
-    fn from(cell: ValueCell) -> Self {
-        match cell {
+impl TryFrom<ValueCell> for Constant {
+    type Error = &'static str;
+
+    fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
+        Ok(match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().into()).collect(), struct_type),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().into()).collect()),
-            ValueCell::Optional(opt) => Self::Optional(opt.map(|v| Box::new(v.into_owned().into()))),
-            ValueCell::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into_owned().into())).collect()),
-            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().into()).collect(), enum_type),
-        }
+            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
+            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?),
+            ValueCell::Optional(opt) => match opt {
+                Some(value) => Self::Optional(Some(Box::new(value.into_owned().try_into()?))),
+                None => Self::Optional(None)
+            },
+            ValueCell::Map(map) => {
+                let m = map.into_iter()
+                    .map(|(k, v)| Ok((k.into_owned().try_into()?, v.into_owned().try_into()?)))
+                    .collect::<Result<IndexMap<_, _>, _>>()?;
+                Self::Map(m)
+            },
+            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
+        })
     }
 }
 
@@ -254,6 +264,14 @@ impl Constant {
         match self {
             Self::Optional(opt) => Ok(opt.take().map(|v| *v)),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::Optional(Box::new(Type::Any))))
+        }
+    }
+
+    #[inline]
+    pub fn is_serializable(&self) -> bool {
+        match self {
+            Self::Default(Value::Opaque(op)) => op.is_serializable(),
+            _ => true
         }
     }
 

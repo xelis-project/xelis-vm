@@ -1,5 +1,6 @@
 use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager};
 
+#[derive(Debug)]
 pub struct GlobalMapper<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,

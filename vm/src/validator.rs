@@ -17,6 +17,8 @@ pub enum ValidatorError<'a> {
     TooManyChunks,
     #[error("too many types")]
     TooManyTypes,
+    #[error("invalid opaque")]
+    InvalidOpaque,
 
     #[error("too many structs")]
     TooManyStructs,
@@ -52,8 +54,8 @@ pub enum ValidatorError<'a> {
     MapAsKeyNotAllowed,
     #[error("empty module")]
     EmptyModule,
-    #[error("invalid entry id")]
-    InvalidEntryId,
+    #[error("invalid entry id {0}")]
+    InvalidEntryId(usize),
     #[error(transparent)]
     ValueError(#[from] ValueError)
 }
@@ -186,7 +188,14 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += blob.len();
                     },
-                }
+                    Value::Opaque(opaque) => {
+                        if !self.environment.get_opaques().contains(&opaque.get_type()) {
+                            return Err(ValidatorError::InvalidOpaque);
+                        }
+
+                        memory_usage += opaque.get_size();
+                    }
+                },
             }
         }
 
@@ -229,8 +238,8 @@ impl<'a> ModuleValidator<'a> {
 
         // Verify that the entry ids are valid
         for entry_id in self.module.chunks_entry_ids() {
-            if len >= *entry_id {
-                return Err(ValidatorError::InvalidEntryId);
+            if *entry_id >= len {
+                return Err(ValidatorError::InvalidEntryId(*entry_id));
             }
         }
 
