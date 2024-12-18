@@ -2,6 +2,7 @@ mod error;
 mod function;
 mod context;
 
+use better_any::tid;
 use indexmap::IndexSet;
 use xelis_types::{EnumType, OpaqueType, StructType};
 
@@ -23,6 +24,8 @@ pub struct Environment {
     // All opaques types provided by the Environment
     opaques: IndexSet<OpaqueType>,
 }
+
+tid!(Environment);
 
 impl Default for Environment {
     fn default() -> Self {
