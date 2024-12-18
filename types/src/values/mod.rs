@@ -37,7 +37,7 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Value {
     Null,
@@ -56,6 +56,26 @@ pub enum Value {
 
     // Opaque Type injected by the environment
     Opaque(OpaqueWrapper)
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Null, Value::Null) => true,
+            (Value::U8(a), Value::U8(b)) => a == b,
+            (Value::U16(a), Value::U16(b)) => a == b,
+            (Value::U32(a), Value::U32(b)) => a == b,
+            (Value::U64(a), Value::U64(b)) => a == b,
+            (Value::U128(a), Value::U128(b)) => a == b,
+            (Value::U256(a), Value::U256(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Range(start_a, end_a, _type_a), Value::Range(start_b, end_b, _type_b)) => start_a == start_b && end_a == end_b && _type_a == _type_b,
+            (Value::Blob(a), Value::Blob(b)) => a == b,
+            (Value::Opaque(a), Value::Opaque(b)) => a == b,
+            _ => false
+        }
+    }
 }
 
 impl PartialOrd for Value {

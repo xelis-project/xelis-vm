@@ -14,6 +14,12 @@ pub struct EnumTypeBuilder<'a> {
 }
 
 impl<'a> EnumBuilder<'a> {
+
+    // This function is used to get the variant by its id
+    pub fn get_variant_by_id(&'a self, id: u8) -> Option<&'a EnumVariantBuilder<'a>> {
+        self.inner.variants.get(id as usize)
+    }
+
     // This function is used to get the variant and its id by its name
     pub fn get_variant_by_name(&'a self, name: &str) -> Option<(u8, &'a EnumVariantBuilder<'a>)> {
         self.variants_names.iter()

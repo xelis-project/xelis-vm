@@ -602,40 +602,56 @@ impl<'a> Parser<'a> {
     // Or if no fields: enum_name::variant_name
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
+
+        let (variant_id, has_fields) = {
+            let builder = self.global_mapper.enums()
+                .get_by_ref(&enum_type)
+                .map_err(|e| err!(self, e.into()))?;
+            let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+
+            (variant_id, !variant_fields.is_empty())
+        };
+
         // If its an enum variant with fields
-        let fields = if self.peek_is(Token::BraceOpen) {
+        let exprs = if has_fields {
             self.expect_token(Token::BraceOpen)?;
-            self.read_constructor_fields(context)?
+            let fields = self.read_constructor_fields(context)?;
+
+            // Now we verify that we have all fields needed
+            let builder = self.global_mapper.enums()
+                .get_by_ref(&enum_type)
+                .map_err(|e| err!(self, e.into()))?;
+
+            let variant = builder.get_variant_by_id(variant_id)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+
+            if variant.len() != fields.len() {
+                return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+            }
+
+            let mut fields_expressions = Vec::with_capacity(variant.len());
+            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant) {
+                if field_name != *expected_name {
+                    return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
+                }
+
+                self.verify_type_of(&mut field_expr, expected_type, context)?;
+
+                fields_expressions.push(field_expr);
+            }
+
+            fields_expressions
         } else {
             Vec::new()
         };
 
-        let builder = self.global_mapper.enums()
-            .get_by_ref(&enum_type)
-            .map_err(|e| err!(self, e.into()))?;
-        let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
-            .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
-
-        if variant_fields.len() != fields.len() {
-            return Err(err!(self, ParserErrorKind::InvalidFieldCount))
-        }
-
-        let mut fields_expressions = Vec::with_capacity(variant_fields.len());
-        for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant_fields) {
-            if field_name != *expected_name {
-                return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
-            }
-
-            self.verify_type_of(&mut field_expr, expected_type, context)?;
-
-            fields_expressions.push(field_expr);
-        }
-
-        Ok(Expression::EnumConstructor(fields_expressions, EnumValueType::new(enum_type, variant_id)))
+        Ok(Expression::EnumConstructor(exprs, EnumValueType::new(enum_type, variant_id)))
     }
 
     // Read a constant from the environment
     fn read_type_constant(&mut self, token: Token<'a>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("Read type constant: {:?}", token);
         let _type = self.get_type_from_token(token)?;
         self.expect_token(Token::Colon)?;
         self.expect_token(Token::Colon)?;
@@ -1608,6 +1624,7 @@ impl<'a> Parser<'a> {
     // Read a single statement
     fn read_statement(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Option<Statement>, ParserError<'a>> {
         if let Some(token) = self.next() {
+            trace!("statement token: {:?}", token);
             let statement: Statement = match token {
                 Token::BraceClose => return Ok(None),
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
@@ -1872,8 +1889,11 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let id = self.global_mapper.functions_mut().register(name, for_type.clone(), parameters.clone())
+        let id = self.global_mapper
+            .functions_mut()
+            .register(name, for_type.clone(), parameters.clone(), return_type.clone())
             .map_err(|e| err!(self, e.into()))?;
+
         if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
         }
@@ -3276,6 +3296,43 @@ mod tests {
     }
 
     #[test]
+    fn test_struct_optional() {
+        // struct Message { message_id: u64 }
+        let mut env = EnvironmentBuilder::default();
+        env.register_structure("Message", vec![("message_id", Type::U64)]);
+
+        // let msg: optional<Message> = null;
+        // let id: u64 = msg.unwrap().message_id;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("msg"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Message"),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+
+            Token::Let,
+            Token::Identifier("id"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Identifier("msg"),
+            Token::Dot,
+            Token::Identifier("unwrap"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::Dot,
+            Token::Identifier("message_id")
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
     fn test_type_constant() {
         // let test: u64 = u64::MAX;
         let tokens = vec![
@@ -3340,6 +3397,79 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_enum_operation() {
+        // enum Either { Left, Right }
+        let mut env = EnvironmentBuilder::new();
+        env.register_enum("Either", vec![
+            ("Left", Vec::new()),
+            ("Right", Vec::new())
+        ]);
+
+        // let value: Either = Either::Left;
+        // if value == Either::Left {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Identifier("Either"),
+            Token::OperatorAssign,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Left"),
+            Token::If,
+            Token::Identifier("value"),
+            Token::OperatorEquals,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Left"),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
+    fn test_enum_optional() {
+        // enum Either { Left, Right }
+        let mut env = EnvironmentBuilder::default();
+        env.register_enum("Either", vec![
+            ("Left", Vec::new()),
+            ("Right", Vec::new())
+        ]);
+
+        // let value: optional<Either> = null;
+        // let v: Either = value.unwrap();
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Either"),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::Let,
+            Token::Identifier("v"),
+            Token::Colon,
+            Token::Identifier("Either"),
+            Token::OperatorAssign,
+            Token::Identifier("value"),
+            Token::Dot,
+            Token::Identifier("unwrap"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 2);
     }
 
     #[test]

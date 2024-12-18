@@ -8,14 +8,14 @@ use std::{
     ops::{Deref, DerefMut},
     ptr
 };
-use crate::{opaque::OpaqueWrapper, EnumValueType, StructType, Type, U256};
+use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
 use super::{Constant, SubValue, Value, ValueError};
 
 pub use path::*;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub enum ValueCell {
     Default(Value),
     Struct(Vec<SubValue>, StructType),
@@ -25,6 +25,25 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     Map(HashMap<ValueCell, SubValue>),
     Enum(Vec<SubValue>, EnumValueType),
+}
+
+impl PartialEq for ValueCell {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Default(a), Self::Default(b)) => a == b,
+            (Self::Struct(a, _), Self::Struct(b, _)) => a == b,
+            (Self::Array(a), Self::Array(b)) => a == b,
+            (Self::Optional(a), Self::Optional(b)) => a == b,
+
+            // Support null comparison
+            (Self::Optional(a), Self::Default(Value::Null)) => a.is_none(),
+            (Self::Default(Value::Null), Self::Optional(b)) => b.is_none(),
+
+            (Self::Map(a), Self::Map(b)) => a == b,
+            (Self::Enum(a, _), Self::Enum(b, _)) => a == b,
+            _ => false
+        }
+    }
 }
 
 // Wrapper to drop the value without stackoverflow
@@ -450,6 +469,29 @@ impl ValueCell {
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
             Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.as_ref::<T>(),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
+    pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.as_mut::<T>(),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
+        match self {
+            Self::Default(Value::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }

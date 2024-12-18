@@ -70,7 +70,7 @@ impl<'a> Backend<'a> {
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
-pub struct VM<'a> {
+pub struct VM<'a, 'r> {
     backend: Backend<'a>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
@@ -79,10 +79,10 @@ pub struct VM<'a> {
     // Every values are stored here
     stack: Stack<'a>,
     // Context given to each instruction
-    context: Context<'a>,
+    context: Context<'a, 'r>,
 }
 
-impl<'a> VM<'a> {
+impl<'a, 'r> VM<'a, 'r> {
     // Create a new VM
     // Insert the environment as a reference in the context
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
@@ -93,7 +93,7 @@ impl<'a> VM<'a> {
     }
 
     // Create a new VM with a given table and context
-    pub fn with(module: &'a Module, environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a>) -> Self {
+    pub fn with(module: &'a Module, environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a, 'r>) -> Self {
         Self {
             backend: Backend {
                 module,
@@ -114,13 +114,13 @@ impl<'a> VM<'a> {
 
     // Get the context
     #[inline]
-    pub fn context(&self) -> &Context<'a> {
+    pub fn context(&self) -> &Context<'a, 'r> {
         &self.context
     }
 
     // Get a mutable reference to the context
     #[inline]
-    pub fn context_mut(&mut self) -> &mut Context<'a> {
+    pub fn context_mut(&mut self) -> &mut Context<'a, 'r> {
         &mut self.context
     }
 

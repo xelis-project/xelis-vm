@@ -5,6 +5,8 @@ mod context;
 use indexmap::IndexSet;
 use xelis_types::{EnumType, OpaqueType, StructType};
 
+// Also re-export the necessary macro
+pub use better_any::tid;
 pub use error::EnvironmentError;
 pub use function::*;
 pub use context::*;
@@ -23,6 +25,8 @@ pub struct Environment {
     // All opaques types provided by the Environment
     opaques: IndexSet<OpaqueType>,
 }
+
+tid!(Environment);
 
 impl Default for Environment {
     fn default() -> Self {

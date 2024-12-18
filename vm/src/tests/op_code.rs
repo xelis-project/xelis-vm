@@ -199,19 +199,21 @@ fn test_struct() {
 
     module.add_chunk(chunk);
 
-    let env = Environment::new();
-    let mut vm = VM::new(&module, &env);
-    vm.invoke_chunk_id(0).unwrap();
-    assert_eq!(
-        vm.run().unwrap(),
-        ValueCell::Struct(
-            vec![
-                Value::U8(10).into(),
-                Value::U16(20).into()
-            ].into(),
-            new_struct
-        )
-    );
+    {
+        let env = Environment::new();
+        let mut vm = VM::new(&module, &env);
+        vm.invoke_chunk_id(0).unwrap();
+        assert_eq!(
+            vm.run().unwrap(),
+            ValueCell::Struct(
+                vec![
+                    Value::U8(10).into(),
+                    Value::U16(20).into()
+                ].into(),
+                new_struct
+            )
+        );
+    }
 
     let chunk = module.get_chunk_at_mut(0).unwrap();
     chunk.pop_instruction();
@@ -246,6 +248,7 @@ fn test_struct() {
 
     chunk.emit_opcode(OpCode::Return);
 
+    let env = Environment::new();
     let mut vm = VM::new(&module, &env);
     vm.invoke_chunk_id(0).unwrap();
     assert_eq!(vm.run().unwrap(), Value::U16(30).into());
