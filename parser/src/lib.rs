@@ -19,6 +19,13 @@ use context::Context;
 
 pub use error::ParserError;
 
+#[derive(Debug)]
+pub enum QueueItem {
+  Operator(Operator),         // For operators, identifiers, or literals
+  Expression(Expression),  // For finalized expressions or sub-expressions
+  Token(Token<'static>), // For operators
+}
+
 macro_rules! err {
     ($self: expr, $kind: expr) => {
         ParserError {
@@ -113,6 +120,15 @@ impl<'a> Function<'a> {
             _ => false
         }
     }
+}
+
+fn trace_postfix(output_queue: &Vec<QueueItem>) {
+    let postfix: Vec<String> = output_queue.iter().map(|item| match item {
+        QueueItem::Expression(expr) => format!("{:?}", expr), // Customize the format for Expression
+        QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
+        QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
+    }).collect();
+    trace!("Postfix Expression: {}", postfix.join(" "));
 }
 
 pub struct Parser<'a> {
@@ -857,34 +873,115 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn try_postfix_collapse(
+        &self,
+        output_queue: &[QueueItem], 
+        on_type: Option<&Type>, 
+        context: &mut Context<'a>,
+    ) -> Result<Vec<QueueItem>, ParserError<'a>> {
+        let mut collapse_queue: Vec<QueueItem> = Vec::new();
+    
+        output_queue.iter().try_for_each(|item| {
+            match item {
+                QueueItem::Expression(expr) => {
+                    collapse_queue.push(QueueItem::Expression(expr.clone()));
+                    Ok(())
+                }
+                QueueItem::Token(token) => {
+                    if let Some(op) = Operator::value_of(token) {
+                        if let Some(QueueItem::Expression(mut right)) = collapse_queue.pop() {
+                            if let Some(QueueItem::Expression(mut left)) = collapse_queue.pop() {
+                                let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                                if let Some(right_type) = self.get_type_from_expression_internal(on_type, &right, context)? {
+                                    self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+                                    let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
+                                    
+                                    let result_expr = self.try_convert_expr_to_value(&mut result)
+                                        .map(Expression::Constant)
+                                        .unwrap_or(result);
+                                    collapse_queue.push(QueueItem::Expression(result_expr));
+                                    Ok(())
+                                } else {
+                                    match op {
+                                        Operator::Eq | Operator::Neq | Operator::Assign(None) if left_type.allow_null() => {
+                                            let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
+                                            let result_expr = self.try_convert_expr_to_value(&mut result)
+                                                .map(Expression::Constant)
+                                                .unwrap_or(result);
+                                            collapse_queue.push(QueueItem::Expression(result_expr));
+                                            Ok(())
+                                        }
+                                        _ => Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
+                                    }
+                                }
+                            } else {
+                                Err(err!(self, ParserErrorKind::InvalidOperation))
+                            }
+                        } else {
+                            Err(err!(self, ParserErrorKind::InvalidOperation))
+                        }
+                    } else {
+                        Err(err!(self, ParserErrorKind::InvalidOperation))
+                    }
+                }
+                _ => Ok(()),
+            }
+        })?;
+    
+        // Return the fully collapsed queue
+        Ok(collapse_queue)
+    }
+
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-        self.read_expr(None, true, true, None, context)
+        self.read_expr(None, None, true, true, None, context)
+    }
+
+    // Read an expression with a delimiter
+    fn read_expression_delimited(&mut self, delimiter: &Token, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+      self.read_expr(Some(delimiter), None, true, true, None, context)
     }
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
-    fn read_expr(&mut self, on_type: Option<&Type>, allow_ternary: bool, accept_operator: bool, expected_type: Option<&Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_expr(
+      &mut self,
+      delimiter: Option<&Token>, 
+      on_type: Option<&Type>, 
+      allow_ternary: bool, 
+      accept_operator: bool, 
+      expected_type: Option<&Type>, 
+      context: &mut Context<'a>
+    ) -> Result<Expression, ParserError<'a>> {
         trace!("Read expression");
+
+        let mut operator_stack: Vec<Operator> = Vec::new(); // Stack for operators
+        let mut output_queue: Vec<QueueItem> = Vec::new();   // Queue for operands and reordered tokens
+        let mut collapse_queue: Vec<QueueItem> = Vec::new();   // Queue for operands and reordered tokens
+
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
         while self.peek()
             .ok()
             .filter(|peek| {
+                if let Some(delimiter) = delimiter.as_ref() {
+                  if **peek == **delimiter {
+                    return false
+                  }
+                }
+
                 if !allow_ternary && **peek == Token::OperatorTernary {
                     return false
                 }
-
-                if !accept_operator && required_operator {
-                    return false
-                }
-
-                required_operator == peek.is_operator()
+                
+                required_operator == peek.is_operator() 
                     || (**peek == Token::BracketOpen && last_expression.is_none())
+
             }).is_some()
         {
             let token = self.advance()?;
             trace!("token: {:?}", token);
+
             let expr: Expression = match token {
                 Token::BracketOpen => {
                     match last_expression {
@@ -894,7 +991,7 @@ impl<'a> Parser<'a> {
                             }
 
                             // Index must be of type u64
-                            let index = self.read_expr(on_type, true, true, Some(&Type::U32), context)?;
+                            let index = self.read_expr(delimiter.clone(), on_type, true, true, Some(&Type::U32), context)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context)?;
                             if *index_type != Type::U32 {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
@@ -908,7 +1005,7 @@ impl<'a> Parser<'a> {
                             let mut expressions: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while self.peek_is_not(Token::BracketClose) {
-                                let expr = self.read_expr(on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
+                                let expr = self.read_expr(delimiter.clone(), on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
@@ -933,15 +1030,25 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::ParenthesisOpen => {
-                    let expr = self.read_expr(None, true, true, expected_type, context)?;
+                    let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
                     self.expect_token(Token::ParenthesisClose)?;
+                    output_queue.push(QueueItem::Expression(expr.clone()));
                     Expression::SubExpression(Box::new(expr))
                 },
                 Token::Identifier(id) => {
-                    match self.peek() {
+                    trace!("identified {}", id);
+                    match self.peek()? {
                         // function call
-                        Ok(Token::ParenthesisOpen) => self.read_function_call(last_expression.take(), on_type, id, context)?,
-                        Ok(Token::Colon) => self.read_type_constant(Token::Identifier(id), context)?,
+                        Token::ParenthesisOpen => {
+                          let val = self.read_function_call(last_expression.take(), on_type, id, context)?;
+                          output_queue.push(QueueItem::Expression(val.clone()));
+                          val
+                        },
+                        Token::Colon => {
+                          let val = self.read_type_constant(Token::Identifier(id), context)?;
+                          output_queue.push(QueueItem::Expression(val.clone()));
+                          val
+                        },
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
@@ -950,7 +1057,11 @@ impl<'a> Parser<'a> {
                                         let builder = self.global_mapper.structs().get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
                                         match builder.get_id_for_field(id) {
-                                            Some(v) => Expression::Variable(v),
+                                            Some(v) => {
+                                              let val = Expression::Variable(v);
+                                              output_queue.push(QueueItem::Expression(val.clone()));
+                                              val
+                                            },
                                             None => return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                         }
                                     } else {
@@ -958,12 +1069,18 @@ impl<'a> Parser<'a> {
                                     }
                                 },
                                 None => {
-                                    if let Some(id) = context.get_variable_id(id) {
-                                        Expression::Variable(id)
+                                    if let Some(num_id) = context.get_variable_id(id) {
+                                        let val = Expression::Variable(num_id);
+                                        output_queue.push(QueueItem::Expression(val.clone()));
+                                        val
                                     } else if let Some(constant) = self.constants.get(id) {
-                                        Expression::Constant(constant.value.clone())
+                                        let val = Expression::Constant(constant.value.clone());
+                                        output_queue.push(QueueItem::Expression(val.clone()));
+                                        val
                                     } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
-                                        self.read_struct_constructor(builder.get_type().clone(), context)?
+                                        let val = self.read_struct_constructor(builder.get_type().clone(), context)?;
+                                        output_queue.push(QueueItem::Expression(val.clone()));
+                                        val
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }
@@ -973,7 +1090,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::Value(value) => {
-                    Expression::Constant(
+                    let val = Expression::Constant(
                         Constant::Default(match value {
                             Literal::U8(n) => Value::U8(n),
                             Literal::U16(n) => Value::U16(n),
@@ -994,7 +1111,10 @@ impl<'a> Parser<'a> {
                             Literal::Bool(b) => Value::Boolean(b),
                             Literal::Null => Value::Null
                         })
-                    )
+                    );
+
+                    output_queue.push(QueueItem::Expression(val.clone()));
+                    val
                 },
                 Token::Dot => {
                     match last_expression {
@@ -1008,7 +1128,7 @@ impl<'a> Parser<'a> {
                             // Read a type constant
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
-                                let end_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
+                                let end_expr = self.read_expr(delimiter.clone(), Some(&_type), false, false, expected_type, context)?;
                                 let end_type = self.get_type_from_expression(on_type, &end_expr, context)?;
                                 if _type != *end_type {
                                     return Err(err!(self, ParserErrorKind::InvalidRangeType(_type, end_type.into_owned())))
@@ -1018,17 +1138,25 @@ impl<'a> Parser<'a> {
                                     return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(_type)))
                                 }
 
-                                Expression::RangeConstructor(Box::new(value), Box::new(end_expr))
+                                let range = Expression::RangeConstructor(Box::new(value), Box::new(end_expr));
+                                output_queue.clear();
+                                range
                             } else {
                                 // Read a variable access OR a function call
-                                let right_expr = self.read_expr(Some(&_type), false, false, expected_type, context)?;
+                                let right_expr = self.read_expr(delimiter.clone(), Some(&_type), false, false, expected_type, context)?;
                                 if let Expression::FunctionCall(path, name, params) = right_expr {
                                     if path.is_some() {
                                         return Err(err!(self, ParserErrorKind::UnexpectedPathInFunctionCall))
                                     }
-                                    Expression::FunctionCall(Some(Box::new(value)), name, params)
+                                    let val = Expression::FunctionCall(Some(Box::new(value)), name, params);
+                                    output_queue.pop();
+                                    output_queue.push(QueueItem::Expression(val.clone()));
+                                    val
                                 } else {
-                                    Expression::Path(Box::new(value), Box::new(right_expr))
+                                  let val = Expression::Path(Box::new(value), Box::new(right_expr));
+                                  output_queue.pop();
+                                  output_queue.push(QueueItem::Expression(val.clone()));
+                                  val
                                 }
                             }
                         },
@@ -1044,84 +1172,134 @@ impl<'a> Parser<'a> {
 
                     Expression::IsNot(Box::new(expr))
                 },
-                Token::OperatorTernary => match last_expression { // condition ? expr : expr
+                Token::OperatorTernary => match last_expression {
                     Some(expr) => {
-                        if *self.get_type_from_expression(on_type, &expr, context)? != Type::Bool {
-                            return Err(err!(self, ParserErrorKind::InvalidCondition(Type::Bool, expr)))
+                        trace!("reached ternary");
+
+                        while let Some(top_op) = operator_stack.pop() {
+                            output_queue.push(QueueItem::Token(top_op.to_token()));
+                        }
+                
+                        trace_postfix(&output_queue);
+                
+                        let collapsed_queue = self.try_postfix_collapse(
+                            &output_queue,
+                            on_type,
+                            context,
+                        )?;
+
+                        if let Some(QueueItem::Expression(shunt_expr)) = collapsed_queue.first() {
+                            if *self.get_type_from_expression(on_type, &shunt_expr, context)? != Type::Bool {
+                                return Err(err!(self, ParserErrorKind::InvalidCondition(Type::Bool, shunt_expr.clone())))
+                            }
+                        } else {
+                            if *self.get_type_from_expression(on_type, &expr, context)? != Type::Bool {
+                                return Err(err!(self, ParserErrorKind::InvalidCondition(Type::Bool, expr)))
+                            }
                         }
 
-                        let valid_expr = self.read_expr(on_type, true, true, expected_type, context)?;
+                        let valid_expr = self.read_expr(Some(&Token::Colon), on_type, true, true, expected_type, context)?;
                         let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?.into_owned();
+                        trace!("left expr: {:?}", valid_expr.clone());
+
                         self.expect_token(Token::Colon)?;
-                        let else_expr = self.read_expr(on_type, true, true, expected_type, context)?;
+                        let else_expr = self.read_expr(None, on_type, true, true, expected_type, context)?;
                         let else_type = self.get_type_from_expression(on_type, &else_expr, context)?;
+
+                        trace!("right expr: {:?}", else_expr.clone());
                         
                         if first_type != *else_type { // both expr should have the SAME type.
                             return Err(err!(self, ParserErrorKind::InvalidValueType(else_type.into_owned(), first_type)))
                         }
                         required_operator = !required_operator;
-                        Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
+
+                        let val = if let Some(QueueItem::Expression(shunt_expr)) = collapsed_queue.first() {
+                          Expression::Ternary(Box::new(shunt_expr.clone()), Box::new(valid_expr), Box::new(else_expr))
+                        } else {
+                          Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
+                        };
+
+                        trace!("ternary result: {:?}", val);
+                        output_queue.push(QueueItem::Expression(val.clone()));
+                        val
                     },
                     None => return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression))
                 },
                 Token::As => {
-                    let previous_expr = last_expression.ok_or_else(|| err!(self, ParserErrorKind::InvalidOperation))?;
-                    let left_type = self.get_type_from_expression(on_type, &previous_expr, context)?.into_owned();
-                    let right_type = self.read_type()?;
+                    if let Some(QueueItem::Expression(mut prev_expr)) = output_queue.pop() {
+                        let left_type = self.get_type_from_expression(on_type, &prev_expr, context)?.into_owned();
+                        let right_type = self.read_type()?;
 
-                    if !left_type.is_castable_to(&right_type) {
-                        return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
+                        if !left_type.is_castable_to(&right_type) {
+                            return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
+                        }
+
+                        if !right_type.is_primitive() {
+                            return Err(err!(self, ParserErrorKind::CastPrimitiveError(left_type, right_type)))
+                        }
+
+                        required_operator = !required_operator;
+                        let val = Expression::Cast(Box::new(prev_expr), right_type);
+                        output_queue.push(QueueItem::Expression(val.clone()));
+                        val
+                    } else {
+                        return Err(err!(self, ParserErrorKind::InvalidExpression))
                     }
-
-                    if !right_type.is_primitive() {
-                        return Err(err!(self, ParserErrorKind::CastPrimitiveError(left_type, right_type)))
+                },
+                Token::SemiColon => { // Force the parser to recognize a valid semicolon placement, or cut its losses and return an error
+                    if let Some(ref expr) = last_expression {
+                        break;
+                    } else if !output_queue.is_empty() {
+                        break;
+                    } else {
+                        return Err(err!(self, ParserErrorKind::UnexpectedToken(Token::SemiColon)))
                     }
-
-                    required_operator = !required_operator;
-                    Expression::Cast(Box::new(previous_expr), right_type)
                 },
                 token => {
-                    match last_expression {
-                        Some(mut previous_expr) => {
-                            required_operator = !required_operator;
-
-                            let left_type = self.get_type_from_expression(on_type, &previous_expr, context)?.into_owned();
-                            // Parse the operator for this token
-                            let op = match Operator::value_of(&token) {
-                                Some(op) => op,
-                                None => return Err(err!(self, ParserErrorKind::OperatorNotFound(token)))
+                    let mut final_expr = last_expression.unwrap_or(Expression::Constant(Constant::Default(xelis_types::Value::U64(0))));
+                    if token.is_type() {
+                        let val = self.read_type_constant(token.clone(), context)?;
+                        output_queue.push(QueueItem::Expression(val.clone()));
+                        final_expr = val;
+                    } else if token == Token::BraceOpen {
+                        if operator_stack.len() + output_queue.len() == 0 {
+                            let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
+                                (Some(*key.clone()), Some(*value.clone()))
+                            } else {
+                                (None, None)
                             };
 
-                            let mut expr = self.read_expr(on_type, false, true, Some(&left_type), context)?;
-                            if let Some(right_type) = self.get_type_from_expression_internal(on_type, &expr, context)? {
-                                self.verify_operator(&op, left_type, right_type.into_owned(), &mut previous_expr, &mut expr)?;
-                                Expression::Operator(op, Box::new(previous_expr), Box::new(expr))
-                            } else {
-                                match op {
-                                    Operator::Eq
-                                    | Operator::Neq
-                                    | Operator::Assign(None)
-                                    if left_type.allow_null() => Expression::Operator(op, Box::new(previous_expr), Box::new(expr)),
-                                    _ => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type)))
-                                }
-                            }
+                            let val = self.read_map_constructor(key, value, context)?;
+                            final_expr = val;
+                        } else {
+                            return Err(err!(self, ParserErrorKind::InvalidOperation));
                         }
-                        None => {
-                            if token.is_type() {
-                                self.read_type_constant(token, context)?
-                            } else if token == Token::BraceOpen {
-                                let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
-                                    (Some(*key.clone()), Some(*value.clone()))
-                                } else {
-                                    (None, None)
-                                };
+                    } else {
+                        let op = match Operator::value_of(&token) {
+                            Some(op) => op,
+                            None => {
+                                return Err(err!(self, ParserErrorKind::OperatorNotFound(token)))
+                            }
+                        };
 
-                                self.read_map_constructor(key, value, context)?
-                            } else {
-                                return Err(err!(self, ParserErrorKind::InvalidOperation))
-                            }
+                        while let Some(top_op) = operator_stack.last() {
+                          if top_op.precedence().0 > op.precedence().0
+                              || (top_op.precedence().0 == op.precedence().0 && op.is_left_to_right())
+                          {
+                              if let Some(pop_op) = operator_stack.pop() {
+                                  output_queue.push(QueueItem::Token(pop_op.to_token()));
+                              } else {
+                                  return Err(err!(self, ParserErrorKind::InvalidOperation))
+                              }
+                          } else {
+                              break;
+                          }
                         }
+
+                        operator_stack.push(op.clone());
                     }
+
+                    final_expr
                 }
             };
 
@@ -1129,9 +1307,46 @@ impl<'a> Parser<'a> {
             required_operator = !required_operator;
         }
 
+        // Collapse remaining operators in the stack
+        while let Some(top_op) = operator_stack.pop() {
+            output_queue.push(QueueItem::Token(top_op.to_token()));
+        }
+
+        trace_postfix(&output_queue);
+
+        // Process the postfix arithmetic that was generated
+        let collapsed_queue = self.try_postfix_collapse(
+            &output_queue,
+            on_type,
+            context,
+        )?;
+
+        // Discard any subsequent semicolons directly adjacent to the current token
+        // This is a valid parsing procedure because this point is only reached if
+        // There is already enough data to safely parse a completed expression.
+        //
+        // Semicolons will never have unhandled data that is relevant left
+        while (self.peek()
+            .ok()
+            .filter(|peek| {
+                return **peek == Token::SemiColon
+            })
+        ).is_some() {
+            self.advance();
+        };
+
+        if let Some(QueueItem::Expression(expr)) = collapsed_queue.first() {
+            trace!("final shunted result: {:?}", expr);
+            return Ok(expr.clone());
+        } else {
+            trace!("no result left in postfix process");
+        }
+
+        // fall back to the last stored expression if the shunting yard has no
+        // postfix data to process, meaning the expression was not mathematical
         match last_expression {
             Some(mut v) => Ok(self.try_convert_expr_to_value(&mut v).map(Expression::Constant).unwrap_or(v)),
-            None => Err(err!(self, ParserErrorKind::NotImplemented))
+            None => Err(err!(self, ParserErrorKind::NotImplemented)), // No valid expression found
         }
     }
 
@@ -1240,7 +1455,7 @@ impl<'a> Parser<'a> {
 
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
-            let key = self.read_expr(None, true, true, key_type.as_ref(), context)?;
+            let key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
             let k_type = self.get_type_from_expression(None, &key, context)?;
             if let Some(t) = key_type.as_ref() {
                 if *k_type != *t {
@@ -1251,7 +1466,7 @@ impl<'a> Parser<'a> {
             }
 
             self.expect_token(Token::Colon)?;
-            let value = self.read_expr(None, true, true, value_type.as_ref(), context)?;
+            let value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
             let v_type = self.get_type_from_expression(None, &value, context)?;
             if let Some(t) = value_type.as_ref() {
                 if *v_type != *t {
@@ -1314,7 +1529,7 @@ impl<'a> Parser<'a> {
         let value_type = self.read_type()?;
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let mut expr = self.read_expr(None, true, true, Some(&value_type), context)?;
+            let mut expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -1415,7 +1630,8 @@ impl<'a> Parser<'a> {
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
                     let var = self.read_variable(context)?;
-                    let condition = self.read_expression(context)?;
+                    
+                    let condition = self.read_expression_delimited(&Token::SemiColon, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidCondition(condition_type.into_owned(), condition)))
@@ -1452,7 +1668,7 @@ impl<'a> Parser<'a> {
                     Statement::ForEach(id, expr, statements)
                 },
                 Token::While => { // Example: while i < 10 {}
-                    let condition = self.read_expression(context)?;
+                    let condition = self.read_expression_delimited(&Token::BraceOpen, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidCondition(condition_type.into_owned(), condition)))
@@ -1490,7 +1706,7 @@ impl<'a> Parser<'a> {
                 Token::Let => Statement::Variable(self.read_variable(context)?),
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
-                        let expr = self.read_expr(None, true, true, Some(return_type), context)?;
+                        let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;
                         let expr_type = self.get_type_from_expression(None, &expr, context)?;
                         if !expr_type.is_compatible_with(return_type) {
                             return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
@@ -1988,6 +2204,242 @@ mod tests {
     }
 
     #[test]
+    fn test_shunting_yard_error() {
+        // Test 3 + - 4 * 6 - * - (4 / 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::OperatorPlus,
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let result = std::panic::catch_unwind(|| test_parser_statement(tokens, Vec::new()));
+        assert!(result.is_err(), "Expected parsing to fail, but it succeeded.");
+    }
+
+    #[test]
+    fn test_shunting_yard() {
+        // Test 3 + 4 * 6 - (4 / 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+    
+        // Build the expected AST
+        let expected_ast = Statement::Expression(
+            Expression::Constant(Constant::Default(xelis_types::Value::U64(25)))
+        );
+
+        // Compare the parsed AST to the expected AST
+        assert_eq!(statements[0], expected_ast);
+    }
+
+    #[test]
+    fn test_shunting_yard_nested() {
+        // Test 3 + 4 * 6 - ((4 / 2) + 10 - 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(10)),
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+    
+        // Build the expected AST
+        let expected_ast = Statement::Expression(
+            Expression::Constant(Constant::Default(xelis_types::Value::U64(25 - 8)))
+        );
+
+        // Compare the parsed AST to the expected AST
+        assert_eq!(statements[0], expected_ast);
+    }
+
+    #[test]
+    fn test_shunting_yard_constant() {
+        // Test 3 + u8::MAX as u64 + 4 * 6 - (4 / 2)
+        let tokens = vec![
+            Token::Value(Literal::U64(3)),
+            Token::OperatorPlus,
+            Token::Number(NumberType::U8),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX"),
+            Token::As,
+            Token::Number(NumberType::U64),
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(6)),
+            Token::OperatorMinus,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(4)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::ParenthesisClose,
+        ];
+    
+        let mut env = EnvironmentBuilder::new();
+        env.register_constant(Type::U8, "MAX", Value::U8(u8::MAX).into());
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 1);
+    
+        // Build the expected AST
+        let expected_ast = Statement::Expression(
+            Expression::Constant(Constant::Default(xelis_types::Value::U64(25+255)))
+        );
+
+        // Compare the parsed AST to the expected AST
+        assert_eq!(statements[0], expected_ast);
+    }
+
+    #[test]
+    fn test_shunting_yard_loop() {
+        // Test for i = 0; i < 10 + 3*2; i+= 1 {}
+        let tokens = vec![
+            Token::For,
+            Token::Identifier("i"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Value(Literal::U64(0)),
+            Token::SemiColon,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::Value(Literal::U64(10)),
+            Token::OperatorPlus,
+            Token::Value(Literal::U64(3)),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(2)),
+            Token::SemiColon,
+            Token::Identifier("i"),
+            Token::OperatorPlusAssign,
+            Token::Value(Literal::U64(1)),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_shunting_yard_while() {
+        // Test while i < 10 - 2 / 2 {}
+        let tokens = vec![
+            Token::While,
+            Token::Identifier("i"),
+            Token::OperatorLessThan,
+            Token::Value(Literal::U64(10)),
+            Token::OperatorMinus,
+            Token::Value(Literal::U64(2)),
+            Token::OperatorDivide,
+            Token::Value(Literal::U64(2)),
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, vec![("i", Type::U64)]);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_semicolon_optional() {
+        // Test let blank: optional<bool> = null;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("blank"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Bool,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::SemiColon,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Optional(Box::new(Type::Bool)),
+                    value: Expression::Constant(Value::Null.into())
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_semicolon_ignore() {
+        // Test let blank: optional<bool> = null;;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("blank"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Bool,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+            Token::SemiColon,
+            Token::SemiColon,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: 0,
+                    value_type: Type::Optional(Box::new(Type::Bool)),
+                    value: Expression::Constant(Value::Null.into())
+                }
+            )
+        );
+    }
+
+    #[test]
     fn test_constant() {
         let tokens = vec![
             Token::Const,
@@ -2216,6 +2668,7 @@ mod tests {
 
     #[test]
     fn test_for_each_range() {
+        // foreach a in 0..10 {}
         let tokens = vec![
             Token::ForEach,
             Token::Identifier("a"),
@@ -2481,9 +2934,11 @@ mod tests {
             Token::Number(NumberType::U64),
             Token::OperatorAssign,
             Token::Value(Literal::U64(0)),
+            Token::SemiColon,
             Token::Identifier("i"),
             Token::OperatorLessThan,
             Token::Value(Literal::U64(10)),
+            Token::SemiColon,
             Token::Identifier("i"),
             Token::OperatorPlusAssign,
             Token::Value(Literal::U64(1)),
