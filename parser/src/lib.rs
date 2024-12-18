@@ -961,7 +961,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            trace!("token: {:?}", token);
+            println!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
@@ -1227,11 +1227,11 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::InvalidExpression))
                     }
                 },
-                Token::SemiColon => {
-                    if let Some(ref expr) = last_expression {
-                        break;
+                Token::SemiColon => { // Force the parser to recognize a valid semicolon placement, or cut its losses and return an error
+                    if let Some(expr) = last_expression {
+                        expr
                     } else {
-                        Expression::Constant(Constant::Default(xelis_types::Value::U64(0)))
+                        return Err(err!(self, ParserErrorKind::UnexpectedToken(token)));
                     }
                 },
                 token => {
@@ -1299,6 +1299,20 @@ impl<'a> Parser<'a> {
             on_type,
             context,
         )?;
+
+        // Discard any subsequent semicolons directly adjacent to the current token
+        // This is a valid parsing procedure because this point is only reached if
+        // There is already enough data to safely parse a completed expression.
+        //
+        // Semicolons will never have unhandled data that is relevant left
+        while (self.peek()
+            .ok()
+            .filter(|peek| {
+                return **peek == Token::SemiColon
+            })
+        ).is_some() {
+            self.advance();
+        };
 
         if let Some(QueueItem::Expression(expr)) = collapsed_queue.first() {
             trace!("final shunted result: {:?}", expr);
@@ -2306,7 +2320,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optional_semicolon() {
+    fn test_semicolon_optional() {
         // Test let blank: optional<bool> = null;
         let tokens = vec![
             Token::Let,
@@ -2335,7 +2349,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ignore_semicolon() {
+    fn test_semicolon_ignore() {
         // Test let blank: optional<bool> = null;;
         let tokens = vec![
             Token::Let,
