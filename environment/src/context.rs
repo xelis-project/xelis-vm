@@ -21,6 +21,7 @@ impl Hasher for NoOpHasher {
 }
 
 // Data is a wrapper around Any that allows for borrowed and mutable references.
+#[derive(Debug)]
 pub enum Data<'a> {
     Owned(Box<dyn Any>),
     Borrowed(&'a dyn Any),
@@ -47,11 +48,20 @@ impl<'a> Data<'a> {
     }
 
     // into_owned consumes the Data and returns the underlying value or clone it if it's borrowed.
-    pub fn into_owned<T: Clone + 'static>(self) -> T {
+    pub fn into_owned<T: Clone + 'static>(self) -> Result<T, Self> {
         match self {
-            Data::Owned(value) => *value.downcast::<T>().unwrap(),
-            Data::Borrowed(value) => value.downcast_ref::<T>().unwrap().clone(),
-            Data::Mut(value) => value.downcast_ref::<T>().unwrap().clone(),
+            Data::Owned(value) => match value.downcast::<T>() {
+                Ok(value) => Ok(*value),
+                Err(v) => Err(Data::Owned(v)),
+            },
+            Data::Borrowed(value) => match value.downcast_ref::<T>() {
+                Some(value) => Ok(value.clone()),
+                None => Err(Data::Borrowed(value)),
+            },
+            Data::Mut(value) => match value.downcast_ref::<T>() {
+                Some(value) => Ok(value.clone()),
+                None => Err(Data::Mut(value)),
+            },
         }
     }
 
@@ -228,7 +238,7 @@ mod tests {
         context.insert_ref(&1);
 
         assert_eq!(context.get::<i32>(), Some(&1));
-        assert_eq!(context.remove::<i32>().unwrap().into_owned::<i32>(), 1i32);
+        assert_eq!(context.remove::<i32>().unwrap().into_owned::<i32>().unwrap(), 1i32);
         assert_eq!(context.get::<i32>(), None);
         assert!(context.remove::<i32>().is_none());
         assert_eq!(context.contains::<i32>(), false);
@@ -245,7 +255,7 @@ mod tests {
         context.insert(1);
 
         assert_eq!(context.get::<i32>(), Some(&1));
-        assert_eq!(context.remove::<i32>().unwrap().into_owned::<i32>(), 1i32);
+        assert_eq!(context.remove::<i32>().unwrap().into_owned::<i32>().unwrap(), 1i32);
         assert_eq!(context.take::<i32>(), None);
         assert!(context.remove::<i32>().is_none());
         assert_eq!(context.contains::<i32>(), false);
