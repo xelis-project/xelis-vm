@@ -2,10 +2,11 @@ mod error;
 mod function;
 mod context;
 
-use better_any::tid;
 use indexmap::IndexSet;
 use xelis_types::{EnumType, OpaqueType, StructType};
 
+// Also re-export the necessary macro
+pub use better_any::tid;
 pub use error::EnvironmentError;
 pub use function::*;
 pub use context::*;
