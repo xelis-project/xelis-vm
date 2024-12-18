@@ -29,8 +29,8 @@ impl Hasher for NoOpHasher {
 }
 
 // Context is a simple data store that allows for storing and retrieving values of different types.
-pub struct Context<'a> {
-    data: HashMap<TypeId, Data<'a>, BuildHasherDefault<NoOpHasher>>,
+pub struct Context<'ty, 'r> {
+    data: HashMap<TypeId, Data<'ty, 'r>, BuildHasherDefault<NoOpHasher>>,
     // Configurable gas limit for an execution
     // By default, set to u64::MAX because
     // no program should be able to run indefinitely
@@ -44,13 +44,13 @@ pub struct Context<'a> {
     current_gas: u64,
 }
 
-impl Default for Context<'_> {
+impl Default for Context<'_, '_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> Context<'a> {
+impl<'ty, 'r> Context<'ty, 'r> {
     // Create a new Context
     pub fn new() -> Self {
         Self {
@@ -114,43 +114,43 @@ impl<'a> Context<'a> {
 
     // Insert a value into the Context without checking the type
     #[inline]
-    pub fn insert_unchecked(&mut self, key: TypeId, data: Data<'a>) {
+    pub fn insert_unchecked(&mut self, key: TypeId, data: Data<'ty, 'r>) {
         self.data.insert(key, data);
     }
 
     // Insert a borrowed value into the Context
     #[inline]
-    pub fn insert_ref<T: Tid<'a>>(&mut self, value: &'a T) {
+    pub fn insert_ref<T: Tid<'ty>>(&mut self, value: &'r T) {
         self.data.insert(T::id(), Data::Borrowed(value));
     }
 
     // Insert a mutable value into the Context
     #[inline]
-    pub fn insert_mut<T: Tid<'a>>(&mut self, value: &'a mut T) {
+    pub fn insert_mut<T: Tid<'ty>>(&mut self, value: &'r mut T) {
         self.data.insert(T::id(), Data::Mut(value));
     }
 
     // Insert an owned value into the Context
     #[inline]
-    pub fn insert<T: Tid<'a>>(&mut self, value: T) {
+    pub fn insert<T: Tid<'ty>>(&mut self, value: T) {
         self.data.insert(T::id(), Data::Owned(Box::new(value)));
     }
 
     // Get a borrowed value from the Context
     #[inline]
-    pub fn get<'b, T: Tid<'a>>(&'b self) -> Option<&'b T> {
+    pub fn get<'b, T: Tid<'ty>>(&'b self) -> Option<&'b T> {
         self.data.get(&T::id()).map(|v| v.downcast_ref()).flatten()
     }
 
     // Get a mutable value from the Context
     #[inline]
-    pub fn get_mut<'b, T: Tid<'a>>(&'b mut self) -> Option<&'b mut T> {
+    pub fn get_mut<'b, T: Tid<'ty>>(&'b mut self) -> Option<&'b mut T> {
         self.data.get_mut(&T::id()).map(|v| v.downcast_mut()).flatten()
     }
 
     // Get an owned value from the Context
     #[inline]
-    pub fn take<T: Tid<'a>>(&mut self) -> Option<T> {
+    pub fn take<T: Tid<'ty>>(&mut self) -> Option<T> {
         let id = T::id();
         match self.data.remove(&id) {
             Some(data) => data.try_take_owned::<T>().ok(),
@@ -160,13 +160,13 @@ impl<'a> Context<'a> {
 
     // remove a value from the Context and returns it.
     #[inline]
-    pub fn remove<T: Tid<'a>>(&mut self) -> Option<Data<'a>> {
+    pub fn remove<T: Tid<'ty>>(&mut self) -> Option<Data<'ty, 'r>> {
         self.data.remove(&T::id())
     }
 
     // Check if the Context contains a value of a specific type.
     #[inline]
-    pub fn contains<T: Tid<'a>>(&self) -> bool {
+    pub fn contains<T: Tid<'ty>>(&self) -> bool {
         self.data.contains_key(&T::id())
     }
 
@@ -224,5 +224,16 @@ mod tests {
         assert!(matches!(context.get::<Dummy>(), Some(_)));
         assert!(matches!(context.get_mut::<Dummy>(), Some(_)));
         assert_eq!(context.contains::<Dummy>(), true);
+    }
+
+    #[test]
+    fn test_context_no_immutable_err() {
+        let mut dummy = Dummy("Hello, World!");
+        {
+            let mut context = Context::new();
+            context.insert_mut(&mut dummy);
+        }
+
+        assert_eq!(dummy.0, "Hello, World!");
     }
 }

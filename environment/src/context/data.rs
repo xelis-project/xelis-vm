@@ -1,15 +1,15 @@
 use better_any::{Tid, TidExt};
 
 // Data is a wrapper around Any that allows for borrowed and mutable references.
-pub enum Data<'a> {
-    Owned(Box<dyn Tid<'a>>),
-    Borrowed(&'a dyn Tid<'a>),
-    Mut(&'a mut dyn Tid<'a>),
+pub enum Data<'ty, 'r> {
+    Owned(Box<dyn Tid<'ty>>),
+    Borrowed(&'r dyn Tid<'ty>),
+    Mut(&'r mut dyn Tid<'ty>),
 }
 
-impl<'a> Data<'a> {
+impl<'ty, 'r> Data<'ty, 'r> {
     // downcast allows for immutable access to the underlying value.
-    pub fn downcast_ref<'b, T: Tid<'a>>(&'b self) -> Option<&'b T> {
+    pub fn downcast_ref<'b, T: Tid<'ty>>(&'b self) -> Option<&'b T> {
         match self {
             Data::Owned(value) => (**value).downcast_ref(),
             Data::Borrowed(value) => (*value).downcast_ref(),
@@ -18,7 +18,7 @@ impl<'a> Data<'a> {
     }
 
     // downcast_mut allows for mutable access to the underlying value.
-    pub fn downcast_mut<'b, T: Tid<'a>>(&'b mut self) -> Option<&'b mut T> {
+    pub fn downcast_mut<'b, T: Tid<'ty>>(&'b mut self) -> Option<&'b mut T> {
         match self {
             Data::Owned(value) => (**value).downcast_mut(),
             Data::Mut(value) => (*value).downcast_mut(),
@@ -27,7 +27,7 @@ impl<'a> Data<'a> {
     }
 
     // into_owned consumes the Data and returns the underlying value or clone it if it's borrowed.
-    pub fn into_owned<T: Clone + Tid<'a>>(self) -> Result<T, Self> {
+    pub fn into_owned<T: Clone + Tid<'ty>>(self) -> Result<T, Self> {
         match self {
             Data::Owned(value) => match value.downcast_box::<T>() {
                 Ok(value) => Ok(*value),
@@ -45,7 +45,7 @@ impl<'a> Data<'a> {
     }
 
     // take consumes the Data and returns the underlying value if it's owned.
-    pub fn try_take_owned<T: Tid<'a>>(self) -> Result<T, Self> {
+    pub fn try_take_owned<T: Tid<'ty>>(self) -> Result<T, Self> {
         match self {
             Data::Owned(value) => match value.downcast_box::<T>() {
                 Ok(value) => Ok(*value),
