@@ -1228,10 +1228,12 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::SemiColon => { // Force the parser to recognize a valid semicolon placement, or cut its losses and return an error
-                    if let Some(expr) = last_expression {
-                        expr
+                    if let Some(ref expr) = last_expression {
+                        break;
+                    } else if !output_queue.is_empty() {
+                        break;
                     } else {
-                        continue;
+                        return Err(err!(self, ParserErrorKind::UnexpectedToken(Token::SemiColon)))
                     }
                 },
                 token => {
