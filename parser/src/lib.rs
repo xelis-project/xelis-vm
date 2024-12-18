@@ -881,16 +881,16 @@ impl<'a> Parser<'a> {
     ) -> Result<Vec<QueueItem>, ParserError<'a>> {
         let mut collapse_queue: Vec<QueueItem> = Vec::new();
     
-        output_queue.iter().try_for_each(|item| {
-            match item {
-                QueueItem::Expression(expr) => {
-                    collapse_queue.push(QueueItem::Expression(expr.clone()));
-                    Ok(())
-                }
-                QueueItem::Token(token) => {
-                    if let Some(op) = Operator::value_of(token) {
-                        if let Some(QueueItem::Expression(mut right)) = collapse_queue.pop() {
-                            if let Some(QueueItem::Expression(mut left)) = collapse_queue.pop() {
+        output_queue.iter()
+            .try_for_each(|item| {
+                match item {
+                    QueueItem::Expression(expr) => {
+                        collapse_queue.push(QueueItem::Expression(expr.clone()));
+                        Ok(())
+                    }
+                    QueueItem::Token(token) => {
+                        if let Some(op) = Operator::value_of(token) {
+                            if let (Some(QueueItem::Expression(mut right)), Some(QueueItem::Expression(mut left))) = (collapse_queue.pop(), collapse_queue.pop()) {
                                 let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
                                 if let Some(right_type) = self.get_type_from_expression_internal(on_type, &right, context)? {
                                     self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
@@ -900,7 +900,7 @@ impl<'a> Parser<'a> {
                                         .map(Expression::Constant)
                                         .unwrap_or(result);
                                     collapse_queue.push(QueueItem::Expression(result_expr));
-                                    Ok(())
+                                    return Ok(())
                                 } else {
                                     match op {
                                         Operator::Eq | Operator::Neq | Operator::Assign(None) if left_type.allow_null() => {
@@ -909,24 +909,19 @@ impl<'a> Parser<'a> {
                                                 .map(Expression::Constant)
                                                 .unwrap_or(result);
                                             collapse_queue.push(QueueItem::Expression(result_expr));
-                                            Ok(())
+                                            return Ok(())
                                         }
-                                        _ => Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
+                                        _ => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
                                     }
                                 }
-                            } else {
-                                Err(err!(self, ParserErrorKind::InvalidOperation))
                             }
-                        } else {
-                            Err(err!(self, ParserErrorKind::InvalidOperation))
                         }
-                    } else {
+
                         Err(err!(self, ParserErrorKind::InvalidOperation))
                     }
+                    _ => Ok(()),
                 }
-                _ => Ok(()),
-            }
-        })?;
+            })?;
     
         // Return the fully collapsed queue
         Ok(collapse_queue)
