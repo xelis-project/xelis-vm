@@ -961,7 +961,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            println!("token: {:?}", token);
+            trace!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
