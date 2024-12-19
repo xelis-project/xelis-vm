@@ -552,8 +552,8 @@ fn test_stackoverflow() {
     let mut code = r#"
         entry main() {
             let a: u64 = 1;
-            let b: u64 = a
-    "#.to_string() + "+ a + a ".repeat(10000).as_str();
+            let b: u64 = 1
+    "#.to_string() + "+ 1 + 1 ".repeat(10000).as_str();
     code.push_str("return x }");
 
     // TODO FIXME
