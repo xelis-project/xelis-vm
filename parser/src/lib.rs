@@ -128,7 +128,7 @@ fn trace_postfix(output_queue: &Vec<QueueItem>) {
         QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
         QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
     }).collect();
-    println!("Postfix Expression: {}", postfix.join(" "));
+    trace!("Postfix Expression: {}", postfix.join(" "));
 }
 
 pub struct Parser<'a> {
@@ -981,7 +981,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            println!("token: {:?}", token);
+            trace!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
@@ -991,22 +991,39 @@ impl<'a> Parser<'a> {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
 
-                            // Index must be of type u64
-                            let index = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
-                            let index_type = self.get_type_from_expression(on_type, &index, context)?;
-                            if *index_type != Type::U32 {
-                                return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
-                            }
+                            let mut indexes: Vec<Expression> = Vec::new();
 
+                            // Index must be of type u64
+                            let index0 = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
+                            let index0_type = self.get_type_from_expression(on_type, &index0, context)?;
+                            if *index0_type != Type::U32 {
+                                return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index0_type.into_owned())))
+                            }
+                            indexes.push(index0.clone());
                             self.expect_token(Token::BracketClose)?;
 
-                            // TODO: nest ArrayCalls here until the next token is not '['
+                            // Peek forward for every consecutive [] index if present,
+                            // nesting array calls as necessary
+                            while self.peek_is(Token::BracketOpen) {
+                                self.advance();
+                                let index = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
+                                let index_type = self.get_type_from_expression(on_type, &index, context)?;
+                                if *index_type != Type::U32 {
+                                    return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
+                                }
+                                indexes.push(index);
+                                self.expect_token(Token::BracketClose)?;
+                            }
 
-                            required_operator = !required_operator;
-                            
-                            let val = Expression::ArrayCall(Box::new(v), Box::new(index));
-                            output_queue.push(QueueItem::Expression(val.clone()));
-                            val
+                            required_operator = !required_operator; 
+                             
+                            let mut nested_call = v;
+                            for index in indexes.into_iter() {
+                              nested_call = Expression::ArrayCall(Box::new(nested_call), Box::new(index));
+                            }
+                                                
+                            output_queue.push(QueueItem::Expression(nested_call.clone()));
+                            nested_call
                         },
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = Vec::new();
