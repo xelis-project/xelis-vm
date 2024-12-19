@@ -991,39 +991,23 @@ impl<'a> Parser<'a> {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
 
-                            let mut indexes: Vec<Expression> = Vec::new();
-
                             // Index must be of type u64
-                            let index0 = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
-                            let index0_type = self.get_type_from_expression(on_type, &index0, context)?;
-                            if *index0_type != Type::U32 {
-                                return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index0_type.into_owned())))
+                            let index = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
+                            let index_type = self.get_type_from_expression(on_type, &index, context)?;
+                            if *index_type != Type::U32 {
+                                return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
                             }
-                            indexes.push(index0.clone());
                             self.expect_token(Token::BracketClose)?;
 
-                            // Peek forward for every consecutive [] index if present,
-                            // nesting array calls as necessary
-                            while self.peek_is(Token::BracketOpen) {
-                                self.advance();
-                                let index = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
-                                let index_type = self.get_type_from_expression(on_type, &index, context)?;
-                                if *index_type != Type::U32 {
-                                    return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
-                                }
-                                indexes.push(index);
-                                self.expect_token(Token::BracketClose)?;
-                            }
-
                             required_operator = !required_operator; 
-                             
-                            let mut nested_call = v;
-                            for index in indexes.into_iter() {
-                              nested_call = Expression::ArrayCall(Box::new(nested_call), Box::new(index));
-                            }
+                            let array_call = Expression::ArrayCall(Box::new(v), Box::new(index));
                                                 
-                            output_queue.push(QueueItem::Expression(nested_call.clone()));
-                            nested_call
+                            // Only treat the array call as a valid shunting yard operand if
+                            // it is the terminal index in an array index chain
+                            if self.peek_is_not(Token::BracketOpen) {
+                                output_queue.push(QueueItem::Expression(array_call.clone()));
+                            }
+                            array_call
                         },
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = Vec::new();
