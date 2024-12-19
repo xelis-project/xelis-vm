@@ -19,11 +19,26 @@ use context::Context;
 
 pub use error::ParserError;
 
-#[derive(Debug)]
-pub enum QueueItem {
+#[derive(Debug, Clone)]
+enum QueueItem {
   Operator(Operator),         // For operators, identifiers, or literals
   Expression(Expression),  // For finalized expressions or sub-expressions
   Token(Token<'static>), // For operators
+}
+
+enum CollapseStep<'a> {
+    Done(Vec<QueueItem>),
+    ProcessItem {
+        current_queue: Vec<QueueItem>,
+        remaining_items: std::slice::Iter<'a, QueueItem>,
+    },
+    ProcessOperator {
+        current_queue: Vec<QueueItem>,
+        remaining_items: std::slice::Iter<'a, QueueItem>,
+        left: Expression,
+        right: Expression,
+        op: Operator,
+    },
 }
 
 macro_rules! err {
@@ -716,6 +731,8 @@ impl<'a> Parser<'a> {
         })
     }
 
+
+
     // Try to convert an expression to a value
     // By converting an expression to a constant value, we earn in performance as we have less operations to execute
     // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
@@ -879,56 +896,83 @@ impl<'a> Parser<'a> {
 
     fn try_postfix_collapse(
         &self,
-        output_queue: &[QueueItem], 
-        on_type: Option<&Type>, 
+        output_queue: &[QueueItem],
+        on_type: Option<&Type>,
         context: &mut Context<'a>,
     ) -> Result<Vec<QueueItem>, ParserError<'a>> {
-        let mut collapse_queue: Vec<QueueItem> = Vec::new();
-    
-        output_queue.iter()
-            .try_for_each(|item| {
-                match item {
-                    QueueItem::Expression(expr) => {
-                        collapse_queue.push(QueueItem::Expression(expr.clone()));
-                        Ok(())
-                    }
-                    QueueItem::Token(token) => {
-                        if let Some(op) = Operator::value_of(token) {
-                            if let (Some(QueueItem::Expression(mut right)), Some(QueueItem::Expression(mut left))) = (collapse_queue.pop(), collapse_queue.pop()) {
-                                let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
-                                if let Some(right_type) = self.get_type_from_expression_internal(on_type, &right, context)? {
-                                    self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
-                                    let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
-                                    
-                                    let result_expr = self.try_convert_expr_to_value(&mut result)
-                                        .map(Expression::Constant)
-                                        .unwrap_or(result);
-                                    collapse_queue.push(QueueItem::Expression(result_expr));
-                                    return Ok(())
-                                } else {
-                                    match op {
-                                        Operator::Eq | Operator::Neq | Operator::Assign(None) if left_type.allow_null() => {
-                                            let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
-                                            let result_expr = self.try_convert_expr_to_value(&mut result)
-                                                .map(Expression::Constant)
-                                                .unwrap_or(result);
-                                            collapse_queue.push(QueueItem::Expression(result_expr));
-                                            return Ok(())
-                                        }
-                                        _ => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
-                                    }
-                                }
-                            }
-                        }
+        let mut step = CollapseStep::ProcessItem {
+            current_queue: Vec::new(),
+            remaining_items: output_queue.iter(),
+        };
 
-                        Err(err!(self, ParserErrorKind::InvalidOperation))
+        let mut level = 0;
+
+        loop {
+            step = match step {
+                CollapseStep::Done(result) => return Ok(result),
+                
+                CollapseStep::ProcessItem { mut current_queue, mut remaining_items } => {
+                    println!("reached level {}", { level += 1; level });
+                    match remaining_items.next() {
+                        None => CollapseStep::Done(current_queue),
+                        Some(QueueItem::Expression(expr)) => {
+                            current_queue.push(QueueItem::Expression(expr.clone()));
+                            CollapseStep::ProcessItem { current_queue, remaining_items }
+                        },
+                        Some(QueueItem::Token(token)) => {
+                            if let Some(op) = Operator::value_of(token) {
+                                if let (Some(QueueItem::Expression(right)), Some(QueueItem::Expression(left))) 
+                                    = (current_queue.pop(), current_queue.pop()) {
+                                    CollapseStep::ProcessOperator {
+                                        current_queue,
+                                        remaining_items,
+                                        left,
+                                        right,
+                                        op,
+                                    }
+                                } else {
+                                    CollapseStep::ProcessItem { current_queue, remaining_items }
+                                }
+                            } else {
+                                return Err(err!(self, ParserErrorKind::UnexpectedTokenInPostfix(token.clone())))
+                            }
+                        },
+                        _ => CollapseStep::ProcessItem { current_queue, remaining_items },
                     }
-                    _ => Ok(()),
+                },
+
+                CollapseStep::ProcessOperator { mut current_queue, remaining_items, mut left, mut right, op } => {
+                    let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                    println!("reached level {}", { level += 1; level });
+
+                    match self.get_type_from_expression_internal(on_type, &right, context)? {
+                        Some(right_type) => {
+                            self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+
+                            let mut result = Expression::Operator(
+                                op, Box::new(left), 
+                                Box::new(right)
+                            );
+
+                            let result_expr = self.try_convert_expr_to_value(&mut result)
+                                .map(Expression::Constant)
+                                .unwrap_or(result);
+                            current_queue.push(QueueItem::Expression(result_expr.clone()));
+                        }
+                        None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && left_type.allow_null() => {
+                            let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
+                            let result_expr = self.try_convert_expr_to_value(&mut result)
+                                .map(Expression::Constant)
+                                .unwrap_or(result);
+                            current_queue.push(QueueItem::Expression(result_expr));
+                        }
+                        None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
+                    }
+                    
+                    CollapseStep::ProcessItem { current_queue, remaining_items }
                 }
-            })?;
-    
-        // Return the fully collapsed queue
-        Ok(collapse_queue)
+            };
+        }
     }
 
     // Read an expression with default parameters
@@ -954,9 +998,9 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression, ParserError<'a>> {
         trace!("Read expression");
         // Stack for operators
-        let mut operator_stack: Vec<Operator> = Vec::new();
+        let mut operator_stack: Box<Vec<Operator>> = Box::new(Vec::new());
         // Queue for operands and reordered tokens
-        let mut output_queue: Vec<QueueItem> = Vec::new();
+        let mut output_queue: Box<Vec<QueueItem>> = Box::new(Vec::new());
 
         let mut required_operator = false;
         let mut last_expression: Option<Expression> = None;
@@ -2156,6 +2200,8 @@ impl<'a> Parser<'a> {
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };
         }
+
+        println!("PARSING DONE");
 
         let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
         Ok((program, self.global_mapper))
