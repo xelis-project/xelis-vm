@@ -20,25 +20,10 @@ use context::Context;
 pub use error::ParserError;
 
 #[derive(Debug, Clone)]
-enum QueueItem {
+pub enum QueueItem {
   Operator(Operator),         // For operators, identifiers, or literals
   Expression(Expression),  // For finalized expressions or sub-expressions
   Token(Token<'static>), // For operators
-}
-
-enum CollapseStep<'a> {
-    Done(Vec<QueueItem>),
-    ProcessItem {
-        current_queue: Vec<QueueItem>,
-        remaining_items: std::slice::Iter<'a, QueueItem>,
-    },
-    ProcessOperator {
-        current_queue: Vec<QueueItem>,
-        remaining_items: std::slice::Iter<'a, QueueItem>,
-        left: Expression,
-        right: Expression,
-        op: Operator,
-    },
 }
 
 macro_rules! err {
@@ -732,7 +717,7 @@ impl<'a> Parser<'a> {
     }
 
 
-
+    
     // Try to convert an expression to a value
     // By converting an expression to a constant value, we earn in performance as we have less operations to execute
     // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
@@ -740,6 +725,10 @@ impl<'a> Parser<'a> {
     // if we have a if true { 5 } else { 10 } -> we write 5
     fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Constant> {
         if self.disable_const_upgrading {
+            return None
+        }
+
+        if !expr.is_collapsible_in_parser() {
             return None
         }
 
@@ -894,6 +883,16 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn print_vector_size<T>(vec: &Vec<T>) {
+        let vector_metadata_size = std::mem::size_of::<Vec<T>>(); // Size of Vec<T> structure
+        let elements_heap_size = std::mem::size_of::<T>() * vec.len(); // Size of elements on the heap
+        let total_size = vector_metadata_size + elements_heap_size;
+    
+        println!("Size of Vec<T> structure: {} bytes", vector_metadata_size);
+        println!("Size of elements on the heap: {} bytes", elements_heap_size);
+        println!("Total size in memory: {} bytes", total_size);
+    }
+
     fn try_postfix_collapse(
         &self,
         output_queue: &[QueueItem], 
@@ -902,15 +901,14 @@ impl<'a> Parser<'a> {
     ) -> Result<Vec<QueueItem>, ParserError<'a>> {
         let mut collapse_queue: Vec<QueueItem> = Vec::new();
 
+        let mut base_type: Type = Type::Any;
         let mut level = 0;
+
         output_queue.iter().try_fold(Vec::new(), |mut acc: Vec<QueueItem>, item| {
             println!("reached level {}", { level += 1; level });
             match item {
                 QueueItem::Expression(expr) => {
-                    let result_expr = self.try_convert_expr_to_value(&mut expr.clone())
-                        .map(Expression::Constant)
-                        .unwrap_or(expr.clone());
-                    collapse_queue.push(QueueItem::Expression(result_expr.clone()));
+                    collapse_queue.push(QueueItem::Expression(expr.clone()));
                 }
                 QueueItem::Token(token) => {
                     if let Some(op) = Operator::value_of(token) {
@@ -919,30 +917,42 @@ impl<'a> Parser<'a> {
                             _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
                         };
         
-                        let left_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                        if base_type == Type::Any {
+                            base_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                        }
                         
                         match self.get_type_from_expression_internal(on_type, &right, context)? {
                             Some(right_type) => {
-                                self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+                                println!("pre operator");
+                                self.verify_operator(&op, base_type.clone(), right_type.into_owned(), &mut left, &mut right)?;
 
+                                println!("pre new expression");
                                 let mut result = Expression::Operator(
-                                    op, Box::new(left), 
-                                    Box::new(right)
+                                    op, Box::new(left.clone()), 
+                                    Box::new(right.clone())
                                 );
 
-                                let result_expr = self.try_convert_expr_to_value(&mut result)
-                                    .map(Expression::Constant)
-                                    .unwrap_or(result);
+                                println!("pre result");
+                                let result_expr = if left.is_collapsible_in_parser()
+                                    && right.is_collapsible_in_parser() {
+                                    self.try_convert_expr_to_value(&mut result)
+                                        .map(Expression::Constant)
+                                        .unwrap_or(result)
+                                } else {
+                                    result
+                                };
+
+                                println!("pre push");
                                 collapse_queue.push(QueueItem::Expression(result_expr.clone()));
                             }
-                            None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && left_type.allow_null() => {
+                            None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.allow_null() => {
                                 let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
                                 let result_expr = self.try_convert_expr_to_value(&mut result)
                                     .map(Expression::Constant)
                                     .unwrap_or(result);
                                 collapse_queue.push(QueueItem::Expression(result_expr));
                             }
-                            None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(left_type))),
+                            None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.clone()))),
                         }
                     };
                 }
