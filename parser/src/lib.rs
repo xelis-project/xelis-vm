@@ -491,8 +491,6 @@ impl<'a> Parser<'a> {
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
     fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-        trace!("Read function call: {}", name);
-
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -500,7 +498,7 @@ impl<'a> Parser<'a> {
 
         // read parameters for function call
         while self.peek_is_not(Token::ParenthesisClose) {
-            let expr = self.read_expression(context)?;
+            let expr = self.read_expression_delimited(&Token::Comma, context)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
             let t = self.get_type_from_expression(None, &expr, context)?.into_owned();
@@ -524,7 +522,13 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_token(Token::ParenthesisClose)?;
-        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
+
+        // Slixe, please let me know if the below demonstrates a lack of understanding of your design
+        // previously, shunting yard processing made naively-taken expressions show up here before
+        match path {
+            Some(Expression::Path(ref _a, ref _b)) => Ok(Expression::FunctionCall(path.map(Box::new), id, parameters)),
+            _ => Ok(Expression::FunctionCall(None, id, parameters)),
+        }
     }
 
     // Read fields of a constructor with the following syntax:
@@ -934,19 +938,19 @@ impl<'a> Parser<'a> {
 
     // Read an expression with a delimiter
     fn read_expression_delimited(&mut self, delimiter: &Token, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-      self.read_expr(Some(delimiter), None, true, true, None, context)
+        self.read_expr(Some(delimiter), None, true, true, None, context)
     }
 
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
     fn read_expr(
-      &mut self,
-      delimiter: Option<&Token>, 
-      on_type: Option<&Type>, 
-      allow_ternary: bool, 
-      accept_operator: bool, 
-      expected_type: Option<&Type>, 
-      context: &mut Context<'a>
+        &mut self,
+        delimiter: Option<&Token>, 
+        on_type: Option<&Type>, 
+        allow_ternary: bool, 
+        accept_operator: bool, 
+        expected_type: Option<&Type>, 
+        context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
         trace!("Read expression");
         // Stack for operators
@@ -977,7 +981,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            println!("token: {:?}", token);
+            // println!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
@@ -1034,13 +1038,21 @@ impl<'a> Parser<'a> {
                     output_queue.push(QueueItem::Expression(expr.clone()));
                     Expression::SubExpression(Box::new(expr))
                 },
+                Token::ParenthesisClose => {
+                    if delimiter == Some(&Token::Comma) {
+                        break;
+                    }
+                    continue;
+                },
                 Token::Identifier(id) => {
                     trace!("identified {}", id);
+                    
                     match self.peek() {
                         // function call
                         Ok(Token::ParenthesisOpen) => {
                           let val = self.read_function_call(last_expression.take(), on_type, id, context)?;
                           output_queue.push(QueueItem::Expression(val.clone()));
+                          println!("function = {:?}", val);
                           val
                         },
                         Ok(Token::Colon) => {
@@ -1184,9 +1196,14 @@ impl<'a> Parser<'a> {
 
                     Expression::IsNot(Box::new(expr))
                 },
-                Token::OperatorTernary => match last_expression {
-                    Some(expr) => {
-                        trace!("reached ternary");
+                Token::OperatorTernary => {
+                    if output_queue.len() > 0 || last_expression.is_some() {
+                        // The below is OK because it will only be referenced if last_expression
+                        // is something anyway
+                        let expr = match last_expression {
+                            Some(expression) => expression,
+                            None => Expression::Constant(Constant::Default(xelis_types::Value::U64(0))),
+                        };
 
                         while let Some(top_op) = operator_stack.pop() {
                             output_queue.push(QueueItem::Token(top_op.to_token()));
@@ -1212,13 +1229,10 @@ impl<'a> Parser<'a> {
 
                         let valid_expr = self.read_expr(Some(&Token::Colon), on_type, true, true, expected_type, context)?;
                         let first_type = self.get_type_from_expression(on_type, &valid_expr, context)?.into_owned();
-                        trace!("left expr: {:?}", valid_expr.clone());
 
                         self.expect_token(Token::Colon)?;
                         let else_expr = self.read_expr(None, on_type, true, true, expected_type, context)?;
                         let else_type = self.get_type_from_expression(on_type, &else_expr, context)?;
-
-                        trace!("right expr: {:?}", else_expr.clone());
                         
                         if first_type != *else_type { // both expr should have the SAME type.
                             return Err(err!(self, ParserErrorKind::InvalidValueType(else_type.into_owned(), first_type)))
@@ -1226,16 +1240,19 @@ impl<'a> Parser<'a> {
                         required_operator = !required_operator;
 
                         let val = if let Some(QueueItem::Expression(shunt_expr)) = collapsed_queue.first() {
-                          Expression::Ternary(Box::new(shunt_expr.clone()), Box::new(valid_expr), Box::new(else_expr))
+                            Expression::Ternary(Box::new(shunt_expr.clone()), Box::new(valid_expr), Box::new(else_expr))
                         } else {
-                          Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
+                            Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
                         };
 
-                        trace!("ternary result: {:?}", val);
+                        output_queue.clear();
+                        operator_stack.clear();
+
                         output_queue.push(QueueItem::Expression(val.clone()));
                         val
-                    },
-                    None => return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression))
+                    } else {
+                        return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression))
+                    }
                 },
                 Token::As => {
                     if let Some(QueueItem::Expression(prev_expr)) = output_queue.pop() {
@@ -1324,7 +1341,7 @@ impl<'a> Parser<'a> {
             output_queue.push(QueueItem::Token(top_op.to_token()));
         }
 
-        trace_postfix(&output_queue);
+        // trace_postfix(&output_queue);
 
         // Process the postfix arithmetic that was generated
         let collapsed_queue = self.try_postfix_collapse(
