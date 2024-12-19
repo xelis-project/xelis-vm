@@ -899,7 +899,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Option<Expression>, ParserError<'a>> {
         let mut collapse_queue = Vec::new();
 
-        let mut base_type: Type = Type::Any;
+        let mut base_type = Type::Any;
         let mut level = 0;
 
         output_queue.iter().try_fold(Vec::new(), |mut acc: Vec<QueueItem>, item| {
@@ -925,7 +925,7 @@ impl<'a> Parser<'a> {
                             let mut right = right.into_owned();
 
                             println!("pre operator");
-                            self.verify_operator(&op, base_type.clone(), right_type, &mut left, &mut right)?;
+                            self.verify_operator(&op, base_type.to_owned(), right_type, &mut left, &mut right)?;
 
                             println!("pre new expression");
                             let mut result = Expression::Operator(
@@ -947,14 +947,14 @@ impl<'a> Parser<'a> {
                             collapse_queue.push(Cow::Owned(result_expr));
                             println!("post push");
                         }
-                        None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.allow_null() => {
+                        None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.to_owned().allow_null() => {
                             let mut result = Expression::Operator(op.clone(), Box::new(left.into_owned()), Box::new(right.into_owned()));
                             let result_expr = self.try_convert_expr_to_value(&mut result)
                                 .map(Expression::Constant)
                                 .unwrap_or(result);
                             collapse_queue.push(Cow::Owned(result_expr));
                         }
-                        None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.clone()))),
+                        None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.to_owned()))),
                     };
                 }
                 _ => {},
