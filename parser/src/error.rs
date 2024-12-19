@@ -84,6 +84,8 @@ pub enum ParserErrorKind<'a> {
     ExpectedIdentifierToken(Token<'a>),
     #[error("unexpected token '{0:?}'")]
     UnexpectedToken(Token<'a>),
+    #[error("unexpected token in postfix expresion '{0:?}'")]
+    UnexpectedTokenInPostfix(Token<'a>),
     #[error("invalid token, got '{0:?}' expected '{1:?}'")]
     InvalidToken(Token<'a>, Token<'a>),
     #[error("variable name is already used: {0}")]
