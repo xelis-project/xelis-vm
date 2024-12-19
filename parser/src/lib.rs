@@ -23,7 +23,6 @@ pub use error::ParserError;
 pub enum QueueItem {
   Operator(Operator),         // For operators, identifiers, or literals
   Expression(Expression),  // For finalized expressions or sub-expressions
-  Token(Token<'static>), // For operators
 }
 
 macro_rules! err {
@@ -126,7 +125,6 @@ fn trace_postfix(output_queue: &Vec<QueueItem>) {
     let postfix: Vec<String> = output_queue.iter().map(|item| match item {
         QueueItem::Expression(expr) => format!("{:?}", expr), // Customize the format for Expression
         QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
-        QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
     }).collect();
     trace!("Postfix Expression: {}", postfix.join(" "));
 }
@@ -899,7 +897,7 @@ impl<'a> Parser<'a> {
         on_type: Option<&Type>, 
         context: &mut Context<'a>,
     ) -> Result<Option<Expression>, ParserError<'a>> {
-        let mut collapse_queue: Vec<Expression> = Vec::new();
+        let mut collapse_queue = Vec::new();
 
         let mut base_type: Type = Type::Any;
         let mut level = 0;
@@ -908,53 +906,55 @@ impl<'a> Parser<'a> {
             println!("reached level {}", { level += 1; level });
             match item {
                 QueueItem::Expression(expr) => {
-                    collapse_queue.push(expr.clone());
+                    collapse_queue.push(Cow::Borrowed(expr));
                 }
-                QueueItem::Token(token) => {
-                    if let Some(op) = Operator::value_of(token) {
-                        let (mut right, mut left) = match (collapse_queue.pop(), collapse_queue.pop()) {
-                            (Some(right), Some(left)) => (right, left),
-                            _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
-                        };
-        
-                        if base_type == Type::Any {
-                            base_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
-                        }
-                        
-                        match self.get_type_from_expression_internal(on_type, &right, context)? {
-                            Some(right_type) => {
-                                println!("pre operator");
-                                self.verify_operator(&op, base_type.clone(), right_type.into_owned(), &mut left, &mut right)?;
+                QueueItem::Operator(op) => {
+                    let (mut right, mut left) = match (collapse_queue.pop(), collapse_queue.pop()) {
+                        (Some(right), Some(left)) => (right, left),
+                        _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
+                    };
+    
+                    if base_type == Type::Any {
+                        base_type = self.get_type_from_expression(on_type, &left, context)?.into_owned();
+                    }
+                    
+                    match self.get_type_from_expression_internal(on_type, &right, context)? {
+                        Some(right_type) => {
+                            let right_type = right_type.into_owned();
+                            let mut left = left.into_owned();
+                            let mut right = right.into_owned();
 
-                                println!("pre new expression");
-                                let mut result = Expression::Operator(
-                                    op, Box::new(left.clone()), 
-                                    Box::new(right.clone())
-                                );
+                            println!("pre operator");
+                            self.verify_operator(&op, base_type.clone(), right_type, &mut left, &mut right)?;
 
-                                println!("pre result");
-                                let result_expr = if left.is_collapsible_in_parser()
-                                    && right.is_collapsible_in_parser() {
-                                    self.try_convert_expr_to_value(&mut result)
-                                        .map(Expression::Constant)
-                                        .unwrap_or(result)
-                                } else {
-                                    result
-                                };
+                            println!("pre new expression");
+                            let mut result = Expression::Operator(
+                                op.clone(), Box::new(left.to_owned()), 
+                                Box::new(right.to_owned())
+                            );
 
-                                println!("pre push");
-                                collapse_queue.push(result_expr);
-                                println!("post push");
-                            }
-                            None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.allow_null() => {
-                                let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
-                                let result_expr = self.try_convert_expr_to_value(&mut result)
+                            println!("pre result");
+                            let result_expr = if left.is_collapsible_in_parser()
+                                && right.is_collapsible_in_parser() {
+                                self.try_convert_expr_to_value(&mut result)
                                     .map(Expression::Constant)
-                                    .unwrap_or(result);
-                                collapse_queue.push(result_expr);
-                            }
-                            None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.clone()))),
+                                    .unwrap_or(result)
+                            } else {
+                                result
+                            };
+
+                            println!("pre push");
+                            collapse_queue.push(Cow::Owned(result_expr));
+                            println!("post push");
                         }
+                        None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.allow_null() => {
+                            let mut result = Expression::Operator(op.clone(), Box::new(left.into_owned()), Box::new(right.into_owned()));
+                            let result_expr = self.try_convert_expr_to_value(&mut result)
+                                .map(Expression::Constant)
+                                .unwrap_or(result);
+                            collapse_queue.push(Cow::Owned(result_expr));
+                        }
+                        None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.clone()))),
                     };
                 }
                 _ => {},
@@ -962,8 +962,11 @@ impl<'a> Parser<'a> {
             Ok(acc)
         });
     
-        // Return the fully collapsed queue
-        Ok(collapse_queue.first().cloned())
+        assert!(collapse_queue.len() <= 1);
+        match collapse_queue.pop() {
+            Some(expr) => Ok(Some(expr.into_owned())),
+            _ => Ok(None)
+        }
     }
 
     // Read an expression with default parameters
@@ -1245,7 +1248,7 @@ impl<'a> Parser<'a> {
                         };
 
                         while let Some(top_op) = operator_stack.pop() {
-                            output_queue.push(QueueItem::Token(top_op.to_token()));
+                            output_queue.push(QueueItem::Operator(top_op));
                         }
                 
                         trace_postfix(&output_queue);
@@ -1355,7 +1358,7 @@ impl<'a> Parser<'a> {
                               || (top_op.precedence().0 == op.precedence().0 && op.is_left_to_right())
                           {
                               if let Some(pop_op) = operator_stack.pop() {
-                                  output_queue.push(QueueItem::Token(pop_op.to_token()));
+                                  output_queue.push(QueueItem::Operator(pop_op));
                               } else {
                                   return Err(err!(self, ParserErrorKind::InvalidOperation))
                               }
@@ -1377,7 +1380,7 @@ impl<'a> Parser<'a> {
 
         // Collapse remaining operators in the stack
         while let Some(top_op) = operator_stack.pop() {
-            output_queue.push(QueueItem::Token(top_op.to_token()));
+            output_queue.push(QueueItem::Operator(top_op));
         }
 
         trace_postfix(&output_queue);
