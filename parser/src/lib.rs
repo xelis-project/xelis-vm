@@ -981,7 +981,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            // println!("token: {:?}", token);
+            println!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
@@ -992,14 +992,18 @@ impl<'a> Parser<'a> {
                             }
 
                             // Index must be of type u64
-                            let index = self.read_expr(delimiter, on_type, true, true, Some(&Type::U32), context)?;
+                            let index = self.read_expr(Some(&Token::BracketClose), on_type, true, true, Some(&Type::U32), context)?;
                             let index_type = self.get_type_from_expression(on_type, &index, context)?;
                             if *index_type != Type::U32 {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
                             }
 
                             self.expect_token(Token::BracketClose)?;
+
+                            // TODO: nest ArrayCalls here until the next token is not '['
+
                             required_operator = !required_operator;
+                            
                             let val = Expression::ArrayCall(Box::new(v), Box::new(index));
                             output_queue.push(QueueItem::Expression(val.clone()));
                             val
@@ -1052,7 +1056,6 @@ impl<'a> Parser<'a> {
                         Ok(Token::ParenthesisOpen) => {
                           let val = self.read_function_call(last_expression.take(), on_type, id, context)?;
                           output_queue.push(QueueItem::Expression(val.clone()));
-                          println!("function = {:?}", val);
                           val
                         },
                         Ok(Token::Colon) => {
@@ -1089,7 +1092,7 @@ impl<'a> Parser<'a> {
 
                                         // wait for the next loop iteration to parse array references
                                         if self.peek_is_not(Token::BracketOpen) {
-                                            output_queue.push(QueueItem::Expression(val.clone()));  
+                                            output_queue.push(QueueItem::Expression(val.clone())); 
                                         }
                                         val
                                     } else if let Some(constant) = self.constants.get(id) {
@@ -1341,7 +1344,7 @@ impl<'a> Parser<'a> {
             output_queue.push(QueueItem::Token(top_op.to_token()));
         }
 
-        // trace_postfix(&output_queue);
+        trace_postfix(&output_queue);
 
         // Process the postfix arithmetic that was generated
         let collapsed_queue = self.try_postfix_collapse(
