@@ -557,7 +557,7 @@ fn test_stackoverflow() {
     code.push_str("; return b }");
 
     // TODO FIXME
-    // todo!("Fix stack overflow test");
+    todo!("Fix stack overflow test");
 
     assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
 }
