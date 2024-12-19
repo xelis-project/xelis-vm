@@ -986,17 +986,28 @@ impl<'a> Parser<'a> {
                             if !self.get_type_from_expression(on_type, &v, context)?.is_array() {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
+ 
+                            let mut expr = v;
+                            loop {
+                                // Index must be of type u32
+                                let index = self.read_expr(delimiter, None, true, true, Some(&Type::U32), context)?;
+                                let index_type = self.get_type_from_expression(None, &index, context)?;
+                                if *index_type != Type::U32 {
+                                    return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
+                                }
+                                expr = Expression::ArrayCall(Box::new(expr), Box::new(index));
 
-                            // Index must be of type u64
-                            let index = self.read_expr(delimiter, on_type, true, true, Some(&Type::U32), context)?;
-                            let index_type = self.get_type_from_expression(on_type, &index, context)?;
-                            if *index_type != Type::U32 {
-                                return Err(err!(self, ParserErrorKind::InvalidArrayCallIndexType(index_type.into_owned())))
+                                self.expect_token(Token::BracketClose)?;
+
+                                if self.peek_is(Token::BraceOpen) {
+                                    self.expect_token(Token::BracketOpen)?;
+                                } else {
+                                    break;
+                                }
                             }
 
-                            self.expect_token(Token::BracketClose)?;
                             required_operator = !required_operator;
-                            Expression::ArrayCall(Box::new(v), Box::new(index))
+                            expr
                         },
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = Vec::new();
