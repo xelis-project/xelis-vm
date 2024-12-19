@@ -898,8 +898,8 @@ impl<'a> Parser<'a> {
         output_queue: &[QueueItem], 
         on_type: Option<&Type>, 
         context: &mut Context<'a>,
-    ) -> Result<Vec<QueueItem>, ParserError<'a>> {
-        let mut collapse_queue: Vec<QueueItem> = Vec::new();
+    ) -> Result<Expression, ParserError<'a>> {
+        let mut collapse_queue: Vec<Expression> = Vec::new();
 
         let mut base_type: Type = Type::Any;
         let mut level = 0;
@@ -908,12 +908,12 @@ impl<'a> Parser<'a> {
             println!("reached level {}", { level += 1; level });
             match item {
                 QueueItem::Expression(expr) => {
-                    collapse_queue.push(QueueItem::Expression(expr.clone()));
+                    collapse_queue.push(expr.clone());
                 }
                 QueueItem::Token(token) => {
                     if let Some(op) = Operator::value_of(token) {
                         let (mut right, mut left) = match (collapse_queue.pop(), collapse_queue.pop()) {
-                            (Some(QueueItem::Expression(right)), Some(QueueItem::Expression(left))) => (right, left),
+                            (Some(right), Some(left)) => (right, left),
                             _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
                         };
         
@@ -943,14 +943,15 @@ impl<'a> Parser<'a> {
                                 };
 
                                 println!("pre push");
-                                collapse_queue.push(QueueItem::Expression(result_expr.clone()));
+                                collapse_queue.push(result_expr);
+                                println!("post push");
                             }
                             None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.allow_null() => {
                                 let mut result = Expression::Operator(op, Box::new(left), Box::new(right));
                                 let result_expr = self.try_convert_expr_to_value(&mut result)
                                     .map(Expression::Constant)
                                     .unwrap_or(result);
-                                collapse_queue.push(QueueItem::Expression(result_expr));
+                                collapse_queue.push(result_expr);
                             }
                             None => return Err(err!(self, ParserErrorKind::IncompatibleNullWith(base_type.clone()))),
                         }
@@ -962,7 +963,7 @@ impl<'a> Parser<'a> {
         });
     
         // Return the fully collapsed queue
-        Ok(collapse_queue)
+        Ok(collapse_queue.first().expect("Invalid Postfix Expression")).cloned()
     }
 
     // Read an expression with default parameters
@@ -1249,13 +1250,13 @@ impl<'a> Parser<'a> {
                 
                         trace_postfix(&output_queue);
                 
-                        let collapsed_queue = self.try_postfix_collapse(
+                        let collapsed_expr = self.try_postfix_collapse(
                             &output_queue,
                             on_type,
                             context,
                         )?;
 
-                        if let Some(QueueItem::Expression(shunt_expr)) = collapsed_queue.first() {
+                        if let ref shunt_expr = collapsed_expr {
                             if *self.get_type_from_expression(on_type, &shunt_expr, context)? != Type::Bool {
                                 return Err(err!(self, ParserErrorKind::InvalidCondition(Type::Bool, shunt_expr.clone())))
                             }
@@ -1277,7 +1278,7 @@ impl<'a> Parser<'a> {
                         }
                         required_operator = !required_operator;
 
-                        let val = if let Some(QueueItem::Expression(shunt_expr)) = collapsed_queue.first() {
+                        let val = if let shunt_expr = collapsed_expr {
                             Expression::Ternary(Box::new(shunt_expr.clone()), Box::new(valid_expr), Box::new(else_expr))
                         } else {
                             Expression::Ternary(Box::new(expr), Box::new(valid_expr), Box::new(else_expr))
@@ -1382,7 +1383,7 @@ impl<'a> Parser<'a> {
         trace_postfix(&output_queue);
 
         // Process the postfix arithmetic that was generated
-        let collapsed_queue = self.try_postfix_collapse(
+        let collapsed_expr = self.try_postfix_collapse(
             &output_queue,
             on_type,
             context,
@@ -1397,7 +1398,7 @@ impl<'a> Parser<'a> {
             self.advance()?;
         };
 
-        if let Some(QueueItem::Expression(expr)) = collapsed_queue.first() {
+        if let expr = collapsed_expr {
             trace!("final shunted result: {:?}", expr);
             return Ok(expr.clone());
         } else {
