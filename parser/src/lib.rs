@@ -903,7 +903,7 @@ impl<'a> Parser<'a> {
         let mut level = 0;
 
         output_queue.iter().try_fold(Vec::new(), |mut acc: Vec<QueueItem>, item| {
-            println!("reached level {}", { level += 1; level });
+            // println!("reached level {}", { level += 1; level });
             match item {
                 QueueItem::Expression(expr) => {
                     collapse_queue.push(Cow::Borrowed(expr));
@@ -924,16 +924,16 @@ impl<'a> Parser<'a> {
                             let mut left = left.into_owned();
                             let mut right = right.into_owned();
 
-                            println!("pre operator");
+                            // println!("pre operator");
                             self.verify_operator(&op, base_type.to_owned(), right_type, &mut left, &mut right)?;
 
-                            println!("pre new expression");
+                            // println!("pre new expression");
                             let mut result = Expression::Operator(
-                                op.clone(), Box::new(left.to_owned()), 
+                                op.to_owned(), Box::new(left.to_owned()), 
                                 Box::new(right.to_owned())
                             );
 
-                            println!("pre result");
+                            // println!("pre result");
                             let result_expr = if left.is_collapsible_in_parser()
                                 && right.is_collapsible_in_parser() {
                                 self.try_convert_expr_to_value(&mut result)
@@ -943,12 +943,12 @@ impl<'a> Parser<'a> {
                                 result
                             };
 
-                            println!("pre push");
+                            // println!("pre push");
                             collapse_queue.push(Cow::Owned(result_expr));
-                            println!("post push");
+                            // println!("post push");
                         }
                         None if matches!(op, Operator::Eq | Operator::Neq | Operator::Assign(None)) && base_type.to_owned().allow_null() => {
-                            let mut result = Expression::Operator(op.clone(), Box::new(left.into_owned()), Box::new(right.into_owned()));
+                            let mut result = Expression::Operator(op.to_owned(), Box::new(left.into_owned()), Box::new(right.into_owned()));
                             let result_expr = self.try_convert_expr_to_value(&mut result)
                                 .map(Expression::Constant)
                                 .unwrap_or(result);
@@ -2194,8 +2194,6 @@ impl<'a> Parser<'a> {
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };
         }
-
-        println!("PARSING DONE");
 
         let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
         Ok((program, self.global_mapper))

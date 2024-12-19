@@ -90,13 +90,13 @@ fn bench_struct(c: &mut Criterion) {
                 g: true
             };
 
-            let _: u8 = t.a;
-            let _: u16 = t.b;
-            let _: u32 = t.c;
-            let _: u64 = t.d;
-            let _: u128 = t.e;
-            let _: u256 = t.f;
-            let _: bool = t.g;
+            let h: u8 = t.a;
+            let i: u16 = t.b;
+            let j: u32 = t.c;
+            let k: u64 = t.d;
+            let l: u128 = t.e;
+            let m: u256 = t.f;
+            let n: bool = t.g;
 
             return 0;
         }
