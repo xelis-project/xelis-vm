@@ -128,7 +128,7 @@ fn trace_postfix(output_queue: &Vec<QueueItem>) {
         QueueItem::Operator(op) => format!("{}", op.to_token()),       // Customize the format for Operator
         QueueItem::Token(token) => format!("{}", token),       // Customize the format for Token
     }).collect();
-    trace!("Postfix Expression: {}", postfix.join(" "));
+    println!("Postfix Expression: {}", postfix.join(" "));
 }
 
 pub struct Parser<'a> {
@@ -977,7 +977,7 @@ impl<'a> Parser<'a> {
             }).is_some()
         {
             let token = self.advance()?;
-            trace!("token: {:?}", token);
+            println!("token: {:?}", token);
 
             let expr: Expression = match token {
                 Token::BracketOpen => {
@@ -996,7 +996,9 @@ impl<'a> Parser<'a> {
 
                             self.expect_token(Token::BracketClose)?;
                             required_operator = !required_operator;
-                            Expression::ArrayCall(Box::new(v), Box::new(index))
+                            let val = Expression::ArrayCall(Box::new(v), Box::new(index));
+                            output_queue.push(QueueItem::Expression(val.clone()));
+                            val
                         },
                         None => { // require at least one value in a array constructor
                             let mut expressions: Vec<Expression> = Vec::new();
@@ -1056,7 +1058,11 @@ impl<'a> Parser<'a> {
                                         match builder.get_id_for_field(id) {
                                             Some(v) => {
                                               let val = Expression::Variable(v);
-                                              output_queue.push(QueueItem::Expression(val.clone()));
+
+                                              // wait for the next loop iteration to parse array references
+                                              if self.peek_is_not(Token::BracketOpen) {
+                                                  output_queue.push(QueueItem::Expression(val.clone()));  
+                                              }
                                               val
                                             },
                                             None => return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
@@ -1068,7 +1074,11 @@ impl<'a> Parser<'a> {
                                 None => {
                                     if let Some(num_id) = context.get_variable_id(id) {
                                         let val = Expression::Variable(num_id);
-                                        output_queue.push(QueueItem::Expression(val.clone()));
+
+                                        // wait for the next loop iteration to parse array references
+                                        if self.peek_is_not(Token::BracketOpen) {
+                                            output_queue.push(QueueItem::Expression(val.clone()));  
+                                        }
                                         val
                                     } else if let Some(constant) = self.constants.get(id) {
                                         let val = Expression::Constant(constant.value.clone());
@@ -1150,10 +1160,15 @@ impl<'a> Parser<'a> {
                                     output_queue.push(QueueItem::Expression(val.clone()));
                                     val
                                 } else {
-                                  let val = Expression::Path(Box::new(value), Box::new(right_expr));
-                                  output_queue.pop();
-                                  output_queue.push(QueueItem::Expression(val.clone()));
-                                  val
+                                    let val = Expression::Path(Box::new(value), Box::new(right_expr));
+                                    output_queue.pop();
+
+                                    // wait for the next loop iteration to parse array references
+                                    if self.peek_is_not(Token::BracketOpen) {
+                                        output_queue.push(QueueItem::Expression(val.clone()));  
+                                    }
+
+                                    val
                                 }
                             }
                         },
