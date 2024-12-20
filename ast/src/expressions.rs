@@ -53,3 +53,12 @@ pub struct ConstantDeclaration {
     pub value: Constant,
     pub value_type: Type,
 }
+
+impl Expression {
+    pub fn is_collapsible_in_parser(&self) -> bool {
+        match self {
+            Expression::Variable(_) => false,
+            _ => true,
+        }
+    }
+}
