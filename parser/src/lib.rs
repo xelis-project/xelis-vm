@@ -878,16 +878,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn print_vector_size<T>(vec: &Vec<T>) {
-        let vector_metadata_size = std::mem::size_of::<Vec<T>>(); // Size of Vec<T> structure
-        let elements_heap_size = std::mem::size_of::<T>() * vec.len(); // Size of elements on the heap
-        let total_size = vector_metadata_size + elements_heap_size;
-    
-        println!("Size of Vec<T> structure: {} bytes", vector_metadata_size);
-        println!("Size of elements on the heap: {} bytes", elements_heap_size);
-        println!("Total size in memory: {} bytes", total_size);
-    }
-
     fn try_postfix_collapse(
         &self,
         output_queue: &[QueueItem], 
@@ -1098,7 +1088,12 @@ impl<'a> Parser<'a> {
                     match self.peek() {
                         // function call
                         Ok(Token::ParenthesisOpen) => {
-                            output_queue.push(QueueItem::Expression(self.read_function_call(compound_expression.take(), on_type, id, context)?));
+                            let function = self.read_function_call(compound_expression.take(), on_type, id, context)?;
+                            if self.peek_is(Token::Dot) || self.peek_is(Token::BracketOpen) {
+                                compound_expression = Some(function.to_owned());
+                            } else {
+                                output_queue.push(QueueItem::Expression(function.to_owned()));
+                            }
                         },
                         Ok(Token::Colon) => {
                             output_queue.push(QueueItem::Expression(self.read_type_constant(Token::Identifier(id), context)?));
