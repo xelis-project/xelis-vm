@@ -1,3 +1,4 @@
+use std::any::Any;
 use better_any::{Tid, TidExt};
 
 // Data is a wrapper around Any that allows for borrowed and mutable references.
@@ -8,6 +9,24 @@ pub enum Data<'ty, 'r> {
 }
 
 impl<'ty, 'r> Data<'ty, 'r> {
+    // downcast_any allows for immutable access to the underlying value.
+    pub fn downcast_ref_any<'b, T: Any>(&'b self) -> Option<&'b T> {
+        match self {
+            Data::Owned(value) => (**value).downcast_any_ref(),
+            Data::Borrowed(value) => (*value).downcast_any_ref(),
+            Data::Mut(value) => (*value).downcast_any_ref(),
+        }
+    }
+
+    // downcast_any_mut allows for mutable access to the underlying value.
+    pub fn downcast_mut_any<'b, T: Any>(&'b mut self) -> Option<&'b mut T> {
+        match self {
+            Data::Owned(value) => (**value).downcast_any_mut(),
+            Data::Mut(value) => (*value).downcast_any_mut(),
+            _ => None,
+        }
+    }
+
     // downcast allows for immutable access to the underlying value.
     pub fn downcast_ref<'b, T: Tid<'ty>>(&'b self) -> Option<&'b T> {
         match self {

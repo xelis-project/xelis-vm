@@ -136,6 +136,24 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.data.insert(T::id(), Data::Owned(Box::new(value)));
     }
 
+    // Insert a value into the Context
+    // Going through the Any trait to allow for downcasting to a generic type
+    // and skip the lifetime constraints
+    #[inline]
+    pub fn insert_any_ref<T: Tid<'ty> + 'static>(&mut self, any: &'r T) {
+        let r: &'r dyn Tid<'ty> = any.into();
+        self.data.insert(T::id(), Data::Borrowed(r));
+    }
+
+    // Insert a value into the Context
+    // Going through the Any trait to allow for downcasting to a generic type
+    // and skip the lifetime constraints
+    #[inline]
+    pub fn insert_any_mut<T: Tid<'ty> + 'static>(&mut self, any: &'r mut T) {
+        let r: &'r mut dyn Tid<'ty> = any.into();
+        self.data.insert(T::id(), Data::Mut(r));
+    }
+
     // Get a borrowed value from the Context
     #[inline]
     pub fn get<'b, T: Tid<'ty>>(&'b self) -> Option<&'b T> {
@@ -247,5 +265,40 @@ mod tests {
         }
 
         assert_eq!(dummy.0, "Hello, World!");
+    }
+
+    #[test]
+    fn test_downcast_to_trait() {
+        trait Foo {
+            fn foo(&self) -> &str;
+        }
+
+        impl Foo for Dummy<'_> {
+            fn foo(&self) -> &str {
+                self.0
+            }
+        }
+
+        let mut dummy = Dummy("Hello, World!");
+        let mut context = Context::new();
+        context.insert_any_mut(&mut dummy);
+
+        fn inner_ref_fn<T: Foo + 'static>(context: &Context) {
+            let data = context.get_data(&TypeId::of::<T>()).unwrap();
+            data.downcast_ref_any::<T>()
+                .unwrap()
+                .foo();
+        }
+
+        inner_ref_fn::<Dummy>(&context);
+
+        fn inner_mut_fn<T: Foo + 'static>(context: &mut Context) {
+            let data = context.get_data_mut(&TypeId::of::<T>()).unwrap();
+            data.downcast_mut_any::<T>()
+                .unwrap()
+                .foo();
+        }
+
+        inner_mut_fn::<Dummy>(&mut context);
     }
 }
