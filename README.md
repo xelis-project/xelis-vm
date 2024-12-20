@@ -10,9 +10,6 @@ It is also designed to directly include primitive types.
 
 Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
 
-- **Shunting Yard Algorithm for Parser**
-Currently, mathematical operations don't follow the priority rules. Implementing it would help resolving that issue.
-
 - **Improve Parser**
 Parser is currently operating in a full recursive mode, which can create a stackoverflow in case of a too complex/deep expression to build. Rewriting the key parts to operate in an iterative way would prevent any stack overflow.
 
@@ -24,7 +21,6 @@ Generating a "mapper" file to easily link entry functions (name, parameters), en
 
 - **VM optimizations**
 The faster the VM is, the more we can have reduced cost for running a Smart Contract.
-
 
 ## Crates
 
@@ -53,6 +49,9 @@ The different primitive types are:
 - `blob` is a raw data type allowing to store any kind of data (like images, files..)
 
 Arrays of any type are also supported, but they must contain only one type of value (example: `u64[]` and with multi-depth too).
+
+Also note that thanks to the fully customizable Environment, you can define your own types, functions, structures, enums, and even override the default std functions.
+And for more flexibility, an Opaque type is also available to handle your whole logic in Rust directly.
 
 File extension is `.slx` for the source code.
 
