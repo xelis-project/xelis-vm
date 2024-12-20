@@ -212,9 +212,9 @@ opcode_fn!(mul_assign, opcode_op_assign ,op, *);
 opcode_fn!(div_assign, opcode_op_assign, op, /);
 opcode_fn!(rem_assign, opcode_op_assign, op, %);
 
-opcode_fn!(bitwise_and_assign, opcode_op_assign, op, &);
-opcode_fn!(bitwise_or_assign, opcode_op_assign, op, |);
-opcode_fn!(bitwise_xor_assign, opcode_op_assign, op, ^);
+opcode_fn!(bitwise_and_assign, opcode_op_assign, op_bool, &);
+opcode_fn!(bitwise_or_assign, opcode_op_assign, op_bool, |);
+opcode_fn!(bitwise_xor_assign, opcode_op_assign, op_bool, ^);
 opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
