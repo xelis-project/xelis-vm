@@ -148,6 +148,18 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.data.get_mut(&T::id()).map(|v| v.downcast_mut()).flatten()
     }
 
+    // Get a borrowed value from the Context by TypeId
+    #[inline]
+    pub fn get_data<'b>(&'b self, id: &TypeId) -> Option<&'b Data<'ty, 'r>> {
+        self.data.get(id)
+    }
+
+    // Get a borrowed value from the Context by TypeId
+    #[inline]
+    pub fn get_data_mut<'b>(&'b mut self, id: &TypeId) -> Option<&'b mut Data<'ty, 'r>> {
+        self.data.get_mut(id)
+    }
+
     // Get an owned value from the Context
     #[inline]
     pub fn take<T: Tid<'ty>>(&mut self) -> Option<T> {
