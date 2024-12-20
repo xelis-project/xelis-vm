@@ -21,8 +21,8 @@ pub enum CompilerError {
     MissingContinuePatch,
     #[error("memory store is not empty")]
     MemoryStoreNotEmpty,
-    #[error("expected a assignment operator")]
-    ExpectedOperatorAssignment,
+    #[error("expected a assignment operator, got {0:?}")]
+    ExpectedOperatorAssignment(Operator),
     #[error("unexpected operator {0:?}")]
     UnexpectedOperator(Operator),
     #[error("expected a memory store id")]

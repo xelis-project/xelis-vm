@@ -424,7 +424,7 @@ fn test_stackoverflow() {
             return x
         }"#;
 
-    // assert_eq!(run_code(code), Value::U64(1000000));
+    assert_eq!(run_code(code), Value::U64(1000000));
 
     let mut code = r#"
         entry main() {
@@ -436,7 +436,7 @@ fn test_stackoverflow() {
     // TODO FIXME
     todo!("Fix stack overflow test");
 
-    assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
+    // assert_eq!(run_code(&code), Value::U64(10000 * 2 + 1));
 }
 
 #[test]

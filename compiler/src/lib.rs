@@ -63,7 +63,7 @@ impl<'a> Compiler<'a> {
             Operator::Mod => OpCode::Mod,
             Operator::Pow => OpCode::Pow,
 
-            Operator::BitwiseAnd => OpCode::And,
+            Operator::BitwiseAnd => OpCode::BitwiseAnd,
             Operator::BitwiseOr => OpCode::BitwiseOr,
             Operator::BitwiseXor => OpCode::BitwiseXor,
             Operator::BitwiseShl => OpCode::BitwiseShl,
@@ -79,7 +79,7 @@ impl<'a> Compiler<'a> {
             // Assigns
             Operator::Assign(Some(inner)) => Self::map_operator_to_opcode(inner)?
                 .as_assign_operator()
-                .ok_or(CompilerError::ExpectedOperatorAssignment)?,
+                .ok_or(CompilerError::ExpectedOperatorAssignment(*inner.clone()))?,
 
             // These operators are handled differently
             Operator::Assign(None)

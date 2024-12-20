@@ -22,6 +22,7 @@ pub use error::ParserError;
 #[derive(Debug, Clone)]
 pub enum QueueItem {
   Operator(Operator),         // For operators, identifiers, or literals
+  Separator,
   Expression(Expression),  // For finalized expressions or sub-expressions
 }
 
@@ -886,7 +887,8 @@ impl<'a> Parser<'a> {
 
                     self.verify_operator(&op, left_type, right_type, &mut left, &mut right)?;
                     collapse_queue.push(Expression::Operator(op, Box::new(left), Box::new(right)));
-                }
+                },
+                _ => {}
             }
         }
 
@@ -1020,7 +1022,7 @@ impl<'a> Parser<'a> {
                         Ok(Token::ParenthesisOpen) => {
                             let prev_expr = match queue.pop() {
                                 Some(QueueItem::Expression(v)) => Some(v),
-                                None => None,
+                                None | Some(QueueItem::Separator) => None,
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
                             self.read_function_call(prev_expr, on_type, id, context)?
@@ -1223,6 +1225,7 @@ impl<'a> Parser<'a> {
                         }
 
                         operator_stack.push(op);
+                        queue.push(QueueItem::Separator);
                         required_operator = false;
                         continue;
                     }
@@ -1254,9 +1257,11 @@ impl<'a> Parser<'a> {
             self.advance()?;
         };
 
-        Ok(self.try_convert_expr_to_value(&mut collapsed_expr)
-            .map(|constant| Expression::Constant(constant))
-            .unwrap_or(collapsed_expr))
+        let res = self.try_convert_expr_to_value(&mut collapsed_expr)
+        .map(|constant| Expression::Constant(constant))
+        .unwrap_or(collapsed_expr);
+        println!("res: {:?}", res);
+        Ok(res)
     }
 
     fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
