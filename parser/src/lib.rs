@@ -1137,6 +1137,7 @@ impl<'a> Parser<'a> {
 
                     let queue = queue.drain(..)
                         .chain(operator_stack.drain(..)
+                        .rev()
                         .map(|v| QueueItem::Operator(v)));
 
                     let collapsed_expr = self.try_postfix_collapse(
@@ -1232,8 +1233,11 @@ impl<'a> Parser<'a> {
         }
 
         let queue = queue.into_iter()
-            .chain(operator_stack.drain(..)
-            .map(|v| QueueItem::Operator(v)));
+            .chain(
+                operator_stack.drain(..)
+                .rev()
+                .map(|v| QueueItem::Operator(v))
+            );
 
         // Process the postfix arithmetic that was generated
         let mut collapsed_expr = self.try_postfix_collapse(
