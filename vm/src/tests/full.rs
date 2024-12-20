@@ -644,7 +644,7 @@ fn test_map_inline() {
 }
 
 #[test]
-fn test_self_reference() {
+fn test_self_reference_2d() {
     let code = r#"
         entry main() {
             let x: u64[][] = [[10]];
