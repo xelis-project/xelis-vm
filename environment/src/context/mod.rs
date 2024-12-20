@@ -2,19 +2,19 @@ mod data;
 
 use std::{
     any::TypeId,
-    collections::HashMap,
     hash::{BuildHasherDefault, Hasher}
 };
 use crate::EnvironmentError;
 
 use better_any::Tid;
 pub use data::Data;
+use hashbrown::HashMap;
 
 // A hasher for `TypeId`s that takes advantage of its known characteristics.
 #[derive(Debug, Default)]
-struct NoOpHasher(u64);
+struct TypeIdHasher(u64);
 
-impl Hasher for NoOpHasher {
+impl Hasher for TypeIdHasher {
     fn write(&mut self, _: &[u8]) {
         unimplemented!("This NoOpHasher can only handle u64s")
     }
@@ -30,7 +30,7 @@ impl Hasher for NoOpHasher {
 
 // Context is a simple data store that allows for storing and retrieving values of different types.
 pub struct Context<'ty, 'r> {
-    data: HashMap<TypeId, Data<'ty, 'r>, BuildHasherDefault<NoOpHasher>>,
+    data: HashMap<TypeId, Data<'ty, 'r>, BuildHasherDefault<TypeIdHasher>>,
     // Configurable gas limit for an execution
     // By default, set to u64::MAX because
     // no program should be able to run indefinitely
@@ -176,6 +176,12 @@ impl<'ty, 'r> Context<'ty, 'r> {
     #[inline]
     pub fn get_data_mut<'b>(&'b mut self, id: &TypeId) -> Option<&'b mut Data<'ty, 'r>> {
         self.data.get_mut(id)
+    }
+
+    // Get many mutable values from the Context
+    #[inline]
+    pub fn get_many_mut<'b, const N: usize>(&'b mut self, keys: [&TypeId; N]) -> [Option<&'b mut Data<'ty, 'r>>; N] {
+        self.data.get_many_mut(keys)
     }
 
     // Get an owned value from the Context
