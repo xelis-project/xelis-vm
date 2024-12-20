@@ -4,7 +4,6 @@ use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_types::Value;
-use xelis_ast::Signature;
 use super::*;
 
 #[track_caller]
@@ -973,7 +972,6 @@ fn test_function_call_on_value() {
 
 #[test]
 fn test_casting() {
-    let key = Signature::new("main".to_string(), None, Vec::new());
 
     // Auto casting
     test_code_expect_return("fn main() -> u8 { return 10; }", Value::U8(10));
@@ -1012,7 +1010,6 @@ fn test_casting() {
 
 #[test]
 fn test_string_number_concatenation() {
-    let key = Signature::new("main".to_string(), None, Vec::new());
     test_code_expect_return("fn main() -> string { return (\"hello world\" + 10); }", Value::String("hello world10".to_string()));
     test_code_expect_return("fn main() -> string { return (10 + \"hello world\"); }", Value::String("10hello world".to_string()));
     test_code_expect_return("fn main() -> string { return (10 + \"hello world\" + 10); }", Value::String("10hello world10".to_string()));
@@ -1025,7 +1022,6 @@ fn test_string_number_concatenation() {
 
 #[test]
 fn test_negative_bool() {
-    let key = Signature::new("main".to_string(), None, Vec::new());
     test_code_expect_return("fn main() -> bool { return !false; }", Value::Boolean(true));
     test_code_expect_return("fn main() -> bool { return !true; }", Value::Boolean(false));
     test_code_expect_return("fn main() -> bool { let add: bool = true; add = !add; return add; }", Value::Boolean(false));
