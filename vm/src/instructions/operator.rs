@@ -26,6 +26,24 @@ macro_rules! op {
     }};
 }
 
+macro_rules! op_bool {
+    ($a: expr, $b: expr, $op: tt) => {{
+        match ($a.as_value(), $b.as_value()) {
+            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
+                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
+                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
+                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
+                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
+                (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+                _ => return Err(VMError::UnexpectedType)
+            }
+            _ => return Err(VMError::UnexpectedType)
+        }
+    }};
+}
+
 macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a.as_value(), $b.as_value()) {
@@ -67,7 +85,7 @@ macro_rules! op_string {
     }};
 }
 
-macro_rules! op_bool {
+macro_rules! op_bool_res {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a.as_value(), $b.as_value()) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
@@ -176,17 +194,17 @@ opcode_fn!(mul, opcode_op, op, *);
 opcode_fn!(div, opcode_op, op_div, /);
 opcode_fn!(rem, opcode_op, op, %);
 
-opcode_fn!(bitwise_and, opcode_op, op, &);
-opcode_fn!(bitwise_or, opcode_op, op, |);
-opcode_fn!(bitwise_xor, opcode_op, op, ^);
+opcode_fn!(bitwise_and, opcode_op, op_bool, &);
+opcode_fn!(bitwise_or, opcode_op, op_bool, |);
+opcode_fn!(bitwise_xor, opcode_op, op_bool, ^);
 opcode_fn!(bitwise_shl, opcode_op, op, <<);
 opcode_fn!(bitwise_shr, opcode_op, op, >>);
 
 opcode_fn!(eq, opcode_op, op_bool_all, ==);
-opcode_fn!(gt, opcode_op, op_bool, >);
-opcode_fn!(lt, opcode_op, op_bool, <);
-opcode_fn!(gte, opcode_op, op_bool, >=);
-opcode_fn!(lte, opcode_op, op_bool, <=);
+opcode_fn!(gt, opcode_op, op_bool_res, >);
+opcode_fn!(lt, opcode_op, op_bool_res, <);
+opcode_fn!(gte, opcode_op, op_bool_res, >=);
+opcode_fn!(lte, opcode_op, op_bool_res, <=);
 
 opcode_fn!(add_assign, opcode_op_assign, op_string, +);
 opcode_fn!(sub_assign, opcode_op_assign, op, -);
