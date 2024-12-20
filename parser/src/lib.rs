@@ -1257,11 +1257,9 @@ impl<'a> Parser<'a> {
             self.advance()?;
         };
 
-        let res = self.try_convert_expr_to_value(&mut collapsed_expr)
-        .map(|constant| Expression::Constant(constant))
-        .unwrap_or(collapsed_expr);
-        println!("res: {:?}", res);
-        Ok(res)
+        Ok(self.try_convert_expr_to_value(&mut collapsed_expr)
+            .map(|constant| Expression::Constant(constant))
+            .unwrap_or(collapsed_expr))
     }
 
     fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
