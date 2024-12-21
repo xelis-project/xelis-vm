@@ -1,9 +1,0 @@
-fn recursive() {
-    recursive()
-    println("test")
-}
-
-entry main() {
-    recursive()
-    return 0
-}

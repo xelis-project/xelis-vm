@@ -1,0 +1,16 @@
+enum Either {
+	Left {
+		value: bool
+	},
+	Right {
+		field: u64
+	}
+	None,
+}
+
+entry main() {
+    let either: Either = Either::None;
+    println(either);
+
+	return 0
+}

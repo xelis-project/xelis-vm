@@ -7,10 +7,11 @@ fn no_call() -> bool {
 }
 
 entry main() {
-    if (!bool_test()) && no_call() { // TODO fix order
-        return 1
+    if (!bool_test()) && no_call() {
+        return panic("should not be called 2")
     }
 
+    // Try a ternary operator
     let i: u64 = bool_test() ? 10 : 0
     if i == 10 {
         i = 0

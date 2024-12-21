@@ -7,11 +7,11 @@ fn is_prime(num: u64, prime_list: u64[]) -> bool {
     return true
 }
 
-entry main() {
+entry main(max: u64) {
     let primes: u64[] = [2];
     let check: u64 = 3;
     let index: u64 = 1;
-    while index < 5_000 {
+    while index < max {
         if is_prime(check, primes) {
             primes.push(check)
             index += 1
