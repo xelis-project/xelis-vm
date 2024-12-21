@@ -765,8 +765,10 @@ impl fmt::Display for ValueCell {
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             },
             Self::Enum(fields, enum_type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
-                write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
+                let s: Vec<String> = fields.iter()
+                    .map(|v| format!("{}", v.borrow()))
+                    .collect();
+                write!(f, "enum[{}:{}] {} {} {}", enum_type.id(), enum_type.variant_id(), "{", s.join(", "), "}")
             }
         }
     }
