@@ -22,7 +22,7 @@ impl ValuePointerInner {
     pub fn take_value(self) -> ValueCell {
         match self {
             Self::Owned(v) => *v,
-            Self::Shared(v) => match Rc::try_unwrap(v.into_inner()) {
+            Self::Shared(v) => match Rc::try_unwrap(v.into_reference()) {
                 Ok(value) => value.into_inner(),
                 Err(rc) => {
                     let mut value = rc.borrow_mut();
@@ -36,10 +36,7 @@ impl ValuePointerInner {
     pub fn into_value(self) -> ValueCell {
         match self {
             Self::Owned(v) => *v,
-            Self::Shared(v) => match Rc::try_unwrap(v.into_inner()) {
-                Ok(value) => value.into_inner(),
-                Err(rc) => rc.borrow().clone()
-            }
+            Self::Shared(v) => v.into_inner(),
         }
     }
 
@@ -47,10 +44,7 @@ impl ValuePointerInner {
     pub fn into_owned(self) -> ValuePointer {
         ValuePointer(match self {
             Self::Owned(_) => self,
-            Self::Shared(v) => Self::Owned(Box::new(match Rc::try_unwrap(v.into_inner()) {
-                Ok(value) => value.into_inner(),
-                Err(rc) => rc.borrow().clone()
-            }))
+            Self::Shared(v) => Self::Owned(Box::new(v.into_inner()))
         })
     }
 

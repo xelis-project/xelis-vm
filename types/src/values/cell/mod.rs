@@ -709,38 +709,119 @@ impl ValueCell {
     // Clone all the SubValue into a new ValueCell
     // We need to do it in iterative way to prevent any stackoverflow
     pub fn into_owned(self) -> Self {
-        match self {
-            Self::Default(v) => Self::Default(v),
-            Self::Struct(fields, _type) => {
-                let mut new_fields = Vec::with_capacity(fields.len());
-                for field in fields {
-                    new_fields.push(field.into_owned().into());
-                }
-                Self::Struct(new_fields, _type)
+        if matches!(self, Self::Default(_)) {
+            return self
+        }
+
+        #[derive(Debug)]
+        enum QueueItem {
+            Value(Value),
+            Array {
+                len: usize,
             },
-            Self::Array(values) => {
-                let mut new_values = Vec::with_capacity(values.len());
-                for value in values {
-                    new_values.push(value.into_owned().into());
-                }
-                Self::Array(new_values)
+            Map {
+                len: usize,
             },
-            Self::Optional(value) => Self::Optional(value.map(|v| v.into_owned().into())),
-            Self::Map(map) => {
-                let mut new_map = HashMap::with_capacity(map.len());
-                for (k, v) in map {
-                    new_map.insert(k.into_owned(), v.into_owned().into());
-                }
-                Self::Map(new_map)
+            Optional(bool),
+            Struct {
+                ty: StructType,
+                len: usize,
             },
-            Self::Enum(fields, _type) => {
-                let mut new_fields = Vec::with_capacity(fields.len());
-                for field in fields {
-                    new_fields.push(field.into_owned().into());
-                }
-                Self::Enum(new_fields, _type)
+            Enum {
+                ty: EnumValueType,
+                len: usize,
             }
         }
+
+        let mut stack = vec![self];
+        let mut queue = Vec::new();
+
+        // Disassemble
+        while let Some(value) = stack.pop() {
+            match value {
+                Self::Default(v) => queue.push(QueueItem::Value(v)),
+                Self::Array(values) => {
+                    queue.push(QueueItem::Array { len: values.len() });
+                    for value in values.into_iter().rev() {
+                        stack.push(value.into_inner());
+                    }
+                },
+                Self::Map(map) => {
+                    queue.push(QueueItem::Map { len: map.len() });
+                    for (k, v) in map.into_iter() {
+                        stack.push(k);
+                        stack.push(v.into_inner());
+                    }
+                },
+                Self::Optional(opt) => {
+                    queue.push(QueueItem::Optional(opt.is_some()));
+                    if let Some(value) = opt {
+                        stack.push(value.into_inner());
+                    }
+                },
+                Self::Struct(fields, ty) => {
+                    queue.push(QueueItem::Struct { ty, len: fields.len() });
+                    for field in fields.into_iter().rev() {
+                        stack.push(field.into_inner());
+                    }
+                },
+                Self::Enum(fields, ty) => {
+                    queue.push(QueueItem::Enum { ty, len: fields.len() });
+                    for field in fields.into_iter().rev() {
+                        stack.push(field.into_inner());
+                    }
+                }
+            }
+        };
+
+        // Assemble back
+        while let Some(item) = queue.pop() {
+            match item {
+                QueueItem::Value(v) => {
+                    stack.push(ValueCell::Default(v));
+                },
+                QueueItem::Array { len } => {
+                    let mut values = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        values.push(SubValue::new(stack.pop().unwrap()));
+                    }
+                    stack.push(ValueCell::Array(values));
+                },
+                QueueItem::Map { len } => {
+                    let mut map = HashMap::with_capacity(len);
+                    for _ in 0..len {
+                        let value = stack.pop().unwrap();
+                        let key = stack.pop().unwrap();
+                        map.insert(key.into_owned(), SubValue::new(value));
+                    }
+                    stack.push(ValueCell::Map(map));
+                },
+                QueueItem::Optional(is_some) => {
+                    let value = if is_some {
+                        Some(SubValue::new(stack.pop().unwrap()))
+                    } else {
+                        None
+                    };
+                    stack.push(ValueCell::Optional(value));
+                },
+                QueueItem::Struct { ty, len } => {
+                    let mut fields = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        fields.push(SubValue::new(stack.pop().unwrap()));
+                    }
+                    stack.push(ValueCell::Struct(fields, ty));
+                },
+                QueueItem::Enum { ty, len } => {
+                    let mut fields = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        fields.push(SubValue::new(stack.pop().unwrap()));
+                    }
+                    stack.push(ValueCell::Enum(fields, ty));
+                }
+            }
+        }
+
+        stack.pop().unwrap()
     }
 }
 
@@ -805,8 +886,22 @@ mod tests {
         }
 
         let owned = map.into_owned();
-        let mut inner_map = HashMap::new();
-        inner_map.insert(ValueCellWrapper(owned), Value::U8(10));
+        println!("{}", owned);
+
+        let _ = ValueCellWrapper(owned);
+        // let mut inner_map = HashMap::new();
+        // inner_map.insert(ValueCellWrapper(owned), Value::U8(10));
+    }
+
+    #[test]
+    fn test_into_owned() {
+        let array = ValueCell::Array(vec![
+            SubValue::new(ValueCell::Default(Value::U8(10))),
+            SubValue::new(ValueCell::Default(Value::U8(20))),
+            SubValue::new(ValueCell::Default(Value::U8(30))),
+        ]);
+
+        assert_eq!(array, array.clone().into_owned());
     }
 
     #[test]

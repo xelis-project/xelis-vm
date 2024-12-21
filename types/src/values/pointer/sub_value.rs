@@ -25,9 +25,23 @@ impl SubValue {
     }
 
     #[inline(always)]
-    pub fn into_inner(self) -> Rc<RefCell<ValueCell>> {
+    pub fn into_inner(self) -> ValueCell {
+        match Rc::try_unwrap(self.0) {
+            Ok(value) => value.into_inner(),
+            Err(rc) => rc.borrow().clone()
+        }
+    }
+
+    #[inline(always)]
+    pub fn into_reference(self) -> Rc<RefCell<ValueCell>> {
         self.0
     }
+
+    #[inline(always)]
+    pub fn cloned(&self) -> ValueCell {
+        self.0.borrow().clone()
+    }
+
 
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
