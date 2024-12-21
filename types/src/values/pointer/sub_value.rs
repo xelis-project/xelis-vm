@@ -42,13 +42,9 @@ impl SubValue {
         self.0.borrow().clone()
     }
 
-
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
-        match Rc::try_unwrap(self.0) {
-            Ok(value) => value.into_inner(),
-            Err(rc) => rc.borrow().clone().into_owned()
-        }
+        self.into_inner().into_owned()
     }
 
     #[inline(always)]
