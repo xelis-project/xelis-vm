@@ -251,19 +251,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "interpreter"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "xelis-ast",
- "xelis-builder",
- "xelis-environment",
- "xelis-lexer",
- "xelis-parser",
- "xelis-types",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

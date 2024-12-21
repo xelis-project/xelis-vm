@@ -9,7 +9,6 @@ members = [
     "ast",
     "parser",
     "lexer",
-    "interpreter",
     "environment",
     "builder",
     "compiler",
