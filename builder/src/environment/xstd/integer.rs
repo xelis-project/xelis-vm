@@ -72,7 +72,7 @@ macro_rules! to_endian_bytes {
                 vec![],
                 [<to_ $endian _bytes_ $f>],
                 15,
-                Some(Type::Optional(Box::new(Type::Array(Box::new(Type::U8)))))
+                Some(Type::Array(Box::new(Type::U8)))
             );
         }
     };
