@@ -77,6 +77,11 @@ impl<'a> EnvironmentBuilder<'a> {
         self.opaque_manager.get(name)
     }
 
+    // Get the name of an opaque type
+    pub fn get_opaque_name(&self, _type: &OpaqueType) -> Option<&str> {
+        self.opaque_manager.iter().find_map(|(k, v)| if v == _type { Some(*k) } else { None })
+    }
+
     // Register a constant in the environment
     // Panic if the constant name is already used
     pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant) {
