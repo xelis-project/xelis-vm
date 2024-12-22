@@ -84,6 +84,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
             fields_names
         ))
     }
+
     // register a new struct in the manager
     pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<(), BuilderError> {
         let builder = self.build_internal(name, fields)?;
@@ -125,6 +126,18 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         }
 
         self.types.iter().find(|v| v.get_type() == _type).ok_or(BuilderError::StructNotFound)   
+    }
+
+    pub fn get_name_by_ref(&self, _type: &T::Type) -> Result<&Cow<str>, BuilderError> {
+        if let Some(parent) = self.parent {
+            if let Ok(s) = parent.get_name_by_ref(_type) {
+                return Ok(s);
+            }
+        }
+
+        // We need to find its id to get the name from the mapper
+        let id = self.get_by_ref(_type)?.type_id();
+        self.mapper.get_by_id(id).ok_or(BuilderError::StructNotFound)
     }
 
     // Convert the struct manager into a list of structs
