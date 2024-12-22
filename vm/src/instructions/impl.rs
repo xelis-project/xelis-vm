@@ -126,6 +126,8 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
     let f = backend.environment.get_functions().get(id as usize)
         .ok_or(VMError::UnknownSysCall)?;
 
+    context.increase_gas_usage(f.get_cost())?;
+
     let mut instance = match on_value.as_mut() {
         Some(v) => Some(v.as_mut()),
         None => None,
