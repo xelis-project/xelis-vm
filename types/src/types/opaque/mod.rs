@@ -57,13 +57,13 @@ impl OpaqueWrapper {
     }
 
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
-        self.0.as_any()
+        (*self.0).as_any()
             .downcast_ref::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 
     pub fn as_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
-        self.0.as_any_mut()
+        (*self.0).as_any_mut()
             .downcast_mut::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
@@ -201,5 +201,13 @@ mod tests {
 
         let opaque2: OpaqueWrapper = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque, opaque2);
+    }
+
+    #[test]
+    fn test_opaque_downcast() {
+        let mut opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let _: &CustomOpaque = opaque.as_ref().unwrap();
+        let _: &mut CustomOpaque = opaque.as_mut().unwrap();
+        let _: CustomOpaque = opaque.into_inner().unwrap();
     }
 }
