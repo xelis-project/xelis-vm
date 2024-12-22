@@ -274,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn test_downcast_to_trait() {
+    fn test_downcast_to_trait_any() {
         trait Foo {
             fn foo(&self) -> &str;
         }
@@ -302,6 +302,48 @@ mod tests {
             let data = context.get_data_mut(&TypeId::of::<T>()).unwrap();
             data.downcast_mut_any::<T>()
                 .unwrap()
+                .foo();
+        }
+
+        inner_mut_fn::<Dummy>(&mut context);
+    }
+
+    #[test]
+    fn test_downcast_to_trait() {
+        trait Foo {
+            fn foo(&self) -> &str;
+        }
+
+        impl Foo for Dummy<'_> {
+            fn foo(&self) -> &str {
+                self.0
+            }
+        }
+
+        struct FooWrapper<'a, T: Foo + 'static>(&'a mut T);
+        tid! { impl<'a, T: 'static> TidAble<'a> for FooWrapper<'a, T> where T: Foo }
+
+        let mut dummy = Dummy("Hello, World!");
+        let mut context = Context::new();
+        context.insert(FooWrapper(&mut dummy));
+
+        fn inner_ref_fn<T: Foo + 'static>(context: &Context) {
+            let data = context.get_data(&FooWrapper::<T>::id())
+                .expect("Data not found");
+            data.downcast_ref::<FooWrapper<T>>()
+                .expect("Downcast failed")
+                .0
+                .foo();
+        }
+
+        inner_ref_fn::<Dummy>(&context);
+
+        fn inner_mut_fn<T: Foo + 'static>(context: &mut Context) {
+            let data = context.get_data_mut(&FooWrapper::<T>::id())
+                .expect("Data not found");
+            data.downcast_mut::<FooWrapper<T>>()
+                .expect("Downcast failed")
+                .0
                 .foo();
         }
 
