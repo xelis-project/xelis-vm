@@ -6,7 +6,7 @@ use super::{constant::Constant, Value};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
-    #[error("Type mismatch")]
+    #[error("Invalid opaque: type mismatch")]
     InvalidOpaqueTypeMismatch,
     #[error("max depth reached")]
     MaxDepthReached,
