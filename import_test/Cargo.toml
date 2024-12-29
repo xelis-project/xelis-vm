@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.22"
-thiserror = "2.0.3"
-xelis-ast = { path = "../ast" }
 xelis-types = { path = "../types" }
 xelis-vm = { path = "../vm" }
 xelis-bytecode = { path = "../bytecode" }
@@ -14,5 +11,14 @@ xelis-compiler = { path = "../compiler" }
 xelis-parser = { path = "../parser" }
 xelis-lexer = { path = "../lexer" }
 xelis-builder = { path = "../builder" }
-xelis-common = { path = "../common" }
+xelis_common = { git = "https://github.com/xelis-project/xelis-blockchain", rev = "af6a6cf29d6b816d6eb1e82a63905bd509c8cb84" }
 
+anyhow = "1.0.93"
+web-time = "1.1.0"
+humantime = "2.1.0"
+tokio = { version = "1.42.0", features = ["rt"] }
+wasm-bindgen-futures = "0.4.45"
+indexmap = "2.7.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
