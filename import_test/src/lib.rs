@@ -289,168 +289,154 @@ impl Silex {
         funcs
     }
 
-    // TODO maybe: use a version of xelis_common that pulls it's dependencies from the local xelis_vm sources
-    // // Execute the program
-    // pub async fn execute_program(
-    //     &self,
-    //     program: Program,
-    //     entry_id: usize,
-    //     max_gas: Option<u64>,
-    //     params: Vec<String>,
-    // ) -> Result<ExecutionResult, String> {
-    //     if self.has_program_running() {
-    //         return Err("A program is already running".to_string());
-    //     }
+    // Execute the program
+    pub async fn execute_program(
+        &self,
+        program: Program,
+        entry_id: usize,
+        max_gas: Option<u64>,
+        params: Vec<String>,
+    ) -> Result<ExecutionResult, String> {
+        if self.has_program_running() {
+            return Err("A program is already running".to_string());
+        }
 
-    //     let entry = program
-    //         .entries
-    //         .get(entry_id)
-    //         .ok_or_else(|| "Invalid entry point")?;
+        let entry = program
+            .entries
+            .get(entry_id)
+            .ok_or_else(|| "Invalid entry point")?;
 
-    //     if entry.parameters.len() != params.len() {
-    //         return Err("Invalid number of parameters".to_string());
-    //     }
+        if entry.parameters.len() != params.len() {
+            return Err("Invalid number of parameters".to_string());
+        }
 
-    //     let mut values = Vec::with_capacity(params.len());
-    //     for (value, param) in params.into_iter().zip(entry.parameters.iter()) {
-    //         let v = match param._type {
-    //             Type::U8 => Value::U8(
-    //                 value
-    //                     .parse::<u8>()
-    //                     .map_err(|_| format!("Expected a valid u8 type, got '{}'", value))?,
-    //             ),
-    //             Type::U16 => Value::U16(
-    //                 value
-    //                     .parse::<u16>()
-    //                     .map_err(|_| format!("Expected a valid u16 type, got '{}'", value))?,
-    //             ),
-    //             Type::U32 => Value::U32(
-    //                 value
-    //                     .parse::<u32>()
-    //                     .map_err(|_| format!("Expected a valid u32 type, got '{}'", value))?,
-    //             ),
-    //             Type::U64 => Value::U64(
-    //                 value
-    //                     .parse::<u64>()
-    //                     .map_err(|_| format!("Expected a valid u64 type, got '{}'", value))?,
-    //             ),
-    //             Type::U128 => Value::U128(
-    //                 value
-    //                     .parse::<u128>()
-    //                     .map_err(|_| format!("Expected a valid u128 type, got '{}'", value))?,
-    //             ),
-    //             Type::U256 => Value::U256(
-    //                 value
-    //                     .parse::<u128>() // Use u128 to parse, then convert to U256
-    //                     .map(|v| v.into())
-    //                     .map_err(|_| format!("Expected a valid u256 type, got '{}'", value))?,
-    //             ),
-    //             Type::String => Value::String(value.clone()), // Strings are directly used
-    //             _ => {
-    //                 return Err(format!(
-    //                     "Unsupported parameter type: {}",
-    //                     param._type
-    //                 ));
-    //             }
-    //         };
+        let mut values = Vec::with_capacity(params.len());
+        for (value, param) in params.into_iter().zip(entry.parameters.iter()) {
+            let v = match param._type {
+                Type::U8 => Value::U8(
+                    value
+                        .parse::<u8>()
+                        .map_err(|_| format!("Expected a valid u8 type, got '{}'", value))?,
+                ),
+                Type::U16 => Value::U16(
+                    value
+                        .parse::<u16>()
+                        .map_err(|_| format!("Expected a valid u16 type, got '{}'", value))?,
+                ),
+                Type::U32 => Value::U32(
+                    value
+                        .parse::<u32>()
+                        .map_err(|_| format!("Expected a valid u32 type, got '{}'", value))?,
+                ),
+                Type::U64 => Value::U64(
+                    value
+                        .parse::<u64>()
+                        .map_err(|_| format!("Expected a valid u64 type, got '{}'", value))?,
+                ),
+                Type::U128 => Value::U128(
+                    value
+                        .parse::<u128>()
+                        .map_err(|_| format!("Expected a valid u128 type, got '{}'", value))?,
+                ),
+                Type::U256 => Value::U256(
+                    value
+                        .parse::<u128>() // Use u128 to parse, then convert to U256
+                        .map(|v| v.into())
+                        .map_err(|_| format!("Expected a valid u256 type, got '{}'", value))?,
+                ),
+                Type::String => Value::String(value.clone()), // Strings are directly used
+                _ => {
+                    return Err(format!(
+                        "Unsupported parameter type: {}",
+                        param._type
+                    ));
+                }
+            };
         
-    //         values.push(v);
-    //   }
+            values.push(v);
+      }
 
-    //     // Mark it as running
-    //     self.is_running.store(true, Ordering::Relaxed);
+        // Mark it as running
+        self.is_running.store(true, Ordering::Relaxed);
 
-    //     let chunk_id = entry.chunk_id;
-    //     let environment = self.environment.environment().clone();
-    //     let res = tokio::task::spawn_blocking(move || {
-    //         // Fake storage
-    //         // TODO: allow user to configure data in it before running the program
-    //         let mut storage = MockStorage {
-    //             data: Default::default(),
-    //         };
-    //         // TODO: configurable
-    //         let deposits = IndexMap::new();
-    //         // TODO: configurable
-    //         let header = BlockHeader::new(BlockVersion::V0, 0, 0, Default::default(), Default::default(), CompressedPublicKey::new(Default::default()), Default::default());
-    //         let block = Block::with(header, Vec::new());
-    //         // TODO: configurable
-    //         let random = DeterministicRandom::new(&Hash::zero(), &Hash::zero(), &Hash::max());
+        let chunk_id = entry.chunk_id;
+        let environment = self.environment.environment().clone();
+        let res = tokio::task::spawn_blocking(move || {
+            // Fake storage
+            // TODO: allow user to configure data in it before running the program
+            // TODO: configurable
+            let deposits = IndexMap::new();
+            // TODO: configurable
+            let header = BlockHeader::new(BlockVersion::V0, 0, 0, Default::default(), Default::default(), CompressedPublicKey::new(Default::default()), Default::default());
+            let block = Block::with(header, Vec::new());
+            // TODO: configurable
+            let random = DeterministicRandom::new(&Hash::zero(), &Hash::zero(), &Hash::max());
 
-    //         let zero_hash = Hash::zero();
+            let zero_hash = Hash::zero();
 
-    //         let mut chain_state = ChainState {
-    //             debug_mode: true,
-    //             mainnet: false,
-    //             random,
-    //             block: &block,
-    //             contract: &zero_hash,
-    //             block_hash: &zero_hash,
-    //             topoheight: 0,
-    //             tx_hash: &zero_hash,
-    //             deposits: &deposits,
-    //             transfers: Vec::new(),
-    //             storage: HashMap::new(),
-    //         };
+            let mut chain_state = ChainState {
+                debug_mode: true,
+                mainnet: false,
+                random,
+                block: &block,
+                contract: &zero_hash,
+                block_hash: &zero_hash,
+                topoheight: 0,
+                tx_hash: &zero_hash,
+                deposits: &deposits,
+                transfers: Vec::new(),
+                storage: HashMap::new(),
+            };
 
-    //         let (res, elapsed_time, used_gas) = {
-    //             // Create the VM, this will initialize the context also
-    //             let mut vm = VM::new(&program.module, &environment);
+            let (res, elapsed_time, used_gas) = {
+                // Create the VM, this will initialize the context also
+                let mut vm = VM::new(&program.module, &environment);
 
-    //             let context = vm.context_mut();
-    //             context.insert(StorageWrapper(&mut storage));
-    //             context.insert_mut(&mut chain_state);
+                let context = vm.context_mut();
+                context.insert_mut(&mut chain_state);
 
-    //             if let Some(max_gas) = max_gas {
-    //                 context.set_gas_limit(max_gas);
-    //             }
-    //             context.set_memory_price_per_byte(1);
+                if let Some(max_gas) = max_gas {
+                    context.set_gas_limit(max_gas);
+                }
+                context.set_memory_price_per_byte(1);
 
-    //             vm.invoke_entry_chunk_with_args(chunk_id, values.into_iter().rev())
-    //                 .map_err(|err| format!("{:#}", err))?;
+                vm.invoke_entry_chunk_with_args(chunk_id, values.into_iter().rev())
+                    .map_err(|err| format!("{:#}", err))?;
 
-    //             let start = web_time::Instant::now();
-    //             let res = vm.run();
-    //             let elapsed_time = start.elapsed();
-    //             let used_gas = vm.context().current_gas_usage();
+                let start = web_time::Instant::now();
+                let res = vm.run();
+                let elapsed_time = start.elapsed();
+                let used_gas = vm.context().current_gas_usage();
 
-    //             (res, elapsed_time, used_gas)
-    //         };
+                (res, elapsed_time, used_gas)
+            };
 
-    //         // Merge chain state into mock storage
-    //         for (k, v) in chain_state.storage.into_iter() {
-    //             match v {
-    //                 Some(v) => storage.data.insert(k, v),
-    //                 None => storage.data.remove(&k),
-    //             };
-    //         }
+            match res {
+                Ok(value) => Ok(ExecutionResult {
+                    value: format!("{}", value),
+                    logs: Vec::new(),
+                    elapsed_time: format_duration(elapsed_time).to_string(),
+                    used_gas,
+                }),
+                Err(err) => Err(format!("{:#}", err)),
+            }
+        })
+        .await;
 
-    //         match res {
-    //             Ok(value) => Ok(ExecutionResult {
-    //                 value: format!("{}", value),
-    //                 logs: Vec::new(),
-    //                 elapsed_time: format_duration(elapsed_time).to_string(),
-    //                 used_gas,
-    //                 storage,
-    //             }),
-    //             Err(err) => Err(format!("{:#}", err)),
-    //         }
-    //     })
-    //     .await;
+        // Mark it as not running
+        self.is_running.store(false, Ordering::Relaxed);
 
-    //     // Mark it as not running
-    //     self.is_running.store(false, Ordering::Relaxed);
+        let handle = res.map_err(|err| format!("{:#}", err))?;
 
-    //     let handle = res.map_err(|err| format!("{:#}", err))?;
+        // collect all logs
+        let logs: Vec<String> = self.logs_receiver.try_iter().collect();
 
-    //     // collect all logs
-    //     let logs: Vec<String> = self.logs_receiver.try_iter().collect();
-
-    //     match handle {
-    //         Ok(mut result) => {
-    //             result.logs = logs;
-    //             Ok(result)
-    //         }
-    //         Err(err) => Err(err),
-    //     }
-    // }
+        match handle {
+            Ok(mut result) => {
+                result.logs = logs;
+                Ok(result)
+            }
+            Err(err) => Err(err),
+        }
+    }
 }

@@ -24,6 +24,10 @@ fn test_compile_silex_program() {
         Ok(program) => {
             println!("Compilation successful!");
             println!("Entries: {:?}", program.entries());
+
+            // silex.execute_program(
+
+            // )
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
