@@ -3,7 +3,7 @@ import "util.slx"
 entry main() {
     let a: u8 = 5
     let b: u8 = true ? 250 : 10
-    println(add(a, b))
+    println(add_special(a, b))
 
     let res: u8 = b << 1
     println(res)

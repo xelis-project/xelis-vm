@@ -8,6 +8,8 @@ fn test_compile_silex_program() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex").join("main.slx");
 
+    let p2 = &base_dir.join("src").join("silex");
+
     println!("Resolved test file path: {:?}", test_file_path);
 
     // Read the contents of the test file
@@ -18,7 +20,7 @@ fn test_compile_silex_program() {
     let silex = Silex::new();
 
     // Compile the code
-    match silex.compile(&code) {
+    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             println!("Compilation successful!");
             println!("Entries: {:?}", program.entries());

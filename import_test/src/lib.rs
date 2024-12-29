@@ -176,32 +176,33 @@ static LOGS_SENDER: Mutex<Option<mpsc::Sender<String>>> = Mutex::new(None);
 
 impl Silex {
     pub fn new() -> Self {
-        // let mut environment = build_environment();
+        let mut environment = EnvironmentBuilder::default();
         let (sender, receiver) = mpsc::channel();
 
-        // *LOGS_SENDER.lock().unwrap() = Some(sender);
-        // environment
-        //     .get_mut_function("println", None, vec![Type::Any])
-        //     .set_on_call(move |_, args, _| -> _ {
-        //         let param = &args[0];
-        //         let lock = LOGS_SENDER.lock().unwrap();
-        //         let sender = lock.as_ref().unwrap();
-        //         sender
-        //             .send(format!("{}", param.as_ref().as_value()))
-        //             .unwrap();
-        //         Ok(None)
-        //     });
+        *LOGS_SENDER.lock().unwrap() = Some(sender);
+        environment
+            .get_mut_function("println", None, vec![Type::Any])
+            .set_on_call(move |_, args, _| -> _ {
+                let param = &args[0];
+                let lock = LOGS_SENDER.lock().unwrap();
+                let sender = lock.as_ref().unwrap();
+                sender
+                    .send(format!("{}", param.as_ref().as_value()))
+                    .unwrap();
+                Ok(None)
+            });
 
         Self {
-            environment: EnvironmentBuilder::new(),
+            environment: environment,
             logs_receiver: receiver,
             is_running: AtomicBool::new(false),
         }
     }
 
 
-    fn compile_internal(&self, code: &str) -> anyhow::Result<Program> {
+    fn compile_internal(&self, code: &str, path: &str) -> anyhow::Result<Program> {
         let tokens = Lexer::new(code)
+            .with_path(path.to_string())
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -244,8 +245,8 @@ impl Silex {
     }
 
     // Compile the code
-    pub fn compile(&self, code: &str) -> Result<Program, String> {
-        match self.compile_internal(code) {
+    pub fn compile(&self, code: &str, path: &str) -> Result<Program, String> {
+        match self.compile_internal(code, path) {
             Ok(program) => Ok(program),
             Err(err) => Err(format!("{:#}", err)),
         }
