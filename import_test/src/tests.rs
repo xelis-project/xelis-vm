@@ -22,7 +22,7 @@ fn run_code(silex: &Silex, module: &Module, ) -> Value {
 }
 
 #[test]
-fn test_basic() {
+fn test_import_basic() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/basic").join("main.slx");
 
@@ -35,6 +35,27 @@ fn test_basic() {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 1);
             assert_eq!(res, Value::U64(255));
+        }
+        Err(err) => {
+            panic!("Compilation failed: {}", err);
+        }
+    }
+}
+
+#[test]
+fn test_import_main() {
+    let base_dir = env::current_dir().unwrap();
+    let test_file_path = base_dir.join("src").join("silex/import_main").join("main.slx");
+
+    let code = fs::read_to_string(&test_file_path)
+        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+
+    let silex = Silex::new();
+
+    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+        Ok(program) => {
+            let res = run_code(&silex, &program.module);
+            assert_eq!(res, Value::U64(0));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -57,26 +78,5 @@ fn test_circular_dependency() {
             panic!("Circular Dependency Undetected");
         },
         Err(err) => {},
-    }
-}
-
-#[test]
-fn test_imported_main() {
-    let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/import_main").join("main.slx");
-
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
-
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
-        Ok(program) => {
-            let res = run_code(&silex, &program.module);
-            assert_eq!(res, Value::U64(0));
-        }
-        Err(err) => {
-            panic!("Compilation failed: {}", err);
-        }
     }
 }
