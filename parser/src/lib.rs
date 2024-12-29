@@ -1875,33 +1875,6 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    // Read a type with the following syntax:
-    // import "filename.xel";
-    // or with an alias:
-    // import "filename.xel" as alias;
-    fn read_import(&mut self) -> Result<(), ParserError<'a>> {
-        trace!("Read import");
-
-        let path = self.advance()?;
-
-        let Token::Value(Literal::String(path)) = path else {
-            return Err(err!(self, ParserErrorKind::InvalidImport))
-        };
-
-        // We don't allow absolute path or path that contains ".."
-        if path.starts_with("/") || path.contains("..") {
-            return Err(err!(self, ParserErrorKind::InvalidImportPath(path)))
-        }
-
-        // If its a local import, we will import its content directly
-        let is_local = path.ends_with(".xel");
-        if !is_local {
-            return Err(err!(self, ParserErrorKind::NotImplemented))
-        }
-
-        Ok(())
-    }
-
     // check if a function with the same signature exists
     fn has_function(&self, id: u16) -> bool {
         self.get_function(id).is_ok()
@@ -2050,10 +2023,6 @@ impl<'a> Parser<'a> {
         let mut context: Context = Context::new();
         while let Some(token) = self.next() {
             match token {
-                Token::Import => {
-                    self.read_import()?;
-                    continue;
-                }
                 Token::Const => self.read_const(&mut context)?,
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,

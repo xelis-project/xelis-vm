@@ -121,7 +121,7 @@ impl<'a> fmt::Display for Token<'a> {
           In => "in",
           IsNot => "!",
 
-          Import => "import",
+          Import(_) => "import",
           From => "from",
           As => "as",
           ReturnType => "->",
@@ -240,7 +240,7 @@ pub enum Token<'a> {
 
     OperatorTernary,
 
-    Import,
+    Import(String),
     From,
     As,
     ReturnType,
@@ -333,7 +333,6 @@ impl Token<'_> {
             "true" => Value(Literal::Bool(true)),
             "false" => Value(Literal::Bool(false)),
 
-            "import" => Import,
             "from" => From,
             "as" => As,
             "->" => ReturnType,

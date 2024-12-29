@@ -425,9 +425,28 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    // handle import markers
+    fn detect_import_marker(&mut self, diff: usize) -> Result<Option<String>, LexerError> {
+        let column_start = self.column;
+        let value = self.read_while(|v| -> bool {
+            *v == '_' || v.is_ascii_alphanumeric()
+        }, diff)?;
+
+        if value != "import" {
+            return Ok(None)
+        }
+
+        loop {
+            let c = self.advance()?;
+            if c != ' ' {
+                let value = self.read_string(c)?;
+                if value != "" { return Ok(Some(value.into_owned().clone())); }
+            }
+        }
+    }
+
     // retrieve the next token available
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
-        let mut prev_skipped = false;
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
                 '\n' | '\r' | '\t' => {
@@ -435,7 +454,6 @@ impl<'a> Lexer<'a> {
                     self.line += 1;
                     self.column = 0;
                     self.accept_generic = false;
-                    prev_skipped = true;
                     continue;
                 },
                 // skipped characters
@@ -443,7 +461,6 @@ impl<'a> Lexer<'a> {
                     debug!("Skipping character: {}", c);
                     // we just skip these characters
                     self.accept_generic = false;
-                    prev_skipped = true;
                     continue;
                 },
                 // read a string value
@@ -474,8 +491,28 @@ impl<'a> Lexer<'a> {
                     continue;
                 },
                 // read a number value
-                c if c.is_digit(10) => self.read_number(c)?,
-                c if c == '_' || c.is_alphabetic() => self.read_token(1)?,
+                c if c.is_digit(10) => {
+                    self.read_number(c)?
+                },
+                c if c == '_' || c.is_alphabetic() => {
+                    // handle potential import
+                    if c == 'i' {
+                        println!("found import");
+                        if let Some(import) = self.detect_import_marker(1)? {
+                            let column_start = self.column;
+                            TokenResult {
+                                token: Token::Import(import),
+                                line: self.line,
+                                column_start,
+                                column_end: self.column
+                            }
+                        } else {
+                            self.read_token(1)?
+                        }
+                    } else {
+                        self.read_token(1)?
+                    }
+                },
                 _ => {
                     if let Some((token, diff)) = self.find_potential_token() {
                         trace!("Found potential token: {:?} with diff {}", token, diff);
@@ -504,8 +541,17 @@ impl<'a> Lexer<'a> {
     pub fn get(mut self) -> Result<VecDeque<Token<'a>>, LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
-            // push the token to the list
-            tokens.push_back(token.token);
+            // TODO: create a lexer-only import token and append it to current tokens here
+            println!("token: {:?}", token);
+            match token.token {
+                Token::Import(import) => {
+                    println!("Importing {}", import);
+                    trace!("Importing {}", import);
+                },
+                _ => {
+                    tokens.push_back(token.token);
+                }
+            }
         }
 
         Ok(tokens)
@@ -516,7 +562,19 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Result<TokenResult<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token().transpose()
+        let token_result = self.next_token();
+        let token = token_result.ok()?.unwrap();
+
+        match token.token {
+            Token::Import(import) => {
+                println!("Importing {}", import);
+                trace!("Importing {}", import);
+                None
+            },
+            _ => {
+                Some(Ok(token))
+            }
+        }
     }
 }
 
