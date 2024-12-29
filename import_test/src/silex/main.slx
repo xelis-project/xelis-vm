@@ -8,8 +8,5 @@ entry main() {
     let res: u8 = b << 1
     println(res)
 
-    // Divide by zero will cause a runtime error
-    let divide: u64 = 10 / 0
-
-    return 0
+    return add_special(a, b) as u64
 }

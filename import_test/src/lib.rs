@@ -147,6 +147,7 @@ impl ExecutionResult {
     // }
 }
 
+#[derive(Debug)]
 pub struct Func {
     name: String,
     on_type: Option<String>,

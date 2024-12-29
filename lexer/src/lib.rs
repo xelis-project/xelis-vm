@@ -632,14 +632,11 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         // First, check if we have any queued tokens from imports
         if let Some(token) = self.token_queue.pop_front() {
-            // println!("imported {:?}", token);
-            // return Some(Ok(token));
-            return None
+            return Some(Ok(token));
         }
 
         // If no queued tokens, get the next token normally
         let token_result = self.next_token();
-        // println!("{:?}", token_result);
         let token = match token_result {
             Ok(Some(token)) => token,
             Ok(None) => return None,

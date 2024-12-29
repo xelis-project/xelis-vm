@@ -25,9 +25,18 @@ fn test_compile_silex_program() {
             println!("Compilation successful!");
             println!("Entries: {:?}", program.entries());
 
-            // silex.execute_program(
+            let mut vm = VM::new(&program.module, silex.environment.environment());
+            vm.invoke_entry_chunk(1).unwrap();
+            let res = vm.run().map(|v| v.into_value().unwrap());
 
-            // )
+            println!("result: {:?}", res);
+
+            // silex.execute_program(
+            //     program,
+            //     0,
+            //     None,
+            //     Vec::new(),
+            // );
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
