@@ -11,3 +11,4 @@ xelis-environment = { path = "../environment" }
 log = "0.4.22"
 thiserror = "2.0.3"
 indexmap = { version = "2.7.0", features = ["serde"] }
+anyhow = "1.0.95"

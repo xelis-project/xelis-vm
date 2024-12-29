@@ -1,4 +1,5 @@
 mod function;
+mod const_function;
 
 use std::{
     borrow::{Borrow, Cow},
@@ -10,6 +11,7 @@ use xelis_types::IdentifierType;
 use crate::BuilderError;
 
 pub use function::*;
+pub use const_function::*;
 
 pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
 

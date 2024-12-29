@@ -48,6 +48,8 @@ pub enum ParserErrorKind<'a> {
     EnumVariantNotFound(&'a str),
     #[error("constant not found for type '{0}' and name '{1}'")]
     ConstantNotFound(Type, &'a str),
+    #[error("invalid parameter for const fn: '{0:?}'")]
+    ConstFnCallParamNotConst(Expression),
     #[error("type '{0}' is not iterable")]
     NotIterable(Type),
     #[error("invalid range type '{0}' and '{1}'")]
@@ -154,4 +156,6 @@ pub enum ParserErrorKind<'a> {
     InvalidExpression,
     #[error("unknown error")]
     UnknownError,
+    #[error(transparent)]
+    Any(#[from] anyhow::Error)
 }

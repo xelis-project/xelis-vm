@@ -481,13 +481,12 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Type>), ParserError<'a>> {
+        trace!("Read function params");
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
         let mut types: Vec<Type> = Vec::new();
-
-        // read parameters for function call
         while self.peek_is_not(Token::ParenthesisClose) {
             let expr = self.read_expression_delimited(&Token::Comma, context)?;
             // We are forced to clone the type because we can't borrow it from the expression
@@ -501,6 +500,15 @@ impl<'a> Parser<'a> {
             }
         }
 
+        self.expect_token(Token::ParenthesisClose)?;
+        Ok((parameters, types))
+    }
+
+    // Read a function call with the following syntax:
+    // function_name(param1, param2, ...)
+    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        let (mut parameters, types) = self.read_function_params(context)?;
+
         let id = self.global_mapper
             .functions()
             .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
@@ -511,8 +519,6 @@ impl<'a> Parser<'a> {
         if f.is_entry() {
             return Err(err!(self, ParserErrorKind::FunctionIsEntry))
         }
-
-        self.expect_token(Token::ParenthesisClose)?;
 
         Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
     }
@@ -648,13 +654,26 @@ impl<'a> Parser<'a> {
 
         let constant_name = self.next_identifier()?;
 
-        if let Type::Enum(enum_type) = _type {
+        trace!("Read type constant: {:?}::{}", _type, constant_name);
+        if let Some(expr) = self.environment.get_constant_by_name(&_type, &constant_name)
+            .map(|v| Expression::Constant(v.clone())) {
+            Ok(expr)
+        } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
+            let (mut parameters, _) = self.read_function_params(context)?;
+            let mut constants = Vec::with_capacity(parameters.len());
+            for param in parameters.iter_mut() {
+                let constant = self.try_convert_expr_to_value(param)
+                    .ok_or_else(|| err!(self, ParserErrorKind::ConstantNotFound(_type.clone(), constant_name)))?;
+                constants.push(constant);
+            }
+
+            const_fn.call(constants)
+                .map(|v| Expression::Constant(v))
+                .map_err(|e| err!(self, e.into()))
+        } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
-            trace!("Read type constant: {:?}::{}", _type, constant_name);
-            self.environment.get_constant_by_name(&_type, &constant_name)
-                .map(|v| Expression::Constant(v.clone()))
-                .ok_or_else(|| err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
+            Err(err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
         }
     }
 
@@ -3439,5 +3458,38 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_const_fn_call() {
+        let mut env = EnvironmentBuilder::new();
+        env.register_const_function("test", Type::String, vec![("name", Type::String)], |params| {
+            Ok(Constant::Default(Value::String(format!("hello {}", params[0].as_string()?))))
+        });
+
+        // let name: string = String::test("world");
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("name"),
+            Token::Colon,
+            Token::String,
+            Token::OperatorAssign,
+            Token::String,
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::String(Cow::Borrowed("world"))),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        assert_eq!(statements.len(), 1);
+        let Statement::Variable(variable) = &statements[0] else {
+            panic!("Expected a variable statement");
+        };
+
+        assert_eq!(variable.value_type, Type::String);
+        assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
     }
 }

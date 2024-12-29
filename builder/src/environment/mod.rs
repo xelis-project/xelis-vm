@@ -4,7 +4,7 @@ use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
-use crate::{EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
+use crate::{ConstFnCall, ConstFunction, ConstFunctionMapper, EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -14,7 +14,11 @@ pub struct EnvironmentBuilder<'a> {
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
     opaque_manager: HashMap<&'a str, OpaqueType>,
-    constants: HashMap<Type, HashMap<&'a str, Constant>>,
+    // All types constants (like u64::MAX)
+    types_constants: HashMap<Type, HashMap<&'a str, Constant>>,
+    // All types constants functions
+    // Example: u64::MAX()
+    types_constants_functions: ConstFunctionMapper<'a>,
     env: Environment
 }
 
@@ -26,7 +30,8 @@ impl<'a> EnvironmentBuilder<'a> {
             struct_manager: StructManager::new(),
             enum_manager: EnumManager::new(),
             opaque_manager: HashMap::new(),
-            constants: HashMap::new(),
+            types_constants: HashMap::new(),
+            types_constants_functions: ConstFunctionMapper::new(),
             env: Environment::new(),
         }
     }
@@ -37,6 +42,14 @@ impl<'a> EnvironmentBuilder<'a> {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
         let _ = self.functions_mapper.register(name, for_type.clone(), parameters, return_type.clone()).unwrap();
         self.env.add_function(NativeFunction::new(for_type, params, on_call, cost, return_type));
+    }
+
+    // Register a constant function
+    // This is only available in the builder
+    // See this function as a helper
+    // Panic if the function signature is already registered
+    pub fn register_const_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall) {
+        self.types_constants_functions.register(name, for_type, parameters, on_call).unwrap();
     }
 
     // Get a function by its signature
@@ -85,13 +98,22 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a constant in the environment
     // Panic if the constant name is already used
     pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant) {
-        let constants = self.constants.entry(_type.clone()).or_insert_with(HashMap::new);
+        let constants = self.types_constants.entry(_type.clone()).or_insert_with(HashMap::new);
         constants.insert(name, value.clone());
     }
 
     // Get a constant by name
     pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&Constant> {
-        self.constants.get(_type).and_then(|v| v.get(name))
+        self.types_constants.get(_type).and_then(|v| v.get(name))
+    }
+
+    // Get a constant function by its name
+    pub fn get_const_fn(&self, for_type: &Type, fn_name: &'a str) -> Option<&ConstFunction> {
+        self.types_constants_functions.get_const_fn(for_type, fn_name)
+    }
+
+    pub fn get_const_functions_mapper(&self) -> &ConstFunctionMapper<'a> {
+        &self.types_constants_functions
     }
 
     // functions mapper, used to find the function id

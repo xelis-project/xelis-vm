@@ -2,11 +2,12 @@ mod environment;
 mod manager;
 mod mapper;
 
+use thiserror::Error;
+use xelis_types::ValueError;
+
 pub use environment::*;
 pub use manager::*;
 pub use mapper::*;
-use thiserror::Error;
-use xelis_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum BuilderError {
@@ -22,4 +23,8 @@ pub enum BuilderError {
     SignatureAlreadyRegistered,
     #[error(transparent)]
     ValueError(#[from] ValueError),
+    #[error("Invalid const fn parameters")]
+    InvalidConstFnParameters,
+    #[error(transparent)]
+    Any(#[from] anyhow::Error)
 }

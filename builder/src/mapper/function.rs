@@ -45,8 +45,7 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Get the identifier of a variable name
-    pub fn get(&self, key: &Signature) -> Result<IdentifierType, BuilderError>
-    {
+    pub fn get(&self, key: &Signature) -> Result<IdentifierType, BuilderError> {
         self.mapper.get(key)
     }
 
