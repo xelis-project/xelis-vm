@@ -888,7 +888,9 @@ impl<'a> Parser<'a> {
         context: &mut Context<'a>,
     ) -> Result<Expression, ParserError<'a>> {
         let mut collapse_queue = Vec::new();
+        trace!("Postfix Expression: ");
         for item in output_queue {
+            trace!("{:?}, ", item);
             match item {
                 QueueItem::Expression(expr) => {
                     collapse_queue.push(expr);
