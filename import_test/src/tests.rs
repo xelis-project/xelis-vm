@@ -7,7 +7,7 @@ use xelis_vm::VMError;
 #[track_caller]
 fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
     let mut vm = VM::new(module, silex.environment.environment());
-    vm.invoke_entry_chunk(1).unwrap();
+    vm.invoke_entry_chunk(id).unwrap();
     vm.run().map(|v| v.into_value().unwrap())
 }
 
@@ -23,18 +23,14 @@ fn run_code(silex: &Silex, module: &Module, ) -> Value {
 
 #[test]
 fn test_basic() {
-    // Determine the absolute path to the test file
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/basic").join("main.slx");
 
-    // Read the contents of the test file
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
 
-    // Create a new instance of Silex
     let silex = Silex::new();
 
-    // Compile the code
     match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 1);
@@ -47,23 +43,40 @@ fn test_basic() {
 }
 
 #[test]
-fn test_circular() {
-    // Determine the absolute path to the test file
+fn test_circular_dependency() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/circular").join("main.slx");
 
-    // Read the contents of the test file
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
 
-    // Create a new instance of Silex
     let silex = Silex::new();
 
-    // Compile the code
     match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             panic!("Circular Dependency Undetected");
         },
         Err(err) => {},
+    }
+}
+
+#[test]
+fn test_imported_main() {
+    let base_dir = env::current_dir().unwrap();
+    let test_file_path = base_dir.join("src").join("silex/import_main").join("main.slx");
+
+    let code = fs::read_to_string(&test_file_path)
+        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+
+    let silex = Silex::new();
+
+    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+        Ok(program) => {
+            let res = run_code(&silex, &program.module);
+            assert_eq!(res, Value::U64(0));
+        }
+        Err(err) => {
+            panic!("Compilation failed: {}", err);
+        }
     }
 }

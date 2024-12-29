@@ -173,23 +173,16 @@ impl Func {
     }
 }
 
-static LOGS_SENDER: Mutex<Option<mpsc::Sender<String>>> = Mutex::new(None);
-
 impl Silex {
     pub fn new() -> Self {
         let mut environment = EnvironmentBuilder::default();
         let (sender, receiver) = mpsc::channel();
 
-        *LOGS_SENDER.lock().unwrap() = Some(sender);
         environment
             .get_mut_function("println", None, vec![Type::Any])
             .set_on_call(move |_, args, _| -> _ {
                 let param = &args[0];
-                let lock = LOGS_SENDER.lock().unwrap();
-                let sender = lock.as_ref().unwrap();
-                sender
-                    .send(format!("{}", param.as_ref().as_value()))
-                    .unwrap();
+                println!("{}", param.as_ref().as_value());
                 Ok(None)
             });
 
