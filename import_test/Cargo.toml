@@ -1,0 +1,18 @@
+[package]
+name = "xelis-import-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.22"
+thiserror = "2.0.3"
+xelis-ast = { path = "../ast" }
+xelis-types = { path = "../types" }
+xelis-vm = { path = "../vm" }
+xelis-bytecode = { path = "../bytecode" }
+xelis-compiler = { path = "../compiler" }
+xelis-parser = { path = "../parser" }
+xelis-lexer = { path = "../lexer" }
+xelis-builder = { path = "../builder" }
+xelis-common = { path = "../common" }
+

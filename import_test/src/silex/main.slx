@@ -1,0 +1,15 @@
+import "util.slx"
+
+entry main() {
+    let a: u8 = 5
+    let b: u8 = true ? 250 : 10
+    println(add(a, b))
+
+    let res: u8 = b << 1
+    println(res)
+
+    // Divide by zero will cause a runtime error
+    let divide: u64 = 10 / 0
+
+    return 0
+}
