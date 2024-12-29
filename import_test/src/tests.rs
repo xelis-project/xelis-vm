@@ -2,6 +2,25 @@ use crate::*;
 use std::env;
 use std::fs;
 
+use xelis_vm::VMError;
+
+#[track_caller]
+fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
+    let mut vm = VM::new(module, silex.environment.environment());
+    vm.invoke_entry_chunk(1).unwrap();
+    vm.run().map(|v| v.into_value().unwrap())
+}
+
+#[track_caller]
+fn run_code_id(silex: &Silex, module: &Module, id: u16) -> Value {
+    try_run_code(silex, module, id).unwrap()
+}
+
+#[track_caller]
+fn run_code(silex: &Silex, module: &Module, ) -> Value {
+    run_code_id(silex, module, 0)
+}
+
 #[test]
 fn test_compile_silex_program() {
     // Determine the absolute path to the test file
@@ -25,18 +44,8 @@ fn test_compile_silex_program() {
             println!("Compilation successful!");
             println!("Entries: {:?}", program.entries());
 
-            let mut vm = VM::new(&program.module, silex.environment.environment());
-            vm.invoke_entry_chunk(1).unwrap();
-            let res = vm.run().map(|v| v.into_value().unwrap());
-
+            let res = run_code_id(&silex, &program.module, 1);
             println!("result: {:?}", res);
-
-            // silex.execute_program(
-            //     program,
-            //     0,
-            //     None,
-            //     Vec::new(),
-            // );
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
