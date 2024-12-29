@@ -91,6 +91,18 @@ impl<'a> Lexer<'a> {
     }
 
     // add source tree recognition
+    pub fn with_dependents(mut self, dependents: Vec<&'a str>) -> Self {
+      self.imported_by = dependents;
+      self
+    }
+
+    // add source tree recognition
+    pub fn with_imports(mut self, imports: Vec<&'a str>) -> Self {
+      self.imported_sources = imports;
+      self
+    }
+
+    // add source tree recognition
     pub fn add_dependent(mut self, dependent: &'a str) -> Self {
       self.imported_by.push(dependent);
       self
