@@ -1,0 +1,9 @@
+import "tool.slx"
+
+fn doit_wrap() -> u64 {
+  doit()
+}
+
+fn test() -> u64 {
+  return doit_wrap()
+}

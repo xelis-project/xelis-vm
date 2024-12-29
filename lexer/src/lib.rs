@@ -42,7 +42,7 @@ pub enum LexerErrorKind {
     ExpectedChar,
     #[error("Expected a type")]
     ExpectedType,
-    #[error("Circular dependency")]
+    #[error("Circular dependency detected")]
     CircularDependency
 }
 
@@ -553,10 +553,19 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn import(mut self) -> Result<(Vec<String>, VecDeque<Token<'a>>), LexerError> {
-        Ok((self.imported_sources.clone(), self.get()?))
+        match self.get_with_imports() {
+            Ok((imports, tokens)) => {
+                Ok((imports.clone(), tokens))
+            },
+            Err(err) => {
+                Err(err)
+            }
+        }
     }
 
     fn process_import(&mut self, import: String, use_queue: bool) -> Result<(), LexerError> {
+        trace!("Importing {}", import);
+
         let source_path = Path::new(&self.path).parent().expect("No Path Parent").join(&import);
         let source_str = source_path.display().to_string();
 
@@ -578,30 +587,35 @@ impl<'a> Lexer<'a> {
         let code = fs::read_to_string(&source_path)
             .expect(&format!("Failed to read slx file: {:?}", source_path));
         
-        let Ok((imports, dep_tokens)) = Lexer::new(&code)
+        let lex = Lexer::new(&code)
             .with_path(source_str.clone())
             .with_imports(self.imported_sources.clone())
             .with_dependents(self.imported_by.clone())
             .add_dependent(self.path.clone())
-            .import() else {
-                todo!()
-            };
+            .import();
 
-        self.imported_sources = imports;
-        
-        // Convert tokens to owned and create TokenResults
-        if use_queue {
-            for token in dep_tokens {
-                self.token_queue.push_back(TokenResult {
-                    token: token.into_owned(),
-                    line: self.line,  // You might want to adjust these
-                    column_start: self.column,  // based on the actual
-                    column_end: self.column,    // imported file positions
-                });
-            }
+        match lex {
+            Ok((imports, dep_tokens)) => {
+                self.imported_sources = imports;
+          
+                // Convert tokens to owned and create TokenResults
+                if use_queue {
+                    for token in dep_tokens {
+                        self.token_queue.push_back(TokenResult {
+                            token: token.into_owned(),
+                            line: self.line,  // You might want to adjust these
+                            column_start: self.column,  // based on the actual
+                            column_end: self.column,    // imported file positions
+                        });
+                    }
+                }
+
+                Ok(())
+            },
+            Err(err) => {
+                Err(err)
+            },
         }
-
-        Ok(())
     }
 
 
@@ -612,9 +626,10 @@ impl<'a> Lexer<'a> {
         while let Some(token) = self.next_token()? {
             match token.token {
                 Token::Import(import) => {
-                    trace!("Importing {}", import);
-
-                    self.process_import(import, false);
+                    match self.process_import(import.clone(), true) {
+                        Err(e) => {return Err(e)},
+                        _ => {},
+                    }
                 },
                 _ => {
                     tokens.push_back(token.token);
@@ -623,6 +638,27 @@ impl<'a> Lexer<'a> {
         }
 
         Ok(tokens)
+    }
+
+    // Parse the code into a list of tokens
+    // This returns the list of tokens along with the expanded import list
+    pub fn get_with_imports(mut self) -> Result<(Vec<String>, VecDeque<Token<'a>>), LexerError> {
+        let mut tokens = VecDeque::new();
+        while let Some(token) = self.next_token()? {
+            match token.token {
+                Token::Import(import) => {
+                    match self.process_import(import.clone(), true) {
+                        Err(e) => {return Err(e)},
+                        _ => {},
+                    }
+                },
+                _ => {
+                    tokens.push_back(token.token);
+                }
+            }
+        }
+
+        Ok((self.imported_sources.clone(), tokens))
     }
 }
 
