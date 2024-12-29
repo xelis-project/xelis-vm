@@ -58,7 +58,13 @@ pub struct Lexer<'a> {
     // Used to keep track of the depth of the generics <...>
     generic_depth: usize,
     // Track if the last parsed token was an identifier
-    accept_generic: bool
+    accept_generic: bool,
+    // Track the source tree location of the current code input
+    path: &'a str,
+    // Track import relationships to prevent circular dependencies
+    imported_by: Vec<&'a str>,
+    // Track existing imports to prevent duplicate code borrowing
+    imported_sources: Vec<&'a str>
 }
 
 impl<'a> Lexer<'a> {
@@ -71,8 +77,29 @@ impl<'a> Lexer<'a> {
             line: 1,
             column: 0,
             generic_depth: 0,
-            accept_generic: false
+            accept_generic: false,
+            path: "",
+            imported_by: Vec::new(),
+            imported_sources: Vec::new()
         }
+    }
+
+    // add source tree recognition
+    pub fn with_path(mut self, path: &'a str) -> Self {
+        self.path = path;
+        self
+    }
+
+    // add source tree recognition
+    pub fn add_dependent(mut self, dependent: &'a str) -> Self {
+      self.imported_by.push(dependent);
+      self
+    }
+
+    // add source tree recognition
+    pub fn add_imported(mut self, imported: &'a str) -> Self {
+      self.imported_sources.push(imported);
+      self
     }
 
     // peek the next character
@@ -388,6 +415,7 @@ impl<'a> Lexer<'a> {
 
     // retrieve the next token available
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
+        let mut prev_skipped = false;
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
                 '\n' | '\r' | '\t' => {
@@ -395,6 +423,7 @@ impl<'a> Lexer<'a> {
                     self.line += 1;
                     self.column = 0;
                     self.accept_generic = false;
+                    prev_skipped = true;
                     continue;
                 },
                 // skipped characters
@@ -402,6 +431,7 @@ impl<'a> Lexer<'a> {
                     debug!("Skipping character: {}", c);
                     // we just skip these characters
                     self.accept_generic = false;
+                    prev_skipped = true;
                     continue;
                 },
                 // read a string value
