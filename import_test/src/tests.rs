@@ -24,7 +24,7 @@ fn run_code(silex: &Silex, module: &Module, ) -> Value {
 #[test]
 fn test_import_basic() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/basic").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/basic").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
@@ -45,7 +45,7 @@ fn test_import_basic() {
 #[test]
 fn test_import_main() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/import_main").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/import_main").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
@@ -66,7 +66,7 @@ fn test_import_main() {
 #[test]
 fn test_import_duplicate() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/duplicate_import").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/duplicate_import").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
@@ -87,7 +87,7 @@ fn test_import_duplicate() {
 #[test]
 fn test_import_implied() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/implied_import").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/implied_import").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
@@ -108,7 +108,7 @@ fn test_import_implied() {
 #[test]
 fn test_import_common() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/common_import").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/common_import").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));
@@ -129,7 +129,7 @@ fn test_import_common() {
 #[test]
 fn test_circular_dependency() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/circular").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/circular").join("main.xel");
 
     let code = fs::read_to_string(&test_file_path)
         .expect(&format!("Failed to read slx file: {:?}", test_file_path));

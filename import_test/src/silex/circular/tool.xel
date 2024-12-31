@@ -1,4 +1,4 @@
-import "meat.slx"
+import "meat.xel"
 
 fn doit() -> u64 {
   return add(64, 128)

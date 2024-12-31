@@ -1,0 +1,6 @@
+import "sub.xel"
+import "method.xel"
+
+entry main() {
+  return method()
+}

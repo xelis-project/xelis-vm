@@ -1,6 +1,0 @@
-import "generate.slx"
-import "method.slx"
-
-entry main() {
-  return method()
-}

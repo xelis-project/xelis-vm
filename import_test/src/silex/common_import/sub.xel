@@ -1,4 +1,4 @@
-import "generate.slx"
+import "generate.xel"
 
 fn wrapped_gen() -> u64 {
   return generate()
