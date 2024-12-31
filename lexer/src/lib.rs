@@ -581,6 +581,7 @@ impl<'a> Lexer<'a> {
 
         // ignore duplicate imports
         if self.imported_sources.contains(&source_str) {
+            println!("ignoring duplicate");
             return Ok(());
         }
 
@@ -597,6 +598,7 @@ impl<'a> Lexer<'a> {
         match lex {
             Ok((imports, dep_tokens)) => {
                 self.imported_sources = imports;
+                self.imported_sources.push(source_str.clone());
           
                 // Convert tokens to owned and create TokenResults
                 if use_queue {
@@ -645,6 +647,9 @@ impl<'a> Lexer<'a> {
     pub fn get_with_imports(mut self) -> Result<(Vec<String>, VecDeque<Token<'a>>), LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
+            while let Some(token) = self.token_queue.pop_front() {
+                tokens.push_back(token.token);
+            }
             match token.token {
                 Token::Import(import) => {
                     match self.process_import(import.clone(), true) {
@@ -674,20 +679,25 @@ impl<'a> Iterator for Lexer<'a> {
         // If no queued tokens, get the next token normally
         let token_result = self.next_token();
         let token = match token_result {
-            Ok(Some(token)) => token,
-            Ok(None) => return None,
+            Ok(Some(ref t)) => Some(t.token.to_owned()),
+            Ok(None) => None,
             Err(e) => return Some(Err(e)),
         };
 
-        match &token.token {
-            Token::Import(import) => {
-                // Process the import and queue its tokens
-                match self.process_import(import.clone(), true) {
-                    Ok(()) => self.next(), // Recursively get the next token
-                    Err(e) => Some(Err(e)),
-                }
-            },
-            _ => Some(Ok(token)),
+        if token.is_some() {
+            let result = match &token.unwrap() {
+                Token::Import(import) => {
+                    // Process the import and queue its tokens
+                    match self.process_import(import.clone(), true) {
+                        Ok(()) => self.next(), // Recursively get the next token
+                        Err(e) => return Some(Err(e)),
+                    }
+                },
+                _ => Some(Ok(token_result.unwrap().unwrap())),
+            };
+            Some(result?)
+        } else {
+            None
         }
     }
 }

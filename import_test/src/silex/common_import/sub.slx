@@ -1,0 +1,5 @@
+import "generate.slx"
+
+fn wrapped_gen() -> u64 {
+  return generate()
+}

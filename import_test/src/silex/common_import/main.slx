@@ -1,0 +1,6 @@
+import "sub.slx"
+import "method.slx"
+
+entry main() {
+  return method()
+}
