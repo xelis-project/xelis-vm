@@ -85,6 +85,27 @@ fn test_import_duplicate() {
 }
 
 #[test]
+fn test_import_implied() {
+    let base_dir = env::current_dir().unwrap();
+    let test_file_path = base_dir.join("src").join("silex/implied_import").join("main.slx");
+
+    let code = fs::read_to_string(&test_file_path)
+        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+
+    let silex = Silex::new();
+
+    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+        Ok(program) => {
+            let res = run_code_id(&silex, &program.module, 2);
+            assert_eq!(res, Value::U64(u64::MAX));
+        }
+        Err(err) => {
+            panic!("Compilation failed: {}", err);
+        }
+    }
+}
+
+#[test]
 fn test_circular_dependency() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/circular").join("main.slx");

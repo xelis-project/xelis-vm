@@ -1,0 +1,9 @@
+// import "generate.slx"
+// the import of the above is implied, if the dependent of this file has
+// imported generate.slx before importing this.
+//
+// this is not recommended, but it does work
+
+fn method() -> u64 {
+  return generate()
+}
