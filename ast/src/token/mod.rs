@@ -75,7 +75,7 @@ impl<'a> fmt::Display for Token<'a> {
         let output = match self {
             // Namespaces
             EnterNamespace(ns) => return write!(f, "namespace {} {{", ns),
-            ExitNamespace(_) => "}",
+            ExitNamespace => "}",
 
             // Basic symbols
             BraceOpen => "{",
@@ -141,7 +141,8 @@ impl<'a> fmt::Display for Token<'a> {
             In => "in",
             IsNot => "!",
 
-            Import(_) => "import",
+            Import(module) => return write!(f, "import \"{}\"", module),
+            ImportAs(module, ns) => return write!(f, "import \"{}\" as {}", module, ns),
             From => "from",
             As => "as",
             ReturnType => "->",
@@ -185,9 +186,9 @@ pub enum Token<'a> {
     Identifier(&'a str),
     Value(Literal<'a>),
 
-    // Namespaced
-    EnterNamespace(&'a str),
-    ExitNamespace(&'a str),
+    // Namespaces
+    EnterNamespace(String),
+    ExitNamespace,
 
     // Types supported
     Number(NumberType),
@@ -265,6 +266,7 @@ pub enum Token<'a> {
     OperatorTernary,
 
     Import(String),
+    ImportAs(String, String),
     From,
     As,
     ReturnType,
