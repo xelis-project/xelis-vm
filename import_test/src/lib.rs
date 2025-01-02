@@ -37,11 +37,16 @@ pub struct Silex {
 pub struct Program {
     module: Module,
     entries: Vec<Entry>,
+    abi: String,
 }
 
 impl Program {
     pub fn entries(&self) -> Vec<Entry> {
         self.entries.clone()
+    }
+
+    pub fn abi(&self) -> &str {
+      &self.abi
     }
 
     // pub fn to_bytes(&self) -> Vec<u8> {
@@ -205,6 +210,7 @@ impl Silex {
 
         // Collect all the available entry functions
         let mut entries = Vec::new();
+        let mut abi_functions: Vec<serde_json::Value> = Vec::new(); // Collect ABI data here
         let env_offset = self.environment.get_functions().len() as u16;
         for (i, func) in program.functions().iter().enumerate() {
             if func.is_entry() {
@@ -212,7 +218,45 @@ impl Silex {
                     .functions()
                     .get_function(&(i as u16 + env_offset))
                     .unwrap();
-                let parameters = mapping
+
+                let mut flattened_params = Vec::new(); // Flattened parameters will be stored here
+
+                for (name, _type) in &mapping.parameters {
+                    match _type {
+                        Type::Struct(struct_type) => {
+                            // Flatten the struct fields
+                            let struct_fields: Vec<(String, Type)> = struct_type.fields().iter().enumerate().map(|(i, field_type)| {
+                                (format!("field{}", i), field_type.clone())
+                            }).collect();
+
+                            for (field_index, field_type) in struct_fields.iter().enumerate() {
+                                flattened_params.push(serde_json::json!({
+                                    "name": format!("{}_{}", name, field_type.0.to_string()),
+                                    "type": field_type.1.to_string(),
+                                }));
+                            }
+                        }
+                        _ => {
+                            // Add non-struct parameter as is
+                            flattened_params.push(serde_json::json!({
+                                "name": name.to_string(),
+                                "type": _type.to_string(),
+                            }));
+                        }
+                    }
+                }
+
+                let abi_entry = serde_json::json!({
+                    "name": mapping.name.to_owned(),
+                    "type": "entry",
+                    // "id": entries.len(),
+                    "chunk_id": i as u16,
+                    "params": flattened_params,
+                    "outputs": func.return_type().clone().map(|rt| rt.to_string()).unwrap_or_else(|| "void".to_string()),
+                });
+                abi_functions.push(abi_entry);
+
+                let parameters: Vec<Parameter> = mapping
                     .parameters
                     .iter()
                     .map(|(name, _type)| Parameter {
@@ -230,11 +274,14 @@ impl Silex {
             }
         }
 
+        let abi_json = serde_json::to_string_pretty(&abi_functions)?;
+
         let compiler = Compiler::new(&program, self.environment.environment());
 
         Ok(Program {
             module: compiler.compile()?,
             entries,
+            abi: abi_json,
         })
     }
 

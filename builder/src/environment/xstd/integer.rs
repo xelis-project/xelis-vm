@@ -3,6 +3,7 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     Context,
+    EnvironmentError,
 };
 use xelis_types::{Type, Value, ValueCell, Constant, U256 as u256};
 use paste::paste;
@@ -30,12 +31,48 @@ macro_rules! overflow_fn {
 
             // Registering the generated function in the environment
             $env.register_native_function(
+                &[],
                 // Function name as a string
                 stringify!([<overflowing_ $op>]),
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 // The function identifier
                 [<overflowing_ $op _ $f>],
+                2,
+                Some(Type::Optional(Box::new(Type::$t)))
+            );
+        }
+    };
+}
+
+macro_rules! safe_fn {
+    ($env: expr, $op: ident, $t: ident, $f: ident) => {
+        paste! {
+            fn [<safe_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+                // Extract and convert parameters
+                let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
+                let value = zelf?.[<as_ $f>]()?;
+                
+                // Perform the operation with `safe_$op` as a method name
+                let (result, overflow) = value.[<overflowing_ $op>](other);
+                
+                Ok(Some(if overflow {
+                    return Err(EnvironmentError::Panic(format!("{:#}", value)))
+                } else {
+                    let inner = Value::$t(result).into();
+                    ValueCell::Optional(Some(inner))
+                }))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                &[],
+                // Function name as a string
+                stringify!([<safe_ $op>]),
+                Some(Type::$t),
+                vec![("other", Type::$t)],
+                // The function identifier
+                [<safe_ $op _ $f>],
                 2,
                 Some(Type::Optional(Box::new(Type::$t)))
             );
@@ -56,6 +93,19 @@ macro_rules! register_overflows {
     };
 }
 
+// macro to register multiple operations for a specific type
+macro_rules! register_safe {
+    ($env: expr, $t: ident, $f: ident) => {
+        {
+            safe_fn!($env, add, $t, $f);
+            safe_fn!($env, sub, $t, $f);
+            safe_fn!($env, mul, $t, $f);
+            safe_fn!($env, div, $t, $f);
+            safe_fn!($env, rem, $t, $f);
+        }
+    };
+}
+
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
@@ -67,6 +117,7 @@ macro_rules! to_endian_bytes {
             }
 
             $env.register_native_function(
+                &[],
                 stringify!([<to_ $endian _bytes>]),
                 Some(Type::$t),
                 vec![],
@@ -93,8 +144,8 @@ macro_rules! register_constants_min_max {
         let min_inner = Constant::Default(Value::$t(min));
         let max_inner = Constant::Default(Value::$t(max));
 
-        $env.register_constant(Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
-        $env.register_constant(Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
+        $env.register_constant(&[], Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
+        $env.register_constant(&[], Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
     };
 }
 
@@ -106,6 +157,14 @@ pub fn register(env: &mut EnvironmentBuilder) {
     register_overflows!(env, U64, u64);
     register_overflows!(env, U128, u128);
     register_overflows!(env, U256, u256);
+
+    // Register all operations with instant panic on overflow
+    register_safe!(env, U8, u8);
+    register_safe!(env, U16, u16);
+    register_safe!(env, U32, u32);
+    register_safe!(env, U64, u64);
+    register_safe!(env, U128, u128);
+    register_safe!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);

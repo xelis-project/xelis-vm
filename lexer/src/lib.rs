@@ -43,7 +43,9 @@ pub enum LexerErrorKind {
     #[error("Expected a type")]
     ExpectedType,
     #[error("Circular dependency detected")]
-    CircularDependency
+    CircularDependency,
+    #[error("Expected path to import")]
+    ExpectedImportPath
 }
 
 pub struct Lexer<'a> {
@@ -194,6 +196,26 @@ impl<'a> Lexer<'a> {
         self.chars.push_front(c);
     }
 
+    // handle import markers
+    // fn detect_import_marker(&mut self, diff: usize) -> Result<Option<String>, LexerError> {
+    //     let column_start = self.column;
+    //     let value = self.read_while(|v| -> bool {
+    //         *v == '_' || v.is_ascii_alphanumeric()
+    //     }, diff)?;
+
+    //     if value != "import" {
+    //         return Ok(None)
+    //     }
+
+    //     loop {
+    //         let c = self.advance()?;
+    //         if c != ' ' {
+    //             let value = self.read_string(c)?;
+    //             if value != "" { return Ok(Some(value.into_owned().clone())); }
+    //         }
+    //     }
+    // }
+
     // try to parse a slice of string as a token using n+1 characters
     fn find_potential_token(&mut self) -> Option<(TokenResult<'a>, usize)> {
         let slice = self.input.get(self.pos - 1..)?;
@@ -242,6 +264,29 @@ impl<'a> Lexer<'a> {
         }
 
         let slice = slice.get(..=end_index)?;
+
+        if slice == "import" {
+            loop {
+                if let Ok(c) = self.advance() {
+                    if c != ' ' {
+                        if let Ok(value) = self.read_string(c) {
+                            return Some(
+                                (TokenResult {
+                                    token: Token::Import(value.into_owned().clone()),
+                                    line: self.line,
+                                    column_start: self.column,
+                                    column_end: self.column + end_index
+                                }, end_index)
+                            ); 
+                        } else {
+                            return None
+                        }
+                    }
+                } else {
+                    return None
+                }
+            }
+        }
 
         Token::value_of(slice).map(|t| (TokenResult {
             token: t,
@@ -441,26 +486,6 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    // handle import markers
-    fn detect_import_marker(&mut self, diff: usize) -> Result<Option<String>, LexerError> {
-        let column_start = self.column;
-        let value = self.read_while(|v| -> bool {
-            *v == '_' || v.is_ascii_alphanumeric()
-        }, diff)?;
-
-        if value != "import" {
-            return Ok(None)
-        }
-
-        loop {
-            let c = self.advance()?;
-            if c != ' ' {
-                let value = self.read_string(c)?;
-                if value != "" { return Ok(Some(value.into_owned().clone())); }
-            }
-        }
-    }
-
     // retrieve the next token available
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
@@ -511,22 +536,7 @@ impl<'a> Lexer<'a> {
                     self.read_number(c)?
                 },
                 c if c == '_' || c.is_alphabetic() => {
-                    // handle potential import
-                    if c == 'i' {
-                        if let Some(import) = self.detect_import_marker(1)? {
-                            let column_start = self.column;
-                            TokenResult {
-                                token: Token::Import(import),
-                                line: self.line,
-                                column_start,
-                                column_end: self.column
-                            }
-                        } else {
-                            self.read_token(1)?
-                        }
-                    } else {
-                        self.read_token(1)?
-                    }
+                    self.read_token(1)?
                 },
                 _ => {
                     if let Some((token, diff)) = self.find_potential_token() {

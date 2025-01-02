@@ -1695,6 +1695,8 @@ dependencies = [
  "anyhow",
  "humantime",
  "indexmap",
+ "serde",
+ "serde_json",
  "tokio",
  "wasm-bindgen-futures",
  "web-time",

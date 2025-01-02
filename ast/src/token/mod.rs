@@ -73,6 +73,10 @@ impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Token::*;
         let output = match self {
+            // Namespaces
+            EnterNamespace(ns) => return write!(f, "namespace {} {{", ns),
+            ExitNamespace(_) => "}",
+
             // Basic symbols
             BraceOpen => "{",
             BraceClose => "}",
@@ -180,6 +184,10 @@ pub enum Token<'a> {
     // Variable / function names
     Identifier(&'a str),
     Value(Literal<'a>),
+
+    // Namespaced
+    EnterNamespace(&'a str),
+    ExitNamespace(&'a str),
 
     // Types supported
     Number(NumberType),

@@ -26,5 +26,7 @@ pub enum BuilderError {
     #[error("Invalid const fn parameters")]
     InvalidConstFnParameters,
     #[error(transparent)]
-    Any(#[from] anyhow::Error)
+    Any(#[from] anyhow::Error),
+    #[error("Namespace not found")]
+    NamespaceNotFound
 }

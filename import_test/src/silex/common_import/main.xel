@@ -4,3 +4,12 @@ import "method.xel"
 entry main() {
   return method()
 }
+
+struct MyType {
+  first: u8,
+  last: u64
+}
+
+entry other(address: u256, amount: u64, struct_test: MyType) {
+  return 0
+}
