@@ -651,17 +651,7 @@ impl<'a> Lexer<'a> {
     pub fn get(mut self) -> Result<VecDeque<Token<'a>>, LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
-            match token.token {
-                Token::Import(import) => {
-                    match self.process_import(import.clone(), true) {
-                        Err(e) => {return Err(e)},
-                        _ => {},
-                    }
-                },
-                _ => {
-                    tokens.push_back(token.token);
-                }
-            }
+            tokens.push_back(token.token);
         }
 
         Ok(tokens)
@@ -677,6 +667,13 @@ impl<'a> Lexer<'a> {
             }
             match token.token {
                 Token::Import(import) => {
+                    match self.process_import(import.clone(), true) {
+                        Err(e) => {return Err(e)},
+                        _ => {},
+                    }
+                },
+                Token::ImportAs(import, ns) => {
+                    tokens.push_back(Token::EnterNamespace(ns));
                     match self.process_import(import.clone(), true) {
                         Err(e) => {return Err(e)},
                         _ => {},
