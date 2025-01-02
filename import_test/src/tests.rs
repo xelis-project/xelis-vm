@@ -6,7 +6,7 @@ use xelis_vm::VMError;
 
 #[track_caller]
 fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
-    let mut vm = VM::new(module, silex.environment.environment());
+    let mut vm = VM::new(module, silex.environment.environment(&[]));
     vm.invoke_entry_chunk(id).unwrap();
     vm.run().map(|v| v.into_value().unwrap())
 }

@@ -184,7 +184,8 @@ impl Silex {
         let (sender, receiver) = mpsc::channel();
 
         environment
-            .get_mut_function("println", None, vec![Type::Any])
+            .get_mut_function(&[], "println", None, vec![Type::Any])
+            .expect("println not found in xstd native functions")
             .set_on_call(move |_, args, _| -> _ {
                 let param = &args[0];
                 println!("{}", param.as_ref().as_value());
@@ -211,7 +212,7 @@ impl Silex {
         // Collect all the available entry functions
         let mut entries = Vec::new();
         let mut abi_functions: Vec<serde_json::Value> = Vec::new(); // Collect ABI data here
-        let env_offset = self.environment.get_functions().len() as u16;
+        let env_offset = self.environment.get_functions(&[]).len() as u16;
         for (i, func) in program.functions().iter().enumerate() {
             if func.is_entry() {
                 let mapping = mapper
@@ -276,7 +277,7 @@ impl Silex {
 
         let abi_json = serde_json::to_string_pretty(&abi_functions)?;
 
-        let compiler = Compiler::new(&program, self.environment.environment());
+        let compiler = Compiler::new(&program, self.environment.environment(&[]));
 
         Ok(Program {
             module: compiler.compile()?,
@@ -299,12 +300,12 @@ impl Silex {
     }
 
     pub fn get_env_functions(&self) -> Vec<Func> {
-        let mapper = self.environment.get_functions_mapper();
+        let mapper = self.environment.get_functions_mapper(&[]);
         fn type_to_string(env: &EnvironmentBuilder, ty: &Type) -> String {
             match ty {
-                Type::Opaque(opaque) => env.get_opaque_name(opaque).unwrap().to_string(),
-                Type::Struct(ty) => env.get_struct_manager().get_name_by_ref(ty).unwrap().to_string(),
-                Type::Enum(ty) => env.get_enum_manager().get_name_by_ref(ty).unwrap().to_string(),
+                Type::Opaque(opaque) => env.get_opaque_name(&[], opaque).unwrap().to_string(),
+                Type::Struct(ty) => env.get_struct_manager(&[]).get_name_by_ref(ty).unwrap().to_string(),
+                Type::Enum(ty) => env.get_enum_manager(&[]).get_name_by_ref(ty).unwrap().to_string(),
                 Type::Array(ty) => format!("{}[]", type_to_string(env, ty)),
                 Type::Optional(ty) => format!("optional<{}>", type_to_string(env, ty)),
                 _ => ty.to_string(),
@@ -401,7 +402,7 @@ impl Silex {
         self.is_running.store(true, Ordering::Relaxed);
 
         let chunk_id = entry.chunk_id;
-        let environment = self.environment.environment().clone();
+        let environment = self.environment.environment(&[]).clone();
         let res = tokio::task::spawn_blocking(move || {
             // Fake storage
             // TODO: allow user to configure data in it before running the program

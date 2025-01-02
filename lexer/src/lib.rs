@@ -265,29 +265,6 @@ impl<'a> Lexer<'a> {
 
         let slice = slice.get(..=end_index)?;
 
-        if slice == "import" {
-            loop {
-                if let Ok(c) = self.advance() {
-                    if c != ' ' {
-                        if let Ok(value) = self.read_string(c) {
-                            return Some(
-                                (TokenResult {
-                                    token: Token::Import(value.into_owned().clone()),
-                                    line: self.line,
-                                    column_start: self.column,
-                                    column_end: self.column + end_index
-                                }, end_index)
-                            ); 
-                        } else {
-                            return None
-                        }
-                    }
-                } else {
-                    return None
-                }
-            }
-        }
-
         Token::value_of(slice).map(|t| (TokenResult {
             token: t,
             line: self.line,
@@ -474,6 +451,44 @@ impl<'a> Lexer<'a> {
         }, diff)?;
 
         trace!("searching token with: `{}`", value);
+
+        if value == "import" {
+            if self.advance()? != ' ' {
+                return Err(LexerError {
+                    path: self.path.clone(),
+                    line: self.line,
+                    column: self.column,
+                    kind: LexerErrorKind::ExpectedImportPath
+                });
+            }
+            loop {
+                if let Ok(c) = self.advance() {
+                    if c != ' ' {
+                        let value = self.read_string(c)?;
+                        return Ok(TokenResult {
+                            token: Token::Import(value.into_owned().clone()),
+                            line: self.line,
+                            column_start,
+                            column_end: self.column
+                        });
+                    } else {
+                        return Err(LexerError {
+                            path: self.path.clone(),
+                            line: self.line,
+                            column: self.column,
+                            kind: LexerErrorKind::ExpectedImportPath
+                        })
+                    }
+                } else {
+                    return Err(LexerError {
+                        path: self.path.clone(),
+                        line: self.line,
+                        column: self.column,
+                        kind: LexerErrorKind::ExpectedImportPath
+                    });
+                }
+            }
+        }
 
         let token = Token::value_of(value)
             .unwrap_or_else(|| Token::Identifier(value));

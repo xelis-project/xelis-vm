@@ -178,7 +178,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // Get the name of an opaque type
-    pub fn get_opaque_name(&mut self, namespace_path: &[&'a str], _type: &OpaqueType) -> Option<&str> {
+    pub fn get_opaque_name(&self, namespace_path: &[&'a str], _type: &OpaqueType) -> Option<&str> {
         self.with_namespace(namespace_path, |namespace| {
             Ok(namespace.opaque_manager.iter().find_map(|(k, v)| if v == _type { Some(*k) } else { None }))
         }).expect("Unknown Namespace Error")
