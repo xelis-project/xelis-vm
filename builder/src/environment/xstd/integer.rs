@@ -158,13 +158,14 @@ pub fn register(env: &mut EnvironmentBuilder) {
     register_overflows!(env, U128, u128);
     register_overflows!(env, U256, u256);
 
+    // TODO: Modify opcode crate to handle the safe_ functions below
     // Register all operations with instant panic on overflow
-    register_safe!(env, U8, u8);
-    register_safe!(env, U16, u16);
-    register_safe!(env, U32, u32);
-    register_safe!(env, U64, u64);
-    register_safe!(env, U128, u128);
-    register_safe!(env, U256, u256);
+    // register_safe!(env, U8, u8);
+    // register_safe!(env, U16, u16);
+    // register_safe!(env, U32, u32);
+    // register_safe!(env, U64, u64);
+    // register_safe!(env, U128, u128);
+    // register_safe!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);
