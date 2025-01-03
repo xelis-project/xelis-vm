@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 xelis-types = { path = "../types" }
 xelis-vm = { path = "../vm" }
+xelis-ast = { path = "../ast" }
 xelis-bytecode = { path = "../bytecode" }
 xelis-compiler = { path = "../compiler" }
 xelis-parser = { path = "../parser" }

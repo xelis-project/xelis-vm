@@ -1,5 +1,7 @@
 pub mod xstd;
 
+use indexmap::IndexMap;
+
 use std::{borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type, IdentifierType};
@@ -21,7 +23,7 @@ pub struct EnvironmentBuilder<'a> {
     // All types constants functions
     // Example: u64::MAX()
     types_constants_functions: ConstFunctionMapper<'a>,
-    namespaces: HashMap<&'a str, EnvironmentBuilder<'a>>,
+    namespaces: IndexMap<String, EnvironmentBuilder<'a>>,
     env: Environment
 }
 
@@ -35,27 +37,38 @@ impl<'a> EnvironmentBuilder<'a> {
             opaque_manager: HashMap::new(),
             types_constants: HashMap::new(),
             types_constants_functions: ConstFunctionMapper::new(),
-            namespaces: HashMap::new(),
+            namespaces: IndexMap::new(),
             env: Environment::new(),
         }
     }
 
-    pub fn namespaces(&self) -> &HashMap<&'a str, EnvironmentBuilder<'a>> {
+    pub fn namespaces(&self) -> &IndexMap<String, EnvironmentBuilder<'a>> {
         &self.namespaces
     }
 
     // Get or create a new namespace
-    pub fn namespace(&mut self, name: &'a str) -> &mut EnvironmentBuilder<'a> {
-        self.namespaces.entry(name).or_insert_with(|| EnvironmentBuilder::new())
+    pub fn namespace(&mut self, name: String) -> &mut EnvironmentBuilder<'a> {
+        self.namespaces.entry(name).or_insert_with(|| EnvironmentBuilder::default())
     }
 
-    pub fn get_namespace(&self, name: &'a str) -> &EnvironmentBuilder<'a> {
-        self.namespaces.get(&name).expect("Namespace not found")
+    pub fn namespace_from_string(&mut self, name: String) -> &mut EnvironmentBuilder<'a> {
+        self.namespaces.entry(name).or_insert_with(EnvironmentBuilder::new)
     }
 
-    pub fn namespace_exists(&self, namespace_path: &[&'a str]) -> bool {
+    pub fn get_namespace(&self, namespace_path: &[String]) -> Result<&EnvironmentBuilder<'a>, BuilderError> {
         let mut current = self;
-        for &ns in namespace_path {
+        for ns in namespace_path {
+            match current.namespaces.get(ns) {
+                Some(child) => current = child,
+                None => return Err(BuilderError::NamespaceNotFound),
+            }
+        }
+        Ok(current)
+    }
+
+    pub fn namespace_exists(&self, namespace_path: &[String]) -> bool {
+        let mut current = self;
+        for ns in namespace_path {
             match current.namespaces.get(ns) {
                 Some(child) => current = child,
                 None => return false,
@@ -64,14 +77,14 @@ impl<'a> EnvironmentBuilder<'a> {
         true
     }
 
-    pub fn list_namespaces(&mut self, namespace_path: &[&'a str]) -> Result<Vec<&'a str>, BuilderError> {
+    pub fn list_namespaces(&mut self, namespace_path: &[String]) -> Result<Vec<String>, BuilderError> {
         self.with_namespace(namespace_path, |namespace| {
             Ok(namespace.namespaces.keys().cloned().collect())
         })
     }
 
     // Recursive helper function to locate & execute namespace operations
-    fn with_namespace<T, F>(&self, namespace_path: &[&'a str], f: F) -> Result<T, BuilderError>
+    fn with_namespace<T, F>(&self, namespace_path: &[String], f: F) -> Result<T, BuilderError>
     where
         F: FnOnce(&EnvironmentBuilder<'a>) -> Result<T, BuilderError>,
     {
@@ -86,7 +99,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // Mutable version
-    fn with_namespace_mut<T, F>(&mut self, namespace_path: &[&'a str], f: F) -> Result<T, BuilderError>
+    fn with_namespace_mut<T, F>(&mut self, namespace_path: &[String], f: F) -> Result<T, BuilderError>
     where
         F: FnOnce(&mut EnvironmentBuilder<'a>) -> Result<T, BuilderError>,
     {
@@ -94,13 +107,13 @@ impl<'a> EnvironmentBuilder<'a> {
             f(self)
         } else {
             let (ns, rest) = namespace_path.split_first().unwrap();
-            self.namespace(ns).with_namespace_mut(rest, f)
+            self.namespace(ns.to_string()).with_namespace_mut(rest, f)
         }
     }
 
     // Register a native function
     // Panic if the function signature is already registered
-    pub fn register_native_function(&mut self, namespace_path: &[&'a str], name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+    pub fn register_native_function(&mut self, namespace_path: &[String], name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         self.with_namespace_mut(namespace_path, |namespace| {  
             let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
             let _ = namespace.functions_mapper.register(name, for_type.clone(), parameters, return_type.clone()).unwrap();
@@ -113,7 +126,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // This is only available in the builder
     // See this function as a helper
     // Panic if the function signature is already registered
-    pub fn register_const_function(&mut self, namespace_path: &[&'a str], name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall) {
+    pub fn register_const_function(&mut self, namespace_path: &[String], name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall) {
         self.with_namespace_mut(namespace_path, |mut namespace| {  
             namespace.types_constants_functions.register(name, for_type, parameters, on_call);
             Ok(())
@@ -126,7 +139,7 @@ impl<'a> EnvironmentBuilder<'a> {
         // Then use the identifier to get a mutable reference
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get_mut(&ns as &str)
+            current = current.namespaces.get_mut(ns.clone())
                 .ok_or(BuilderError::NamespaceNotFound)?;
         }
         let signature = Signature::new(name.to_owned(), on_type.clone(), parameters);
@@ -138,7 +151,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a structure in the environment
     // Panic if the structure name is already used
-    pub fn register_structure(&mut self, namespace_path: &[&'a str], name: &'a str, fields: Vec<(&'a str, Type)>) -> Result<StructType, BuilderError> {
+    pub fn register_structure(&mut self, namespace_path: &[String], name: &'a str, fields: Vec<(&'a str, Type)>) -> Result<StructType, BuilderError> {
         self.with_namespace_mut(namespace_path, |namespace| {
             let struct_type = namespace.struct_manager.build(Cow::Borrowed(name), fields)?;
             namespace.env.add_structure(struct_type.clone());
@@ -148,7 +161,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register an enum in the environment
     // Panic if the enum name is already used
-    pub fn register_enum(&mut self, namespace_path: &[&'a str], name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) -> Result<EnumType, BuilderError> {
+    pub fn register_enum(&mut self, namespace_path: &[String], name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) -> Result<EnumType, BuilderError> {
         self.with_namespace_mut(namespace_path, |namespace| {
             let enum_type = namespace.enum_manager.build(Cow::Borrowed(name), variants)?;
             namespace.env.add_enum(enum_type.clone());
@@ -158,7 +171,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register an opaque type in the environment
     // Panic if the opaque name is already used
-    pub fn register_opaque<T: Opaque>(&mut self, namespace_path: &[&'a str], name: &'a str) -> OpaqueType {
+    pub fn register_opaque<T: Opaque>(&mut self, namespace_path: &[String], name: &'a str) -> OpaqueType {
         self.with_namespace_mut(namespace_path, |namespace| {
             let _type = OpaqueType::new::<T>();
             namespace.opaque_manager.insert(name, _type.clone());
@@ -168,17 +181,17 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // Get an opaque type by name
-    pub fn get_opaque_by_name(&self, namespace_path: &[&'a str], name: &'a str) -> Option<&OpaqueType> {          
+    pub fn get_opaque_by_name(&self, namespace_path: &[String], name: &'a str) -> Option<&OpaqueType> {          
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str)?;
+            current = current.namespaces.get(ns)?;
         }
 
         current.opaque_manager.get(name)
     }
 
     // Get the name of an opaque type
-    pub fn get_opaque_name(&self, namespace_path: &[&'a str], _type: &OpaqueType) -> Option<&str> {
+    pub fn get_opaque_name(&self, namespace_path: &[String], _type: &OpaqueType) -> Option<&str> {
         self.with_namespace(namespace_path, |namespace| {
             Ok(namespace.opaque_manager.iter().find_map(|(k, v)| if v == _type { Some(*k) } else { None }))
         }).expect("Unknown Namespace Error")
@@ -186,7 +199,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a constant in the environment
     // Panic if the constant name is already used
-    pub fn register_constant(&mut self, namespace_path: &[&'a str], _type: Type, name: &'a str, value: Constant) {
+    pub fn register_constant(&mut self, namespace_path: &[String], _type: Type, name: &'a str, value: Constant) {
         self.with_namespace_mut(namespace_path, |namespace| {
             let constants = namespace.types_constants.entry(_type.clone()).or_insert_with(HashMap::new);
             constants.insert(name, value.clone());
@@ -195,10 +208,10 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // Get a constant by name
-    pub fn get_constant_by_name(&self, namespace_path: &[&'a str], type_: &Type, name: &'a str) -> Option<&Constant> {        
+    pub fn get_constant_by_name(&self, namespace_path: &[String], type_: &Type, name: &'a str) -> Option<&Constant> {        
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str)?;
+            current = current.namespaces.get(&ns.clone())?;
         }
         
         current.types_constants.get(&type_)?.get(&name)
@@ -208,63 +221,63 @@ impl<'a> EnvironmentBuilder<'a> {
     pub fn get_const_fn(&self, namespace_path: &[&str], for_type: &Type, fn_name: &'a str) -> Option<&ConstFunction> {        
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str)?;
+            current = current.namespaces.get(ns.clone())?;
         }
         
         current.types_constants_functions.get_const_fn(&for_type, fn_name)
     }
 
-    pub fn get_const_functions_mapper(&self, namespace_path: &[&'a str]) -> &ConstFunctionMapper<'a> {
+    pub fn get_const_functions_mapper(&self, namespace_path: &[String]) -> &ConstFunctionMapper<'a> {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }  
 
         &current.types_constants_functions
     }
 
     // functions mapper, used to find the function id
-    pub fn get_functions_mapper(&self, namespace_path: &[&'a str]) -> &FunctionMapper {
+    pub fn get_functions_mapper(&self, namespace_path: &[String]) -> &FunctionMapper {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }  
 
         &current.functions_mapper
     }
 
     // struct manager, used to find the struct id
-    pub fn get_struct_manager(&self, namespace_path: &[&'a str]) -> &StructManager {
+    pub fn get_struct_manager(&self, namespace_path: &[String]) -> &StructManager {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }
         &current.struct_manager
     }
 
     // enum manager, used to find the enum id
-    pub fn get_enum_manager(&self, namespace_path: &[&'a str]) -> &EnumManager {
+    pub fn get_enum_manager(&self, namespace_path: &[String]) -> &EnumManager {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }
         &current.enum_manager
     }
 
     // all registered functions
-    pub fn get_functions(&self, namespace_path: &[&'a str]) -> &Vec<NativeFunction> {
+    pub fn get_functions(&self, namespace_path: &[String]) -> &Vec<NativeFunction> {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }
         &current.env.get_functions()
     }
 
     // Get the environment for the interpreter
-    pub fn environment(&self, namespace_path: &[&'a str]) -> &Environment {
+    pub fn environment(&self, namespace_path: &[String]) -> &Environment {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace not found");
+            current = current.namespaces.get(ns).expect("Namespace not found");
         }
         &current.env
     }

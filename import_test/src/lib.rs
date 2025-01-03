@@ -27,6 +27,7 @@ use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_types::{Type, Value};
 use xelis_vm::VM;
+use xelis_ast::*;
 
 pub struct Silex {
     environment: EnvironmentBuilder<'static>,
@@ -212,12 +213,20 @@ impl Silex {
         // Collect all the available entry functions
         let mut entries = Vec::new();
         let mut abi_functions: Vec<serde_json::Value> = Vec::new(); // Collect ABI data here
-        let env_offset = self.environment.get_functions(&[]).len() as u16;
         for (i, func) in program.functions().iter().enumerate() {
+            let path = &func.get_namespace();
+            let env_offset = if self.environment.get_namespace(path).is_ok() {
+              self.environment.get_functions(
+                path
+              ).len() as u16
+            } else {
+              0
+            };
+
             if func.is_entry() {
                 let mapping = mapper
-                    .functions()
-                    .get_function(&(i as u16 + env_offset))
+                    .functions_in_namespace_ref(path)
+                    .get_function(&(i as u16 + env_offset - func.get_offset()))
                     .unwrap();
 
                 let mut flattened_params = Vec::new(); // Flattened parameters will be stored here
@@ -247,10 +256,15 @@ impl Silex {
                     }
                 }
 
+                let full_name = if !path.is_empty() {
+                    path.join("::").to_string() + "::" +  mapping.name
+                } else {
+                    mapping.name.to_owned()
+                };
+                
                 let abi_entry = serde_json::json!({
-                    "name": mapping.name.to_owned(),
+                    "name": full_name,
                     "type": "entry",
-                    // "id": entries.len(),
                     "chunk_id": i as u16,
                     "params": flattened_params,
                     "outputs": func.return_type().clone().map(|rt| rt.to_string()).unwrap_or_else(|| "void".to_string()),

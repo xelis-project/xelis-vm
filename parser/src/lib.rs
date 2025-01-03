@@ -1,6 +1,6 @@
 mod context;
 mod error;
-mod mapper;
+pub mod mapper;
 
 use std::{
     borrow::Cow,
@@ -130,7 +130,7 @@ pub struct Parser<'a> {
     // All constants declared
     constants: HashMap<&'a str, ConstantDeclaration>,
     // All functions registered by the program
-    functions: Vec<FunctionType>,
+    functions: IndexMap<Vec<&'a str>, Vec<FunctionType>>,
     global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
     environment: &'a EnvironmentBuilder<'a>,
@@ -162,7 +162,7 @@ impl<'a> Parser<'a> {
             current_namespace_storage: Vec::new(),
             tokens: tokens.collect(),
             constants: HashMap::new(),
-            functions: Vec::new(),
+            functions: IndexMap::new(),
             global_mapper: GlobalMapper::with(environment),
             environment,
             disable_const_upgrading: false,
@@ -297,7 +297,7 @@ impl<'a> Parser<'a> {
                     Type::Struct(builder.get_type().clone())
                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
                     Type::Enum(builder.get_type().clone())
-                } else if let Some(ty) = self.environment.get_opaque_by_name(&self.current_namespace, id) {
+                } else if let Some(ty) = self.environment.get_opaque_by_name(&self.current_namespace_storage, id) {
                     Type::Opaque(ty.clone())
                 }
                 else {
@@ -513,7 +513,7 @@ impl<'a> Parser<'a> {
     fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let (mut parameters, types) = self.read_function_params(context)?;
 
-        let function_list = self.global_mapper.functions_in_namespace(&self.current_namespace);
+        let function_list = self.global_mapper.functions_in_namespace(&self.current_namespace_storage);
         
         let id = function_list
             .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
@@ -661,7 +661,7 @@ impl<'a> Parser<'a> {
 
         trace!("Read type constant: {:?}::{}", _type, constant_name);
 
-        if let Some(expr) = self.environment.get_constant_by_name(&self.current_namespace, &_type, &constant_name)
+        if let Some(expr) = self.environment.get_constant_by_name(&self.current_namespace_storage, &_type, &constant_name)
             .map(|v| Expression::Constant(v.clone())) {
             Ok(expr)
         } else if let Some(const_fn) = self.environment.get_const_fn(&self.current_namespace, &_type, constant_name) {
@@ -923,6 +923,7 @@ impl<'a> Parser<'a> {
     }
 
     fn refresh_namespace_refs(&mut self) {
+        self.current_namespace.clear();
         self.current_namespace = self.current_namespace_storage
             .iter()
             .map(|s| unsafe { std::mem::transmute(s.as_str()) })
@@ -982,13 +983,18 @@ impl<'a> Parser<'a> {
 
             let expr = match token {
                 Token::EnterNamespace(ns) => {
+                    println!("expr namespace");
+                    self.global_mapper.namespace(&self.current_namespace_storage, ns.clone());
                     self.current_namespace_storage.push(ns);
                     self.refresh_namespace_refs();
                     continue;
                 },
                 Token::ExitNamespace => {
+                    println!("expr exit");
                     self.current_namespace_storage.pop();
                     self.refresh_namespace_refs();
+
+                    println!("current path: {:?}", self.current_namespace);
                     continue;
                 },
                 Token::BracketOpen => {
@@ -1848,7 +1854,7 @@ impl<'a> Parser<'a> {
         };
 
         let id = self.global_mapper
-            .functions_mut()
+            .functions_in_namespace(&self.current_namespace_storage)
             .register(name, for_type.clone(), parameters.clone(), return_type.clone())
             .map_err(|e| err!(self, e.into()))?;
 
@@ -1864,21 +1870,26 @@ impl<'a> Parser<'a> {
             new_params.push(Parameter::new(id, param_type));
         }
 
-
         let function = match entry {
-            true => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
+            true => FunctionType::Entry(EntryFunction::new(
+              new_params, 
+              Vec::new(), 
+              context.max_variables_count() as u16,
+              self.current_namespace_storage.clone(),
+            )),
             false => FunctionType::Declared(DeclaredFunction::new(
                 for_type,
                 instance_name,
                 new_params,
                 Vec::new(),
                 return_type.clone(),
-                0
+                0,
+                self.current_namespace_storage.clone(),
             ))
         };
 
         // push function before reading statements to allow recursive calls
-        self.functions.push(function);
+        self.functions.entry(self.current_namespace.clone()).or_insert_with(||Vec::new()).push(function);
 
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, &return_type)?;
@@ -1889,7 +1900,8 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoReturnFound))
         }
 
-        let last = self.functions
+        let last = self.functions.get_mut(&self.current_namespace)
+            .expect("")
             .last_mut()
             .ok_or(err!(self, ParserErrorKind::UnknownError))?;
 
@@ -1908,12 +1920,24 @@ impl<'a> Parser<'a> {
     fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
-        let len = self.environment.get_functions(&self.current_namespace).len();
-        if index < len {
-            Ok(Function::Native(&self.environment.get_functions(&self.current_namespace)[index]))
+
+
+        let len = if self.environment.get_namespace(&self.current_namespace_storage).is_ok() {
+            self.environment.get_functions(&self.current_namespace_storage).len()
         } else {
-            match self.functions.get(index - len) {
-                Some(func) => Ok(Function::Program(func)),
+            0
+        };
+
+        if index < len {
+            Ok(Function::Native(&self.environment.get_functions(&self.current_namespace_storage)[index]))
+        } else {
+            if self.functions.get(&self.current_namespace.clone()).is_none() {
+                return Err(err!(self, ParserErrorKind::FunctionNotFound));
+            }
+            match self.functions.get(&self.current_namespace.clone()).expect("").get(index - len) {
+                Some(func) => {
+                    Ok(Function::Program(func))
+                },
                 None => Err(err!(self, ParserErrorKind::FunctionNotFound))
             }
         }
@@ -2048,13 +2072,17 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.next() {
             match token {
                 Token::EnterNamespace(ns) => {
+                    println!("statement namespace, entering {}", ns);
+                    self.global_mapper.namespace(&self.current_namespace_storage, ns.clone());
                     self.current_namespace_storage.push(ns.clone());
                     self.refresh_namespace_refs();
-                    self.global_mapper.namespace(ns.clone());
+                    println!("new path: {:?}", self.current_namespace);
                 },
                 Token::ExitNamespace => {
+                    println!("statement exit");
                     self.current_namespace_storage.pop();
                     self.refresh_namespace_refs();
+                    println!("current path: {:?}", self.current_namespace);
                     continue;
                 },
                 Token::Import(_) => {
@@ -2069,7 +2097,9 @@ impl<'a> Parser<'a> {
             };
         }
 
-        let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), self.functions);
+        let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), 
+          self.functions
+        );
         Ok((program, self.global_mapper))
     }
 }

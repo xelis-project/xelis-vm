@@ -3,6 +3,8 @@ use crate::Statement;
 use super::Parameter;
 
 #[derive(Debug, PartialEq, Eq)]
+
+#[derive(Clone)]
 pub struct DeclaredFunction {
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
@@ -10,18 +12,36 @@ pub struct DeclaredFunction {
     statements: Vec<Statement>,
     return_type: Option<Type>,
     variables_count: u16,
+    namespace_path: Vec<String>,
+    namespace_index_offset: u16,
 }
 
 impl DeclaredFunction {
-    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
+    pub fn new(
+        for_type: Option<Type>,
+        instance_name: Option<IdentifierType>, 
+        parameters: Vec<Parameter>, 
+        statements: Vec<Statement>, 
+        return_type: Option<Type>, 
+        variables_count: u16,
+        namespace_path: Vec<String>,
+    ) -> Self {
         DeclaredFunction {
             for_type,
             instance_name,
             parameters,
             statements,
             return_type,
-            variables_count
+            variables_count,
+            namespace_path,
+            namespace_index_offset: 0,
         }
+    }
+
+    pub fn with_namespace_offset(&self, offset: u16) -> Self {
+        let mut func = self.clone();
+        func.namespace_index_offset = offset;
+        func
     }
 
     pub fn get_on_type(&self) -> &Option<Type> {
@@ -48,6 +68,15 @@ impl DeclaredFunction {
         self.variables_count
     }
 
+    pub fn get_namespace(&self) -> Vec<String> {
+        self.namespace_path.clone()
+    }
+
+    pub fn get_offset(&self) -> u16
+    {
+        self.namespace_index_offset
+    }
+
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         self.statements = statements;
     }
@@ -57,21 +86,31 @@ impl DeclaredFunction {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EntryFunction {
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
     variables_count: u16,
+    namespace_path: Vec<String>,
+    namespace_index_offset: u16,
 }
 
 impl EntryFunction {
     // Create a new entry function
-    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>, variables_count: u16) -> Self {
+    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>, variables_count: u16, namespace_path: Vec<String>,) -> Self {
         EntryFunction {
             parameters,
             statements,
-            variables_count
+            variables_count,
+            namespace_path,
+            namespace_index_offset: 0,
         }
+    }
+
+    pub fn with_namespace_offset(&self, offset: u16) -> Self {
+        let mut func = self.clone();
+        func.namespace_index_offset = offset;
+        func
     }
 
     // Get the parameters of the function
@@ -87,6 +126,15 @@ impl EntryFunction {
     // Get the variables count of the function
     pub fn get_variables_count(&self) -> u16 {
         self.variables_count
+    }
+
+    pub fn get_namespace(&self) -> Vec<String> {
+        self.namespace_path.clone()
+    }
+
+    pub fn get_offset(&self) -> u16
+    {
+        self.namespace_index_offset
     }
 
     pub fn set_statements(&mut self, statements: Vec<Statement>) {

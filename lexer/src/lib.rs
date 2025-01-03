@@ -687,6 +687,13 @@ impl<'a> Lexer<'a> {
                         Err(e) => {return Err(e)},
                         _ => {},
                     }
+
+                    // collapse queue immediately for nested imports
+                    while let Some(token) = self.token_queue.pop_front() {
+                        tokens.push_back(token.token);
+                    }
+                    
+                    tokens.push_back(Token::ExitNamespace);
                 },
                 _ => {
                     tokens.push_back(token.token);
@@ -731,19 +738,18 @@ impl<'a> Iterator for Lexer<'a> {
                         column_start: self.column,
                         column_end: self.column,
                     });
-                    self.token_queue.push_back(TokenResult {
-                        token: Token::Import(import.to_string()),
-                        line: self.line,
-                        column_start: self.column,
-                        column_end: self.column,
-                    });
-                    self.token_queue.push_back(TokenResult {
-                        token: Token::ExitNamespace,
-                        line: self.line,
-                        column_start: self.column,
-                        column_end: self.column,
-                    });
-                    self.next()
+                    match self.process_import(import.clone(), true) {
+                        Ok(()) => {
+                          self.token_queue.push_back(TokenResult {
+                              token: Token::ExitNamespace,
+                              line: self.line,
+                              column_start: self.column,
+                              column_end: self.column,
+                          });
+                          self.next()
+                        },
+                        Err(e) => return Some(Err(e)),
+                    }
                 },
                 _ => Some(Ok(token_result.unwrap().unwrap())),
             };
