@@ -1,0 +1,5 @@
+import "app.xel" as app
+
+entry main() {
+  return 0
+}

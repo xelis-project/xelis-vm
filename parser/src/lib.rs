@@ -124,6 +124,7 @@ impl<'a> Function<'a> {
 
 pub struct Parser<'a> {
     current_namespace: Vec<&'a str>,
+    current_namespace_storage: Vec<String>,
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
@@ -158,6 +159,7 @@ impl<'a> Parser<'a> {
     pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
         Self {
             current_namespace: Vec::new(),
+            current_namespace_storage: Vec::new(),
             tokens: tokens.collect(),
             constants: HashMap::new(),
             functions: Vec::new(),
@@ -511,8 +513,9 @@ impl<'a> Parser<'a> {
     fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let (mut parameters, types) = self.read_function_params(context)?;
 
-        let id = self.global_mapper
-            .functions_in_namespace(&[])
+        let function_list = self.global_mapper.functions_in_namespace(&self.current_namespace);
+        
+        let id = function_list
             .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
@@ -919,6 +922,13 @@ impl<'a> Parser<'a> {
         Ok(collapse_queue.remove(0))
     }
 
+    fn refresh_namespace_refs(&mut self) {
+        self.current_namespace = self.current_namespace_storage
+            .iter()
+            .map(|s| unsafe { std::mem::transmute(s.as_str()) })
+            .collect();
+    }
+
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.read_expr(None, None, true, true, None, context)
@@ -971,6 +981,16 @@ impl<'a> Parser<'a> {
             trace!("token: {:?}", token);
 
             let expr = match token {
+                Token::EnterNamespace(ns) => {
+                    self.current_namespace_storage.push(ns);
+                    self.refresh_namespace_refs();
+                    continue;
+                },
+                Token::ExitNamespace => {
+                    self.current_namespace_storage.pop();
+                    self.refresh_namespace_refs();
+                    continue;
+                },
                 Token::BracketOpen => {
                     match queue.pop() {
                         Some(QueueItem::Expression(v)) => {
@@ -2027,6 +2047,19 @@ impl<'a> Parser<'a> {
         let mut context: Context = Context::new();
         while let Some(token) = self.next() {
             match token {
+                Token::EnterNamespace(ns) => {
+                    self.current_namespace_storage.push(ns.clone());
+                    self.refresh_namespace_refs();
+                    self.global_mapper.namespace(ns.clone());
+                },
+                Token::ExitNamespace => {
+                    self.current_namespace_storage.pop();
+                    self.refresh_namespace_refs();
+                    continue;
+                },
+                Token::Import(_) => {
+                    continue;
+                },
                 Token::Const => self.read_const(&mut context)?,
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,

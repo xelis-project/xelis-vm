@@ -128,6 +128,28 @@ fn test_import_common() {
 }
 
 #[test]
+fn test_import_as() {
+    let base_dir = env::current_dir().unwrap();
+    let test_file_path = base_dir.join("src").join("silex/import_as").join("main.xel");
+
+    let code = fs::read_to_string(&test_file_path)
+        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+
+    let silex = Silex::new();
+
+    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+        Ok(program) => {
+            println!("Generated ABI:\n{}", program.abi());
+            let res = run_code_id(&silex, &program.module, 0);
+            assert_eq!(res, Value::U64(0));
+        }
+        Err(err) => {
+            panic!("Compilation failed: {}", err);
+        }
+    }
+}
+
+#[test]
 fn test_circular_dependency() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/circular").join("main.xel");

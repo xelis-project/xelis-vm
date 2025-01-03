@@ -35,8 +35,16 @@ impl<'a> GlobalMapper<'a> {
         mapper
     }
 
-    pub fn namespace(&mut self, name: &'a str) -> &mut GlobalMapper<'a> {
-        self.namespaces.entry(name).or_insert_with(GlobalMapper::new)
+    pub fn namespace(&mut self, name: String) -> &mut GlobalMapper<'a> {
+        let name_ref: &'a str = if let Some(&existing) = self.namespaces.keys().find(|&&k| k == name.as_str()) {
+            println!("found");
+            existing
+        } else {
+            println!("creating");
+            unsafe { std::mem::transmute(name.as_str()) }
+        };
+        
+        self.namespaces.entry(name_ref).or_insert_with(GlobalMapper::new)
     }
 
     fn with_namespace<T, F>(&mut self, namespace_path: &[&'a str], f: F) -> Result<T, ParserErrorKind>
@@ -47,7 +55,7 @@ impl<'a> GlobalMapper<'a> {
             f(self)
         } else {
             let (ns, rest) = namespace_path.split_first().unwrap();
-            self.namespace(ns).with_namespace(rest, f)
+            self.namespace(ns.to_string()).with_namespace(rest, f)
         }
     }
 

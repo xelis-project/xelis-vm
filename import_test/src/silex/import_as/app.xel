@@ -1,0 +1,3 @@
+fn method() -> u64 {
+  return 0
+}
