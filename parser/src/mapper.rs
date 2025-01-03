@@ -1,13 +1,16 @@
-use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager};
+use crate::error::ParserError;
+use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager, NamespaceManager};
 use indexmap::IndexMap;
 use crate::ParserErrorKind;
+use std::borrow::Cow;
 
 #[derive(Debug)]
 pub struct GlobalMapper<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
-    namespaces: IndexMap<String, GlobalMapper<'a>>,
+    namespace_manager: NamespaceManager<'a>, // for management of namespace definitions at the current path
+    namespaces: IndexMap<String, GlobalMapper<'a>>, // for the nesting of other managers within
 }
 
 impl<'a> GlobalMapper<'a> {
@@ -16,6 +19,7 @@ impl<'a> GlobalMapper<'a> {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
             enum_manager: EnumManager::new(),
+            namespace_manager: NamespaceManager::new(),
             namespaces: IndexMap::new(),
         }
     }
@@ -25,20 +29,49 @@ impl<'a> GlobalMapper<'a> {
             functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper(&[])),
             struct_manager: StructManager::with_parent(environment.get_struct_manager(&[])),
             enum_manager: EnumManager::with_parent(environment.get_enum_manager(&[])),
+            namespace_manager: NamespaceManager::new(), // might need to change this
             namespaces: IndexMap::new(),
         };
 
         mapper
     }
 
-    pub fn namespace(&mut self, namespace_path: &[String], name: String) -> &mut GlobalMapper<'a> {
+    pub fn register_namespace(&mut self, namespace_path: &[String], name: String) -> Result<&mut GlobalMapper<'a>, ParserError> {
         let mut current = self;
+        
         for ns in namespace_path {
-            println!("getting ns {}", ns);
-            current = current.namespaces.get_mut(ns.as_str()).expect("Namespace Not Found");
+            current = current.namespaces.get_mut(ns.as_str())
+                .expect("Namespace Not Found");
         }
         
-        current.namespaces.entry(name).or_insert_with(GlobalMapper::new)
+        current.namespace_manager.add(
+            Cow::Owned(name.clone()),
+            Vec::new()
+        ).or_else(|err| Err(ParserErrorKind::Any(err.into())));
+        
+        let new_namespace = current.namespaces
+            .entry(name)
+            .or_insert_with(|| GlobalMapper::new());
+        
+        Ok(new_namespace)
+    }
+
+    pub fn get_namespace(&self, namespace_path: &[String]) -> Result<&GlobalMapper<'a>, ParserError> {
+        let mut current = self;
+        for ns in namespace_path {
+            current = current.namespaces.get(ns.as_str())
+                .expect("Namespace Not Found");
+        }
+        Ok(current)
+    }
+
+    pub fn get_namespace_mut(&mut self, namespace_path: &[String]) -> Result<&mut GlobalMapper<'a>, ParserError> {
+        let mut current = self;
+        for ns in namespace_path {
+            current = current.namespaces.get_mut(ns.as_str())
+                .expect("Namespace Not Found");
+        }
+        Ok(current)
     }
 
     pub fn namespaces(&self) -> &IndexMap<String, GlobalMapper<'a>> {
@@ -105,6 +138,14 @@ impl<'a> GlobalMapper<'a> {
 
     pub fn enums_mut(&mut self) -> &mut EnumManager<'a> {
         &mut self.enum_manager
+    }
+
+    pub fn namespace_types(&self) -> &NamespaceManager<'a> {
+        &self.namespace_manager
+    }
+
+    pub fn namespace_types_mut(&mut self) -> &mut NamespaceManager<'a> {
+        &mut self.namespace_manager
     }
 }
 

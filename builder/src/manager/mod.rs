@@ -1,8 +1,10 @@
 mod r#struct;
 mod r#enum;
+mod r#namespace;
 
 pub use r#struct::*;
 pub use r#enum::*;
+pub use r#namespace::*;
 
 use std::borrow::Cow;
 use xelis_types::IdentifierType;
@@ -85,7 +87,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         ))
     }
 
-    // register a new struct in the manager
+    // register a new type in the manager
     pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<(), BuilderError> {
         let builder = self.build_internal(name, fields)?;
         self.types.push(builder);

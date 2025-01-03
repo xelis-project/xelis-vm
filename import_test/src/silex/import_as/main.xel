@@ -1,5 +1,5 @@
 import "app.xel" as app
 
 entry main() {
-  return 0
+  return app::mint::deep_test()
 }

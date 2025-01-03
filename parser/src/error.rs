@@ -156,10 +156,12 @@ pub enum ParserErrorKind<'a> {
     InvalidExpression,
     #[error("unknown error")]
     UnknownError,
-    #[error("Namespace not found")]
-    NamespaceNotFound,
-    #[error("Entry functions are not currently allowed in namespaces")]
-    EntryInNamespace,
+    #[error("Namespace {0} not found")]
+    NamespaceNotFound(String),
+    #[error("Namespace name {0} is already used")]
+    NamespaceUnavailable(String),
+    // #[error("Entry functions are not currently allowed in namespaces")]
+    // EntryInNamespace,
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }

@@ -982,20 +982,9 @@ impl<'a> Parser<'a> {
             trace!("token: {:?}", token);
 
             let expr = match token {
-                Token::EnterNamespace(ns) => {
-                    println!("expr namespace");
-                    self.global_mapper.namespace(&self.current_namespace_storage, ns.clone());
-                    self.current_namespace_storage.push(ns);
-                    self.refresh_namespace_refs();
-                    continue;
-                },
+                Token::EnterNamespace(_) |
                 Token::ExitNamespace => {
-                    println!("expr exit");
-                    self.current_namespace_storage.pop();
-                    self.refresh_namespace_refs();
-
-                    println!("current path: {:?}", self.current_namespace);
-                    continue;
+                    return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
                 },
                 Token::BracketOpen => {
                     match queue.pop() {
@@ -1946,8 +1935,12 @@ impl<'a> Parser<'a> {
     // Verify that a type name is not already used
     fn is_name_available(&self, name: &str) -> bool {
         trace!("Check if name is available: {}", name);
-        self.global_mapper.structs().get_by_name(name).is_err()
-            && self.global_mapper.enums().get_by_name(name).is_err()
+        self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
+            .structs().get_by_name(name).is_err()
+            && self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
+                .enums().get_by_name(name).is_err()
+                && self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
+                    .namespace_types().get_by_name(name).is_err()
     }
 
     /**
@@ -2065,6 +2058,40 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    // TODO: add "namespace {}" token to accompany the EnterNamespace token,
+    /**
+     * Example: namespace App { entry main() { return 0; } }
+     */
+
+    fn read_namespace(&mut self) -> Result<(), ParserError<'a>> {
+        let name = self.next_identifier()?;
+        trace!("Read namespace: {}", name);
+    
+        self.enter_namespace(name.to_string())
+    }
+
+    /*
+    * handle explicit command to enter namespace i.e. when the Lexer passes a EnterNamespace(ns)
+    * token when processing "import as"
+    */
+    fn enter_namespace(&mut self, ns: String) -> Result<(), ParserError<'a>> {
+        trace!("Entering namespace: {}", ns);
+    
+        if !self.is_name_available(ns.as_str()) {
+            return Err(err!(self, ParserErrorKind::NamespaceUnavailable(ns.clone())))
+        }
+        
+        self.global_mapper.register_namespace(
+            &self.current_namespace_storage.clone(),
+            ns.to_string(),
+        );
+
+        self.current_namespace_storage.push(ns);
+        self.refresh_namespace_refs();
+    
+        Ok(())
+    }
+
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
     pub fn parse(mut self) -> Result<(Program, GlobalMapper<'a>), ParserError<'a>> {
@@ -2073,9 +2100,7 @@ impl<'a> Parser<'a> {
             match token {
                 Token::EnterNamespace(ns) => {
                     println!("statement namespace, entering {}", ns);
-                    self.global_mapper.namespace(&self.current_namespace_storage, ns.clone());
-                    self.current_namespace_storage.push(ns.clone());
-                    self.refresh_namespace_refs();
+                    self.enter_namespace(ns);
                     println!("new path: {:?}", self.current_namespace);
                 },
                 Token::ExitNamespace => {
