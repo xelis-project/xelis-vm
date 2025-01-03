@@ -31,7 +31,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     Ok(Some(Value::U32(s.len() as u32).into()))
 }
 
@@ -44,7 +44,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     Ok(Some(Value::Boolean(s.contains(value)).into()))
 }
 
@@ -67,7 +67,7 @@ fn to_lowercase(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType 
 }
 
 fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
 
     let mut bytes = Vec::new();
     for b in s.as_bytes() {
@@ -78,7 +78,7 @@ fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 }
 
 fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -91,7 +91,7 @@ fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
 }
 
 fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -104,7 +104,7 @@ fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) ->
 }
 
 fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
     let handle1 = param1.as_ref();
@@ -116,7 +116,7 @@ fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
 }
 
 fn starts_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -124,7 +124,7 @@ fn starts_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
 }
 
 fn ends_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -132,7 +132,7 @@ fn ends_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
 }
 
 fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -146,7 +146,7 @@ fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetur
 fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param =  parameters.remove(0);
     let index = param.as_u32()? as usize;
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
         let inner = Value::String(c.to_string()).into();
         Ok(Some(ValueCell::Optional(Some(inner))))
@@ -156,12 +156,12 @@ fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
 }
 
 fn is_empty(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     Ok(Some(Value::Boolean(s.is_empty()).into()))
 }
 
 fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -170,7 +170,7 @@ fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
 }
 
 fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
@@ -182,7 +182,7 @@ fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context)
 }
 
 fn string_substring_range(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let s: &String = zelf?.as_string()?;
+    let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
     let start = param1.as_u32()? as usize;

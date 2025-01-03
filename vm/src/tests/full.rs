@@ -1152,3 +1152,13 @@ fn test_self_reference_owned_with_inner_ref() {
 
     test_code_id_expect_return(code, Value::U64(100), 1);
 }
+
+#[test]
+fn test_optional_expect() {
+    assert!(
+        matches!(
+            try_run_code("entry main() { let a: optional<u64> = null; return a.expect('a valid value'); }", 0),
+            Err(VMError::EnvironmentError(EnvironmentError::Expected(_)))
+        )
+    );
+}

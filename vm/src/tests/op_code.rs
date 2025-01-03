@@ -574,7 +574,7 @@ fn test_infinite_map_depth() {
 
     // Insert map
     chunk.emit_opcode(OpCode::SysCall);
-    chunk.write_u16(79);
+    chunk.write_u16(80);
     chunk.write_bool(true);
     chunk.write_u8(2);
 

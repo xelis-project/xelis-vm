@@ -301,7 +301,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_string(&self) -> Result<&String, ValueError> {
+    pub fn as_string(&self) -> Result<&str, ValueError> {
         match self {
             Self::Default(Value::String(n)) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::String))

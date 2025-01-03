@@ -38,4 +38,6 @@ pub enum EnvironmentError {
     Any(#[from] anyhow::Error),
     #[error("Out of memory")]
     OutOfMemory,
+    #[error("{0}")]
+    Expected(String),
 }
