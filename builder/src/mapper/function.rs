@@ -71,6 +71,22 @@ impl<'a> FunctionMapper<'a> {
         Ok(id)
     }
 
+    pub fn insert_function(&mut self, name: &'a str, function: Function<'a>) -> Result<IdentifierType, BuilderError> {
+        let params: Vec<_> = function.parameters.iter().map(|(_, t)| t.clone()).collect();
+        let signature = Signature::new(name.to_owned(), function.on_type.clone(), params);
+
+        if self.mapper.has_variable(&signature) {
+            return Err(BuilderError::SignatureAlreadyRegistered);
+        }
+
+        // Register the signature
+        let id = self.mapper.register(signature)?;
+        // Register the mappings
+        self.mappings.insert(id.clone(), function);
+
+        Ok(id)
+    }
+
     // Get a function mapp
     pub fn get_function(&self, id: &IdentifierType) -> Option<&Function<'a>> {
         self.mappings.get(id)

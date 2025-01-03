@@ -11,7 +11,7 @@ pub use declared::{DeclaredFunction, EntryFunction};
 pub const ENTRY_FN_RETURN_TYPE: Type = Type::U64;
 
 // Function parameter
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Parameter {
     name: IdentifierType,
     value_type: Type
@@ -77,7 +77,7 @@ impl Signature {
 
 // Declared function type by a Program
 // They are separated in two types for better handling
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FunctionType {
     Declared(DeclaredFunction),
     Entry(EntryFunction)
@@ -134,6 +134,20 @@ impl FunctionType {
         match self {
             FunctionType::Declared(f) => f.get_variables_count(),
             FunctionType::Entry(f) => f.get_variables_count()
+        }
+    }
+
+    pub fn get_namespace(&self) -> Vec<String> {
+        match self {
+            FunctionType::Declared(f) => f.get_namespace(),
+            FunctionType::Entry(f) => f.get_namespace()
+        }
+    }
+
+    pub fn get_offset(&self) -> u16 {
+        match self {
+            FunctionType::Declared(f) => f.get_offset(),
+            FunctionType::Entry(f) => f.get_offset()
         }
     }
 

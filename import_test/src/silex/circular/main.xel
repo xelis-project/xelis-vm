@@ -1,0 +1,5 @@
+import "tool.xel"
+
+entry main() {
+  return test()
+}

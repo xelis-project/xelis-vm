@@ -1,0 +1,7 @@
+entry deep_test() {
+  return 0
+}
+
+entry mint(address: u256) {
+  return 0
+}

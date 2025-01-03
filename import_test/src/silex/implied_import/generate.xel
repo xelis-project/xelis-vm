@@ -1,0 +1,3 @@
+fn generate() -> u64 {
+  return u64::MAX.unwrap()
+}

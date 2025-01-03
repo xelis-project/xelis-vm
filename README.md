@@ -53,7 +53,7 @@ Arrays of any type are also supported, but they must contain only one type of va
 Also note that thanks to the fully customizable Environment, you can define your own types, functions, structures, enums, and even override the default std functions.
 And for more flexibility, an Opaque type is also available to handle your whole logic in Rust directly.
 
-File extension is `.slx` for the source code.
+File extension is `.xel` for the source code.
 
 ## OpCodes
 

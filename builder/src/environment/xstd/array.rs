@@ -3,15 +3,15 @@ use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnRetur
 use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    env.register_native_function("len", Some(Type::Array(Box::new(Type::T(0)))), vec![], len, 1, Some(Type::U32));
-    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], push, 2, None);
-    env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], remove, 5, Some(Type::T(0)));
-    env.register_native_function("pop", Some(Type::Array(Box::new(Type::T(0)))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T(0)))));
-    env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(0)))), vec![("range", Type::Range(Box::new(Type::U32)))], slice, 5, Some(Type::Array(Box::new(Type::T(0)))));
-    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], contains, 10, Some(Type::Bool));
-    env.register_native_function("get", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
-    env.register_native_function("first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
-    env.register_native_function("last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function(&[], "len", Some(Type::Array(Box::new(Type::T(0)))), vec![], len, 1, Some(Type::U32));
+    env.register_native_function(&[], "push", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], push, 2, None);
+    env.register_native_function(&[], "remove", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], remove, 5, Some(Type::T(0)));
+    env.register_native_function(&[], "pop", Some(Type::Array(Box::new(Type::T(0)))), vec![], pop, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function(&[], "slice", Some(Type::Array(Box::new(Type::T(0)))), vec![("range", Type::Range(Box::new(Type::U32)))], slice, 5, Some(Type::Array(Box::new(Type::T(0)))));
+    env.register_native_function(&[], "contains", Some(Type::Array(Box::new(Type::T(0)))), vec![("value", Type::T(0))], contains, 10, Some(Type::Bool));
+    env.register_native_function(&[], "get", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function(&[], "first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+    env.register_native_function(&[], "last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
 }
 
 // native functions

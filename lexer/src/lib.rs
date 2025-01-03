@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::VecDeque};
+use std::{borrow::Cow, collections::VecDeque, fs, path::{Path, PathBuf}};
 use thiserror::Error;
 use log::{debug, trace};
 use xelis_ast::{Literal, NumberType, Token, TokenResult};
@@ -9,6 +9,7 @@ macro_rules! parse_number {
         match $t::from_str_radix($s, $radix) {
             Ok(value) => Token::Value(Literal::$l(value)),
             Err(_) => return Err(LexerError {
+                path: $self.path.clone(),
                 line: $self.line,
                 column: $self.column,
                 kind: LexerErrorKind::ParseToNumber
@@ -18,8 +19,9 @@ macro_rules! parse_number {
 }
 
 #[derive(Debug, Error)]
-#[error("Lexer error at line {line} column {column}: {kind}")]
+#[error("Lexer error in {path} at line {line} column {column}: {kind}")]
 pub struct LexerError {
+    pub path: String,
     // line number on the source file
     pub line: usize,
     // column number on the source file
@@ -39,12 +41,21 @@ pub enum LexerErrorKind {
     #[error("Expected character")]
     ExpectedChar,
     #[error("Expected a type")]
-    ExpectedType
+    ExpectedType,
+    #[error("Circular dependency detected")]
+    CircularDependency,
+    #[error("Expected path to import")]
+    ExpectedImportPath,
+    #[error("Expected namespace to import as")]
+    ExpectedImportNamespace
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     // input code
     input: &'a str,
+    // code buffer for recursive imports
+    code_storage: Vec<String>,
     // characters in the input
     // used to build tokens
     chars: VecDeque<char>,
@@ -58,7 +69,15 @@ pub struct Lexer<'a> {
     // Used to keep track of the depth of the generics <...>
     generic_depth: usize,
     // Track if the last parsed token was an identifier
-    accept_generic: bool
+    accept_generic: bool,
+    // Track the source tree location of the current code input
+    path: String,
+    // Track import relationships to prevent circular dependencies
+    imported_by: Vec<String>,
+    // Track existing imports to prevent duplicate code borrowing
+    imported_sources: Vec<String>,
+    // Buffer for imported tokens
+    token_queue: VecDeque<TokenResult<'a>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -66,13 +85,49 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             input,
+            code_storage: Vec::new(),
             chars: input.chars().collect::<Vec<_>>().into(),
             pos: 0,
             line: 1,
             column: 0,
             generic_depth: 0,
-            accept_generic: false
+            accept_generic: false,
+            path: "".to_string(),
+            imported_by: Vec::new(),
+            imported_sources: Vec::new(),
+            token_queue: VecDeque::new(),
         }
+    }
+
+    // add source tree recognition
+    pub fn with_path(mut self, path: String) -> Self {
+        self.path = path.clone();
+        self.imported_sources.push(path);
+        self
+    }
+
+    // add source tree recognition
+    pub fn with_dependents(mut self, dependents: Vec<String>) -> Self {
+      self.imported_by = dependents;
+      self
+    }
+
+    // add source tree recognition
+    pub fn with_imports(mut self, imports: Vec<String>) -> Self {
+      self.imported_sources = imports;
+      self
+    }
+
+    // add source tree recognition
+    pub fn add_dependent(mut self, dependent: String) -> Self {
+      self.imported_by.push(dependent);
+      self
+    }
+
+    // add source tree recognition
+    pub fn add_imported(mut self, imported: String) -> Self {
+      self.imported_sources.push(imported);
+      self
     }
 
     // peek the next character
@@ -80,6 +135,7 @@ impl<'a> Lexer<'a> {
         self.chars.front()
             .copied()
             .ok_or_else(|| LexerError {
+                path: self.path.clone(),
                 line: self.line,
                 column: self.column,
                 kind: LexerErrorKind::EndOfFile
@@ -92,6 +148,7 @@ impl<'a> Lexer<'a> {
 
         if drain.len() != n {
             return Err(LexerError {
+                path: self.path.clone(),
                 line: self.line,
                 column: self.column,
                 kind: LexerErrorKind::EndOfFile
@@ -108,6 +165,7 @@ impl<'a> Lexer<'a> {
     fn advance(&mut self) -> Result<char, LexerError> {
         self.next_char()
             .ok_or_else(|| LexerError {
+                path: self.path.clone(),
                 line: self.line,
                 column: self.column,
                 kind: LexerErrorKind::EndOfFile
@@ -127,6 +185,7 @@ impl<'a> Lexer<'a> {
     // this is done to prevent copying the string
     fn get_slice(&self, start: usize, end: usize) -> Result<&'a str, LexerError> {
         self.input.get(start..end).ok_or_else(|| LexerError {
+            path: self.path.clone(),
             line: self.line,
             column: self.column,
             kind: LexerErrorKind::EndOfFile
@@ -303,6 +362,7 @@ impl<'a> Lexer<'a> {
                     let Some(t) = NumberType::value_of(&s) else {
                         debug!("Expected type at line {} column {} on `{}`", self.line, self.column, s);
                         return Err(LexerError {
+                            path: self.path.clone(),
                             line: self.line,
                             column: self.column,
                             kind: LexerErrorKind::ExpectedType
@@ -375,6 +435,70 @@ impl<'a> Lexer<'a> {
 
         trace!("searching token with: `{}`", value);
 
+        if value == "import" {
+            while self.peek()? == ' ' {
+                self.advance();
+            }
+
+            loop {
+                if let Ok(c) = self.advance() {
+                    if c != ' ' {
+                        let value = self.read_string(c)?;
+
+                        while self.peek().is_ok() && self.peek()? == ' ' {
+                            self.advance();
+                        }
+                        self.advance();
+
+                        let mut scanner = self.clone();
+                        let modifier = scanner.read_while(|v| -> bool {
+                            *v == '_' || v.is_ascii_alphanumeric()
+                        }, diff)?;
+
+                        if modifier == "as" {
+                            self.advance_by(2);
+                            while self.peek()? == ' ' {
+                                self.advance();
+                            }
+                            self.advance();
+              
+                            let ns = self.read_while(|v| -> bool {
+                                *v == '_' || v.is_ascii_alphanumeric()
+                            }, diff)?;
+                            
+                            return Ok(TokenResult {
+                                token: Token::ImportAs(value.into_owned().clone(), ns.to_owned().clone()),
+                                line: self.line,
+                                column_start,
+                                column_end: self.column
+                            });
+                        }
+
+                        return Ok(TokenResult {
+                            token: Token::Import(value.into_owned().clone()),
+                            line: self.line,
+                            column_start,
+                            column_end: self.column
+                        });
+                    } else {
+                        return Err(LexerError {
+                            path: self.path.clone(),
+                            line: self.line,
+                            column: self.column,
+                            kind: LexerErrorKind::ExpectedImportPath
+                        })
+                    }
+                } else {
+                    return Err(LexerError {
+                        path: self.path.clone(),
+                        line: self.line,
+                        column: self.column,
+                        kind: LexerErrorKind::ExpectedImportPath
+                    });
+                }
+            }
+        }
+
         let token = Token::value_of(value)
             .unwrap_or_else(|| Token::Identifier(value));
 
@@ -432,8 +556,12 @@ impl<'a> Lexer<'a> {
                     continue;
                 },
                 // read a number value
-                c if c.is_digit(10) => self.read_number(c)?,
-                c if c == '_' || c.is_alphabetic() => self.read_token(1)?,
+                c if c.is_digit(10) => {
+                    self.read_number(c)?
+                },
+                c if c == '_' || c.is_alphabetic() => {
+                    self.read_token(1)?
+                },
                 _ => {
                     if let Some((token, diff)) = self.find_potential_token() {
                         trace!("Found potential token: {:?} with diff {}", token, diff);
@@ -442,6 +570,7 @@ impl<'a> Lexer<'a> {
                     } else {
                         debug!("No token found with char `{}`", c);
                         return Err(LexerError {
+                            path: self.path.clone(),
                             line: self.line,
                             column: self.column,
                             kind: LexerErrorKind::NoTokenFound
@@ -457,16 +586,122 @@ impl<'a> Lexer<'a> {
         Ok(None)
     }
 
+    pub fn import(mut self) -> Result<(Vec<String>, VecDeque<Token<'a>>), LexerError> {
+        match self.get_with_imports() {
+            Ok((imports, tokens)) => {
+                Ok((imports.clone(), tokens))
+            },
+            Err(err) => {
+                Err(err)
+            }
+        }
+    }
+
+    fn process_import(&mut self, import: String, use_queue: bool) -> Result<(), LexerError> {
+        trace!("Importing {}", import);
+
+        let source_path = Path::new(&self.path).parent().expect("No Path Parent").join(&import);
+        let source_str = source_path.display().to_string();
+
+        // circular dependency detection
+        if self.imported_by.contains(&source_str) {
+            return Err(LexerError {
+                path: self.path.clone(),
+                line: self.line,
+                column: self.column,
+                kind: LexerErrorKind::CircularDependency
+            });
+        }
+
+        // ignore duplicate imports
+        if self.imported_sources.contains(&source_str) {
+            println!("ignoring duplicate");
+            return Ok(());
+        }
+
+        let code = fs::read_to_string(&source_path)
+            .expect(&format!("Failed to read slx file: {:?}", source_path));
+        
+        let lex = Lexer::new(&code)
+            .with_path(source_str.clone())
+            .with_imports(self.imported_sources.clone())
+            .with_dependents(self.imported_by.clone())
+            .add_dependent(self.path.clone())
+            .import();
+
+        match lex {
+            Ok((imports, dep_tokens)) => {
+                self.imported_sources = imports;
+                self.imported_sources.push(source_str.clone());
+          
+                // Convert tokens to owned and create TokenResults
+                if use_queue {
+                    for token in dep_tokens {
+                        self.token_queue.push_back(TokenResult {
+                            token: token.into_owned(),
+                            line: self.line,
+                            column_start: self.column,
+                            column_end: self.column,
+                        });
+                    }
+                }
+
+                Ok(())
+            },
+            Err(err) => {
+                Err(err)
+            },
+        }
+    }
+
+
     // Parse the code into a list of tokens
     // This returns only the list of tokens without any other information
     pub fn get(mut self) -> Result<VecDeque<Token<'a>>, LexerError> {
         let mut tokens = VecDeque::new();
         while let Some(token) = self.next_token()? {
-            // push the token to the list
             tokens.push_back(token.token);
         }
 
         Ok(tokens)
+    }
+
+    // Parse the code into a list of tokens
+    // This returns the list of tokens along with the expanded import list
+    pub fn get_with_imports(mut self) -> Result<(Vec<String>, VecDeque<Token<'a>>), LexerError> {
+        let mut tokens = VecDeque::new();
+        while let Some(token) = self.next_token()? {
+            while let Some(token) = self.token_queue.pop_front() {
+                tokens.push_back(token.token);
+            }
+            match token.token {
+                Token::Import(import) => {
+                    match self.process_import(import.clone(), true) {
+                        Err(e) => {return Err(e)},
+                        _ => {},
+                    }
+                },
+                Token::ImportAs(import, ns) => {
+                    tokens.push_back(Token::EnterNamespace(ns.to_string()));
+                    match self.process_import(import.clone(), true) {
+                        Err(e) => {return Err(e)},
+                        _ => {},
+                    }
+
+                    // collapse queue immediately for nested imports
+                    while let Some(token) = self.token_queue.pop_front() {
+                        tokens.push_back(token.token);
+                    }
+                    
+                    tokens.push_back(Token::ExitNamespace);
+                },
+                _ => {
+                    tokens.push_back(token.token);
+                }
+            }
+        }
+
+        Ok((self.imported_sources.clone(), tokens))
     }
 }
 
@@ -474,7 +709,54 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Result<TokenResult<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token().transpose()
+        // First, check if we have any queued tokens from imports
+        if let Some(token) = self.token_queue.pop_front() {
+            return Some(Ok(token));
+        }
+
+        // If no queued tokens, get the next token normally
+        let token_result = self.next_token();
+        let token = match token_result {
+            Ok(Some(ref t)) => Some(t.token.to_owned()),
+            Ok(None) => None,
+            Err(e) => return Some(Err(e)),
+        };
+
+        if token.is_some() {
+            let result = match &token.unwrap() {
+                Token::Import(import) => {
+                    // Process the import and queue its tokens
+                    match self.process_import(import.clone(), true) {
+                        Ok(()) => self.next(),
+                        Err(e) => return Some(Err(e)),
+                    }
+                },
+                Token::ImportAs(import, ns) => {
+                    self.token_queue.push_back(TokenResult {
+                        token: Token::EnterNamespace(ns.to_string()),
+                        line: self.line,
+                        column_start: self.column,
+                        column_end: self.column,
+                    });
+                    match self.process_import(import.clone(), true) {
+                        Ok(()) => {
+                          self.token_queue.push_back(TokenResult {
+                              token: Token::ExitNamespace,
+                              line: self.line,
+                              column_start: self.column,
+                              column_end: self.column,
+                          });
+                          self.next()
+                        },
+                        Err(e) => return Some(Err(e)),
+                    }
+                },
+                _ => Some(Ok(token_result.unwrap().unwrap())),
+            };
+            Some(result?)
+        } else {
+            None
+        }
     }
 }
 

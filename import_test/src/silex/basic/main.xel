@@ -1,0 +1,12 @@
+import "util.xel"
+
+entry main() {
+    let a: u8 = 5
+    let b: u8 = true ? 250 : 10
+    println(add_special(a, b))
+
+    let res: u8 = b >> 1
+    println(res)
+
+    return add_special(a, b) as u64
+}

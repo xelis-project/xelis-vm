@@ -53,110 +53,131 @@ pub enum Literal<'a> {
     Null,
 }
 
+fn leak_str(s: &str) -> &'static str {
+    Box::leak(s.to_string().into_boxed_str())
+}
+
+impl<'a> Token<'a> {
+    pub fn into_owned(self) -> Token<'static> {
+        use Token::*;
+        match self {
+            Identifier(s) => Identifier(leak_str(s)),
+            Value(Literal::String(cow)) => Value(Literal::String(Cow::Owned(cow.into_owned()))),
+            // Most other variants don't contain references, so they can be transmuted
+            other => unsafe { std::mem::transmute(other) }
+        }
+    }
+}
+
 impl<'a> fmt::Display for Token<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      use Token::*;
-      let output = match self {
-          // Basic symbols
-          BraceOpen => "{",
-          BraceClose => "}",
-          BracketOpen => "[",
-          BracketClose => "]",
-          ParenthesisOpen => "(",
-          ParenthesisClose => ")",
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Token::*;
+        let output = match self {
+            // Namespaces
+            EnterNamespace(ns) => return write!(f, "namespace {} {{", ns),
+            ExitNamespace => "}",
 
-          OperatorAssign => "=",
-          OperatorEquals => "==",
-          OperatorNotEquals => "!=",
-          OperatorAnd => "&&",
-          OperatorOr => "||",
-          OperatorGreaterThan => ">",
-          OperatorLessThan => "<",
-          OperatorGreaterOrEqual => ">=",
-          OperatorLessOrEqual => "<=",
+            // Basic symbols
+            BraceOpen => "{",
+            BraceClose => "}",
+            BracketOpen => "[",
+            BracketClose => "]",
+            ParenthesisOpen => "(",
+            ParenthesisClose => ")",
 
-          OperatorPlus => "+",
-          OperatorMinus => "-",
-          OperatorMultiply => "*",
-          OperatorDivide => "/",
-          OperatorModulo => "%",
-          OperatorPow => "**",
-          OperatorBitwiseXor => "^",
-          OperatorBitwiseAnd => "&",
-          OperatorBitwiseOr => "|",
-          OperatorBitwiseShl => "<<",
-          OperatorBitwiseShr => ">>",
+            OperatorAssign => "=",
+            OperatorEquals => "==",
+            OperatorNotEquals => "!=",
+            OperatorAnd => "&&",
+            OperatorOr => "||",
+            OperatorGreaterThan => ">",
+            OperatorLessThan => "<",
+            OperatorGreaterOrEqual => ">=",
+            OperatorLessOrEqual => "<=",
 
-          OperatorPlusAssign => "+=",
-          OperatorMinusAssign => "-=",
-          OperatorMultiplyAssign => "*=",
-          OperatorDivideAssign => "/=",
-          OperatorModuloAssign => "%=",
-          OperatorPowAssign => "**=",
-          OperatorBitwiseXorAssign => "^=",
-          OperatorBitwiseAndAssign => "&=",
-          OperatorBitwiseOrAssign => "|=",
-          OperatorBitwiseShlAssign => "<<=",
-          OperatorBitwiseShrAssign => ">>=",
+            OperatorPlus => "+",
+            OperatorMinus => "-",
+            OperatorMultiply => "*",
+            OperatorDivide => "/",
+            OperatorModulo => "%",
+            OperatorPow => "**",
+            OperatorBitwiseXor => "^",
+            OperatorBitwiseAnd => "&",
+            OperatorBitwiseOr => "|",
+            OperatorBitwiseShl => "<<",
+            OperatorBitwiseShr => ">>",
 
-          OperatorTernary => "?",
-          Dot => ".",
-          Comma => ",",
-          Colon => ":",
-          SemiColon => ";",
+            OperatorPlusAssign => "+=",
+            OperatorMinusAssign => "-=",
+            OperatorMultiplyAssign => "*=",
+            OperatorDivideAssign => "/=",
+            OperatorModuloAssign => "%=",
+            OperatorPowAssign => "**=",
+            OperatorBitwiseXorAssign => "^=",
+            OperatorBitwiseAndAssign => "&=",
+            OperatorBitwiseOrAssign => "|=",
+            OperatorBitwiseShlAssign => "<<=",
+            OperatorBitwiseShrAssign => ">>=",
 
-          // Keywords
-          Let => "let",
-          Const => "const",
-          Entry => "entry",
-          Function => "fn",
-          Return => "return",
-          If => "if",
-          Else => "else",
-          For => "for",
-          ForEach => "foreach",
-          While => "while",
-          Break => "break",
-          Continue => "continue",
-          In => "in",
-          IsNot => "!",
+            OperatorTernary => "?",
+            Dot => ".",
+            Comma => ",",
+            Colon => ":",
+            SemiColon => ";",
 
-          Import => "import",
-          From => "from",
-          As => "as",
-          ReturnType => "->",
-          Match => "match",
-          FatArrow => "=>",
+            // Keywords
+            Let => "let",
+            Const => "const",
+            Entry => "entry",
+            Function => "fn",
+            Return => "return",
+            If => "if",
+            Else => "else",
+            For => "for",
+            ForEach => "foreach",
+            While => "while",
+            Break => "break",
+            Continue => "continue",
+            In => "in",
+            IsNot => "!",
 
-          // Values and types
-          Value(Literal::Null) => "null",
-          Value(Literal::Bool(true)) => "true",
-          Value(Literal::Bool(false)) => "false",
-          Value(Literal::String(s)) => return write!(f, "\"{}\"", s),
-          Value(Literal::Number(n)) => return write!(f, "{}", n),
-          Value(Literal::U8(n)) => return write!(f, "{}_u8", n),
-          Value(Literal::U16(n)) => return write!(f, "{}_u16", n),
-          Value(Literal::U32(n)) => return write!(f, "{}_u32", n),
-          Value(Literal::U64(n)) => return write!(f, "{}_u64", n),
-          Value(Literal::U128(n)) => return write!(f, "{}_u128", n),
-          Value(Literal::U256(n)) => return write!(f, "{}_u256", n),
-          
-          Identifier(id) => return write!(f, "{}", id),
-          Number(t) => return write!(f, "{:?}", t),
+            Import(module) => return write!(f, "import \"{}\"", module),
+            ImportAs(module, ns) => return write!(f, "import \"{}\" as {}", module, ns),
+            From => "from",
+            As => "as",
+            ReturnType => "->",
+            Match => "match",
+            FatArrow => "=>",
 
-          // Types
-          Bool => "bool",
-          Blob => "blob",
-          String => "string",
-          Optional => "optional",
-          Range => "range",
-          Map => "map",
-          Enum => "enum",
-          Struct => "struct",
-      };
+            // Values and types
+            Value(Literal::Null) => "null",
+            Value(Literal::Bool(true)) => "true",
+            Value(Literal::Bool(false)) => "false",
+            Value(Literal::String(s)) => return write!(f, "\"{}\"", s),
+            Value(Literal::Number(n)) => return write!(f, "{}", n),
+            Value(Literal::U8(n)) => return write!(f, "{}_u8", n),
+            Value(Literal::U16(n)) => return write!(f, "{}_u16", n),
+            Value(Literal::U32(n)) => return write!(f, "{}_u32", n),
+            Value(Literal::U64(n)) => return write!(f, "{}_u64", n),
+            Value(Literal::U128(n)) => return write!(f, "{}_u128", n),
+            Value(Literal::U256(n)) => return write!(f, "{}_u256", n),
+            
+            Identifier(id) => return write!(f, "{}", id),
+            Number(t) => return write!(f, "{:?}", t),
 
-      write!(f, "{}", output)
-  }
+            // Types
+            Bool => "bool",
+            Blob => "blob",
+            String => "string",
+            Optional => "optional",
+            Range => "range",
+            Map => "map",
+            Enum => "enum",
+            Struct => "struct",
+        };
+
+        write!(f, "{}", output)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -164,6 +185,10 @@ pub enum Token<'a> {
     // Variable / function names
     Identifier(&'a str),
     Value(Literal<'a>),
+
+    // Namespaces
+    EnterNamespace(String),
+    ExitNamespace,
 
     // Types supported
     Number(NumberType),
@@ -240,7 +265,8 @@ pub enum Token<'a> {
 
     OperatorTernary,
 
-    Import,
+    Import(String),
+    ImportAs(String, String),
     From,
     As,
     ReturnType,
@@ -333,7 +359,6 @@ impl Token<'_> {
             "true" => Value(Literal::Bool(true)),
             "false" => Value(Literal::Bool(false)),
 
-            "import" => Import,
             "from" => From,
             "as" => As,
             "->" => ReturnType,

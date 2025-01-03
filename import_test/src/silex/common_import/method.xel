@@ -1,0 +1,5 @@
+import "generate.xel"
+
+fn method() -> u64 {
+  return generate() - generate()
+}
