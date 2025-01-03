@@ -1158,7 +1158,7 @@ fn test_optional_expect() {
     assert!(
         matches!(
             try_run_code("entry main() { let a: optional<u64> = null; return a.expect('a valid value'); }", 0),
-            Err(VMError::EnvironmentError(EnvironmentError::Expected(_)))
+            Err(VMError::EnvironmentError(EnvironmentError::Expect(_)))
         )
     );
 }

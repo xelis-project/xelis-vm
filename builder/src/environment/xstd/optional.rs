@@ -43,7 +43,7 @@ fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         .into_owned();
     let msg = param.to_string()?;
     let opt = zelf?.take_as_optional()
-        .ok_or(EnvironmentError::Expected(msg))?;
+        .ok_or(EnvironmentError::Expect(msg))?;
 
     Ok(Some(opt))
 }
