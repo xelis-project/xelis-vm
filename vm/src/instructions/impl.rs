@@ -123,13 +123,24 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
         None
     };
 
-    let f = backend.environment.get_functions().get(id as usize)
+    let f = backend.environment.get_functions()
+        .get(id as usize)
         .ok_or(VMError::UnknownSysCall)?;
 
     context.increase_gas_usage(f.get_cost())?;
 
+    // We need to find if we are using two times the same instance
+
     let mut instance = match on_value.as_mut() {
-        Some(v) => Some(v.as_mut()),
+        Some(v) => {
+            if v.is_wrapped() {
+                for argument in arguments.iter_mut() {
+                    argument.make_owned_if_same_ptr(v);
+                }
+            }
+
+            Some(v.as_mut())
+        },
         None => None,
     };
 

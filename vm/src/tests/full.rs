@@ -546,7 +546,7 @@ fn test_self_reference_struct() {
 
         entry main() {
             let t: Test[] = [Test { x: 10 }];
-            t.push(t.get(0).unwrap());
+            t.push(t[0]);
             t[1].x = 20;
             return t[0].x
         }
@@ -1095,4 +1095,60 @@ fn test_else_if() {
 fn test_struct() {
     test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; return t.a; }", Value::U64(10));
     test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; t.a = 20; return t.a; }", Value::U64(20));
+}
+
+#[test]
+fn test_self_reference() {
+    let code = r#"
+        entry main() {
+            let a: u8 = 100;
+            let b: u64 = a.overflowing_add(a).unwrap() as u64;
+            return b
+        }
+    "#;
+
+    test_code_expect_return(code, Value::U64(200));
+}
+
+#[test]
+fn test_self_reference_declared() {
+    let code = r#"
+        struct Test {
+            a: u8
+        }
+
+        fn (t Test) overflowing_add(v: Test) -> u64 {
+            return (t.a + v.a) as u64
+        }
+
+        entry main() {
+            let t: Test = Test { a: 100 };
+            return t.overflowing_add(t)
+        }
+    "#;
+
+    test_code_id_expect_return(code, Value::U64(200), 1);
+}
+
+#[test]
+fn test_self_reference_owned_with_inner_ref() {
+    let code = r#"
+        struct Test {
+            a: u8
+        }
+
+        fn (t Test) overflowing_add(v: Test) -> u64 {
+            return t.a.overflowing_add(v.a).unwrap() as u64
+        }
+
+        entry main() {
+            let bytes: u8[] = [100];
+            let t: Test = Test { a: bytes[0] };
+            t.a = 50;
+            assert(bytes[0] == 100);
+            return t.overflowing_add(t)
+        }
+    "#;
+
+    test_code_id_expect_return(code, Value::U64(100), 1);
 }
