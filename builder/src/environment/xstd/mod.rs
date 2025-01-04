@@ -27,7 +27,8 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("debug", None, vec![("value", Type::Any)], debug, 1, None);
     env.register_native_function("panic", None, vec![("value", Type::Any)], panic, 1, Some(Type::Any));
     env.register_native_function("assert", None, vec![("value", Type::Bool)], assert, 1, None);
-    env.register_native_function("is_same_ptr", None, vec![("value1", Type::Any), ("value2", Type::Any)], is_same_ptr, 5, Some(Type::Bool));
+    env.register_native_function("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], is_same_ptr, 5, Some(Type::Bool));
+    env.register_native_function("require", None, vec![("value", Type::Bool)], require, 1, None);
 }
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -65,4 +66,23 @@ fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType 
 fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let same = parameters[0].is_same_ptr(&parameters[1]);
     Ok(Some(Value::Boolean(same).into()))
+}
+
+fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+    let msg = parameters.remove(1)
+        .into_owned()
+        .to_string()?;
+
+    if !msg.chars().all(char::is_alphanumeric) {
+        return Err(EnvironmentError::InvalidExpect);
+    }
+
+    let param = &parameters[0];
+    let value = param.as_ref().as_bool()?;
+
+    if value {
+        Ok(None)
+    } else {
+        Err(EnvironmentError::Expect(msg))
+    }
 }

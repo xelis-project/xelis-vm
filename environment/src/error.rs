@@ -40,4 +40,6 @@ pub enum EnvironmentError {
     OutOfMemory,
     #[error("Expect {0}")]
     Expect(String),
+    #[error("Invalid expect message, require alphanumeric chars only")]
+    InvalidExpect,
 }

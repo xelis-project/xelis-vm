@@ -42,6 +42,10 @@ fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     let param = parameters.remove(0)
         .into_owned();
     let msg = param.to_string()?;
+    if !msg.chars().all(char::is_alphanumeric) {
+        return Err(EnvironmentError::InvalidExpect);
+    }
+
     let opt = zelf?.take_as_optional()
         .ok_or(EnvironmentError::Expect(msg))?;
 
