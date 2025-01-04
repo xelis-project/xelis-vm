@@ -26,9 +26,9 @@ impl<'a> GlobalMapper<'a> {
 
     pub fn with(environment: &'a EnvironmentBuilder) -> Self {
         let mut mapper = Self {
-            functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper(&[])),
-            struct_manager: StructManager::with_parent(environment.get_struct_manager(&[])),
-            enum_manager: EnumManager::with_parent(environment.get_enum_manager(&[])),
+            functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper()),
+            struct_manager: StructManager::with_parent(environment.get_struct_manager()),
+            enum_manager: EnumManager::with_parent(environment.get_enum_manager()),
             namespace_manager: NamespaceManager::new(), // might need to change this
             namespaces: IndexMap::new(),
         };
@@ -56,7 +56,7 @@ impl<'a> GlobalMapper<'a> {
         Ok(new_namespace)
     }
 
-    pub fn get_namespace(&self, namespace_path: &[String]) -> Result<&GlobalMapper<'a>, ParserError> {
+    pub fn get_namespace(&self, namespace_path: &[String]) -> Result<&GlobalMapper<'a>, ParserError<'a>> {
         let mut current = self;
         for ns in namespace_path {
             current = current.namespaces.get(ns.as_str())
@@ -65,7 +65,16 @@ impl<'a> GlobalMapper<'a> {
         Ok(current)
     }
 
-    pub fn get_namespace_mut(&mut self, namespace_path: &[String]) -> Result<&mut GlobalMapper<'a>, ParserError> {
+    pub fn get_namespace_at(&self, namespace_path: &[String], name: &str) -> Result<&GlobalMapper<'a>, ParserError<'a>> {
+        let mut current = self;
+        for ns in namespace_path {
+            current = current.namespaces.get(ns.as_str())
+                .expect("Namespace Not Found");
+        }
+        Ok(current.namespaces.get(name).expect("Namespace Not Found"))
+    }
+
+    pub fn get_namespace_mut(&mut self, namespace_path: &[String]) -> Result<&mut GlobalMapper<'a>, ParserError<'a>> {
         let mut current = self;
         for ns in namespace_path {
             current = current.namespaces.get_mut(ns.as_str())
@@ -74,11 +83,20 @@ impl<'a> GlobalMapper<'a> {
         Ok(current)
     }
 
+    pub fn get_namespace_mut_at(&mut self, namespace_path: &[String], name: &str) -> Result<&mut GlobalMapper<'a>, ParserError> {
+        let mut current = self;
+        for ns in namespace_path {
+            current = current.namespaces.get_mut(ns.as_str())
+                .expect("Namespace Not Found");
+        }
+        Ok(current.namespaces.get_mut(name).expect("Namespace Not Found"))
+    }
+
     pub fn namespaces(&self) -> &IndexMap<String, GlobalMapper<'a>> {
         &self.namespaces
     }
 
-    pub fn functions_in_namespace(&mut self, namespace_path: &[String]) -> &mut FunctionMapper<'a> {
+    pub fn functions_in_namespace_mut(&mut self, namespace_path: &[String]) -> &mut FunctionMapper<'a> {
         let mut current = self;
         for ns in namespace_path {
             current = current.namespaces.get_mut(ns.as_str()).expect("Namespace Not Found");
@@ -87,11 +105,9 @@ impl<'a> GlobalMapper<'a> {
         &mut current.functions_mapper
     }
 
-    pub fn functions_in_namespace_ref(&self, namespace_path: &[String]) -> &FunctionMapper<'a> {
+    pub fn functions_in_namespace(&self, namespace_path: &[String]) -> &FunctionMapper<'a> {
         let mut current = self;
-        println!("full path = {:?}", namespace_path);
         for ns in namespace_path {
-            println!("looking for namespace {}", ns);
             current = current.namespaces.get(ns.as_str()).expect("Namespace Not Found");
         }
     

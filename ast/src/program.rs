@@ -29,7 +29,7 @@ impl Program {
     }
 
     // Create a new program with constants, structures and functions
-    pub fn with(constants: IndexSet<ConstantDeclaration>, structures: IndexSet<StructType>, enums: IndexSet<EnumType>, functions: IndexMap<Vec<&str>, Vec<FunctionType>>) -> Self {
+    pub fn with(constants: IndexSet<ConstantDeclaration>, structures: IndexSet<StructType>, enums: IndexSet<EnumType>, functions: IndexMap<String, Vec<FunctionType>>) -> Self {
         let mut flattened_functions = Vec::new();
 
         let mut offset_tally = 0;

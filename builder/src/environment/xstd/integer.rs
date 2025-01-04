@@ -31,7 +31,6 @@ macro_rules! overflow_fn {
 
             // Registering the generated function in the environment
             $env.register_native_function(
-                &[],
                 // Function name as a string
                 stringify!([<overflowing_ $op>]),
                 Some(Type::$t),
@@ -66,7 +65,6 @@ macro_rules! safe_fn {
 
             // Registering the generated function in the environment
             $env.register_native_function(
-                &[],
                 // Function name as a string
                 stringify!([<safe_ $op>]),
                 Some(Type::$t),
@@ -117,7 +115,6 @@ macro_rules! to_endian_bytes {
             }
 
             $env.register_native_function(
-                &[],
                 stringify!([<to_ $endian _bytes>]),
                 Some(Type::$t),
                 vec![],
@@ -144,8 +141,8 @@ macro_rules! register_constants_min_max {
         let min_inner = Constant::Default(Value::$t(min));
         let max_inner = Constant::Default(Value::$t(max));
 
-        $env.register_constant(&[], Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
-        $env.register_constant(&[], Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
+        $env.register_constant(Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
+        $env.register_constant(Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
     };
 }
 

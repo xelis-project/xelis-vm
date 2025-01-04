@@ -1,5 +1,6 @@
 import "app.xel" as app
 
 entry main() {
-  return app::mint::deep_test()
+  let var: u64 = app::mint::deep_test()
+  return 0
 }

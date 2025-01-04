@@ -6,7 +6,7 @@ use xelis_vm::VMError;
 
 #[track_caller]
 fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
-    let mut vm = VM::new(module, silex.environment.environment(&[]));
+    let mut vm = VM::new(module, silex.environment.environment());
     vm.invoke_entry_chunk(id).unwrap();
     vm.run().map(|v| v.into_value().unwrap())
 }
@@ -140,7 +140,7 @@ fn test_import_as() {
     match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
-            let res = run_code_id(&silex, &program.module, 0);
+            let res = run_code_id(&silex, &program.module, 4);
             assert_eq!(res, Value::U64(0));
         }
         Err(err) => {

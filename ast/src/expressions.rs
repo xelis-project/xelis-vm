@@ -10,7 +10,7 @@ use super::Operator;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
-    FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
+    FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>, Vec<String>), // path, function name, parameters, namespace path
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     StructConstructor(Vec<Expression>, StructType),

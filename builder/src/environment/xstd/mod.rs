@@ -23,12 +23,12 @@ pub fn register(env: &mut EnvironmentBuilder) {
     range::register(env);
     map::register(env);
 
-    env.register_native_function(&[], "println", None, vec![("value", Type::Any)], println, 1, None);
-    env.register_native_function(&[], "debug", None, vec![("value", Type::Any)], debug, 1, None);
-    env.register_native_function(&[], "panic", None, vec![("value", Type::Any)], panic, 1, Some(Type::Any));
-    env.register_native_function(&[], "require", None, vec![("value", Type::Any), ("value", Type::Any)], require, 1, Some(Type::Any));
-    env.register_native_function(&[], "assert", None, vec![("value", Type::Bool)], assert, 1, None);
-    env.register_native_function(&[], "is_same_ptr", None, vec![("value1", Type::Any), ("value2", Type::Any)], is_same_ptr, 5, Some(Type::Bool));
+    env.register_native_function("println", None, vec![("value", Type::Any)], println, 1, None);
+    env.register_native_function("debug", None, vec![("value", Type::Any)], debug, 1, None);
+    env.register_native_function("panic", None, vec![("value", Type::Any)], panic, 1, Some(Type::Any));
+    env.register_native_function("require", None, vec![("value", Type::Any), ("value", Type::Any)], require, 1, Some(Type::Any));
+    env.register_native_function("assert", None, vec![("value", Type::Bool)], assert, 1, None);
+    env.register_native_function("is_same_ptr", None, vec![("value1", Type::Any), ("value2", Type::Any)], is_same_ptr, 5, Some(Type::Bool));
 }
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {

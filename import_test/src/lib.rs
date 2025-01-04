@@ -185,8 +185,7 @@ impl Silex {
         let (sender, receiver) = mpsc::channel();
 
         environment
-            .get_mut_function(&[], "println", None, vec![Type::Any])
-            .expect("println not found in xstd native functions")
+            .get_mut_function("println", None, vec![Type::Any])
             .set_on_call(move |_, args, _| -> _ {
                 let param = &args[0];
                 println!("{}", param.as_ref().as_value());
@@ -215,17 +214,17 @@ impl Silex {
         let mut abi_functions: Vec<serde_json::Value> = Vec::new(); // Collect ABI data here
         for (i, func) in program.functions().iter().enumerate() {
             let path = &func.get_namespace();
-            let env_offset = if self.environment.get_namespace(path).is_ok() {
-              self.environment.get_functions(
-                path
-              ).len() as u16
+            let env_offset = if path.is_empty() {
+                self.environment.get_functions().len() as u16
             } else {
-              0
+                0
             };
+
+            println!("looking for {} with offset {} and env length {}", i, func.get_offset(), env_offset);
 
             if func.is_entry() {
                 let mapping = mapper
-                    .functions_in_namespace_ref(path)
+                    .functions_in_namespace(path)
                     .get_function(&(i as u16 + env_offset - func.get_offset()))
                     .unwrap();
 
@@ -291,7 +290,7 @@ impl Silex {
 
         let abi_json = serde_json::to_string_pretty(&abi_functions)?;
 
-        let compiler = Compiler::new(&program, self.environment.environment(&[]));
+        let compiler = Compiler::new(&program, self.environment.environment());
 
         Ok(Program {
             module: compiler.compile()?,
@@ -314,12 +313,12 @@ impl Silex {
     }
 
     pub fn get_env_functions(&self) -> Vec<Func> {
-        let mapper = self.environment.get_functions_mapper(&[]);
+        let mapper = self.environment.get_functions_mapper();
         fn type_to_string(env: &EnvironmentBuilder, ty: &Type) -> String {
             match ty {
-                Type::Opaque(opaque) => env.get_opaque_name(&[], opaque).unwrap().to_string(),
-                Type::Struct(ty) => env.get_struct_manager(&[]).get_name_by_ref(ty).unwrap().to_string(),
-                Type::Enum(ty) => env.get_enum_manager(&[]).get_name_by_ref(ty).unwrap().to_string(),
+                Type::Opaque(opaque) => env.get_opaque_name(opaque).unwrap().to_string(),
+                Type::Struct(ty) => env.get_struct_manager().get_name_by_ref(ty).unwrap().to_string(),
+                Type::Enum(ty) => env.get_enum_manager().get_name_by_ref(ty).unwrap().to_string(),
                 Type::Array(ty) => format!("{}[]", type_to_string(env, ty)),
                 Type::Optional(ty) => format!("optional<{}>", type_to_string(env, ty)),
                 _ => ty.to_string(),
@@ -416,7 +415,7 @@ impl Silex {
         self.is_running.store(true, Ordering::Relaxed);
 
         let chunk_id = entry.chunk_id;
-        let environment = self.environment.environment(&[]).clone();
+        let environment = self.environment.environment().clone();
         let res = tokio::task::spawn_blocking(move || {
             // Fake storage
             // TODO: allow user to configure data in it before running the program

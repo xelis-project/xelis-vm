@@ -1,4 +1,4 @@
-entry deep_test() {
+fn deep_test() -> u64 {
   return 0
 }
 
