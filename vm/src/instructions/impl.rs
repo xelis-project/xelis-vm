@@ -133,7 +133,6 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
         None => None,
     };
 
-    println!("syscall with id {}, params: {:?}", id, arguments);
     if let Some(v) = f.call_function(instance.as_deref_mut(), arguments.into(), context)? {
         stack.push_stack(Path::Owned(v))?;
     }

@@ -220,8 +220,6 @@ impl Silex {
                 0
             };
 
-            println!("looking for {} with offset {} and env length {}", i, func.get_offset(), env_offset);
-
             if func.is_entry() {
                 let mapping = mapper
                     .functions_in_namespace(path)

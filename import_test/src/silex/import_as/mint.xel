@@ -1,5 +1,10 @@
 fn deep_test() -> u64 {
-  return 0
+  return 25
+}
+
+enum Deep_enum {
+  First { value: u64 },
+  Second,
 }
 
 entry mint(address: u256) {
