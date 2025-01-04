@@ -303,7 +303,7 @@ impl<'a> Parser<'a> {
                             Token::Identifier(id) => {
                                 let ns = self.global_mapper.get_namespace(&namespace_stack)?;
 
-                                println!("tracking {}::{}", namespace_stack.join("::"), id);
+                                trace!("qualified namespace {}::{}", namespace_stack.join("::"), id);
                                 if let Ok(builder) = ns.structs().get_by_name(&id) {
                                     break Type::Struct(builder.get_type().clone());
                                 } else if let Ok(builder) = ns.enums().get_by_name(&id) {
@@ -1601,8 +1601,6 @@ impl<'a> Parser<'a> {
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let mut expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
-
-            println!("assigning to: {:?}", expr);
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {

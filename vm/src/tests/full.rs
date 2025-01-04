@@ -4,6 +4,7 @@ use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_types::Value;
+
 use super::*;
 
 #[track_caller]

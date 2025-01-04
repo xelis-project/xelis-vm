@@ -5,7 +5,7 @@ use crate::ConstantDeclaration;
 use super::FunctionType;
 use super::FunctionType::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     // All constants declared
     constants: IndexSet<ConstantDeclaration>,

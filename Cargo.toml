@@ -13,4 +13,5 @@ members = [
     "builder",
     "compiler",
     "import_test",
+    "abi",
 ]

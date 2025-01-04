@@ -1576,6 +1576,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "xelis-abi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "humantime",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wasm-bindgen-futures",
+ "web-time",
+ "xelis-ast 0.1.0",
+ "xelis-builder 0.1.0",
+ "xelis-bytecode 0.1.0",
+ "xelis-compiler",
+ "xelis-lexer",
+ "xelis-parser",
+ "xelis-types 0.1.0",
+ "xelis-vm 0.1.0",
+ "xelis_common",
+]
+
+[[package]]
 name = "xelis-ast"
 version = "0.1.0"
 dependencies = [
@@ -1702,6 +1725,7 @@ dependencies = [
  "tokio",
  "wasm-bindgen-futures",
  "web-time",
+ "xelis-abi",
  "xelis-ast 0.1.0",
  "xelis-builder 0.1.0",
  "xelis-bytecode 0.1.0",
