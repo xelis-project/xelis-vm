@@ -4,5 +4,10 @@ entry main() {
   let v: app::mint::Deep_struct = app::mint::Deep_struct { value: 10 };
   println("struct result:")
   println(v)
+
+  let d: app::mint::Deep_enum = app::mint::Deep_enum::First { value: 64 };
+  println("enum result:")
+  println(d)
+
   return app::mint::deep_test()
 }
