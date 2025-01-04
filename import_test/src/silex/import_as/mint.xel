@@ -2,9 +2,8 @@ fn deep_test() -> u64 {
   return 25
 }
 
-enum Deep_enum {
-  First { value: u64 },
-  Second,
+struct Deep_struct {
+  value: u64
 }
 
 entry mint(address: u256) {

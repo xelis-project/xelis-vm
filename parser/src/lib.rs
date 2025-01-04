@@ -267,7 +267,6 @@ impl<'a> Parser<'a> {
 
     fn get_type_from_token(&mut self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
         trace!("Get type from token: {:?}", token);
-        println!("Get type from token: {:?}", token);
 
         let mut namespace_stack: Vec<String> = Vec::new();
         Ok(match token {
@@ -306,11 +305,8 @@ impl<'a> Parser<'a> {
 
                                 println!("tracking {}::{}", namespace_stack.join("::"), id);
                                 if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                    namespace_stack.clear();
                                     break Type::Struct(builder.get_type().clone());
                                 } else if let Ok(builder) = ns.enums().get_by_name(&id) {
-                                    println!("enum found!");
-                                    namespace_stack.clear();
                                     break Type::Enum(builder.get_type().clone());
                                 } else if let Ok(builder) = ns.namespace_types().get_by_name(&id) {
                                     namespace_stack.push(id.to_string());
@@ -611,7 +607,7 @@ impl<'a> Parser<'a> {
     // struct_name { field_name: value1, field2: value2 }
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
-    fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_struct_constructor(&mut self, struct_type: StructType, ns: &[String], context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
         let fields = self.read_constructor_fields(context)?;
@@ -621,7 +617,7 @@ impl<'a> Parser<'a> {
         }
 
         // Now verify that it match our struct
-        let builder = self.global_mapper.structs().get_by_ref(&struct_type)
+        let builder = self.global_mapper.get_namespace(&ns)?.structs().get_by_ref(&struct_type)
             .map_err(|e| err!(self, e.into()))?;
         let mut fields_expressions = Vec::with_capacity(fields.len());
         for ((field_name, mut field_expr), (field_type, field_name_expected)) in fields.into_iter().zip(struct_type.fields().iter().zip(builder.names())) {
@@ -1119,10 +1115,11 @@ impl<'a> Parser<'a> {
                                 match next {
                                     Token::Identifier(id) => {
                                         let ns = self.global_mapper.get_namespace(&namespace_stack)?;
+
                                         if enum_type.is_some() {
                                             break self.read_enum_variant_constructor(enum_type.unwrap(), &namespace_stack, id, context)?;
                                         } else if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                            break self.read_struct_constructor(builder.get_type().clone(), context)?;
+                                            break self.read_struct_constructor(builder.get_type().clone(), &namespace_stack, context)?;
                                         } else if let Ok(builder) = ns.enums().get_by_name(&id) {
                                             enum_type = Some(builder.get_type().clone());
                                             while *self.peek()? == Token::Colon {
@@ -1170,7 +1167,7 @@ impl<'a> Parser<'a> {
                                                         None => {
                                                             let ns = self.global_mapper.get_namespace(&self.current_namespace_storage)?;
                                                             if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                                                break self.read_struct_constructor(builder.get_type().clone(), context)?;
+                                                                break self.read_struct_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), context)?;
                                                             } else if let Ok(builder) = ns.enums().get_by_name(&id) {
                                                                 break self.read_enum_variant_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), id, context)?;
                                                             } else {
@@ -1210,7 +1207,7 @@ impl<'a> Parser<'a> {
                                     } else if let Some(constant) = self.constants.get(id) {
                                         Expression::Constant(constant.value.clone()) // at the moment, standalone constants can't be namespaced
                                     } else if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                        self.read_struct_constructor(builder.get_type().clone(), context)?
+                                        self.read_struct_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), context)?
                                     } else if let Ok(builder) = ns.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), id, context)?
                                     } else {
@@ -1601,7 +1598,6 @@ impl<'a> Parser<'a> {
         self.expect_token(Token::Colon)?;
         let value_type = self.read_type()?;
 
-        println!("variable type: {:?}", value_type);
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
             let mut expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
@@ -2109,7 +2105,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        self.global_mapper
+        self.global_mapper.get_namespace_mut(&self.current_namespace_storage)?
             .structs_mut()
             .add(Cow::Borrowed(name), fields)
             .map_err(|e| err!(self, e.into()))?;
