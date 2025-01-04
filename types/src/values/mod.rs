@@ -155,6 +155,23 @@ impl Default for Value {
 }
 
 impl Value {
+    pub fn get_memory_usage(&self) -> usize {
+        match self {
+            Value::Null => 1,
+            Value::U8(_) => 1,
+            Value::U16(_) => 2,
+            Value::U32(_) => 4,
+            Value::U64(_) => 8,
+            Value::U128(_) => 16,
+            Value::U256(_) => 32,
+            Value::String(s) => s.len(),
+            Value::Boolean(_) => 1,
+            Value::Range(start, end, _) => start.get_memory_usage() + end.get_memory_usage(),
+            Value::Blob(b) => b.len(),
+            Value::Opaque(_) => 8
+        }
+    }
+
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {

@@ -227,6 +227,50 @@ impl ValueCell {
         Ok(biggest_depth)
     }
 
+    pub fn get_memory_usage(&self, max_memory: usize) -> Result<usize, ValueError> {
+        let mut memory = 0;
+        let mut stack = vec![Path::Borrowed(self)];
+        while let Some(next) = stack.pop() {
+            let handle = next.as_ref();
+            let value = handle.as_value();
+            match value {
+                ValueCell::Default(v) => memory += v.get_memory_usage(),
+                ValueCell::Array(values) => {
+                    for value in values {
+                        stack.push(Path::Wrapper(value.clone()));
+                    }
+                },
+                ValueCell::Struct(fields, _) => {
+                    for field in fields {
+                        stack.push(Path::Wrapper(field.clone()));
+                    }
+                },
+                ValueCell::Optional(opt) => {
+                    if let Some(value) = opt {
+                        stack.push(Path::Wrapper(value.clone()));
+                    }
+                },
+                ValueCell::Map(map) => {
+                    for (k, v) in map {
+                        stack.push(Path::Owned(k.clone()));
+                        stack.push(Path::Wrapper(v.clone()));
+                    }
+                },
+                ValueCell::Enum(fields, _) => {
+                    for field in fields {
+                        stack.push(Path::Wrapper(field.clone()));
+                    }
+                },
+            };
+
+            if memory > max_memory {
+                return Err(ValueError::MaxMemoryReached);
+            }
+        }
+
+        Ok(memory)
+    }
+
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {

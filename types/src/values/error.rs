@@ -36,4 +36,6 @@ pub enum ValueError {
     InvalidPrimitiveType,
     #[error("Invalid unknown type")]
     UnknownType,
+    #[error("max memory reached")]
+    MaxMemoryReached,
 }
