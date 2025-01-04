@@ -73,7 +73,7 @@ fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturn
         .into_owned()
         .to_string()?;
 
-    if !msg.chars().all(char::is_alphanumeric) {
+    if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);
     }
 
