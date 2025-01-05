@@ -1749,6 +1749,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "thiserror 2.0.9",
+ "typed-arena",
  "xelis-ast 0.1.0",
  "xelis-types 0.1.0",
 ]

@@ -53,21 +53,21 @@ pub enum Literal<'a> {
     Null,
 }
 
-fn leak_str(s: &str) -> &'static str {
-    Box::leak(s.to_string().into_boxed_str())
-}
+// fn leak_str(s: &str) -> &'static str {
+//     Box::leak(s.to_string().into_boxed_str())
+// }
 
-impl<'a> Token<'a> {
-    pub fn into_owned(self) -> Token<'static> {
-        use Token::*;
-        match self {
-            Identifier(s) => Identifier(leak_str(s)),
-            Value(Literal::String(cow)) => Value(Literal::String(Cow::Owned(cow.into_owned()))),
-            // Most other variants don't contain references, so they can be transmuted
-            other => unsafe { std::mem::transmute(other) }
-        }
-    }
-}
+// impl<'a> Token<'a> {
+//     pub fn into_owned(self) -> Token<'static> {
+//         use Token::*;
+//         match self {
+//             Identifier(s) => Identifier(leak_str(s)),
+//             Value(Literal::String(cow)) => Value(Literal::String(Cow::Owned(cow.into_owned()))),
+//             // Most other variants don't contain references, so they can be transmuted
+//             other => unsafe { std::mem::transmute(other) }
+//         }
+//     }
+// }
 
 impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
