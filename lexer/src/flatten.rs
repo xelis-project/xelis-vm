@@ -76,7 +76,14 @@ impl Flattener {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 4 {
             let import_path = parts[1].trim_matches('"').to_string();
-            let namespace = parts[3].to_string();
+            let namespace_with_suffix = parts[3];
+
+            // Trim the namespace at the first non-alphanumeric or `_` character
+            let namespace = namespace_with_suffix
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+
             Some((import_path, namespace))
         } else {
             None
