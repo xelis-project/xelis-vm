@@ -58,7 +58,7 @@ impl<'a> fmt::Display for Token<'a> {
         use Token::*;
         let output = match self {
             // Namespaces
-            EnterNamespace(ns) => return write!(f, "namespace {} {{", ns),
+            EnterNamespace => "namespace",
             ExitNamespace => "}",
 
             // Basic symbols
@@ -171,7 +171,7 @@ pub enum Token<'a> {
     Value(Literal<'a>),
 
     // Namespaces
-    EnterNamespace(&'a str),
+    EnterNamespace,
     ExitNamespace,
 
     // Types supported
@@ -327,7 +327,8 @@ impl Token<'_> {
             "const" => Const,
             "entry" => Entry,
             "fn" => Function,
-
+            
+            "namespace" => EnterNamespace,
             "return" => Return,
             "if" => If,
             "else" => Else,

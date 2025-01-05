@@ -29,6 +29,7 @@ use xelis_types::{Type, Value};
 use xelis_vm::VM;
 use xelis_ast::*;
 use xelis_abi::abi_from_parse;
+use xelis_lexer::Flattener;
 
 pub struct Silex {
     environment: EnvironmentBuilder<'static>,
@@ -204,7 +205,6 @@ impl Silex {
 
     fn compile_internal(&self, code: &str, path: &str) -> anyhow::Result<Program> {
         let tokens = Lexer::new(code)
-            .with_path(path.to_string())
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 

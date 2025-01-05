@@ -1013,7 +1013,7 @@ impl<'a> Parser<'a> {
             trace!("token: {:?}", token);
 
             let expr = match token {
-                Token::EnterNamespace(_) |
+                Token::EnterNamespace |
                 Token::ExitNamespace => {
                     return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
                 },
@@ -2199,10 +2199,20 @@ impl<'a> Parser<'a> {
 
         while let Some(token) = self.next() {
             match token {
-                Token::EnterNamespace(ns) => {
-                    println!("statement namespace, entering {}", ns);
-                    context.enter_namespace(ns);
-                    println!("new path: {:?}", context.get_namespace());
+                Token::EnterNamespace => {
+                    match self.next() {
+                        Some(Token::Identifier(id)) => {
+                            println!("statement namespace, entering {}", id);
+                            context.enter_namespace(id);
+                            println!("new path: {:?}", context.get_namespace());
+                        },
+                        Some(t) => {
+                            return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(t)));
+                        },
+                        _ => {
+                            return Err(err!(self, ParserErrorKind::ExpectedToken));
+                        }
+                    }
                 },
                 Token::ExitNamespace => {
                     println!("statement exit");

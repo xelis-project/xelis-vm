@@ -31,7 +31,6 @@ use xelis_builder::Builder;
 
 pub fn abi_from_silex(code: &str, path: &str) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
-        .with_path(path.to_string())
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?;
 

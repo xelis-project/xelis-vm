@@ -130,10 +130,15 @@ fn test_import_common() {
 #[test]
 fn test_import_as() {
     let base_dir = env::current_dir().unwrap();
-    let test_file_path = base_dir.join("src").join("silex/import_as").join("main.slx");
+    let test_file_path = base_dir.join("src").join("silex/import_as/main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    // let code = fs::read_to_string(&test_file_path)
+    //     .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+
+    let mut flattener = Flattener::new();
+    let code = flattener.flatten(&test_file_path.display().to_string(), "main.slx").expect("failed to unwrap silex");
+    
+    println!("{:?}", code);
 
     let silex = Silex::new();
 
