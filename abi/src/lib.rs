@@ -27,6 +27,7 @@ use xelis_vm::VM;
 use xelis_ast::*;
 
 use xelis_parser::mapper::GlobalMapper;
+use xelis_builder::Builder;
 
 pub fn abi_from_silex(code: &str, path: &str) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
@@ -69,13 +70,37 @@ pub fn abi_from_parse(program: Program, mapper: &GlobalMapper, environment: &Env
                             (format!("field{}", i), field_type.clone())
                         }).collect();
 
+                        let builder = mapper
+                            .structs_in_namespace(path);
+
+                        let struct_field_names: Vec<&str> = builder
+                            .get_by_ref(&struct_type)?
+                            .names()
+                            .clone();
+
+                        let prefix = if path.is_empty() {
+                            "".to_string()
+                        } else {
+                            path.join("::") + "::"
+                        };
+
                         for (field_index, field_type) in struct_fields.iter().enumerate() {
                             flattened_params.push(serde_json::json!({
-                                "name": format!("{}_{}", name, field_type.0.to_string()),
+                                "name": format!("{}.{}", name, struct_field_names[field_index]),
                                 "type": field_type.1.to_string(),
+                                "internal_struct": 
+                                    format!("{}{}", prefix, builder.get_name_by_ref(&struct_type)?),  
                             }));
                         }
-                    }
+                    },
+                    Type::Enum(enum_type) => {
+                        // Represent enums as uint8 in ABI and include metadata
+                        flattened_params.push(serde_json::json!({
+                            "name": name.to_string(),
+                            "type": format!("uint8"),
+                            "internalType": format!("Enum {}", enum_type.id())
+                        }));
+                    },
                     _ => {
                         // Add non-struct parameter as is
                         flattened_params.push(serde_json::json!({

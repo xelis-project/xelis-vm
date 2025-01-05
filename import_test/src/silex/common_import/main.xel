@@ -1,15 +1,15 @@
-import "sub.xel"
-import "method.xel"
+import "sub.slx"
+import "method.slx"
 
 entry main() {
   return method()
 }
 
-struct MyType {
+struct Base_struct {
   first: u8,
   last: u64
 }
 
-entry other(address: u256, amount: u64, struct_test: MyType) {
+entry other(address: u256, amount: u64, struct_test: Base_struct) {
   return 0
 }

@@ -530,6 +530,7 @@ impl<'a> Parser<'a> {
             let expr = self.read_expression_delimited(&Token::Comma, context)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
+
             let t = self.get_type_from_expression(None, &expr, context)?.into_owned();
             types.push(t);
             parameters.push(expr);
@@ -2245,9 +2246,13 @@ impl<'a> Parser<'a> {
             };
         }
 
-        let program = Program::with(self.constants.into_iter().map(|(_, v)| v).collect(), self.global_mapper.structs().finalize(), self.global_mapper.enums().finalize(), 
+        let program = Program::with(
+            self.constants.into_iter().map(|(_, v)| v).collect(), 
+            self.global_mapper.flatten_structs(), 
+            self.global_mapper.flatten_enums(), 
             self.functions
         );
+
         Ok((program, self.global_mapper))
     }
 }

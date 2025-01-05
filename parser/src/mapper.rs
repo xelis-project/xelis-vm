@@ -1,6 +1,8 @@
 use crate::error::ParserError;
 use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager, NamespaceManager};
-use indexmap::IndexMap;
+use xelis_types::*;
+use xelis_builder::*;
+use indexmap::{IndexMap, IndexSet};
 use crate::ParserErrorKind;
 use std::borrow::Cow;
 
@@ -114,22 +116,22 @@ impl<'a> GlobalMapper<'a> {
         &current.functions_mapper
     }
 
-    pub fn structs_in_namespace(&mut self, namespace_path: &[&str]) -> &mut StructManager<'a> {
+    pub fn structs_in_namespace(&self, namespace_path: &[String]) -> &StructManager<'a> {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get_mut(&ns as &str).expect("Namespace Not Found");
+            current = current.namespaces.get(&ns as &str).expect("Namespace Not Found");
         }  
         
-        &mut current.struct_manager
+        &current.struct_manager
     }
 
-    pub fn enums_in_namespace(&mut self, namespace_path: &[&str]) -> &mut EnumManager<'a> {
+    pub fn enums_in_namespace(&self, namespace_path: &[String]) -> &EnumManager<'a> {
         let mut current = self;
         for ns in namespace_path {
-            current = current.namespaces.get_mut(&ns as &str).expect("Namespace Not Found");
+            current = current.namespaces.get(&ns as &str).expect("Namespace Not Found");
         }    
       
-        &mut current.enum_manager
+        &current.enum_manager
     }
 
     pub fn functions(&self) -> &FunctionMapper<'a> {
@@ -162,6 +164,41 @@ impl<'a> GlobalMapper<'a> {
 
     pub fn namespace_types_mut(&mut self) -> &mut NamespaceManager<'a> {
         &mut self.namespace_manager
+    }
+
+    pub fn flatten_structs(&self) -> IndexSet<StructType> {
+        let mut result = IndexSet::new();
+        self.collect_structs_recursive(&mut result);
+
+        println!("flattened structs: {:?}", result);
+
+        result
+    }
+
+    fn collect_structs_recursive(&self, result: &mut IndexSet<StructType>) {
+        // Add structs from the current namespace
+        result.extend(self.structs().finalize::<IndexSet<StructType>>());
+
+        // Recurse into nested namespaces
+        for (_, sub_namespace) in &self.namespaces {
+            sub_namespace.collect_structs_recursive(result);
+        }
+    }
+
+    pub fn flatten_enums(&self) -> IndexSet<EnumType> {
+        let mut result = IndexSet::new();
+        self.collect_enums_recursive(&mut result);
+        result
+    }
+
+    fn collect_enums_recursive(&self, result: &mut IndexSet<EnumType>) {
+        // Add enums from the current namespace
+        result.extend(self.enums().finalize::<IndexSet<EnumType>>());
+
+        // Recurse into nested namespaces
+        for (_, sub_namespace) in &self.namespaces {
+            sub_namespace.collect_enums_recursive(result);
+        }
     }
 }
 

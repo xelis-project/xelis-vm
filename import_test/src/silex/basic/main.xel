@@ -1,4 +1,4 @@
-import "util.xel"
+import "util.slx"
 
 entry main() {
     let a: u8 = 5

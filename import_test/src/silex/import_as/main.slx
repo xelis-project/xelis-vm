@@ -1,4 +1,4 @@
-import "app.xel" as app
+import "app.slx" as app
 
 entry main() {
   let v: app::mint::Deep_struct = app::mint::Deep_struct { value: 10 };
@@ -10,4 +10,8 @@ entry main() {
   println(d)
 
   return app::mint::deep_test()
+}
+
+entry other(ref: app::mint::Deep_struct) {
+  return 0
 }

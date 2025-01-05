@@ -1,9 +1,0 @@
-import "mint.xel" as mint;
-
-fn method() -> u64 {
-  return 0
-}
-
-entry odd() {
-  return 1
-}

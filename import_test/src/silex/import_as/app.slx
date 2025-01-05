@@ -1,0 +1,10 @@
+import "mint.slx" as mint;
+import "othermint.slx" as othermint;
+
+fn method() -> u64 {
+  return 0
+}
+
+entry odd() {
+  return 1
+}
