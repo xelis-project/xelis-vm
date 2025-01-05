@@ -22,10 +22,10 @@ pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()?;
     let value = stack.pop_stack()?;
-    manager.set_register(index as usize, value, context)?;
+    manager.set_register(index as usize, value)?;
 
     Ok(InstructionResult::Nothing)
 }
