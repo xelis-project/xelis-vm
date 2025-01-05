@@ -285,7 +285,7 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack()?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::FunctionCall(expr_on, id, params, ns) => {
+            Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
                     self.compile_expr(chunk, expr_on)?;
                 }
@@ -295,11 +295,7 @@ impl<'a> Compiler<'a> {
                 }
 
                 // Functions from the environment are system calls
-                let len = if ns.is_empty() {
-                    self.environment.get_functions().len()
-                } else {
-                    0
-                };
+                let len = self.environment.get_functions().len();
 
                 let return_value = if (*id as usize) < len {
                     chunk.emit_opcode(OpCode::SysCall);

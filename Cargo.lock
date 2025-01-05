@@ -1284,6 +1284,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
+
+[[package]]
 name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1755,6 +1761,7 @@ dependencies = [
  "indexmap",
  "log",
  "thiserror 2.0.9",
+ "typed-arena",
  "xelis-ast 0.1.0",
  "xelis-builder 0.1.0",
  "xelis-environment 0.1.0",

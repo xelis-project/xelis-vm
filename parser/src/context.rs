@@ -1,7 +1,9 @@
 use xelis_types::{IdentifierType, Type};
+use typed_arena::Arena;
 
 #[derive(Clone, Debug)]
 pub struct Context<'a> {
+    current_namespace: Vec<&'a str>,
     // scopes are used to store variables
     scopes: Vec<(&'a str, Type)>,
     // checkpoints are used to manage scopes
@@ -17,6 +19,7 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             // first is for constants
+            current_namespace: Vec::new(),
             scopes: Vec::new(),
             checkpoints: Vec::new(),
             max_variables_count: 0,
@@ -24,10 +27,22 @@ impl<'a> Context<'a> {
         }
     }
 
+    pub fn enter_namespace(&mut self, ns: &'a str) {
+        self.current_namespace.push(ns);
+    }
+
+    pub fn exit_namespace(&mut self) {
+        self.current_namespace.pop();
+    }
+
     // get the value type of a variable registered in scopes using its name
     pub fn get_type_of_variable<'b>(&'b self, key: &IdentifierType) -> Option<&'b Type> {
         self.scopes.get(*key as usize)
             .map(|v| &v.1)
+    }
+
+    pub fn get_namespace(&self) -> &Vec<&'a str> {
+        &self.current_namespace
     }
 
     // returns true if this variable name is registered in scopes

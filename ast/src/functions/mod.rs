@@ -137,20 +137,6 @@ impl FunctionType {
         }
     }
 
-    pub fn get_namespace(&self) -> Vec<String> {
-        match self {
-            FunctionType::Declared(f) => f.get_namespace(),
-            FunctionType::Entry(f) => f.get_namespace()
-        }
-    }
-
-    pub fn get_offset(&self) -> u16 {
-        match self {
-            FunctionType::Declared(f) => f.get_offset(),
-            FunctionType::Entry(f) => f.get_offset()
-        }
-    }
-
     // Set the statements of the function
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         match self {

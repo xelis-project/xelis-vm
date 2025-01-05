@@ -124,14 +124,12 @@ impl<'a> Function<'a> {
 }
 
 pub struct Parser<'a> {
-    current_namespace: Vec<&'a str>,
-    current_namespace_storage: Vec<String>,
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
     constants: HashMap<&'a str, ConstantDeclaration>,
     // All functions registered by the program
-    functions: IndexMap<String, Vec<FunctionType>>,
+    functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
     environment: &'a EnvironmentBuilder<'a>,
@@ -159,11 +157,9 @@ impl<'a> Parser<'a> {
     // Create a new parser with a list of tokens and the environment
     pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
         Self {
-            current_namespace: Vec::new(),
-            current_namespace_storage: Vec::new(),
             tokens: tokens.collect(),
             constants: HashMap::new(),
-            functions: IndexMap::new(),
+            functions: Vec::new(),
             global_mapper: GlobalMapper::with(environment),
             environment,
             disable_const_upgrading: false,
@@ -301,20 +297,23 @@ impl<'a> Parser<'a> {
                     loop {
                         match next {
                             Token::Identifier(id) => {
-                                let ns = self.global_mapper.get_namespace(&namespace_stack)?;
-
+                                let mut full_id = namespace_stack.join("::") + "::" + id;
                                 trace!("qualified namespace {}::{}", namespace_stack.join("::"), id);
-                                if let Ok(builder) = ns.structs().get_by_name(&id) {
+
+                                if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
                                     break Type::Struct(builder.get_type().clone());
-                                } else if let Ok(builder) = ns.enums().get_by_name(&id) {
+
+                                } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
                                     break Type::Enum(builder.get_type().clone());
-                                } else if let Ok(builder) = ns.namespace_types().get_by_name(&id) {
+
+                                } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(&full_id) {
                                     namespace_stack.push(id.to_string());
                                     while *self.peek()? == Token::Colon {
                                         self.advance()?;
                                     }
                                     next = self.advance()?;
                                     continue;
+                                    
                                 } else {
                                     return Err(err!(self, ParserErrorKind::UnexpectedToken(next)))
                                 }
@@ -427,8 +426,8 @@ impl<'a> Parser<'a> {
                 },
                 None => Cow::Borrowed(context.get_type_of_variable(var_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedMappedVariableId(*var_name)))?),
             },
-            Expression::FunctionCall(path, name, _, ns) => {
-                let f = self.get_function(*name, &ns)?; // need to make this work with expression namespaces
+            Expression::FunctionCall(path, name, _) => {
+                let f = self.get_function(*name)?;
                 let return_type = f.return_type();
                 match return_type {
                     Some(ref v) => Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?),
@@ -546,22 +545,21 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>, ns: &[String]) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let (mut parameters, types) = self.read_function_params(context)?;
-
-        let function_list = self.global_mapper.functions_in_namespace_mut(ns);
         
-        let id = function_list
+        let id = self.global_mapper
+            .functions()
             .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
         // Entry are only callable by external
-        let f = self.get_function(id, ns)?;
+        let f = self.get_function(id)?;
         if f.is_entry() {
             return Err(err!(self, ParserErrorKind::FunctionIsEntry))
         }
 
-        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters, ns.to_vec().clone()))
+        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
     }
 
     // Read fields of a constructor with the following syntax:
@@ -608,7 +606,7 @@ impl<'a> Parser<'a> {
     // struct_name { field_name: value1, field2: value2 }
     // If we have a field that has the same name as a variable we can pass it as following:
     // Example: struct_name { field_name, field2: value2 }
-    fn read_struct_constructor(&mut self, struct_type: StructType, ns: &[String], context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
         let fields = self.read_constructor_fields(context)?;
@@ -618,7 +616,7 @@ impl<'a> Parser<'a> {
         }
 
         // Now verify that it match our struct
-        let builder = self.global_mapper.get_namespace(&ns)?.structs().get_by_ref(&struct_type)
+        let builder = self.global_mapper.structs().get_by_ref(&struct_type)
             .map_err(|e| err!(self, e.into()))?;
         let mut fields_expressions = Vec::with_capacity(fields.len());
         for ((field_name, mut field_expr), (field_type, field_name_expected)) in fields.into_iter().zip(struct_type.fields().iter().zip(builder.names())) {
@@ -637,12 +635,11 @@ impl<'a> Parser<'a> {
     // Read an enum variant constructor with the following syntax:
     // enum_name::variant_name { field1: value1, field2: value2 }
     // Or if no fields: enum_name::variant_name
-    fn read_enum_variant_constructor(&mut self, enum_type: EnumType, ns: &[String], variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
 
         let (variant_id, has_fields) = {
-            let local_mapper = self.global_mapper.get_namespace(&ns)?;
-            let builder = local_mapper.enums()
+            let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
             let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
@@ -657,8 +654,7 @@ impl<'a> Parser<'a> {
             let fields = self.read_constructor_fields(context)?;
 
             // Now we verify that we have all fields needed
-            let local_mapper = self.global_mapper.get_namespace(&ns)?;
-            let builder = local_mapper.enums()
+            let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
 
@@ -715,7 +711,7 @@ impl<'a> Parser<'a> {
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
         } else if let Type::Enum(enum_type) = _type {
-            self.read_enum_variant_constructor(enum_type, &[], constant_name, context)
+            self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
             Err(err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
         }
@@ -960,14 +956,6 @@ impl<'a> Parser<'a> {
         Ok(collapse_queue.remove(0))
     }
 
-    fn refresh_namespace_refs(&mut self) {
-        self.current_namespace.clear();
-        self.current_namespace = self.current_namespace_storage
-            .iter()
-            .map(|s| unsafe { std::mem::transmute(s.as_str()) })
-            .collect();
-    }
-
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.read_expr(None, None, true, true, None, context)
@@ -997,7 +985,7 @@ impl<'a> Parser<'a> {
 
         let mut required_operator = false;
 
-        let local_path = &self.current_namespace_storage.clone();
+        let local_path = &context.get_namespace().clone();
 
         let mut namespace_stack: Vec<String> = Vec::new();
 
@@ -1107,34 +1095,53 @@ impl<'a> Parser<'a> {
                                 None | Some(QueueItem::Separator) => None,
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
-                            self.read_function_call(prev_expr, on_type, id, context, &self.current_namespace_storage.clone())?
+
+                            let full_name = if context.get_namespace().is_empty() {
+                                id
+                            } else {
+                                &(context.get_namespace().join("::") + "::" + id)
+                            };
+
+                            self.read_function_call(prev_expr, on_type, full_name, context)?
                         },
                         Ok(Token::Colon) => {
                             let mut next = token.clone();
                             let mut enum_type: Option<EnumType> = None;
+
+                            let local_ns = context.get_namespace();
+                            let context_prefix = if local_ns.is_empty() {
+                                ""
+                            } else {
+                                &(local_ns.join("::") + "::" + id)
+                            };
+
                             loop {
                                 match next {
                                     Token::Identifier(id) => {
-                                        let ns = self.global_mapper.get_namespace(&namespace_stack)?;
+                                        let full_id = &(context_prefix.to_owned() + &(namespace_stack.join("") + id));
 
                                         if enum_type.is_some() {
-                                            break self.read_enum_variant_constructor(enum_type.unwrap(), &namespace_stack, id, context)?;
-                                        } else if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                            break self.read_struct_constructor(builder.get_type().clone(), &namespace_stack, context)?;
-                                        } else if let Ok(builder) = ns.enums().get_by_name(&id) {
+                                            break self.read_enum_variant_constructor(enum_type.unwrap(), full_id, context)?;
+
+                                        } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                            break self.read_struct_constructor(builder.get_type().clone(), context)?;
+                                            
+                                        } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
                                             enum_type = Some(builder.get_type().clone());
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
                                             }
                                             next = self.advance()?;
                                             continue;
-                                        } else if let Ok(builder) = ns.namespace_types().get_by_name(&id) {
-                                            namespace_stack.push(id.to_string());
+
+                                        } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(&full_id) {
+                                            namespace_stack.push(id.to_string() + "::");
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
                                             }
                                             next = self.advance()?;
                                             continue;
+
                                         } else {
                                             match self.peek()? {
                                                 Token::ParenthesisOpen => {
@@ -1143,7 +1150,8 @@ impl<'a> Parser<'a> {
                                                         None | Some(QueueItem::Separator) => None,
                                                         _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                                                     };
-                                                    break self.read_function_call(prev_expr, on_type, id, context, &namespace_stack)?;
+
+                                                    break self.read_function_call(prev_expr, on_type, full_id, context)?;
                                                 }
                                                 Token::Colon => {
                                                     namespace_stack.clear();
@@ -1166,11 +1174,12 @@ impl<'a> Parser<'a> {
                                                             }
                                                         },
                                                         None => {
-                                                            let ns = self.global_mapper.get_namespace(&self.current_namespace_storage)?;
-                                                            if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                                                break self.read_struct_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), context)?;
-                                                            } else if let Ok(builder) = ns.enums().get_by_name(&id) {
-                                                                break self.read_enum_variant_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), id, context)?;
+                                                            if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                                                break self.read_struct_constructor(builder.get_type().clone(), context)?;
+                                                            
+                                                            } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
+                                                                break self.read_enum_variant_constructor(builder.get_type().clone(), full_id, context)?;
+                                                            
                                                             } else {
                                                                 return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                                             }
@@ -1202,17 +1211,27 @@ impl<'a> Parser<'a> {
                                     }
                                 },
                                 None => {
-                                    let ns = self.global_mapper.get_namespace(&self.current_namespace_storage)?;
-                                    if let Some(num_id) = context.get_variable_id(id) {
-                                        Expression::Variable(num_id)
-                                    } else if let Some(constant) = self.constants.get(id) {
-                                        Expression::Constant(constant.value.clone()) // at the moment, standalone constants can't be namespaced
-                                    } else if let Ok(builder) = ns.structs().get_by_name(&id) {
-                                        self.read_struct_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), context)?
-                                    } else if let Ok(builder) = ns.enums().get_by_name(&id) {
-                                        self.read_enum_variant_constructor(builder.get_type().clone(), &self.current_namespace_storage.clone(), id, context)?
+                                    let ns = context.get_namespace();
+                                    let full_id = if ns.is_empty() {
+                                        id
                                     } else {
-                                        return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
+                                        &(ns.join("::") + "::" + id)
+                                    };
+
+                                    if let Some(num_id) = context.get_variable_id(full_id) {
+                                        Expression::Variable(num_id)
+
+                                    } else if let Some(constant) = self.constants.get(full_id) {
+                                        Expression::Constant(constant.value.clone()) // at the moment, standalone constants can't be namespaced
+
+                                    } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                        self.read_struct_constructor(builder.get_type().clone(), context)?
+
+                                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
+                                        self.read_enum_variant_constructor(builder.get_type().clone(), full_id, context)?
+
+                                    } else {
+                                        return Err(err!(self, ParserErrorKind::UnexpectedVariable(full_id)))
                                     }
                                 }
                             }
@@ -1267,12 +1286,12 @@ impl<'a> Parser<'a> {
                             } else {
                                 // Read a variable access OR a function call
                                 let right_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
-                                if let Expression::FunctionCall(path, name, params, ns) = right_expr {
+                                if let Expression::FunctionCall(path, name, params) = right_expr {
                                     if path.is_some() {
                                         return Err(err!(self, ParserErrorKind::UnexpectedPathInFunctionCall))
                                     }
 
-                                    Expression::FunctionCall(Some(Box::new(value)), name, params, ns)
+                                    Expression::FunctionCall(Some(Box::new(value)), name, params)
                                 } else {
                                     Expression::Path(Box::new(value), Box::new(right_expr))
                                 }
@@ -1913,7 +1932,11 @@ impl<'a> Parser<'a> {
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a u64 value
      */
-    fn read_function(&mut self, entry: bool, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
+    fn read_function(
+        &mut self, 
+        entry: bool, 
+        context: &mut Context<'a>,
+    ) -> Result<(), ParserError<'a>> {
         trace!("Read function");
         context.begin_scope();
 
@@ -1963,12 +1986,22 @@ impl<'a> Parser<'a> {
             None
         };
 
+        // apply namespace locality prefix to the function name, for recognition in the final signature
+
+        let mut ns = context.get_namespace();
+        let full_name = if ns.is_empty() {
+            &[name].to_vec()
+        } else {
+            ns.push(name);
+            ns
+        };
+        
         let id = self.global_mapper
-            .functions_in_namespace_mut(&self.current_namespace_storage)
-            .register(name, for_type.clone(), parameters.clone(), return_type.clone())
+            .functions_mut()
+            .register(full_name, for_type.clone(), parameters.clone(), return_type.clone())
             .map_err(|e| err!(self, e.into()))?;
 
-        if self.has_function(id, &self.current_namespace_storage) {
+        if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
         }
 
@@ -1985,7 +2018,6 @@ impl<'a> Parser<'a> {
               new_params, 
               Vec::new(), 
               context.max_variables_count() as u16,
-              self.current_namespace_storage.clone(),
             )),
             false => FunctionType::Declared(DeclaredFunction::new(
                 for_type,
@@ -1993,15 +2025,12 @@ impl<'a> Parser<'a> {
                 new_params,
                 Vec::new(),
                 return_type.clone(),
-                0,
-                self.current_namespace_storage.clone(),
+                0
             ))
         };
 
-        let flat_namespace = self.current_namespace.join("::");
-
         // push function before reading statements to allow recursive calls
-        self.functions.entry(flat_namespace.clone()).or_insert_with(||Vec::new()).push(function);
+        self.functions.push(function);
 
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, &return_type)?;
@@ -2012,8 +2041,7 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoReturnFound))
         }
 
-        let last = self.functions.get_mut(&flat_namespace)
-            .expect("")
+        let last = self.functions
             .last_mut()
             .ok_or(err!(self, ParserErrorKind::UnknownError))?;
 
@@ -2024,30 +2052,20 @@ impl<'a> Parser<'a> {
     }
 
     // check if a function with the same signature exists
-    fn has_function(&self, id: u16, ns: &[String]) -> bool {
-        self.get_function(id, ns).is_ok()
+    fn has_function(&self, id: u16) -> bool {
+        self.get_function(id).is_ok()
     }
 
     // get a function using its identifier
-    fn get_function<'b>(&'b self, id: u16, ns: &'b [String]) -> Result<Function<'b>, ParserError<'a>> {
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
         let len = self.environment.get_functions().len();
 
         // the id is the index of the function in the functions array
-        let index = if !ns.is_empty() {
-            len + id as usize
-        } else {
-            id as usize
-        };
-
-        let ns_flat = ns.join("::");
-
+        let index = len + id as usize;
         if index < len {
             Ok(Function::Native(&self.environment.get_functions()[index]))
         } else {
-            if self.functions.get(&ns_flat.clone()).is_none() {
-                return Err(err!(self, ParserErrorKind::FunctionNotFound));
-            }
-            match self.functions.get(&ns_flat).expect("").get(index - len) {
+            match self.functions.get(index - len) {
                 Some(func) => {
                     Ok(Function::Program(func))
                 },
@@ -2059,12 +2077,9 @@ impl<'a> Parser<'a> {
     // Verify that a type name is not already used
     fn is_name_available(&self, name: &str) -> bool {
         trace!("Check if name is available: {}", name);
-        self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
-            .structs().get_by_name(name).is_err()
-            && self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
-                .enums().get_by_name(name).is_err()
-                && self.global_mapper.get_namespace(&self.current_namespace_storage).expect("Current Namespace Path is Invalid")
-                    .namespace_types().get_by_name(name).is_err()
+        self.global_mapper.structs().get_by_name(name).is_err()
+            && self.global_mapper.enums().get_by_name(name).is_err()
+                && self.global_mapper.namespace_types().get_by_name(name).is_err()
     }
 
     /**
@@ -2104,7 +2119,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        self.global_mapper.get_namespace_mut(&self.current_namespace_storage)?
+        self.global_mapper
             .structs_mut()
             .add(Cow::Borrowed(name), fields)
             .map_err(|e| err!(self, e.into()))?;
@@ -2119,7 +2134,7 @@ impl<'a> Parser<'a> {
      * - each variant name should start with a uppercase character
      * - each variant has a unique name
      */
-    fn read_enum(&mut self) -> Result<(), ParserError<'a>> {
+    fn read_enum(&mut self, context: &mut Context) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
         trace!("Read enum: {}", name);
 
@@ -2174,7 +2189,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::BraceClose)?;
 
-        self.global_mapper.get_namespace_mut(&self.current_namespace_storage)?
+        self.global_mapper
             .enums_mut()
             .add(Cow::Borrowed(name), variants)
             .map_err(|e| err!(self, e.into()))?;
@@ -2182,56 +2197,22 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    // TODO: add "namespace {}" token to accompany the EnterNamespace token,
-    /**
-     * Example: namespace App { entry main() { return 0; } }
-     */
-
-    fn read_namespace(&mut self) -> Result<(), ParserError<'a>> {
-        let name = self.next_identifier()?;
-        trace!("Read namespace: {}", name);
-    
-        self.enter_namespace(name.to_string())
-    }
-
-    /*
-    * handle explicit command to enter namespace i.e. when the Lexer passes a EnterNamespace(ns)
-    * token when processing "import as"
-    */
-    fn enter_namespace(&mut self, ns: String) -> Result<(), ParserError<'a>> {
-        trace!("Entering namespace: {}", ns);
-    
-        if !self.is_name_available(ns.as_str()) {
-            return Err(err!(self, ParserErrorKind::NamespaceUnavailable(ns.clone())))
-        }
-        
-        self.global_mapper.register_namespace(
-            &self.current_namespace_storage.clone(),
-            ns.to_string(),
-        ).or_else(|err| return Err(err));
-
-        self.current_namespace_storage.push(ns);
-        self.refresh_namespace_refs();
-    
-        Ok(())
-    }
-
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
     pub fn parse(mut self) -> Result<(Program, GlobalMapper<'a>), ParserError<'a>> {
         let mut context: Context = Context::new();
+
         while let Some(token) = self.next() {
             match token {
                 Token::EnterNamespace(ns) => {
                     println!("statement namespace, entering {}", ns);
-                    self.enter_namespace(ns);
-                    println!("new path: {:?}", self.current_namespace);
+                    context.enter_namespace(ns);
+                    println!("new path: {:?}", context.get_namespace());
                 },
                 Token::ExitNamespace => {
                     println!("statement exit");
-                    self.current_namespace_storage.pop();
-                    self.refresh_namespace_refs();
-                    println!("current path: {:?}", self.current_namespace);
+                    context.exit_namespace();
+                    println!("current path: {:?}", context.get_namespace());
                     continue;
                 },
                 Token::Import(_) => {
@@ -2241,15 +2222,15 @@ impl<'a> Parser<'a> {
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct()?,
-                Token::Enum => self.read_enum()?,
+                Token::Enum => self.read_enum(&mut context)?,
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };
         }
 
         let program = Program::with(
             self.constants.into_iter().map(|(_, v)| v).collect(), 
-            self.global_mapper.flatten_structs(), 
-            self.global_mapper.flatten_enums(), 
+            self.global_mapper.structs().finalize(), 
+            self.global_mapper.enums().finalize(), 
             self.functions
         );
 

@@ -216,17 +216,12 @@ impl Silex {
         // Collect all the available entry functions
         let mut entries = Vec::new();
         for (i, func) in program.functions().iter().enumerate() {
-            let path = &func.get_namespace();
-            let env_offset = if path.is_empty() {
-                self.environment.get_functions().len() as u16
-            } else {
-                0
-            };
+            let env_offset = self.environment.get_functions().len() as u16;
 
             if func.is_entry() {
                 let mapping = mapper
-                    .functions_in_namespace(path)
-                    .get_function(&(i as u16 + env_offset - func.get_offset()))
+                    .functions()
+                    .get_function(&(i as u16 + env_offset))
                     .unwrap();
 
                 let parameters: Vec<Parameter> = mapping

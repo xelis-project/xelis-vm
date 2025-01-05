@@ -443,9 +443,39 @@ impl<'a> Lexer<'a> {
             loop {
                 if let Ok(c) = self.advance() {
                     if c != ' ' {
-                        let value = self.read_string(c)?;
+                        while self.peek()? == ' ' {
+                            self.advance();
+                        }
 
-                        while self.peek().is_ok() && self.peek()? == ' ' {
+                        // must be parsable as a valid path string for &'a reference, or panic
+                        // read_string() caused borrowing issues from Cow before when trying to use
+                        // it as &'a str
+                        if self.peek()? == '"' {
+                            self.advance();
+                        } else {
+                            panic!("invalid slx import path"); // TODO: make lexer error for this
+                        }
+                        let value = self.read_while(|v| -> bool {
+                            *v == '_' 
+                                || *v == '.'
+                                || *v == '-'
+                                || *v == '/'
+                                || *v == '\\'
+                                || *v == ' '
+                                || *v == '~'
+                                || *v == '@'
+                                || *v == '$'
+                                || *v == '#'
+                                || *v == '+'
+                                || v.is_alphanumeric()
+                        }, diff)?;
+                        if self.peek()? == '"' {
+                            self.advance();
+                        } else {
+                            panic!("invalid slx import path"); // TODO: make lexer error for this
+                        }
+
+                        while self.peek()? == ' ' {
                             self.advance();
                         }
                         self.advance();
@@ -460,14 +490,13 @@ impl<'a> Lexer<'a> {
                             while self.peek()? == ' ' {
                                 self.advance();
                             }
-                            self.advance();
               
                             let ns = self.read_while(|v| -> bool {
                                 *v == '_' || v.is_ascii_alphanumeric()
                             }, diff)?;
                             
                             return Ok(TokenResult {
-                                token: Token::ImportAs(value.into_owned().clone(), ns.to_owned().clone()),
+                                token: Token::ImportAs(value, ns),
                                 line: self.line,
                                 column_start,
                                 column_end: self.column
@@ -475,7 +504,7 @@ impl<'a> Lexer<'a> {
                         }
 
                         return Ok(TokenResult {
-                            token: Token::Import(value.into_owned().clone()),
+                            token: Token::Import(value),
                             line: self.line,
                             column_start,
                             column_end: self.column
@@ -597,7 +626,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn process_import(&mut self, import: String, use_queue: bool) -> Result<(), LexerError> {
+    fn process_import(&mut self, import: &'a str, use_queue: bool) -> Result<(), LexerError> {
         trace!("Importing {}", import);
 
         let source_path = Path::new(&self.path).parent().expect("No Path Parent").join(&import);
@@ -676,14 +705,14 @@ impl<'a> Lexer<'a> {
             }
             match token.token {
                 Token::Import(import) => {
-                    match self.process_import(import.clone(), true) {
+                    match self.process_import(import, true) {
                         Err(e) => {return Err(e)},
                         _ => {},
                     }
                 },
                 Token::ImportAs(import, ns) => {
-                    tokens.push_back(Token::EnterNamespace(ns.to_string()));
-                    match self.process_import(import.clone(), true) {
+                    tokens.push_back(Token::EnterNamespace(ns));
+                    match self.process_import(import, true) {
                         Err(e) => {return Err(e)},
                         _ => {},
                     }
@@ -726,19 +755,19 @@ impl<'a> Iterator for Lexer<'a> {
             let result = match &token.unwrap() {
                 Token::Import(import) => {
                     // Process the import and queue its tokens
-                    match self.process_import(import.clone(), true) {
+                    match self.process_import(import, true) {
                         Ok(()) => self.next(),
                         Err(e) => return Some(Err(e)),
                     }
                 },
                 Token::ImportAs(import, ns) => {
                     self.token_queue.push_back(TokenResult {
-                        token: Token::EnterNamespace(ns.to_string()),
+                        token: Token::EnterNamespace(ns),
                         line: self.line,
                         column_start: self.column,
                         column_end: self.column,
                     });
-                    match self.process_import(import.clone(), true) {
+                    match self.process_import(import, true) {
                         Ok(()) => {
                           self.token_queue.push_back(TokenResult {
                               token: Token::ExitNamespace,

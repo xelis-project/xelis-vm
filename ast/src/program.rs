@@ -29,30 +29,12 @@ impl Program {
     }
 
     // Create a new program with constants, structures and functions
-    pub fn with(constants: IndexSet<ConstantDeclaration>, structures: IndexSet<StructType>, enums: IndexSet<EnumType>, functions: IndexMap<String, Vec<FunctionType>>) -> Self {
-        let mut flattened_functions = Vec::new();
-
-        let mut offset_tally = 0;
-
-        for (_, mut vec) in functions.into_iter() {
-            for func in &vec {
-                match func {
-                    Declared(f) => {
-                        flattened_functions.push(FunctionType::Declared(f.with_namespace_offset(offset_tally)));
-                    },
-                    Entry(f) => {
-                        flattened_functions.push(FunctionType::Entry(f.with_namespace_offset(offset_tally)));
-                    }
-                }
-            }
-            offset_tally += vec.len() as u16;
-        }
-
+    pub fn with(constants: IndexSet<ConstantDeclaration>, structures: IndexSet<StructType>, enums: IndexSet<EnumType>, functions: Vec<FunctionType>) -> Self {
         Program {
             constants,
             structures,
             enums,
-            functions: flattened_functions
+            functions
         }
     }
 

@@ -187,7 +187,7 @@ pub enum Token<'a> {
     Value(Literal<'a>),
 
     // Namespaces
-    EnterNamespace(String),
+    EnterNamespace(&'a str),
     ExitNamespace,
 
     // Types supported
@@ -265,8 +265,8 @@ pub enum Token<'a> {
 
     OperatorTernary,
 
-    Import(String),
-    ImportAs(String, String),
+    Import(&'a str),
+    ImportAs(&'a str, &'a str),
     From,
     As,
     ReturnType,
