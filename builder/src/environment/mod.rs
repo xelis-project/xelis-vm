@@ -63,7 +63,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register a structure in the environment
     // Panic if the structure name is already used
     pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) -> StructType {
-        let _type = self.struct_manager.build(Cow::Borrowed(name), fields).unwrap();
+        let _type = self.struct_manager.build(Cow::Borrowed(name), &Vec::new(), fields).unwrap();
         self.env.add_structure(_type.clone());
         _type
     }
@@ -71,7 +71,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register an enum in the environment
     // Panic if the enum name is already used
     pub fn register_enum(&mut self, name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) -> EnumType {
-        let _type = self.enum_manager.build(Cow::Borrowed(name), variants).unwrap();
+        let _type = self.enum_manager.build(Cow::Borrowed(name), &Vec::new(), variants).unwrap();
         self.env.add_enum(_type.clone());
         _type
     }

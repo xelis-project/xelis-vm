@@ -269,8 +269,8 @@ impl Silex {
         fn type_to_string(env: &EnvironmentBuilder, ty: &Type) -> String {
             match ty {
                 Type::Opaque(opaque) => env.get_opaque_name(opaque).unwrap().to_string(),
-                Type::Struct(ty) => env.get_struct_manager().get_name_by_ref(ty).unwrap().to_string(),
-                Type::Enum(ty) => env.get_enum_manager().get_name_by_ref(ty).unwrap().to_string(),
+                Type::Struct(ty) => env.get_struct_manager().get_name_by_ref(ty).unwrap().0.to_string(),
+                Type::Enum(ty) => env.get_enum_manager().get_name_by_ref(ty).unwrap().0.to_string(),
                 Type::Array(ty) => format!("{}[]", type_to_string(env, ty)),
                 Type::Optional(ty) => format!("optional<{}>", type_to_string(env, ty)),
                 _ => ty.to_string(),

@@ -246,25 +246,26 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn get_generic_type(&mut self) -> Result<Type, ParserError<'a>> {
+    fn get_generic_type(&mut self, context: &mut Context) -> Result<Type, ParserError<'a>> {
         trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
         let token = self.advance()?;
-        let inner = self.get_type_from_token(token)?;
+        let inner = self.get_type_from_token(context, token)?;
         Ok(inner)
     }
 
-    fn get_single_inner_type(&mut self) -> Result<Type, ParserError<'a>> {
+    fn get_single_inner_type(&mut self, context: &mut Context) -> Result<Type, ParserError<'a>> {
         trace!("Get single inner type");
-        let inner = self.get_generic_type()?;
+        let inner = self.get_generic_type(context)?;
         self.expect_token(Token::OperatorGreaterThan)?;
         Ok(inner)
     }
 
-    fn get_type_from_token(&mut self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
+    fn get_type_from_token(&mut self, context: &mut Context, token: Token<'a>) -> Result<Type, ParserError<'a>> {
         trace!("Get type from token: {:?}", token);
 
-        let mut namespace_stack: Vec<String> = Vec::new();
+        let local_ns = context.get_namespace();
+        let mut namespace_stack: Vec<&'a str> = Vec::new();
         Ok(match token {
             Token::Number(inner) => match inner {
                 NumberType::U8 => Type::U8,
@@ -276,17 +277,17 @@ impl<'a> Parser<'a> {
             },
             Token::String => Type::String,
             Token::Bool => Type::Bool,
-            Token::Optional => Type::Optional(Box::new(self.get_single_inner_type()?)),
-            Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
+            Token::Optional => Type::Optional(Box::new(self.get_single_inner_type(context)?)),
+            Token::Range => Type::Range(Box::new(self.get_single_inner_type(context)?)),
             Token::Map => {
-                let key = self.get_generic_type()?;
+                let key = self.get_generic_type(context)?;
                 if key.is_map() {
                     return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
                 }
 
                 self.expect_token(Token::Comma)?;
                 let token = self.advance()?;
-                let value = self.get_type_from_token(token)?;
+                let value = self.get_type_from_token(context, token)?;
                 self.expect_token(Token::OperatorGreaterThan)?;
 
                 Type::Map(Box::new(key), Box::new(value))
@@ -297,17 +298,16 @@ impl<'a> Parser<'a> {
                     loop {
                         match next {
                             Token::Identifier(id) => {
-                                let mut full_id = namespace_stack.join("::") + "::" + id;
                                 trace!("qualified namespace {}::{}", namespace_stack.join("::"), id);
 
-                                if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                if let Ok(builder) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
                                     break Type::Struct(builder.get_type().clone());
 
-                                } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
+                                } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
                                     break Type::Enum(builder.get_type().clone());
 
-                                } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(&full_id) {
-                                    namespace_stack.push(id.to_string());
+                                } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, &namespace_stack) {
+                                    namespace_stack.push(id);
                                     while *self.peek()? == Token::Colon {
                                         self.advance()?;
                                     }
@@ -324,11 +324,11 @@ impl<'a> Parser<'a> {
                         }
                     }
                 } else {
-                    if let Ok(builder) = self.global_mapper.structs().get_by_name(id) {
+                    if let Ok(builder) = self.global_mapper.structs().get_by_name(id, local_ns) {
                         Type::Struct(builder.get_type().clone())
-                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
+                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, local_ns) {
                         Type::Enum(builder.get_type().clone())
-                    } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id) {
+                    } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, local_ns) {
                         Type::Namespace(builder.get_type().clone())
                     } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                         Type::Opaque(ty.clone())
@@ -355,10 +355,10 @@ impl<'a> Parser<'a> {
      * - Struct (Structure with name that starts with a uppercase letter)
      * - T[] (where T is any above Type)
      */
-    fn read_type(&mut self) -> Result<Type, ParserError<'a>> {
+    fn read_type(&mut self, context: &mut Context) -> Result<Type, ParserError<'a>> {
         trace!("Read type");
         let token = self.advance()?;
-        let mut _type = self.get_type_from_token(token)?;
+        let mut _type = self.get_type_from_token(context, token)?;
 
         // support multi dimensional arrays
         loop {
@@ -687,7 +687,7 @@ impl<'a> Parser<'a> {
     // Read a constant from the environment
     fn read_type_constant(&mut self, token: Token<'a>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read type constant: {:?}", token);
-        let _type = self.get_type_from_token(token)?;
+        let _type = self.get_type_from_token(context, token)?;
         self.expect_token(Token::Colon)?;
         self.expect_token(Token::Colon)?;
 
@@ -987,7 +987,7 @@ impl<'a> Parser<'a> {
 
         let local_path = &context.get_namespace().clone();
 
-        let mut namespace_stack: Vec<String> = Vec::new();
+        let mut namespace_stack: Vec<&'a str> = Vec::new();
 
         while self.peek()
             .ok()
@@ -1118,15 +1118,13 @@ impl<'a> Parser<'a> {
                             loop {
                                 match next {
                                     Token::Identifier(id) => {
-                                        let full_id = &(context_prefix.to_owned() + &(namespace_stack.join("") + id));
-
                                         if enum_type.is_some() {
-                                            break self.read_enum_variant_constructor(enum_type.unwrap(), full_id, context)?;
+                                            break self.read_enum_variant_constructor(enum_type.unwrap(), id, context)?;
 
-                                        } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                        } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
                                             break self.read_struct_constructor(builder.get_type().clone(), context)?;
                                             
-                                        } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
+                                        } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
                                             enum_type = Some(builder.get_type().clone());
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
@@ -1134,8 +1132,8 @@ impl<'a> Parser<'a> {
                                             next = self.advance()?;
                                             continue;
 
-                                        } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(&full_id) {
-                                            namespace_stack.push(id.to_string() + "::");
+                                        } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, &namespace_stack) {
+                                            namespace_stack.push(id);
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
                                             }
@@ -1151,7 +1149,7 @@ impl<'a> Parser<'a> {
                                                         _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                                                     };
 
-                                                    break self.read_function_call(prev_expr, on_type, full_id, context)?;
+                                                    break self.read_function_call(prev_expr, on_type, id, context)?;
                                                 }
                                                 Token::Colon => {
                                                     namespace_stack.clear();
@@ -1174,11 +1172,11 @@ impl<'a> Parser<'a> {
                                                             }
                                                         },
                                                         None => {
-                                                            if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                                            if let Ok(builder) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
                                                                 break self.read_struct_constructor(builder.get_type().clone(), context)?;
                                                             
-                                                            } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
-                                                                break self.read_enum_variant_constructor(builder.get_type().clone(), full_id, context)?;
+                                                            } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
+                                                                break self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?;
                                                             
                                                             } else {
                                                                 return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
@@ -1211,27 +1209,22 @@ impl<'a> Parser<'a> {
                                     }
                                 },
                                 None => {
-                                    let ns = context.get_namespace();
-                                    let full_id = if ns.is_empty() {
-                                        id
-                                    } else {
-                                        &(ns.join("::") + "::" + id)
-                                    };
+                                    let local_ns = context.get_namespace();
 
-                                    if let Some(num_id) = context.get_variable_id(full_id) {
+                                    if let Some(num_id) = context.get_variable_id(id) {
                                         Expression::Variable(num_id)
 
-                                    } else if let Some(constant) = self.constants.get(full_id) {
+                                    } else if let Some(constant) = self.constants.get(id) {
                                         Expression::Constant(constant.value.clone()) // at the moment, standalone constants can't be namespaced
 
-                                    } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&full_id) {
+                                    } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id, local_ns) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
 
-                                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&full_id) {
-                                        self.read_enum_variant_constructor(builder.get_type().clone(), full_id, context)?
+                                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, local_ns) {
+                                        self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
 
                                     } else {
-                                        return Err(err!(self, ParserErrorKind::UnexpectedVariable(full_id)))
+                                        return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }
                                 }
                             }
@@ -1350,7 +1343,7 @@ impl<'a> Parser<'a> {
                     };
 
                     let left_type = self.get_type_from_expression(on_type, &prev_expr, context)?.into_owned();
-                    let right_type = self.read_type()?;
+                    let right_type = self.read_type(context)?;
 
                     if !left_type.is_castable_to(&right_type) {
                         return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
@@ -1616,7 +1609,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_token(Token::Colon)?;
-        let value_type = self.read_type()?;
+        let value_type = self.read_type(context)?;
 
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
@@ -1865,12 +1858,12 @@ impl<'a> Parser<'a> {
     }
 
     // Read the parameters for a function
-    fn read_parameters(&mut self) -> Result<Vec<(&'a str, Type)>, ParserError<'a>> {
+    fn read_parameters(&mut self, context: &mut Context) -> Result<Vec<(&'a str, Type)>, ParserError<'a>> {
         let mut parameters = Vec::new();
         while self.peek_is_identifier() {
             let name = self.next_identifier()?;
             self.expect_token(Token::Colon)?;
-            let value_type = self.read_type()?;
+            let value_type = self.read_type(context)?;
 
             trace!("Read parameter: `{}: {:?}`", name, value_type);
             parameters.push((name, value_type));
@@ -1943,7 +1936,7 @@ impl<'a> Parser<'a> {
         let token = self.advance()?;
         let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
-            let for_type = self.read_type()?;
+            let for_type = self.read_type(context)?;
 
             if !self.allow_fn_declaration_on_type(&for_type) {
                 return Err(err!(self, ParserErrorKind::InvalidFunctionType(for_type)))
@@ -1964,7 +1957,7 @@ impl<'a> Parser<'a> {
         };
 
         self.expect_token(Token::ParenthesisOpen)?;
-        let parameters = self.read_parameters()?;
+        let parameters = self.read_parameters(context)?;
         self.expect_token(Token::ParenthesisClose)?;
 
         if parameters.len() + for_type.is_some() as usize > u8::MAX as usize {
@@ -1981,7 +1974,7 @@ impl<'a> Parser<'a> {
             Some(Type::U64)
         } else if self.peek_is(Token::ReturnType) { // read returned type
             self.advance()?;
-            Some(self.read_type()?)
+            Some(self.read_type(context)?)
         } else {
             None
         };
@@ -1989,17 +1982,17 @@ impl<'a> Parser<'a> {
         // apply namespace locality prefix to the function name, for recognition in the final signature
 
         let mut ns = context.get_namespace();
-        let full_name = if ns.is_empty() {
-            &[name].to_vec()
+        let id = if ns.is_empty() {
+            self.global_mapper
+                .functions_mut()
+                .register(name, for_type.clone(), parameters.clone(), return_type.clone())
+                .map_err(|e| err!(self, e.into()))?
         } else {
-            ns.push(name);
-            ns
+            self.global_mapper
+                .functions_mut()
+                .register_qualified(name, ns, for_type.clone(), parameters.clone(), return_type.clone())
+                .map_err(|e| err!(self, e.into()))?
         };
-        
-        let id = self.global_mapper
-            .functions_mut()
-            .register(full_name, for_type.clone(), parameters.clone(), return_type.clone())
-            .map_err(|e| err!(self, e.into()))?;
 
         if self.has_function(id) {
             return Err(err!(self, ParserErrorKind::FunctionSignatureAlreadyExist)) 
@@ -2075,11 +2068,12 @@ impl<'a> Parser<'a> {
     }
 
     // Verify that a type name is not already used
-    fn is_name_available(&self, name: &str) -> bool {
-        trace!("Check if name is available: {}", name);
-        self.global_mapper.structs().get_by_name(name).is_err()
-            && self.global_mapper.enums().get_by_name(name).is_err()
-                && self.global_mapper.namespace_types().get_by_name(name).is_err()
+    fn is_name_available(&self, name: &str, context: &mut Context) -> bool {
+        let local_ns = context.get_namespace();
+        trace!("Check if name {} is available in namespace {}", name, local_ns.join("::"));
+        self.global_mapper.structs().get_by_name(name, local_ns).is_err()
+            && self.global_mapper.enums().get_by_name(name, local_ns).is_err()
+                && self.global_mapper.namespace_types().get_by_name(name, local_ns).is_err()
     }
 
     /**
@@ -2087,12 +2081,12 @@ impl<'a> Parser<'a> {
      * Rules:
      * - Structure name should start with a uppercase (ascii alphabet) character
      */
-    fn read_struct(&mut self) -> Result<(), ParserError<'a>> {
+    fn read_struct(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
         trace!("Read struct: {}", name);
 
         // Verify that we don't have a type with the same name
-        if !self.is_name_available(name) {
+        if !self.is_name_available(name, context) {
             return Err(err!(self, ParserErrorKind::TypeNameAlreadyUsed(name)))
         }
 
@@ -2107,7 +2101,7 @@ impl<'a> Parser<'a> {
         };
 
         self.expect_token(Token::BraceOpen)?;
-        let params = self.read_parameters()?;
+        let params = self.read_parameters(context)?;
         if params.len() > u8::MAX as usize {
             return Err(err!(self, ParserErrorKind::TooManyParameters))
         }
@@ -2121,7 +2115,7 @@ impl<'a> Parser<'a> {
 
         self.global_mapper
             .structs_mut()
-            .add(Cow::Borrowed(name), fields)
+            .add(Cow::Borrowed(name), context.get_namespace(), fields)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -2134,12 +2128,13 @@ impl<'a> Parser<'a> {
      * - each variant name should start with a uppercase character
      * - each variant has a unique name
      */
-    fn read_enum(&mut self, context: &mut Context) -> Result<(), ParserError<'a>> {
+    fn read_enum(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
         let name = self.next_identifier()?;
+        let local_ns = &context.get_namespace().clone();
         trace!("Read enum: {}", name);
 
         // Verify that we don't have a type with the same name
-        if !self.is_name_available(name) {
+        if !self.is_name_available(name, context) {
             return Err(err!(self, ParserErrorKind::TypeNameAlreadyUsed(name)))
         }
 
@@ -2165,7 +2160,7 @@ impl<'a> Parser<'a> {
 
             let fields = if self.peek_is(Token::BraceOpen) {
                 self.expect_token(Token::BraceOpen)?;
-                let fields = self.read_parameters()?;
+                let fields = self.read_parameters(context)?;
                 if fields.len() > u8::MAX as usize {
                     return Err(err!(self, ParserErrorKind::TooManyParameters))
                 }
@@ -2191,7 +2186,7 @@ impl<'a> Parser<'a> {
 
         self.global_mapper
             .enums_mut()
-            .add(Cow::Borrowed(name), variants)
+            .add(Cow::Borrowed(name), local_ns, variants)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -2221,7 +2216,7 @@ impl<'a> Parser<'a> {
                 Token::Const => self.read_const(&mut context)?,
                 Token::Function => self.read_function(false, &mut context)?,
                 Token::Entry => self.read_function(true, &mut context)?,
-                Token::Struct => self.read_struct()?,
+                Token::Struct => self.read_struct(&mut context)?,
                 Token::Enum => self.read_enum(&mut context)?,
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };

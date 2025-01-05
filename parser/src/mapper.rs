@@ -12,7 +12,7 @@ pub struct GlobalMapper<'a> {
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
     namespace_manager: NamespaceManager<'a>, // for management of namespace definitions at the current path
-    namespaces: IndexMap<String, GlobalMapper<'a>>, // for the nesting of other managers within
+    namespaces: IndexMap<&'a str, GlobalMapper<'a>>, // for the nesting of other managers within
 }
 
 impl<'a> GlobalMapper<'a> {
@@ -38,16 +38,12 @@ impl<'a> GlobalMapper<'a> {
         mapper
     }
 
-    pub fn register_namespace(&mut self, namespace_path: &[String], name: String) -> Result<&mut GlobalMapper<'a>, ParserError> {
+    pub fn register_namespace(&mut self, namespace: &Vec<&'a str>, name: &'a str) -> Result<&mut GlobalMapper<'a>, ParserError> {
         let mut current = self;
         
-        for ns in namespace_path {
-            current = current.namespaces.get_mut(ns.as_str())
-                .expect("Namespace Not Found");
-        }
-        
         current.namespace_manager.add(
-            Cow::Owned(name.clone()),
+            Cow::Borrowed(name),
+            namespace,
             Vec::new()
         ).or_else(|err| Err(ParserErrorKind::Any(err.into())));
         
@@ -94,7 +90,7 @@ impl<'a> GlobalMapper<'a> {
         Ok(current.namespaces.get_mut(name).expect("Namespace Not Found"))
     }
 
-    pub fn namespaces(&self) -> &IndexMap<String, GlobalMapper<'a>> {
+    pub fn namespaces(&self) -> &IndexMap<&'a str, GlobalMapper<'a>> {
         &self.namespaces
     }
 

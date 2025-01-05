@@ -45,6 +45,10 @@ impl<'a> Context<'a> {
         &self.current_namespace
     }
 
+    pub fn get_namespace_mut(&mut self) -> &mut Vec<&'a str> {
+        &mut self.current_namespace
+    }
+
     // returns true if this variable name is registered in scopes
     #[inline]
     pub fn has_variable(&self, key: &str) -> bool {

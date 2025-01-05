@@ -13,7 +13,7 @@ use crate::BuilderError;
 pub use function::*;
 pub use const_function::*;
 
-pub type IdMapper<'a> = Mapper<'a, Cow<'a, str>>;
+pub type IdMapper<'a> = Mapper<'a, (Cow<'a, str>, Vec<&'a str>)>;
 
 // VariableMapper is used to store the mapping between variable names and their identifiers
 // So we can reduce the memory footprint of the interpreter by using an incremented id
@@ -94,13 +94,25 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
     }
 
     // Register a new variable name
-    pub fn register(&mut self, name: T) -> Result<IdentifierType, BuilderError> {
-        if self.get(&name).is_ok() {
+    pub fn register(&mut self, key: T) -> Result<IdentifierType, BuilderError> {
+        if self.get(&key).is_ok() {
             return Err(BuilderError::MappingExists);
         }
 
         let id = self.next_id;
-        self.mappings.insert(name, id);
+        self.mappings.insert(key, id);
+
+        self.next_id += 1;
+        Ok(id)
+    }
+
+    pub fn register_qualified(&mut self, key: T) -> Result<IdentifierType, BuilderError> {
+        if self.get(&key).is_ok() {
+            return Err(BuilderError::MappingExists);
+        }
+
+        let id = self.next_id;
+        self.mappings.insert(key, id);
 
         self.next_id += 1;
         Ok(id)
