@@ -57,8 +57,13 @@ macro_rules! op_string {
                 (Value::String(a), Value::String(b)) => {
                     // Verify the final len is less than u32::MAX
                     let len = (a.len() as u32).checked_add(b.len() as u32);
-                    if len.is_none() {
-                        return Err(VMError::StringTooLarge);
+                    match len {
+                        Some(len) => {
+                            if len > u32::MAX {
+                                return Err(VMError::StringTooLarge);
+                            }
+                        }
+                        None => return Err(VMError::StringTooLarge)
                     }
 
                     Value::String(a.to_owned() $op b)

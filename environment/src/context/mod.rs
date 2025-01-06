@@ -40,8 +40,12 @@ pub struct Context<'ty, 'r> {
     // Max value depth allowed
     // This is used to prevent stack overflow attacks
     max_value_depth: usize,
+    // Max memory usage allowed
+    max_memory_usage: usize,
     // Current gas used in the execution
     current_gas: u64,
+    // Current memory used in the execution
+    current_memory: usize,
 }
 
 impl Default for Context<'_, '_> {
@@ -57,8 +61,10 @@ impl<'ty, 'r> Context<'ty, 'r> {
             data: HashMap::default(),
             max_gas: u64::MAX,
             current_gas: 0,
-            memory_price_per_byte: 0,
+            memory_price_per_byte: 1,
             max_value_depth: 16,
+            max_memory_usage: 1024 * 1024 * 128, // 128MB
+            current_memory: 0,
         }
     }
 
@@ -110,6 +116,33 @@ impl<'ty, 'r> Context<'ty, 'r> {
         }
 
         Ok(())
+    }
+
+    // Get the current memory usage
+    #[inline(always)]
+    pub fn current_memory_usage(&self) -> usize {
+        self.current_memory
+    }
+
+    // Get the max memory usage allowed
+    #[inline(always)]
+    pub fn max_memory_usage(&self) -> usize {
+        self.max_memory_usage
+    }
+
+    // Increase the memory usage by a specific amount
+    #[inline]
+    pub fn increase_memory_usage(&mut self, memory: usize) -> Result<(), EnvironmentError> {
+        self.current_memory = self.current_memory.checked_add(memory)
+            .ok_or(EnvironmentError::OutOfMemory)?;
+
+        Ok(())
+    }
+
+    // Decrease the memory usage by a specific amount
+    #[inline]
+    pub fn decrease_memory_usage(&mut self, memory: usize) {
+        self.current_memory = self.current_memory.saturating_sub(memory);
     }
 
     // Insert a value into the Context without checking the type

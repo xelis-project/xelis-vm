@@ -141,8 +141,8 @@ macro_rules! register_constants_min_max {
         let min_inner = Constant::Default(Value::$t(min));
         let max_inner = Constant::Default(Value::$t(max));
 
-        $env.register_constant(Type::$t, "MIN", Constant::Optional(Some(Box::new(min_inner))));
-        $env.register_constant(Type::$t, "MAX", Constant::Optional(Some(Box::new(max_inner))));
+        $env.register_constant(Type::$t, "MIN", min_inner);
+        $env.register_constant(Type::$t, "MAX", max_inner);
     };
 }
 

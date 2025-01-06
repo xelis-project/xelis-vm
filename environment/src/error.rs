@@ -38,4 +38,8 @@ pub enum EnvironmentError {
     Any(#[from] anyhow::Error),
     #[error("Out of memory")]
     OutOfMemory,
+    #[error("Expect {0}")]
+    Expect(String),
+    #[error("Invalid expect message, require alphanumeric chars only")]
+    InvalidExpect,
 }

@@ -4,6 +4,10 @@ use xelis_types::{Value, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("register max size reached")]
+    RegisterMaxSize,
+    #[error("register overflow")]
+    RegisterOverflow,
     #[error("invalid return value")]
     InvalidReturnValue,
     #[error("division by zero")]

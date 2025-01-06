@@ -86,6 +86,26 @@ impl<'a> Path<'a> {
         }
     }
 
+    // Get the sub value of the path
+    // This will return a new Path::Owned
+    #[inline(always)]
+    pub fn to_owned(&self) -> Path<'a> {
+        match self {
+            Self::Owned(v) => Self::Owned(v.clone()),
+            Self::Borrowed(v) => Self::Owned((*v).clone()),
+            Self::Wrapper(v) => Self::Owned(v.borrow().clone())
+        }
+    }
+
+    // Get the internal value
+    pub fn into_inner(self) -> ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Borrowed(v) => v.clone(),
+            Self::Wrapper(v) => v.into_inner()
+        }
+    }
+
     // Get the value of the path
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
@@ -94,6 +114,17 @@ impl<'a> Path<'a> {
             Self::Borrowed(v) => v.clone(),
             Self::Wrapper(v) => v.into_owned()
         }
+    }
+
+    // Make the path owned if the pointer is the same
+    pub fn make_owned_if_same_ptr(&mut self, other: &Path<'a>) {
+        if self.is_same_ptr(other) {
+            *self = other.to_owned();
+        }
+    }
+
+    pub fn is_wrapped(&self) -> bool {
+        matches!(self, Self::Wrapper(_))
     }
 
     // Get a reference to the value

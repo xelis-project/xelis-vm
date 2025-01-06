@@ -2,9 +2,13 @@ mod reader;
 
 use std::ops::{Deref, DerefMut};
 use xelis_bytecode::Chunk;
+use xelis_environment::Context;
 use xelis_types::Path;
 use super::{iterator::PathIterator, VMError};
 pub use reader::ChunkReader;
+
+// u16::MAX registers maximum
+const REGISTERS_SIZE: usize = u16::MAX as usize;
 
 // Manager for a chunk
 // It contains the reader and the stacks
@@ -54,12 +58,26 @@ impl<'a> ChunkManager<'a> {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: Path<'a>) {
-        if self.registers.len() <= index {
-            self.registers.push(value);
-        } else {
-            self.registers[index] = value;
+    pub fn set_register(&mut self, index: usize, value: Path<'a>, _: &mut Context) -> Result<(), VMError> {
+        if index >= REGISTERS_SIZE {
+            return Err(VMError::RegisterMaxSize);
         }
+        
+        // let memory = value.as_ref()
+        //     .get_memory_usage(context.max_memory_usage())?;
+
+        // context.increase_memory_usage(memory)?;
+
+        if self.registers.len() == index {
+            self.registers.push(value);
+        } else if self.registers.len() > index {
+            // let mut old = &mut self.registers[index];
+            self.registers[index] = value;
+        } else {
+            return Err(VMError::RegisterOverflow);
+        }
+
+        Ok(())
     }
 
     // Get a value from the registers

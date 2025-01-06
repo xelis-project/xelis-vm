@@ -57,7 +57,13 @@ pub enum ValidatorError<'a> {
     #[error("invalid entry id {0}")]
     InvalidEntryId(usize),
     #[error(transparent)]
-    ValueError(#[from] ValueError)
+    ValueError(#[from] ValueError),
+    #[error("unknown struct")]
+    UnknownStruct,
+    #[error("unknown enum")]
+    UnknownEnum,
+    #[error("string is too big")]
+    StringTooBig,
 }
 
 pub struct ModuleValidator<'a> {
@@ -95,7 +101,7 @@ impl<'a> ModuleValidator<'a> {
                     }
         
                     if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
-                        return Err(ValidatorError::TooManyStructs);
+                        return Err(ValidatorError::UnknownStruct);
                     }
 
                     for field in fields {
@@ -114,7 +120,7 @@ impl<'a> ModuleValidator<'a> {
                     }
 
                     if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
-                        return Err(ValidatorError::TooManyEnums);
+                        return Err(ValidatorError::UnknownEnum);
                     }
 
                     for field in fields {
@@ -170,11 +176,17 @@ impl<'a> ModuleValidator<'a> {
                             return Err(ValidatorError::InvalidRangeType);
                         }
 
-                        memory_usage += 4;
+                        memory_usage += 8;
                     },
                     Value::Null => memory_usage += 1,
                     Value::Boolean(_) => memory_usage += 1,
-                    Value::String(str) => memory_usage += str.len(),
+                    Value::String(str) => {
+                        if str.len() > u32::MAX as usize {
+                            return Err(ValidatorError::StringTooBig);
+                        }
+
+                        memory_usage += 8 + str.len();
+                    },
                     Value::U8(_) => memory_usage += 1,
                     Value::U16(_) => memory_usage += 2,
                     Value::U32(_) => memory_usage += 4,
