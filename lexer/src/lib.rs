@@ -61,7 +61,9 @@ pub struct Lexer<'a> {
     // Used to keep track of the depth of the generics <...>
     generic_depth: usize,
     // Track if the last parsed token was an identifier
-    accept_generic: bool
+    accept_generic: bool,
+    // Tab size setting, for accurate position tracking in the LSP
+    tab_size: u8,
 }
 
 impl<'a> Lexer<'a> {
@@ -74,8 +76,14 @@ impl<'a> Lexer<'a> {
             line: 1,
             column: 0,
             generic_depth: 0,
-            accept_generic: false
+            accept_generic: false,
+            tab_size: 4,
         }
+    }
+
+    pub fn with_tab_size(&mut self, tab: u8) -> Self {
+        self.tab_size = tab;
+        self
     }
 
     // peek the next character
@@ -393,13 +401,26 @@ impl<'a> Lexer<'a> {
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
-                '\n' | '\r' | '\t' => {
+                '\r' => {
                     debug!("Skipping whitespace");
-                    if c != '\t' {
-                        self.line += 1;
-                        self.column = 0;
-                        self.accept_generic = false;
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
                     }
+                    self.line += 1;
+                    self.column = 0;
+                    self.accept_generic = false;
+                    continue;
+                },
+                '\n' => {
+                    debug!("Skipping whitespace");
+                    self.line += 1;
+                    self.column = 0;
+                    self.accept_generic = false;
+                    continue;
+                }
+                '\t' => {
+                    debug!("Skipping whitespace");
+                    self.column += self.tab_size;
                     continue;
                 },
                 // skipped characters
