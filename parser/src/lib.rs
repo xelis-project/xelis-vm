@@ -2461,7 +2461,7 @@ mod tests {
         ];
     
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(&[], Type::U8, "MAX", Value::U8(u8::MAX).into());
+        env.register_constant(Type::U8, "MAX", Value::U8(u8::MAX).into());
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
@@ -2925,7 +2925,6 @@ mod tests {
                     Some(Box::new(Expression::Variable(0))),
                     0,
                     Vec::new(),
-                    &[]
                 ))
             )))
         ];
@@ -2972,7 +2971,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_structure(&[], "Foo", Vec::new());
+        env.register_structure("Foo", Vec::new());
         let parser = Parser::new(tokens, &env);
         let err = parser.parse().unwrap_err();
         assert!(
@@ -3381,7 +3380,7 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_structure(&[], "Message", vec![
+        env.register_structure("Message", vec![
             ("message_id", Type::U8),
             ("message", Type::String)
         ]);
@@ -3414,7 +3413,7 @@ mod tests {
     fn test_struct_cast_error() {
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_structure(&[], "Message", vec![
+        env.register_structure("Message", vec![
             ("message_id", Type::U8)
         ]);
 
@@ -3445,7 +3444,7 @@ mod tests {
     fn test_struct_optional() {
         // struct Message { message_id: u64 }
         let mut env = EnvironmentBuilder::default();
-        env.register_structure(&[], "Message", vec![("message_id", Type::U64)]);
+        env.register_structure("Message", vec![("message_id", Type::U64)]);
 
         // let msg: optional<Message> = null;
         // let id: u64 = msg.unwrap().message_id;
@@ -3494,7 +3493,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(&[], Type::U64, "MAX", Value::U64(u64::MAX).into());
+        env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX).into());
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
         assert_eq!(statements.len(), 1);
     }
@@ -3522,7 +3521,7 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_enum(&[], "Message", vec![
+        env.register_enum("Message", vec![
             ("HELLO", Vec::new()),
             ("WORLD", vec![("a", Type::U64)])
         ]);
@@ -3549,7 +3548,7 @@ mod tests {
     fn test_enum_operation() {
         // enum Either { Left, Right }
         let mut env = EnvironmentBuilder::new();
-        env.register_enum(&[], "Either", vec![
+        env.register_enum("Either", vec![
             ("Left", Vec::new()),
             ("Right", Vec::new())
         ]);
@@ -3585,7 +3584,7 @@ mod tests {
     fn test_enum_optional() {
         // enum Either { Left, Right }
         let mut env = EnvironmentBuilder::default();
-        env.register_enum(&[], "Either", vec![
+        env.register_enum("Either", vec![
             ("Left", Vec::new()),
             ("Right", Vec::new())
         ]);
@@ -3646,7 +3645,7 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_enum(&[], "Message", vec![
+        env.register_enum("Message", vec![
             ("HELLO", vec![("a", Type::U64)]),
             ("WORLD", vec![("b", Type::String)])
         ]);
@@ -3677,7 +3676,7 @@ mod tests {
     #[test]
     fn test_const_fn_call() {
         let mut env = EnvironmentBuilder::new();
-        env.register_const_function(&[], "test", Type::String, vec![("name", Type::String)], |params| {
+        env.register_const_function("test", Type::String, vec![("name", Type::String)], |params| {
             Ok(Constant::Default(Value::String(format!("hello {}", params[0].as_string()?))))
         });
 
