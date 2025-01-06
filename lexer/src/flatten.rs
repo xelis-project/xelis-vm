@@ -21,7 +21,6 @@ impl Flattener {
         let source_path = Path::new(&path).parent().expect("No Path Parent").join(&import);
         let source_str = source_path.display().to_string();
 
-        println!("{} : {} : {}", path, import, source_str);
         if self.imported_by.contains(&source_str) {
             return Err(format!("Circular dependency detected: {}", path));
         }
@@ -43,7 +42,6 @@ impl Flattener {
                 if let Some((import_path, namespace)) = self.extract_import_as(trimmed_line) {
                     let source_path = Path::new(&path).parent().expect("No Path Parent").join(&import_path);
                     let source_str = source_path.display().to_string();
-                    println!("NS || {} : {}", namespace, source_str);
                     flattened_code.push_str(&format!("namespace {} {{\n", namespace));
                     let resolved_code = self.flatten_source(&source_str, &import_path)?;
                     flattened_code.push_str(&resolved_code);
@@ -53,7 +51,6 @@ impl Flattener {
                 if let Some(import_path) = self.extract_import_path(trimmed_line) {
                     let source_path = Path::new(&path).parent().expect("No Path Parent").join(&import_path);
                     let source_str = source_path.display().to_string();
-                    println!("RAW || {}", source_str);
                     let resolved_code = self.flatten_source(&source_str, &import_path)?;
                     flattened_code.push_str(&resolved_code);
                 }
@@ -78,7 +75,6 @@ impl Flattener {
             let import_path = parts[1].trim_matches('"').to_string();
             let namespace_with_suffix = parts[3];
 
-            // Trim the namespace at the first non-alphanumeric or `_` character
             let namespace = namespace_with_suffix
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')

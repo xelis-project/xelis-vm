@@ -64,7 +64,7 @@ impl<'a> FunctionMapper<'a> {
         // Register the mappings
         self.mappings.insert(id.clone(), Function {
             name,
-            namespace: Vec::new(),
+            namespace: [""].to_vec(),
             on_type,
             parameters,
             return_type

@@ -12,122 +12,33 @@ pub struct GlobalMapper<'a> {
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
     namespace_manager: NamespaceManager<'a>, // for management of namespace definitions at the current path
-    namespaces: IndexMap<&'a str, GlobalMapper<'a>>, // for the nesting of other managers within
 }
 
 impl<'a> GlobalMapper<'a> {
     pub fn new() -> Self {
+        let mut namespace_manager = NamespaceManager::new();
+        namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
+
         Self {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
             enum_manager: EnumManager::new(),
-            namespace_manager: NamespaceManager::new(),
-            namespaces: IndexMap::new(),
+            namespace_manager,
         }
     }
 
     pub fn with(environment: &'a EnvironmentBuilder) -> Self {
+        let mut namespace_manager = NamespaceManager::new();
+        namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
+
         let mut mapper = Self {
             functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper()),
             struct_manager: StructManager::with_parent(environment.get_struct_manager()),
             enum_manager: EnumManager::with_parent(environment.get_enum_manager()),
-            namespace_manager: NamespaceManager::new(), // might need to change this
-            namespaces: IndexMap::new(),
+            namespace_manager,
         };
 
         mapper
-    }
-
-    pub fn register_namespace(&mut self, namespace: &Vec<&'a str>, name: &'a str) -> Result<&mut GlobalMapper<'a>, ParserError> {
-        let mut current = self;
-        
-        current.namespace_manager.add(
-            Cow::Borrowed(name),
-            namespace,
-            Vec::new()
-        ).or_else(|err| Err(ParserErrorKind::Any(err.into())));
-        
-        let new_namespace = current.namespaces
-            .entry(name)
-            .or_insert_with(|| GlobalMapper::new());
-        
-        Ok(new_namespace)
-    }
-
-    pub fn get_namespace(&self, namespace_path: &[String]) -> Result<&GlobalMapper<'a>, ParserError<'a>> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get(ns.as_str())
-                .expect("Namespace Not Found");
-        }
-        Ok(current)
-    }
-
-    pub fn get_namespace_at(&self, namespace_path: &[String], name: &str) -> Result<&GlobalMapper<'a>, ParserError<'a>> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get(ns.as_str())
-                .expect("Namespace Not Found");
-        }
-        Ok(current.namespaces.get(name).expect("Namespace Not Found"))
-    }
-
-    pub fn get_namespace_mut(&mut self, namespace_path: &[String]) -> Result<&mut GlobalMapper<'a>, ParserError<'a>> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get_mut(ns.as_str())
-                .expect("Namespace Not Found");
-        }
-        Ok(current)
-    }
-
-    pub fn get_namespace_mut_at(&mut self, namespace_path: &[String], name: &str) -> Result<&mut GlobalMapper<'a>, ParserError> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get_mut(ns.as_str())
-                .expect("Namespace Not Found");
-        }
-        Ok(current.namespaces.get_mut(name).expect("Namespace Not Found"))
-    }
-
-    pub fn namespaces(&self) -> &IndexMap<&'a str, GlobalMapper<'a>> {
-        &self.namespaces
-    }
-
-    pub fn functions_in_namespace_mut(&mut self, namespace_path: &[String]) -> &mut FunctionMapper<'a> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get_mut(ns.as_str()).expect("Namespace Not Found");
-        }
-
-        &mut current.functions_mapper
-    }
-
-    pub fn functions_in_namespace(&self, namespace_path: &[String]) -> &FunctionMapper<'a> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get(ns.as_str()).expect("Namespace Not Found");
-        }
-    
-        &current.functions_mapper
-    }
-
-    pub fn structs_in_namespace(&self, namespace_path: &[String]) -> &StructManager<'a> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace Not Found");
-        }  
-        
-        &current.struct_manager
-    }
-
-    pub fn enums_in_namespace(&self, namespace_path: &[String]) -> &EnumManager<'a> {
-        let mut current = self;
-        for ns in namespace_path {
-            current = current.namespaces.get(&ns as &str).expect("Namespace Not Found");
-        }    
-      
-        &current.enum_manager
     }
 
     pub fn functions(&self) -> &FunctionMapper<'a> {
@@ -154,47 +65,12 @@ impl<'a> GlobalMapper<'a> {
         &mut self.enum_manager
     }
 
-    pub fn namespace_types(&self) -> &NamespaceManager<'a> {
+    pub fn namespaces(&self) -> &NamespaceManager<'a> {
         &self.namespace_manager
     }
 
-    pub fn namespace_types_mut(&mut self) -> &mut NamespaceManager<'a> {
+    pub fn namespaces_mut(&mut self) -> &mut NamespaceManager<'a> {
         &mut self.namespace_manager
-    }
-
-    pub fn flatten_structs(&self) -> IndexSet<StructType> {
-        let mut result = IndexSet::new();
-        self.collect_structs_recursive(&mut result);
-
-        println!("flattened structs: {:?}", result);
-
-        result
-    }
-
-    fn collect_structs_recursive(&self, result: &mut IndexSet<StructType>) {
-        // Add structs from the current namespace
-        result.extend(self.structs().finalize::<IndexSet<StructType>>());
-
-        // Recurse into nested namespaces
-        for (_, sub_namespace) in &self.namespaces {
-            sub_namespace.collect_structs_recursive(result);
-        }
-    }
-
-    pub fn flatten_enums(&self) -> IndexSet<EnumType> {
-        let mut result = IndexSet::new();
-        self.collect_enums_recursive(&mut result);
-        result
-    }
-
-    fn collect_enums_recursive(&self, result: &mut IndexSet<EnumType>) {
-        // Add enums from the current namespace
-        result.extend(self.enums().finalize::<IndexSet<EnumType>>());
-
-        // Recurse into nested namespaces
-        for (_, sub_namespace) in &self.namespaces {
-            sub_namespace.collect_enums_recursive(result);
-        }
     }
 }
 

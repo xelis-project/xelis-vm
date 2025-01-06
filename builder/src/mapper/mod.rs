@@ -105,19 +105,7 @@ impl<'a, T: Clone + Eq + Hash + Debug> Mapper<'a, T> {
         self.next_id += 1;
         Ok(id)
     }
-
-    pub fn register_qualified(&mut self, key: T) -> Result<IdentifierType, BuilderError> {
-        if self.get(&key).is_ok() {
-            return Err(BuilderError::MappingExists);
-        }
-
-        let id = self.next_id;
-        self.mappings.insert(key, id);
-
-        self.next_id += 1;
-        Ok(id)
-    }
-
+    
     pub fn count(&self) -> usize {
         self.parent.map_or(0, |p| p.count()) + self.mappings.len()
     }

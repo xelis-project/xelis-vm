@@ -145,7 +145,7 @@ fn test_import_as() {
     match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
-            let res = run_code_id(&silex, &program.module, 4);
+            let res = run_code_id(&silex, &program.module, 6);
             assert_eq!(res, Value::U64(25));
         }
         Err(err) => {

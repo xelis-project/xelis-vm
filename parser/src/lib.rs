@@ -306,7 +306,7 @@ impl<'a> Parser<'a> {
                                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
                                     break Type::Enum(builder.get_type().clone());
 
-                                } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, &namespace_stack) {
+                                } else if let Ok(builder) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
                                     namespace_stack.push(id);
                                     while *self.peek()? == Token::Colon {
                                         self.advance()?;
@@ -328,7 +328,7 @@ impl<'a> Parser<'a> {
                         Type::Struct(builder.get_type().clone())
                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, local_ns) {
                         Type::Enum(builder.get_type().clone())
-                    } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, local_ns) {
+                    } else if let Ok(builder) = self.global_mapper.namespaces().get_by_name(id, local_ns) {
                         Type::Namespace(builder.get_type().clone())
                     } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                         Type::Opaque(ty.clone())
@@ -545,21 +545,42 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, ns: &Vec<&'a str>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         let (mut parameters, types) = self.read_function_params(context)?;
         
+        let local_name = if ns.is_empty() {
+            name
+        } else {
+            &(ns.join("::") + "::" + name)
+        };
+
+        let context_ns = context.get_namespace();
+        let global_name = if context_ns.is_empty() {
+            local_name
+        } else {
+            &(context_ns.join("::") + "::" + local_name)
+        };
+
         let id = self.global_mapper
             .functions()
-            .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
-            .map_err(|e| err!(self, e.into()))?;
+            .get_compatible(Signature::new(local_name.to_owned(), on_type.cloned(), types.clone()), &mut parameters);
+
+        let final_id = if id.is_ok() {
+            id.map_err(|e| err!(self, e.into()))?
+        } else {
+            self.global_mapper
+                .functions()
+                .get_compatible(Signature::new(global_name.to_owned(), on_type.cloned(), types), &mut parameters)
+                .map_err(|e| err!(self, e.into()))?
+        };
 
         // Entry are only callable by external
-        let f = self.get_function(id)?;
+        let f = self.get_function(final_id)?;
         if f.is_entry() {
             return Err(err!(self, ParserErrorKind::FunctionIsEntry))
         }
 
-        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
+        Ok(Expression::FunctionCall(path.map(Box::new), final_id, parameters))
     }
 
     // Read fields of a constructor with the following syntax:
@@ -1102,7 +1123,7 @@ impl<'a> Parser<'a> {
                                 &(context.get_namespace().join("::") + "::" + id)
                             };
 
-                            self.read_function_call(prev_expr, on_type, full_name, context)?
+                            self.read_function_call(prev_expr, &Vec::new(), on_type, full_name, context)?
                         },
                         Ok(Token::Colon) => {
                             let mut next = token.clone();
@@ -1132,7 +1153,7 @@ impl<'a> Parser<'a> {
                                             next = self.advance()?;
                                             continue;
 
-                                        } else if let Ok(builder) = self.global_mapper.namespace_types().get_by_name(id, &namespace_stack) {
+                                        } else if let Ok(builder) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
                                             namespace_stack.push(id);
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
@@ -1149,7 +1170,7 @@ impl<'a> Parser<'a> {
                                                         _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                                                     };
 
-                                                    break self.read_function_call(prev_expr, on_type, id, context)?;
+                                                    break self.read_function_call(prev_expr, &namespace_stack, on_type, id, context)?;
                                                 }
                                                 Token::Colon => {
                                                     namespace_stack.clear();
@@ -2054,7 +2075,7 @@ impl<'a> Parser<'a> {
         let len = self.environment.get_functions().len();
 
         // the id is the index of the function in the functions array
-        let index = len + id as usize;
+        let index = id as usize;
         if index < len {
             Ok(Function::Native(&self.environment.get_functions()[index]))
         } else {
@@ -2073,7 +2094,7 @@ impl<'a> Parser<'a> {
         trace!("Check if name {} is available in namespace {}", name, local_ns.join("::"));
         self.global_mapper.structs().get_by_name(name, local_ns).is_err()
             && self.global_mapper.enums().get_by_name(name, local_ns).is_err()
-                && self.global_mapper.namespace_types().get_by_name(name, local_ns).is_err()
+                && self.global_mapper.namespaces().get_by_name(name, local_ns).is_err()
     }
 
     /**
@@ -2192,6 +2213,30 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn read_namespace(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
+        match self.next() {
+            Some(Token::Identifier(id)) => {
+                let local_ns = &context.get_namespace().clone();
+                println!("statement namespace, entering {}", id);
+                context.enter_namespace(id);
+                self.global_mapper
+                    .namespaces_mut()
+                    .add(Cow::Borrowed(id), local_ns, Vec::new())
+                    .map_err(|e| err!(self, e.into()))?;
+
+                self.expect_token(Token::BraceOpen)?;
+                println!("new path: {:?}", context.get_namespace());
+                Ok(())
+            },
+            Some(t) => {
+                return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(t)));
+            },
+            _ => {
+                return Err(err!(self, ParserErrorKind::ExpectedToken));
+            }
+        }
+    }
+
     // Parse the tokens and return a Program
     // The function mapper is also returned for external calls
     pub fn parse(mut self) -> Result<(Program, GlobalMapper<'a>), ParserError<'a>> {
@@ -2200,25 +2245,7 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.next() {
             match token {
                 Token::EnterNamespace => {
-                    match self.next() {
-                        Some(Token::Identifier(id)) => {
-                            println!("statement namespace, entering {}", id);
-                            context.enter_namespace(id);
-                            println!("new path: {:?}", context.get_namespace());
-                        },
-                        Some(t) => {
-                            return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(t)));
-                        },
-                        _ => {
-                            return Err(err!(self, ParserErrorKind::ExpectedToken));
-                        }
-                    }
-                },
-                Token::ExitNamespace => {
-                    println!("statement exit");
-                    context.exit_namespace();
-                    println!("current path: {:?}", context.get_namespace());
-                    continue;
+                    self.read_namespace(&mut context);
                 },
                 Token::Import(_) => {
                     continue;
@@ -2228,7 +2255,16 @@ impl<'a> Parser<'a> {
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct(&mut context)?,
                 Token::Enum => self.read_enum(&mut context)?,
-                token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
+                token => {
+                    let local_ns = context.get_namespace();
+                    if local_ns.is_empty() {
+                        return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
+                    } else {
+                        println!("statement exit");
+                        context.exit_namespace();
+                        println!("current path: {:?}", context.get_namespace());
+                    }
+                }
             };
         }
 
