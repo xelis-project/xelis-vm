@@ -395,9 +395,11 @@ impl<'a> Lexer<'a> {
             let token: TokenResult<'a> = match c {
                 '\n' | '\r' | '\t' => {
                     debug!("Skipping whitespace");
-                    self.line += 1;
-                    self.column = 0;
-                    self.accept_generic = false;
+                    if c != '\t' {
+                        self.line += 1;
+                        self.column = 0;
+                        self.accept_generic = false;
+                    }
                     continue;
                 },
                 // skipped characters
