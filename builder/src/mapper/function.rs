@@ -182,6 +182,8 @@ impl<'a> FunctionMapper<'a> {
             return parent.get_compatible(key, expressions);
         }
 
+        println!("yes it's here, sig: {:?}", key);
+
         Err(BuilderError::MappingNotFound)
     }
 
