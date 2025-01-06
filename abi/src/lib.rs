@@ -127,7 +127,11 @@ pub fn abi_from_parse(program: Program, mapper: &GlobalMapper, environment: &Env
 
             let name_info = mapping;
             let namespace = &mapping.namespace;
-            let prefix = if namespace.is_empty() {
+            let is_root = namespace.is_empty() || (
+                namespace.len() == 1 && namespace[0] == ""
+            );
+
+            let prefix = if is_root {
                 "".to_string()
             } else {
                 namespace.join("::") + "::"
