@@ -26,12 +26,9 @@ fn test_import_basic() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/basic").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 1);
             assert_eq!(res, Value::U64(255));
@@ -47,12 +44,9 @@ fn test_import_main() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/import_main").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code(&silex, &program.module);
             assert_eq!(res, Value::U64(0));
@@ -68,12 +62,9 @@ fn test_import_duplicate() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/duplicate_import").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 2);
             assert_eq!(res, Value::U64(u64::MAX));
@@ -89,12 +80,9 @@ fn test_import_implied() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/implied_import").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 2);
             assert_eq!(res, Value::U64(u64::MAX));
@@ -110,12 +98,9 @@ fn test_import_common() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/common_import").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
             let res = run_code_id(&silex, &program.module, 3);
@@ -132,17 +117,9 @@ fn test_import_as() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/import_as/main.slx");
 
-    // let code = fs::read_to_string(&test_file_path)
-    //     .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let mut flattener = Flattener::new();
-    let code = flattener.flatten(&test_file_path.display().to_string(), "main.slx").expect("failed to unwrap silex");
-    
-    println!("{:?}", code);
-
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
             let res = run_code_id(&silex, &program.module, 6);
@@ -159,12 +136,9 @@ fn test_circular_dependency() {
     let base_dir = env::current_dir().unwrap();
     let test_file_path = base_dir.join("src").join("silex/circular").join("main.slx");
 
-    let code = fs::read_to_string(&test_file_path)
-        .expect(&format!("Failed to read slx file: {:?}", test_file_path));
+    let mut silex = Silex::new();
 
-    let silex = Silex::new();
-
-    match silex.compile(&code, test_file_path.to_str().expect("Invaid utf-8")) {
+    match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             panic!("Circular Dependency Undetected");
         },

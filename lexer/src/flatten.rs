@@ -13,8 +13,10 @@ impl Flattener {
         }
     }
 
-    pub fn flatten(&mut self, path: &str, import: &str) -> Result<String, String> {
-        self.flatten_source(path, import)
+    pub fn flatten(&mut self, path: &str) -> Result<String, String> {
+        let std_path = Path::new(path);
+        let file_name = std_path.file_name().expect("No source file in path").to_string_lossy();
+        self.flatten_source(path, &file_name)
     }
 
     fn flatten_source(&mut self, path: &str, import: &str) -> Result<String, String> {

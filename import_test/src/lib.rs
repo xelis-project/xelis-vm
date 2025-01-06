@@ -32,6 +32,7 @@ use xelis_abi::abi_from_parse;
 use xelis_lexer::Flattener;
 
 pub struct Silex {
+    flattener: xelis_lexer::Flattener,
     environment: EnvironmentBuilder<'static>,
     logs_receiver: mpsc::Receiver<String>,
     is_running: AtomicBool,
@@ -196,6 +197,7 @@ impl Silex {
             });
 
         Self {
+            flattener: xelis_lexer::Flattener::new(),
             environment: environment,
             logs_receiver: receiver,
             is_running: AtomicBool::new(false),
@@ -252,8 +254,10 @@ impl Silex {
     }
 
     // Compile the code
-    pub fn compile(&self, code: &str, path: &str) -> Result<Program, String> {
-        match self.compile_internal(code, path) {
+    pub fn compile(&mut self, path: &str) -> Result<Program, String> {
+        let code = self.flattener.flatten(path)?;
+
+        match self.compile_internal(&code, path) {
             Ok(program) => Ok(program),
             Err(err) => Err(format!("{:#}", err)),
         }
