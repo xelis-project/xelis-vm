@@ -420,7 +420,6 @@ impl<'a> Lexer<'a> {
                 }
                 '\t' => {
                     debug!("Skipping whitespace");
-                    self.column += self.tab_size as usize;
                     continue;
                 },
                 // skipped characters
@@ -475,6 +474,8 @@ impl<'a> Lexer<'a> {
                     }
                 }
             };
+
+            println!("{:?}", token);
 
             self.accept_generic = token.token.accept_generic();
             return Ok(Some(token));

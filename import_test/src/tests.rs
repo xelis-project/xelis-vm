@@ -145,3 +145,13 @@ fn test_circular_dependency() {
         Err(err) => {},
     }
 }
+
+#[test]
+fn test_lexer_pos() {
+    let base_dir = env::current_dir().unwrap();
+    let test_file_path = base_dir.join("src").join("silex/lexer").join("main.slx");
+
+    let mut silex = Silex::new();
+
+    silex.compile(test_file_path.to_str().expect("Invaid utf-8"));
+}

@@ -1,0 +1,7 @@
+entry main() {
+  return 0
+}
+
+fn other(val: u64, alt: u8) -> u64 {
+  return 0
+}
