@@ -81,7 +81,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn with_tab_size(&mut self, tab: u8) -> Self {
+    pub fn with_tab_size(&mut self, tab: u8) -> &mut Self {
         self.tab_size = tab;
         self
     }
@@ -403,8 +403,8 @@ impl<'a> Lexer<'a> {
             let token: TokenResult<'a> = match c {
                 '\r' => {
                     debug!("Skipping whitespace");
-                    if chars.peek() == Some(&'\n') {
-                        chars.next();
+                    if self.peek()? == '\n' {
+                        self.next_char();
                     }
                     self.line += 1;
                     self.column = 0;
@@ -420,7 +420,7 @@ impl<'a> Lexer<'a> {
                 }
                 '\t' => {
                     debug!("Skipping whitespace");
-                    self.column += self.tab_size;
+                    self.column += self.tab_size as usize;
                     continue;
                 },
                 // skipped characters
