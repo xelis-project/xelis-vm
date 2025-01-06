@@ -49,8 +49,8 @@ pub fn abi_from_parse(program: Program, mapper: &GlobalMapper, environment: &Env
         let env_offset = environment.get_functions().len() as u16;
 
         if func.is_entry() {
-            let mapping = mapper
-                .functions()
+            let function_builder = mapper.functions();
+            let mapping = function_builder
                 .get_function(&(i as u16 + env_offset))
                 .unwrap();
 
@@ -124,9 +124,17 @@ pub fn abi_from_parse(program: Program, mapper: &GlobalMapper, environment: &Env
                     }
                 }
             }
-            
+
+            let name_info = mapping;
+            let namespace = &mapping.namespace;
+            let prefix = if namespace.is_empty() {
+                "".to_string()
+            } else {
+                namespace.join("::") + "::"
+            };
+
             let abi_entry = serde_json::json!({
-                "name": mapping.name.to_owned(),
+                "name": format!("{}{}", prefix, mapping.name.to_owned()),
                 "type": "entry",
                 "chunk_id": i as u16,
                 "params": flattened_params,
