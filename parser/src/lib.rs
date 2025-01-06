@@ -2255,7 +2255,7 @@ impl<'a> Parser<'a> {
                 Token::Entry => self.read_function(true, &mut context)?,
                 Token::Struct => self.read_struct(&mut context)?,
                 Token::Enum => self.read_enum(&mut context)?,
-                token => {
+                Token::BraceClose => {
                     let local_ns = context.get_namespace();
                     if local_ns.is_empty() {
                         return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
@@ -2264,6 +2264,9 @@ impl<'a> Parser<'a> {
                         context.exit_namespace();
                         println!("current path: {:?}", context.get_namespace());
                     }
+                },
+                token => {
+                    return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
                 }
             };
         }
