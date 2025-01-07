@@ -419,7 +419,7 @@ impl<'a> Lexer<'a> {
                     continue;
                 },
                 '\t' => {
-                    self.column += self.tab_size;
+                    self.column += self.tab_size as uszie;
                     self.accept_generic = false;
                     continue;
                 },
