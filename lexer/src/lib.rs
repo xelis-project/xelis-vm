@@ -362,7 +362,7 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn handle_escaped_space(c: char) {
+    fn handle_escaped_space(&mut self, c: char) -> Result<(), LexerError> {
         match c {
           '\r' => {
                 debug!("Skipping whitespace");
@@ -385,6 +385,7 @@ impl<'a> Lexer<'a> {
             },
             _ => {}
         }
+        Ok(())
     }
 
     // read a multi-line comment
@@ -392,7 +393,7 @@ impl<'a> Lexer<'a> {
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
             let c = self.advance()?;
-            handle_escaped_space(c);
+            self.handle_escaped_space(c);
 
             if c == '*' && self.peek()? == '/' {
                 self.advance()?;
@@ -429,7 +430,7 @@ impl<'a> Lexer<'a> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
                 '\r' | '\n' | '\t'  => {
-                    handle_escaped_space(c);
+                    self.handle_escaped_space(c);
                     continue;
                 },
                 // skipped characters
