@@ -470,8 +470,6 @@ impl<'a> Lexer<'a> {
                 }
             };
 
-            println!("{:?}", token);
-
             self.accept_generic = token.token.accept_generic();
             return Ok(Some(token));
         }
