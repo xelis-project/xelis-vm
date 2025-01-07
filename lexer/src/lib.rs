@@ -362,11 +362,38 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    fn handle_escaped_space(c: char) {
+        match c {
+          '\r' => {
+                debug!("Skipping whitespace");
+                if self.peek()? == '\n' {
+                    self.next_char();
+                }
+                self.line += 1;
+                self.column = 0;
+                self.accept_generic = false;
+            },
+            '\n' => {
+                debug!("Skipping whitespace");
+                self.line += 1;
+                self.column = 0;
+                self.accept_generic = false;
+            },
+            '\t' => {
+                self.column += self.tab_size as usize;
+                self.accept_generic = false;
+            },
+            _ => {}
+        }
+    }
+
     // read a multi-line comment
     // expected format is /* ... */
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
             let c = self.advance()?;
+            handle_escaped_space(c);
+
             if c == '*' && self.peek()? == '/' {
                 self.advance()?;
                 break;
@@ -401,26 +428,8 @@ impl<'a> Lexer<'a> {
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
-                '\r' => {
-                    debug!("Skipping whitespace");
-                    if self.peek()? == '\n' {
-                        self.next_char();
-                    }
-                    self.line += 1;
-                    self.column = 0;
-                    self.accept_generic = false;
-                    continue;
-                },
-                '\n' => {
-                    debug!("Skipping whitespace");
-                    self.line += 1;
-                    self.column = 0;
-                    self.accept_generic = false;
-                    continue;
-                },
-                '\t' => {
-                    self.column += self.tab_size as usize;
-                    self.accept_generic = false;
+                '\r' | '\n' | '\t'  => {
+                    handle_escaped_space(c);
                     continue;
                 },
                 // skipped characters
@@ -451,6 +460,8 @@ impl<'a> Lexer<'a> {
                     let v = self.advance()?;
                     if v == '/' {
                         self.skip_until(|c| *c == '\n')?;
+                        self.line += 1;
+                        self.column = 0;
                     } else {
                         self.skip_multi_line_comment()?;
                     }
