@@ -417,15 +417,10 @@ impl<'a> Lexer<'a> {
                     self.column = 0;
                     self.accept_generic = false;
                     continue;
-                }
-                '\t' => {
-                    debug!("Skipping whitespace");
-                    continue;
                 },
                 // skipped characters
-                ' ' | ';' => {
+                ' ' | ';'| '\t' => {
                     debug!("Skipping character: {}", c);
-                    // we just skip these characters
                     self.accept_generic = false;
                     continue;
                 },
