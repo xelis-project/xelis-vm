@@ -418,8 +418,13 @@ impl<'a> Lexer<'a> {
                     self.accept_generic = false;
                     continue;
                 },
+                '\t' => {
+                    self.column += self.tab_size;
+                    self.accept_generic = false;
+                    continue;
+                },
                 // skipped characters
-                ' ' | ';'| '\t' => {
+                ' ' | ';' => {
                     debug!("Skipping character: {}", c);
                     self.accept_generic = false;
                     continue;
