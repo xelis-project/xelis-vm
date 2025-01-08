@@ -62,8 +62,6 @@ pub struct Lexer<'a> {
     generic_depth: usize,
     // Track if the last parsed token was an identifier
     accept_generic: bool,
-    // Tab size setting, for accurate position tracking in the LSP
-    tab_size: u8,
 }
 
 impl<'a> Lexer<'a> {
@@ -77,13 +75,7 @@ impl<'a> Lexer<'a> {
             column: 0,
             generic_depth: 0,
             accept_generic: false,
-            tab_size: 4,
         }
-    }
-
-    pub fn with_tab_size(&mut self, tab: u8) -> &mut Self {
-        self.tab_size = tab;
-        self
     }
 
     // peek the next character
@@ -380,7 +372,6 @@ impl<'a> Lexer<'a> {
                 self.accept_generic = false;
             },
             '\t' => {
-                self.column += self.tab_size as usize;
                 self.accept_generic = false;
             },
             _ => {}
