@@ -113,7 +113,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     pub fn get_const_mapper(&self) -> &HashMap<Type, HashMap<&'a str, Constant>> {
-        &self.types_constants_functions
+        &self.types_constants
     }
 
     pub fn get_const_functions_mapper(&self) -> &ConstFunctionMapper<'a> {
