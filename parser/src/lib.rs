@@ -561,26 +561,28 @@ impl<'a> Parser<'a> {
             &(context_ns.join("::") + "::" + local_name)
         };
 
+        // Check for locally qualified ID with current namespace
         let id = self.global_mapper
             .functions()
             .get_compatible(Signature::new(local_name.to_owned(), on_type.cloned(), types.clone()), &mut parameters);
 
-        let final_id = if id.is_ok() {
+        // Check for locally qualified ID with global namespace
+        let qualified_id = if id.is_ok() {
             id.map_err(|e| err!(self, e.into()))?
         } else {
             self.global_mapper
                 .functions()
-                .get_compatible(Signature::new(global_name.to_owned(), on_type.cloned(), types), &mut parameters)
+                .get_compatible(Signature::new(global_name.to_owned(), on_type.cloned(), types.clone()), &mut parameters)
                 .map_err(|e| err!(self, e.into()))?
         };
 
         // Entry are only callable by external
-        let f = self.get_function(final_id)?;
+        let f = self.get_function(qualified_id)?;
         if f.is_entry() {
             return Err(err!(self, ParserErrorKind::FunctionIsEntry))
         }
 
-        Ok(Expression::FunctionCall(path.map(Box::new), final_id, parameters))
+        Ok(Expression::FunctionCall(path.map(Box::new), qualified_id, parameters))
     }
 
     // Read fields of a constructor with the following syntax:
@@ -1117,13 +1119,7 @@ impl<'a> Parser<'a> {
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
 
-                            let full_name = if context.get_namespace().is_empty() {
-                                id
-                            } else {
-                                &(context.get_namespace().join("::") + "::" + id)
-                            };
-
-                            self.read_function_call(prev_expr, &Vec::new(), on_type, full_name, context)?
+                            self.read_function_call(prev_expr, &Vec::new(), on_type, id, context)?
                         },
                         Ok(Token::Colon) => {
                             let mut next = token.clone();

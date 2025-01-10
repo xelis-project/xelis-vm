@@ -181,9 +181,7 @@ impl<'a> FunctionMapper<'a> {
         if let Some(parent) = self.parent {
             return parent.get_compatible(key, expressions);
         }
-
-        println!("yes it's here, sig: {:?}", key);
-
+        
         Err(BuilderError::MappingNotFound)
     }
 

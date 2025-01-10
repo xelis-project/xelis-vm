@@ -1,4 +1,5 @@
 fn deep_test() -> u64 {
+  println("Deep Test")
   return 25
 }
 
