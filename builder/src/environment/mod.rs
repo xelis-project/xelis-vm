@@ -112,6 +112,10 @@ impl<'a> EnvironmentBuilder<'a> {
         self.types_constants_functions.get_const_fn(for_type, fn_name)
     }
 
+    pub fn get_const_mapper(&self) -> &HashMap<Type, HashMap<&'a str, Constant>> {
+        &self.types_constants_functions
+    }
+
     pub fn get_const_functions_mapper(&self) -> &ConstFunctionMapper<'a> {
         &self.types_constants_functions
     }
