@@ -24,9 +24,19 @@ macro_rules! impl_opaque {
                 std::any::TypeId::of::<$type>()
             }
         }
+
+        impl $crate::opaque::Opaque for $type {
+            fn clone_box(&self) -> Box<dyn $crate::opaque::Opaque> {
+                Box::new(self.clone())
+            }
+
+            fn display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", $name)
+            }
+        }
     };
     // If true is added, impl json helper
-    ($name:expr, $type:ty, true) => {
+    ($name:expr, $type:ty, json) => {
         impl_opaque!($name, $type);
         impl $crate::opaque::traits::JSONHelper for $type {
             fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
