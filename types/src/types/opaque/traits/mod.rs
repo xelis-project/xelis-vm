@@ -27,6 +27,8 @@ macro_rules! impl_opaque {
     };
     // Base case: display
     ($name:expr, $type:ty) => {
+        impl_opaque!($name, $type, ty);
+
         impl $crate::opaque::Opaque for $type {
             fn clone_box(&self) -> Box<dyn $crate::opaque::Opaque> {
                 Box::new(self.clone())
