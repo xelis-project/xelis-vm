@@ -138,6 +138,12 @@ impl Display for OpaqueWrapper {
     }
 }
 
+impl<T: Opaque> From<T> for OpaqueWrapper {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::any::TypeId;
