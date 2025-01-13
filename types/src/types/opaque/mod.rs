@@ -156,8 +156,15 @@ mod tests {
     impl_opaque!(
         "CustomOpaque",
         CustomOpaque,
+        display,
         json
     );
+
+    impl Display for CustomOpaque {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "CustomOpaque({})", self.value)
+        }
+    }
 
     impl Serializable for CustomOpaque {
         fn get_size(&self) -> usize {
@@ -168,7 +175,7 @@ mod tests {
     #[test]
     fn test_opaque_wrapper() {
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
-        assert_eq!(opaque.to_string(), "CustomOpaque");
+        assert_eq!(opaque.to_string(), "CustomOpaque(42)");
         assert_eq!(opaque.get_type().as_type_id(), TypeId::of::<CustomOpaque>());
 
         // Test hashing
