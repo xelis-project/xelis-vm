@@ -2,7 +2,6 @@ mod r#type;
 
 use core::fmt;
 use std::{
-    any::TypeId,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
 };
@@ -16,9 +15,7 @@ pub use r#type::OpaqueType;
 pub mod traits;
 use traits::*;
 
-pub trait Opaque: DynHash + DynEq + JSONHelper + Serializable + Debug + Sync + Send {
-    fn get_type(&self) -> TypeId;
-
+pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -143,6 +140,8 @@ impl Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
+    use std::any::TypeId;
+
     use crate::{
         impl_opaque_json,
         register_opaque_json,
@@ -162,11 +161,17 @@ mod tests {
         }
     }
 
-    impl Opaque for CustomOpaque {
+    impl DynType for CustomOpaque {
+        fn get_type_name(&self) -> &'static str {
+            "CustomOpaque"
+        }
+
         fn get_type(&self) -> TypeId {
             TypeId::of::<CustomOpaque>()
         }
+    }
 
+    impl Opaque for CustomOpaque {
         fn clone_box(&self) -> Box<dyn Opaque> {
             Box::new(self.clone())
         }

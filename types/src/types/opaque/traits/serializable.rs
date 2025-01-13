@@ -12,7 +12,8 @@ pub trait Serializable {
     }
 
     // Check if the type is supported by the serialization
+    // By default, return false
     fn is_serializable(&self) -> bool {
-        true
+        false
     }
 }

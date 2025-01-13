@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::RwLock};
+use anyhow::anyhow;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use crate::opaque::OpaqueWrapper;
+
+use super::DynType;
 
 pub type DeserializeFn = dyn Fn(Value) -> Result<OpaqueWrapper, anyhow::Error> + Send + Sync;
 
@@ -13,12 +16,14 @@ lazy_static! {
 macro_rules! impl_opaque_json {
     ($name:expr, $type:ty) => {
         impl $crate::opaque::traits::JSONHelper for $type {
-            fn get_type_name(&self) -> &'static str {
-                $name
-            }
-    
             fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
                 Ok(serde_json::to_value(&self)?)
+            }
+
+            // Check if the type is supported by the JSON serialization
+            // By default, return false
+            fn is_json_supported(&self) -> bool {
+                true
             }
         }
     };
@@ -40,18 +45,16 @@ macro_rules! register_opaque_json {
     };
 }
 
-pub trait JSONHelper {
-    // used to identify the type in the JSON
-    // It must be unique across all types
-    // and match the string used in `register_json!`
-    fn get_type_name(&self) -> &'static str;
-
+pub trait JSONHelper: DynType {
     // Serialize the type to JSON
-    fn serialize_json(&self) -> Result<Value, anyhow::Error>;
+    fn serialize_json(&self) -> Result<Value, anyhow::Error> {
+        Err(anyhow!("Serialization not supported for type {}", self.get_type_name())
+            .context("Serialization not supported"))
+    }
 
     // Check if the type is supported by the JSON serialization
-    // By default, return true
+    // By default, return false
     fn is_json_supported(&self) -> bool {
-        true
+        false
     }
 }
