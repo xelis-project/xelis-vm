@@ -143,8 +143,8 @@ mod tests {
     use std::any::TypeId;
 
     use crate::{
-        impl_opaque_json,
-        register_opaque_json,
+        impl_opaque,
+        register_opaque_json
     };
     use super::*;
 
@@ -153,21 +153,11 @@ mod tests {
         value: i32,
     }
 
-    impl_opaque_json!("CustomOpaque", CustomOpaque);
+    impl_opaque!("CustomOpaque", CustomOpaque, true);
 
     impl Serializable for CustomOpaque {
         fn get_size(&self) -> usize {
             4
-        }
-    }
-
-    impl DynType for CustomOpaque {
-        fn get_type_name(&self) -> &'static str {
-            "CustomOpaque"
-        }
-
-        fn get_type(&self) -> TypeId {
-            TypeId::of::<CustomOpaque>()
         }
     }
 
