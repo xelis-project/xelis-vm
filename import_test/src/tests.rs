@@ -123,7 +123,7 @@ fn test_import_as() {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
             let res = run_code_id(&silex, &program.module, 6);
-            assert_eq!(res, Value::U64(25));
+            assert_eq!(res, Value::U64(52));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);

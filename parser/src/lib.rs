@@ -127,7 +127,7 @@ pub struct Parser<'a> {
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
-    constants: HashMap<&'a str, ConstantDeclaration>,
+    constants: HashMap<(&'a str, Vec<&'a str>), ConstantDeclaration>,
     // All functions registered by the program
     functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
@@ -1132,12 +1132,17 @@ impl<'a> Parser<'a> {
                                 &(local_ns.join("::") + "::" + id)
                             };
 
+                            namespace_stack.clear();
+
                             loop {
                                 match next {
                                     Token::Identifier(id) => {
                                         if enum_type.is_some() {
                                             break self.read_enum_variant_constructor(enum_type.unwrap(), id, context)?;
 
+                                        } else if let Some(constant) = self.constants.get(&(id, namespace_stack.clone())) {
+                                            break Expression::Constant(constant.value.clone());
+  
                                         } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
                                             break self.read_struct_constructor(builder.get_type().clone(), context)?;
                                             
@@ -1231,8 +1236,8 @@ impl<'a> Parser<'a> {
                                     if let Some(num_id) = context.get_variable_id(id) {
                                         Expression::Variable(num_id)
 
-                                    } else if let Some(constant) = self.constants.get(id) {
-                                        Expression::Constant(constant.value.clone()) // at the moment, standalone constants can't be namespaced
+                                    } else if let Some(constant) = self.constants.get(&(id, local_ns.clone())) {
+                                        Expression::Constant(constant.value.clone())
 
                                     } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id, local_ns) {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
@@ -1703,7 +1708,7 @@ impl<'a> Parser<'a> {
         let const_value = self.try_convert_expr_to_value(&mut value)
                 .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?;
 
-        self.constants.insert(name, ConstantDeclaration {
+        self.constants.insert((name, context.get_namespace().clone()), ConstantDeclaration {
             value: const_value,
             value_type
         });

@@ -9,7 +9,7 @@ entry main() {
   println("enum result:")
   println(d)
 
-  return app::mint::deep_test()
+  return app::mint::deep_test() + app::mint::CONSTANT
 }
 
 entry other(struct_param: app::mint::Deep_struct, enum_param: app::mint::Deep_enum) {

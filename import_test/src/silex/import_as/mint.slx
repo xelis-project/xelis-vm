@@ -1,3 +1,5 @@
+const CONSTANT: u64 = 27;
+
 fn deep_test() -> u64 {
   return 25
 }
