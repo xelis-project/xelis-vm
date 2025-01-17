@@ -296,6 +296,7 @@ impl<'a> Compiler<'a> {
 
                 // Functions from the environment are system calls
                 let len = self.environment.get_functions().len();
+
                 let return_value = if (*id as usize) < len {
                     chunk.emit_opcode(OpCode::SysCall);
                     chunk.write_u16(*id);

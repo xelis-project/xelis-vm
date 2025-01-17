@@ -12,4 +12,6 @@ members = [
     "environment",
     "builder",
     "compiler",
+    "import_test",
+    "abi",
 ]

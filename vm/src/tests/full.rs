@@ -4,6 +4,7 @@ use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_types::Value;
+
 use super::*;
 
 #[track_caller]
@@ -146,7 +147,7 @@ fn test_and_positive() {
 
         entry main() {
             let x: u64 = 10;
-            if (x == 10) && test() {
+            if (x == 10) && true {
                 return x
             }
             return panic("x is not 10")

@@ -8,3 +8,4 @@ log = "0.4.22"
 thiserror = "2.0.3"
 xelis-ast = { path = "../ast" }
 xelis-types = { path = "../types" }
+typed-arena = "2.0.2"

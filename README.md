@@ -139,13 +139,13 @@ Instead of having one file with all your code, you can have multiple files that 
 **Rules**
 - Have a unique alias if set
 - No circular import
-- ends with `.xel` if its a local import
+- ends with `.slx` if its a local import
 
 **Examples**
 
 `math` namespace
 ```rust
-import "math.xel" as math;
+import "math.slx" as math;
 ...
 math.sum(a, b)
 ```

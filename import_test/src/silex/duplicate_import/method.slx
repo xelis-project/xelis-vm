@@ -1,0 +1,5 @@
+import "generate.slx"
+
+fn method() -> u64 {
+  return generate()
+}

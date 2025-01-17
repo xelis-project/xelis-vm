@@ -1,11 +1,13 @@
 mod r#struct;
 mod r#enum;
+mod r#namespace;
 pub mod opaque;
 
 use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
 pub use r#struct::*;
 pub use r#enum::*;
+pub use r#namespace::*;
 use opaque::OpaqueType;
 
 use crate::{values::Value, Constant};
@@ -39,6 +41,7 @@ pub enum Type {
 
     Struct(StructType),
     Enum(EnumType),
+    Namespace(NamespaceType),
     #[serde(skip)]
     Opaque(OpaqueType),
 }
@@ -323,6 +326,13 @@ impl Type {
             _ => false
         }
     }
+
+    pub fn is_namespace(&self) -> bool {
+        match self {
+            Type::Namespace(_) => true,
+            _ => false
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -346,6 +356,7 @@ impl fmt::Display for Type {
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(id) => write!(f, "enum({:?})", id),
             Type::Opaque(id) => write!(f, "opaque({:?})", id),
+            Type::Namespace(ns) => write!(f, "namespace({}::{})", ns.full_path(), ns.id()),
         }
     }
 }
@@ -370,6 +381,12 @@ impl Equivalent<EnumType> for TypeId {
 
 impl Equivalent<StructType> for TypeId {
     fn equivalent(&self, key: &StructType) -> bool {
+        key.id() == self.0
+    }
+}
+
+impl Equivalent<NamespaceType> for TypeId {
+    fn equivalent(&self, key: &NamespaceType) -> bool {
         key.id() == self.0
     }
 }

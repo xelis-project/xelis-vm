@@ -3,6 +3,8 @@ use crate::Statement;
 use super::Parameter;
 
 #[derive(Debug, PartialEq, Eq)]
+
+#[derive(Clone)]
 pub struct DeclaredFunction {
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
@@ -13,14 +15,21 @@ pub struct DeclaredFunction {
 }
 
 impl DeclaredFunction {
-    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
+    pub fn new(
+        for_type: Option<Type>,
+        instance_name: Option<IdentifierType>, 
+        parameters: Vec<Parameter>, 
+        statements: Vec<Statement>, 
+        return_type: Option<Type>, 
+        variables_count: u16,
+    ) -> Self {
         DeclaredFunction {
             for_type,
             instance_name,
             parameters,
             statements,
             return_type,
-            variables_count
+            variables_count,
         }
     }
 
@@ -57,7 +66,7 @@ impl DeclaredFunction {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EntryFunction {
     parameters: Vec<Parameter>,
     statements: Vec<Statement>,
@@ -70,7 +79,7 @@ impl EntryFunction {
         EntryFunction {
             parameters,
             statements,
-            variables_count
+            variables_count,
         }
     }
 

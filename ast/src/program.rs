@@ -1,10 +1,11 @@
-use indexmap::IndexSet;
+use indexmap::{IndexSet, IndexMap};
 use xelis_types::{EnumType, StructType};
 use crate::ConstantDeclaration;
 
 use super::FunctionType;
+use super::FunctionType::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     // All constants declared
     constants: IndexSet<ConstantDeclaration>,
