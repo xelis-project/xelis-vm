@@ -481,17 +481,19 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Type>), ParserError<'a>> {
+    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
         trace!("Read function params");
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
-        let mut types: Vec<Type> = Vec::new();
+        let mut types: Vec<Option<Type>> = Vec::new();
         while self.peek_is_not(Token::ParenthesisClose) {
             let expr = self.read_expression_delimited(&Token::Comma, context)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
-            let t = self.get_type_from_expression(None, &expr, context)?.into_owned();
+            let t = self.get_type_from_expression_internal(None, &expr, context)?
+                .map(|v| v.into_owned());
+
             types.push(t);
             parameters.push(expr);
 
@@ -507,11 +509,12 @@ impl<'a> Parser<'a> {
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
     fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read function call {}", name);
         let (mut parameters, types) = self.read_function_params(context)?;
 
         let id = self.global_mapper
             .functions()
-            .get_compatible(Signature::new(name.to_owned(), on_type.cloned(), types), &mut parameters)
+            .get_compatible(name, on_type, &types, &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
         // Entry are only callable by external
@@ -1734,7 +1737,7 @@ impl<'a> Parser<'a> {
             match statement {
                 Statement::If(_, statements, else_statements) => {
                     // if its the last statement
-                    ok = Self::ends_with_return(statements)?;
+                    ok = Self::ends_with_return(&statements)?;
                     // if it ends with a return, else must also end with a return
                     if let Some(statements) = else_statements.as_ref().filter(|_| ok) {
                         ok = Self::ends_with_return(statements)?;
@@ -2086,11 +2089,11 @@ mod tests {
     #[track_caller]
     fn test_parser_statement(tokens: Vec<Token>, variables: Vec<(&str, Type)>) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
-        test_parser_statement_with(tokens, variables, &None, env)
+        test_parser_statement_with(tokens, variables, &None, &env)
     }
 
     #[track_caller]
-    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: EnvironmentBuilder) -> Vec<Statement> {
+    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: &EnvironmentBuilder) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -2104,7 +2107,7 @@ mod tests {
     #[track_caller]
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
-        test_parser_statement_with(tokens, variables, &Some(return_type), env)
+        test_parser_statement_with(tokens, variables, &Some(return_type), &env)
     }
 
     #[test]
@@ -2250,7 +2253,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         env.register_constant(Type::U8, "MAX", Value::U8(u8::MAX).into());
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     
         // Build the expected AST
@@ -3192,7 +3195,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3260,7 +3263,7 @@ mod tests {
             Token::Identifier("message_id")
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3281,7 +3284,7 @@ mod tests {
 
         let mut env = EnvironmentBuilder::new();
         env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX).into());
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3327,7 +3330,7 @@ mod tests {
             Token::Identifier("HELLO"),
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3363,7 +3366,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3400,7 +3403,7 @@ mod tests {
             Token::ParenthesisClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3456,7 +3459,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3483,7 +3486,7 @@ mod tests {
             Token::ParenthesisClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
         let Statement::Variable(variable) = &statements[0] else {
             panic!("Expected a variable statement");
@@ -3491,5 +3494,33 @@ mod tests {
 
         assert_eq!(variable.value_type, Type::String);
         assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
+    }
+
+    #[test]
+    fn test_optional_fn_param() {
+        let mut env = EnvironmentBuilder::new();
+        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], |_, _, _| { Ok(None) }, 0, None);
+
+        // test(null)
+        let tokens = vec![
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::Null),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        // test(10)
+        let tokens = vec![
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(10)),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }

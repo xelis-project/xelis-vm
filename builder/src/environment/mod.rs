@@ -54,8 +54,9 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Get a function by its signature
     // Panic if the function signature is not found
-    pub fn get_mut_function(&mut self, name: &str, on_type: Option<Type>, parameters: Vec<Type>) -> &mut NativeFunction {
-        let id = self.functions_mapper.get(&Signature::new(name.to_owned(), on_type.clone(), parameters)).unwrap();
+    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<Type>) -> &mut NativeFunction {
+        let signature = Signature::new(Cow::Borrowed(name), on_type.map(Cow::Owned), Cow::Owned(parameters));
+        let id = self.functions_mapper.get(&signature).unwrap();
         self.env.get_function_by_id_mut(id as usize).unwrap()
 
     }

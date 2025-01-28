@@ -1,5 +1,7 @@
 mod declared;
 
+use std::borrow::Cow;
+
 use xelis_types::{Type, IdentifierType};
 use super::Statement;
 
@@ -43,15 +45,15 @@ impl Parameter {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Signature {
-    name: String,
-    on_type: Option<Type>,
-    parameters: Vec<Type>
+pub struct Signature<'a> {
+    name: Cow<'a, str>,
+    on_type: Option<Cow<'a, Type>>,
+    parameters: Cow<'a, Vec<Type>>
 }
 
-impl Signature {
+impl<'a> Signature<'a> {
     #[inline(always)]
-    pub fn new(name: String, on_type: Option<Type>, parameters: Vec<Type>) -> Self {
+    pub fn new(name: Cow<'a, str>, on_type: Option<Cow<'a, Type>>, parameters: Cow<'a, Vec<Type>>) -> Self {
         Signature {
             name,
             on_type,
@@ -60,12 +62,12 @@ impl Signature {
     }
 
     #[inline(always)]
-    pub fn get_name(&self) -> &String {
+    pub fn get_name(&self) -> &str {
         &self.name
     }
 
     #[inline(always)]
-    pub fn get_on_type(&self) -> &Option<Type> {
+    pub fn get_on_type(&self) -> &Option<Cow<'a, Type>> {
         &self.on_type
     }
 

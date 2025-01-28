@@ -257,6 +257,10 @@ impl Type {
                 Type::Range(inner2) => inner.is_castable_to(inner2),
                 _ => false
             },
+            Type::Optional(inner) => match other {
+                Type::Optional(inner2) => inner.is_castable_to(inner2),
+                _ => inner.is_compatible_with(other)
+            },
             _ => false
         }
     }
