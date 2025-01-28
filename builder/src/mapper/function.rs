@@ -123,15 +123,7 @@ impl<'a> FunctionMapper<'a> {
                     if b.is_castable_to(a) {
                         cast_to_type = Some(a);
                     } else {
-                        if let Type::Optional(opt) = a {
-                            if !opt.is_castable_to(b) {
-                                trace!("Parameter {} {opt} is not compatible with {b}", i);
-                                continue 'main;
-                            }
-                        } else {
-                            trace!("Parameter {} is not compatible", i);
-                            continue 'main;
-                        }
+                        continue 'main;
                     }
                 }
 

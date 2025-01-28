@@ -218,7 +218,7 @@ impl Type {
                 Type::Any => true,
                 _ => false
             },
-            o => *o == *self || self.is_generic(),
+            o => *o == *self || self.is_generic() || self.is_castable_to(o),
         }
     }
 
