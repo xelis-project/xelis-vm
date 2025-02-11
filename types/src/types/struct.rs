@@ -56,9 +56,6 @@ impl Serialize for StructType {
 // Deserialize the struct type by providing only the identifier
 impl<'a> Deserialize<'a> for StructType {
     fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
-        Ok(Self(Arc::new(Struct {
-            id: IdentifierType::deserialize(deserializer)?,
-            fields: Vec::new()
-        })))
+        Ok(Self(Arc::new(Struct::deserialize(deserializer)?)))
     }
 }

@@ -147,3 +147,14 @@ impl Module {
         self.enums.get_index(index)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serde_module_json() {
+        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0],"enums":[],"structs":[{"fields":[{"type":"u64"}],"id":0}]}"#;
+        assert!(serde_json::from_str::<Module>(json).is_ok());
+    }
+}
