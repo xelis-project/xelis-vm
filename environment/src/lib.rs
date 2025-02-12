@@ -5,7 +5,7 @@ mod context;
 use std::any::TypeId;
 
 use indexmap::{IndexMap, IndexSet};
-use xelis_types::{EnumType, OpaqueType, StructType};
+use xelis_types::{EnumType, Opaque, OpaqueType, OpaqueWrapper, StructType};
 
 // Also re-export the necessary macro
 pub use better_any::tid;
@@ -68,6 +68,16 @@ impl Environment {
     #[inline(always)]
     pub fn get_opaques(&self) -> &IndexMap<TypeId, OpaqueType> {
         &self.opaques
+    }
+
+    // Create a new opaque wrapper from a given opaque data
+    pub fn create_opaque<T: Opaque>(&self, opaque: T) -> Result<OpaqueWrapper, EnvironmentError> {
+        let ty = TypeId::of::<T>();
+
+        self.opaques.get(&ty)
+            .copied()
+            .map(|ty| OpaqueWrapper::new(opaque, ty))
+            .ok_or(EnvironmentError::OpaqueTypeIdNotFound)
     }
 
     // Add a new function to the environment
