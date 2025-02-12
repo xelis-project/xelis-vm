@@ -1201,3 +1201,19 @@ fn test_opaque_fn_call() {
         Value::U64(0)
     );
 }
+
+#[test]
+fn test_shadow_variable() {
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let a: u64 = 20;
+            return a
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Value::U64(20)
+    );
+}
