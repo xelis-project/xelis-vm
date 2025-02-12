@@ -1,8 +1,10 @@
 mod r#struct;
 mod r#enum;
+mod opaque;
 
 pub use r#struct::*;
 pub use r#enum::*;
+pub use opaque::*;
 
 use std::borrow::Cow;
 use xelis_types::IdentifierType;

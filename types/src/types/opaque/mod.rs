@@ -1,19 +1,28 @@
-mod r#type;
+pub mod traits;
 
 use core::fmt;
 use std::{
+    any::TypeId,
     fmt::{Debug, Display},
-    hash::{Hash, Hasher},
+    hash::{Hash, Hasher}
 };
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
-
-use crate::ValueError;
-
-pub use r#type::OpaqueType;
-
-pub mod traits;
+use crate::{IdentifierType, ValueError};
 use traits::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OpaqueType(IdentifierType);
+
+impl OpaqueType {
+    pub fn new(id: IdentifierType) -> Self {
+        Self(id)
+    }
+
+    pub fn id(&self) -> IdentifierType {
+        self.0
+    }
+}
 
 pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
@@ -32,12 +41,15 @@ impl Hash for dyn Opaque {
 /// An Opaque value that can be used to store any type
 /// This allow environments to provide custom types to the VM
 #[derive(Debug, Hash)]
-pub struct OpaqueWrapper(Box<dyn Opaque>);
+pub struct OpaqueWrapper {
+    inner: Box<dyn Opaque>,
+    ty: OpaqueType
+}
 
 impl PartialEq for OpaqueWrapper {
     fn eq(&self, other: &Self) -> bool {
-        let other = other.0.as_eq();
-        self.0.as_ref()
+        let other = other.inner.as_eq();
+        self.inner.as_ref()
             .is_equal(other)
     }
 }
@@ -45,53 +57,67 @@ impl PartialEq for OpaqueWrapper {
 impl Eq for OpaqueWrapper {}
 
 impl OpaqueWrapper {
-    pub fn new<T: Opaque>(value: T) -> Self {
-        Self(Box::new(value))
+    /// Create a new OpaqueWrapper
+    /// OpaqueType id is the index of the type in the OpaqueManager
+    pub fn new<T: Opaque>(value: T, ty: OpaqueType) -> Self {
+        Self {
+            inner: Box::new(value),
+            ty
+        }
     }
 
+    /// Get the type of the OpaqueWrapper
     pub fn get_type(&self) -> OpaqueType {
-        OpaqueType::from(self.0.get_type())
+        self.ty
     }
 
+    /// Get the TypeId of the OpaqueWrapper
+    pub fn get_type_id(&self) -> TypeId {
+        self.inner.get_type()
+    }
+
+    // Downcast the OpaqueWrapper to a specific type
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
-        (*self.0).as_any()
+        (*self.inner).as_any()
             .downcast_ref::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 
+    // Downcast the OpaqueWrapper to a specific type
     pub fn as_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
-        (*self.0).as_any_mut()
+        (*self.inner).as_any_mut()
             .downcast_mut::<T>()
             .ok_or(ValueError::InvalidOpaqueTypeMismatch)
     }
 
+    // Downcast the OpaqueWrapper to a specific type
     pub fn into_inner<T: Opaque>(self) -> Result<T, ValueError> {
-        self.0.into_any()
+        self.inner.into_any()
             .downcast::<T>()
             .map(|value| *value)
             .map_err(|_| ValueError::InvalidOpaqueTypeMismatch)
     }
 
     pub fn is_serializable(&self) -> bool {
-        self.0.is_serializable()
+        self.inner.is_serializable()
     }
 
     pub fn get_size(&self) -> usize {
-        self.0.get_size()
+        self.inner.get_size()
     }
 
     pub fn inner(&self) -> &dyn Opaque {
-        self.0.as_ref()
+        self.inner.as_ref()
     }
 }
 
 impl Serialize for OpaqueWrapper {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut structure = serializer.serialize_struct("OpaqueWrapper", 2)?;
-        structure.serialize_field("type", &self.0.get_type_name())?;
+        structure.serialize_field("type", &self.inner.get_type_name())?;
 
-        let value = if self.0.is_json_supported() {
-            self.0.serialize_json()
+        let value = if self.inner.is_json_supported() {
+            self.inner.serialize_json()
                 .map_err(serde::ser::Error::custom)?
         } else {
             Value::String("JSON not supported".to_owned())
@@ -128,19 +154,16 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
 
 impl Clone for OpaqueWrapper {
     fn clone(&self) -> Self {
-        Self(self.0.clone_box())
+        Self {
+            inner: self.inner.clone_box(),
+            ty: self.ty
+        }
     }
 }
 
 impl Display for OpaqueWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.display(f)
-    }
-}
-
-impl<T: Opaque> From<T> for OpaqueWrapper {
-    fn from(value: T) -> Self {
-        Self::new(value)
+        self.inner.display(f)
     }
 }
 
@@ -180,9 +203,9 @@ mod tests {
 
     #[test]
     fn test_opaque_wrapper() {
-        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
         assert_eq!(opaque.to_string(), "CustomOpaque(42)");
-        assert_eq!(opaque.get_type().as_type_id(), TypeId::of::<CustomOpaque>());
+        assert_eq!(opaque.get_type_id(), TypeId::of::<CustomOpaque>());
 
         // Test hashing
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -195,9 +218,10 @@ mod tests {
 
     #[test]
     fn test_opaque_serde() {
-        register_opaque_json!("CustomOpaque", CustomOpaque);
+        let mut registry = JSON_REGISTRY.write().unwrap();
+        register_opaque_json!(registry, "CustomOpaque", CustomOpaque, 0);
 
-        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
         let json = serde_json::to_string(&opaque).unwrap();
         assert_eq!(json, r#"{"type":"CustomOpaque","value":{"value":42}}"#);
 
@@ -207,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_opaque_downcast() {
-        let mut opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let mut opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
         let _: &CustomOpaque = opaque.as_ref().unwrap();
         let _: &mut CustomOpaque = opaque.as_mut().unwrap();
         let _: CustomOpaque = opaque.into_inner().unwrap();
