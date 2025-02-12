@@ -1,6 +1,6 @@
 pub mod xstd;
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
@@ -80,9 +80,10 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register an opaque type in the environment
     // Panic if the opaque name is already used
     pub fn register_opaque<T: Opaque>(&mut self, name: &'a str) -> OpaqueType {
-        let ty = self.opaque_manager.build(name).unwrap();
-        self.env.add_opaque(ty);
-        ty
+        let ty = TypeId::of::<T>();
+        let opaque = self.opaque_manager.build(name).unwrap();
+        self.env.add_opaque(ty, opaque);
+        opaque
     }
 
     // Get an opaque type by name

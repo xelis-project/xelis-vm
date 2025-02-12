@@ -201,7 +201,12 @@ impl<'a> ModuleValidator<'a> {
                         memory_usage += blob.len();
                     },
                     Value::Opaque(opaque) => {
-                        if !self.environment.get_opaques().contains(&opaque.get_type()) {
+                        let valid = self.environment.get_opaques()
+                            .get(&opaque.get_type_id())
+                            .map(|v| v == &opaque.get_type())
+                            .unwrap_or(false);
+
+                        if !valid {
                             return Err(ValidatorError::InvalidOpaque);
                         }
 

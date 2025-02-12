@@ -2,7 +2,9 @@ mod error;
 mod function;
 mod context;
 
-use indexmap::IndexSet;
+use std::any::TypeId;
+
+use indexmap::{IndexMap, IndexSet};
 use xelis_types::{EnumType, OpaqueType, StructType};
 
 // Also re-export the necessary macro
@@ -22,7 +24,7 @@ pub struct Environment {
     // All enums provided by the Environment
     enums: IndexSet<EnumType>,
     // All opaques types provided by the Environment
-    opaques: IndexSet<OpaqueType>,
+    opaques: IndexMap<TypeId, OpaqueType>,
 }
 
 tid!(Environment);
@@ -33,7 +35,7 @@ impl Default for Environment {
             functions: Vec::new(),
             structures: IndexSet::new(),
             enums: IndexSet::new(),
-            opaques: IndexSet::new(),
+            opaques: IndexMap::new(),
         }
     }
 }
@@ -64,7 +66,7 @@ impl Environment {
 
     // Get all the registered opaques
     #[inline(always)]
-    pub fn get_opaques(&self) -> &IndexSet<OpaqueType> {
+    pub fn get_opaques(&self) -> &IndexMap<TypeId, OpaqueType> {
         &self.opaques
     }
 
@@ -93,8 +95,8 @@ impl Environment {
 
     // Add a new opaque type to the environment
     #[inline(always)]
-    pub fn add_opaque(&mut self, opaque: OpaqueType) {
-        self.opaques.insert(opaque);
+    pub fn add_opaque(&mut self, ty: TypeId, opaque: OpaqueType) {
+        self.opaques.insert(ty, opaque);
     }
 
     // Allow to change the cost of a function
