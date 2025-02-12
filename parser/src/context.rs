@@ -44,6 +44,7 @@ impl<'a> Context<'a> {
     // Get the variable identifier from its registered name
     pub fn get_variable_id(&self, key: &str) -> Option<IdentifierType> {
         // We go through our scopes in reverse order to get the last variable registered with the same name
+        // This is done to support variables names shadowing
         self.scopes.iter()
             .rev()
             .position(|(k, _)| *k == key)

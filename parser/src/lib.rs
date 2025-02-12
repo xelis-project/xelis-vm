@@ -1527,10 +1527,10 @@ impl<'a> Parser<'a> {
     fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
         let (name, value_type, value) = self.read_variable_internal(context, false)?;
         let id = if self.disable_shadowing_variables {
-            context.register_variable_unchecked(name, value_type.clone())
-        } else {
             context.register_variable(name, value_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+        } else {
+            context.register_variable_unchecked(name, value_type.clone())
         };
 
         Ok(DeclarationStatement {
