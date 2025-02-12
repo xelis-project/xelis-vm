@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn set_disable_const_upgrading(&mut self, value: bool) {
+    pub fn set_const_upgrading(&mut self, value: bool) {
         self.disable_const_upgrading = value;
     }
 
@@ -295,8 +295,7 @@ impl<'a> Parser<'a> {
                     Type::Enum(builder.get_type().clone())
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                     Type::Opaque(ty.clone())
-                }
-                else {
+                } else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
             },
@@ -1055,7 +1054,8 @@ impl<'a> Parser<'a> {
                                 // mostly an access to a struct field
                                 Some(t) => {
                                     if let Type::Struct(_type) = t {
-                                        let builder = self.global_mapper.structs().get_by_ref(_type)
+                                        let builder = self.global_mapper.structs()
+                                            .get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
                                         let id = builder.get_id_for_field(id)
                                             .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?;
