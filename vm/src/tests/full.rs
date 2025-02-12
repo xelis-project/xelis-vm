@@ -8,7 +8,7 @@ use super::*;
 
 #[track_caller]
 fn prepare_module(code: &str) -> (Module, Environment) {
-    prepare_module_with(code, EnvironmentBuilder::new())
+    prepare_module_with(code, EnvironmentBuilder::default())
 }
 
 #[track_caller]
