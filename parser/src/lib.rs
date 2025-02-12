@@ -134,6 +134,10 @@ pub struct Parser<'a> {
     environment: &'a EnvironmentBuilder<'a>,
     // Disable upgrading values to consts
     disable_const_upgrading: bool,
+    // Disable shadowing variables
+    // This check that the variable name is not already declared
+    // in the same scope or by a parent scope
+    disable_shadowing_variables: bool,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
     // Used for errors, we track the line and column
@@ -162,14 +166,21 @@ impl<'a> Parser<'a> {
             global_mapper: GlobalMapper::with(environment),
             environment,
             disable_const_upgrading: false,
+            disable_shadowing_variables: false,
             line: 0,
             column_start: 0,
             column_end: 0,
         }
     }
 
+    // Set the const upgrading to true or false
     pub fn set_const_upgrading(&mut self, value: bool) {
         self.disable_const_upgrading = value;
+    }
+
+    // Set the shadowing variables to true or false
+    pub fn set_shadowing_variables(&mut self, value: bool) {
+        self.disable_shadowing_variables = value;
     }
 
     // Consume the next token
@@ -1515,7 +1526,7 @@ impl<'a> Parser<'a> {
      */
     fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
         let (name, value_type, value) = self.read_variable_internal(context, false)?;
-        let id = if name != "_" {
+        let id = if self.disable_shadowing_variables {
             context.register_variable_unchecked(name, value_type.clone())
         } else {
             context.register_variable(name, value_type.clone())
