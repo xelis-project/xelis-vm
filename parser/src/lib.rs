@@ -350,7 +350,7 @@ impl<'a> Parser<'a> {
     fn get_type_from_expression<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context<'a>) -> Result<Cow<'b, Type>, ParserError<'a>> {
         match self.get_type_from_expression_internal(on_type, expression, context)? {
             Some(v) => Ok(v),
-            None => Err(err!(self, ParserErrorKind::EmptyValue))
+            None => Err(err!(self, ParserErrorKind::EmptyValue(expression.clone())))
         }
     }
 
@@ -1652,10 +1652,12 @@ impl<'a> Parser<'a> {
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;
-                        let expr_type = self.get_type_from_expression(None, &expr, context)?;
-                        if !expr_type.is_compatible_with(return_type) {
-                            return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
+                        if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
+                            if !expr_type.is_compatible_with(return_type) {
+                                return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
+                            }
                         }
+
                         Some(expr)
                     } else {
                         None

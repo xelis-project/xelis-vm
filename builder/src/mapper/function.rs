@@ -123,7 +123,15 @@ impl<'a> FunctionMapper<'a> {
                     if b.is_castable_to(a) {
                         cast_to_type = Some(a);
                     } else {
-                        continue 'main;
+                        // If the parameter is optional and its the exact same type inside
+                        // we allow to pass it
+                        if let Type::Optional(inner) = a {
+                            if !inner.is_compatible_with(b) {
+                                continue 'main;
+                            }
+                        } else {
+                            continue 'main;
+                        }
                     }
                 }
 

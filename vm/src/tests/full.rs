@@ -1217,3 +1217,40 @@ fn test_shadow_variable() {
         Value::U64(20)
     );
 }
+
+#[test]
+fn test_null_as_return() {
+    let code = r#"
+        fn test() -> optional<u64> {
+            return null
+        }
+
+        entry main() {
+            let a: optional<u64> = test();
+            return a.unwrap_or(10)
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Value::U64(10)
+    );
+}
+
+#[test]
+fn test_fn_call_with_optional_params() {
+    let code = r#"
+        fn test(a: optional<u64>) -> u64 {
+            return a.unwrap_or(10)
+        }
+
+        entry main() {
+            return test(5u64)
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Value::U64(5)
+    );
+}
