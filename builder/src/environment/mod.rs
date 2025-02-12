@@ -82,7 +82,7 @@ impl<'a> EnvironmentBuilder<'a> {
     pub fn register_opaque<T: Opaque>(&mut self, name: &'a str) -> OpaqueType {
         let ty = TypeId::of::<T>();
         let opaque = self.opaque_manager.build(name).unwrap();
-        self.env.add_opaque(ty, opaque);
+        self.env.add_opaque(ty);
         opaque
     }
 

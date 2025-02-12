@@ -101,7 +101,7 @@ impl Type {
             Value::Boolean(_) => Type::Bool,
             Value::Blob(_type) => Type::Blob,
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
-            Value::Opaque(opaque) => Type::Opaque(opaque.get_type()),
+            Value::Opaque(_) => return None,
         })
     }
 

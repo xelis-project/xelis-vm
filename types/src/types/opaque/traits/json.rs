@@ -12,14 +12,14 @@ lazy_static! {
 
 #[macro_export]
 macro_rules! register_opaque_json {
-    ($registry:expr, $name:expr, $type:ty, $ty_id:expr) => {
+    ($registry:expr, $name:expr, $type:ty) => {
         $registry.insert($name, Box::new(|value| {
             use anyhow::Context;
 
             let value: $type = serde_json::from_value(value)
                 .context("Failed to deserialize JSON")?;
 
-            Ok($crate::opaque::OpaqueWrapper::new(value, $crate::opaque::OpaqueType::new($ty_id)))
+            Ok($crate::opaque::OpaqueWrapper::new(value))
         }));
     };
 }

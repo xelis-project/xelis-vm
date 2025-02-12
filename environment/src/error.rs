@@ -42,6 +42,4 @@ pub enum EnvironmentError {
     Expect(String),
     #[error("Invalid expect message, require alphanumeric chars only")]
     InvalidExpect,
-    #[error("Invalid opaque type id")]
-    OpaqueTypeIdNotFound,
 }

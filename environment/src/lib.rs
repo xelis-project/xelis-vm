@@ -4,8 +4,8 @@ mod context;
 
 use std::any::TypeId;
 
-use indexmap::{IndexMap, IndexSet};
-use xelis_types::{EnumType, Opaque, OpaqueType, OpaqueWrapper, StructType};
+use indexmap::IndexSet;
+use xelis_types::{EnumType, StructType};
 
 // Also re-export the necessary macro
 pub use better_any::tid;
@@ -24,7 +24,7 @@ pub struct Environment {
     // All enums provided by the Environment
     enums: IndexSet<EnumType>,
     // All opaques types provided by the Environment
-    opaques: IndexMap<TypeId, OpaqueType>,
+    opaques: IndexSet<TypeId>,
 }
 
 tid!(Environment);
@@ -35,7 +35,7 @@ impl Default for Environment {
             functions: Vec::new(),
             structures: IndexSet::new(),
             enums: IndexSet::new(),
-            opaques: IndexMap::new(),
+            opaques: IndexSet::new(),
         }
     }
 }
@@ -66,18 +66,8 @@ impl Environment {
 
     // Get all the registered opaques
     #[inline(always)]
-    pub fn get_opaques(&self) -> &IndexMap<TypeId, OpaqueType> {
+    pub fn get_opaques(&self) -> &IndexSet<TypeId> {
         &self.opaques
-    }
-
-    // Create a new opaque wrapper from a given opaque data
-    pub fn create_opaque<T: Opaque>(&self, opaque: T) -> Result<OpaqueWrapper, EnvironmentError> {
-        let ty = TypeId::of::<T>();
-
-        self.opaques.get(&ty)
-            .copied()
-            .map(|ty| OpaqueWrapper::new(opaque, ty))
-            .ok_or(EnvironmentError::OpaqueTypeIdNotFound)
     }
 
     // Add a new function to the environment
@@ -105,8 +95,8 @@ impl Environment {
 
     // Add a new opaque type to the environment
     #[inline(always)]
-    pub fn add_opaque(&mut self, ty: TypeId, opaque: OpaqueType) {
-        self.opaques.insert(ty, opaque);
+    pub fn add_opaque(&mut self, ty: TypeId) {
+        self.opaques.insert(ty);
     }
 
     // Allow to change the cost of a function

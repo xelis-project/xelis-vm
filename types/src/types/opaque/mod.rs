@@ -42,8 +42,7 @@ impl Hash for dyn Opaque {
 /// This allow environments to provide custom types to the VM
 #[derive(Debug, Hash)]
 pub struct OpaqueWrapper {
-    inner: Box<dyn Opaque>,
-    ty: OpaqueType
+    inner: Box<dyn Opaque>
 }
 
 impl PartialEq for OpaqueWrapper {
@@ -59,16 +58,10 @@ impl Eq for OpaqueWrapper {}
 impl OpaqueWrapper {
     /// Create a new OpaqueWrapper
     /// OpaqueType id is the index of the type in the OpaqueManager
-    pub fn new<T: Opaque>(value: T, ty: OpaqueType) -> Self {
+    pub fn new<T: Opaque>(value: T) -> Self {
         Self {
-            inner: Box::new(value),
-            ty
+            inner: Box::new(value)
         }
-    }
-
-    /// Get the type of the OpaqueWrapper
-    pub fn get_type(&self) -> OpaqueType {
-        self.ty
     }
 
     /// Get the TypeId of the OpaqueWrapper
@@ -156,8 +149,13 @@ impl Clone for OpaqueWrapper {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone_box(),
-            ty: self.ty
         }
+    }
+}
+
+impl<T: Opaque> From<T> for OpaqueWrapper {
+    fn from(value: T) -> Self {
+        Self::new(value)
     }
 }
 
@@ -203,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_opaque_wrapper() {
-        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         assert_eq!(opaque.to_string(), "CustomOpaque(42)");
         assert_eq!(opaque.get_type_id(), TypeId::of::<CustomOpaque>());
 
@@ -219,9 +217,9 @@ mod tests {
     #[test]
     fn test_opaque_serde() {
         let mut registry = JSON_REGISTRY.write().unwrap();
-        register_opaque_json!(registry, "CustomOpaque", CustomOpaque, 0);
+        register_opaque_json!(registry, "CustomOpaque", CustomOpaque);
 
-        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let json = serde_json::to_string(&opaque).unwrap();
         assert_eq!(json, r#"{"type":"CustomOpaque","value":{"value":42}}"#);
 
@@ -231,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_opaque_downcast() {
-        let mut opaque = OpaqueWrapper::new(CustomOpaque { value: 42 }, OpaqueType(0));
+        let mut opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let _: &CustomOpaque = opaque.as_ref().unwrap();
         let _: &mut CustomOpaque = opaque.as_mut().unwrap();
         let _: CustomOpaque = opaque.into_inner().unwrap();
