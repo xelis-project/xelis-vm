@@ -39,7 +39,6 @@ pub enum Type {
 
     Struct(StructType),
     Enum(EnumType),
-    #[serde(skip)]
     Opaque(OpaqueType),
 }
 

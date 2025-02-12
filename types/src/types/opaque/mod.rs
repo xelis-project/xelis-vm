@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::{IdentifierType, ValueError};
 use traits::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OpaqueType(IdentifierType);
 
 impl OpaqueType {
@@ -171,7 +171,7 @@ mod tests {
 
     use crate::{
         impl_opaque,
-        register_opaque_json
+        register_opaque_json, Type
     };
     use super::*;
 
@@ -225,6 +225,20 @@ mod tests {
 
         let opaque2: OpaqueWrapper = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque, opaque2);
+    }
+
+    #[test]
+    fn test_opaque_type_serde() {
+        let opaque_type = OpaqueType::new(42);
+        let json = serde_json::to_string(&opaque_type).unwrap();
+        assert_eq!(json, r#"42"#);
+
+        let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
+        assert_eq!(opaque_type, opaque_type2);
+
+        let opaque_type = Type::Opaque(OpaqueType::new(42));
+        let json = serde_json::to_string(&opaque_type).unwrap();
+        assert_eq!(json, r#"{"type":"opaque","value":42}"#);
     }
 
     #[test]
