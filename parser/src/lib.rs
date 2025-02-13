@@ -518,13 +518,13 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {}", name);
         let (mut parameters, types) = self.read_function_params(context)?;
 
         let id = self.global_mapper
             .functions()
-            .get_compatible(name, on_type, &types, &mut parameters)
+            .get_compatible(name, on_type, instance, &types, &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
         // Entry are only callable by external
@@ -668,9 +668,11 @@ impl<'a> Parser<'a> {
         let constant_name = self.next_identifier()?;
 
         trace!("Read type constant: {:?}::{}", _type, constant_name);
+        // check if its a constant value
         if let Some(expr) = self.environment.get_constant_by_name(&_type, &constant_name)
             .map(|v| Expression::Constant(v.clone())) {
             Ok(expr)
+        // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
             let (mut parameters, _) = self.read_function_params(context)?;
             let mut constants = Vec::with_capacity(parameters.len());
@@ -683,6 +685,10 @@ impl<'a> Parser<'a> {
             const_fn.call(constants)
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
+        } else if self.peek_is(Token::ParenthesisOpen) {
+            // Try to read a static (on type) function call from it
+            self.read_function_call(None, false, Some(&_type), constant_name, context)
+        // If its a enum, it may be a variant constructor
         } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
@@ -1057,7 +1063,7 @@ impl<'a> Parser<'a> {
                                 None | Some(QueueItem::Separator) => None,
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
-                            self.read_function_call(prev_expr, on_type, id, context)?
+                            self.read_function_call(prev_expr, on_type.is_some(), on_type, id, context)?
                         },
                         Ok(Token::Colon) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
@@ -1839,7 +1845,7 @@ impl<'a> Parser<'a> {
 
         let id = self.global_mapper
             .functions_mut()
-            .register(name, for_type.clone(), parameters.clone(), return_type.clone())
+            .register(name, for_type.clone(), instance_name.is_some(), parameters.clone(), return_type.clone())
             .map_err(|e| err!(self, e.into()))?;
 
         if self.has_function(id) {
@@ -3566,5 +3572,45 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, vec![], &None, &EnvironmentBuilder::default());
         assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
+    fn test_static_function_on_type() {
+        // register Foo in environment
+        let mut env = EnvironmentBuilder::new();
+        let ty = Type::Struct(env.register_structure("Foo", Vec::new()));
+        // register a static function on it
+        env.register_static_function("bar", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
+
+        // Foo::bar()
+        let tokens = vec![
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("bar"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        // Try also on a enum type
+        let ty = Type::Enum(env.register_enum("Bar", Vec::new()));
+        // register a static function on it
+        env.register_static_function("foo", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
+
+        // Bar::foo()
+        let tokens = vec![
+            Token::Identifier("Bar"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }

@@ -15,6 +15,7 @@ pub struct Function<'a> {
     pub name: &'a str,
     pub on_type: Option<Type>,
     pub parameters: Vec<(&'a str, Type)>,
+    pub require_instance: bool,
     pub return_type: Option<Type>
 }
 
@@ -51,9 +52,11 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Register a function signature
-    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
+    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let signature = Signature::new(Cow::Borrowed(name), on_type.clone().map(Cow::Owned), Cow::Owned(params));
+        let ty = on_type.clone()
+            .map(|t| (Cow::Owned(t), require_instance));
+        let signature = Signature::new(Cow::Borrowed(name), ty, Cow::Owned(params));
 
         if self.mapper.has_variable(&signature) {
             return Err(BuilderError::SignatureAlreadyRegistered);
@@ -66,6 +69,7 @@ impl<'a> FunctionMapper<'a> {
             name,
             on_type,
             parameters,
+            require_instance,
             return_type
         });
 
@@ -77,20 +81,26 @@ impl<'a> FunctionMapper<'a> {
         self.mappings.get(id)
     }
 
-    pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
+    pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature
         if types.iter().all(|t| t.is_some()) {
             let types: Vec<Type> = types.iter()
-                .map(|t| t.clone().unwrap())
-                .collect();
-
-            if let Ok(id) = self.mapper.get(&Signature::new(Cow::Borrowed(name), on_type.map(Cow::Borrowed), Cow::Owned(types))) {
+            .map(|t| t.clone().unwrap())
+            .collect();
+        
+            let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
+            if let Ok(id) = self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Owned(types))) {
                 return Ok(id);
             }
         }
 
         // Lets find a compatible signature
-        'main: for (signature, id) in self.mapper.mappings.iter().filter(|(s, _)| s.get_name() == name && s.get_parameters().len() == types.len()) {            
+        'main: for (signature, id) in self.mapper.mappings.iter()
+            .filter(|(s, _)|
+                s.get_name() == name
+                && s.get_parameters().len() == types.len()
+                && s.is_on_instance() == instance
+            ) {
             let is_on_type = match (signature.get_on_type(), on_type) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
                 (None, None) => true,
@@ -172,7 +182,7 @@ impl<'a> FunctionMapper<'a> {
         }
 
         if let Some(parent) = self.parent {
-            return parent.get_compatible(name, on_type, types, expressions);
+            return parent.get_compatible(name, on_type, instance, types, expressions);
         }
 
         Err(BuilderError::MappingNotFound)
@@ -214,7 +224,7 @@ impl<'a> FunctionMapper<'a> {
         for (id, function) in self.mappings.iter() {
             if let Some(signature) = self.mapper.get_by_id(*id) {
                 let on_type = signature.get_on_type()
-                    .as_deref();
+                    .map(|t| t.as_ref());
                 functions.entry(on_type)
                     .or_insert_with(Vec::new)
                     .push(function);

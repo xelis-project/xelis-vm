@@ -36,12 +36,25 @@ impl<'a> EnvironmentBuilder<'a> {
         }
     }
 
+    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
+        let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone()).unwrap();
+        self.env.add_function(NativeFunction::new(on_type, params, on_call, cost, return_type));
+    }
+
     // Register a native function
     // Panic if the function signature is already registered
     pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let _ = self.functions_mapper.register(name, for_type.clone(), parameters, return_type.clone()).unwrap();
-        self.env.add_function(NativeFunction::new(for_type, params, on_call, cost, return_type));
+        let instance = for_type.is_some();
+        self.register_function_internal(name, for_type, instance, parameters, on_call, cost, return_type);
+    }
+
+    // Register a native static function
+    // This is function not accessible from an instance but still behind the type
+    // Example: u64::from_be_bytes
+    // Panic if the function signature is already registered
+    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+        self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type);
     }
 
     // Register a constant function
@@ -52,10 +65,10 @@ impl<'a> EnvironmentBuilder<'a> {
         self.types_constants_functions.register(name, for_type, parameters, on_call).unwrap();
     }
 
-    // Get a function by its signature
+    // Get a native function by its signature
     // Panic if the function signature is not found
-    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<Type>) -> &mut NativeFunction {
-        let signature = Signature::new(Cow::Borrowed(name), on_type.map(Cow::Owned), Cow::Owned(parameters));
+    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<(Type, bool)>, parameters: Vec<Type>) -> &mut NativeFunction {
+        let signature = Signature::new(Cow::Borrowed(name), on_type.map(|(t, v)| (Cow::Owned(t), v)), Cow::Owned(parameters));
         let id = self.functions_mapper.get(&signature).unwrap();
         self.env.get_function_by_id_mut(id as usize).unwrap()
 
