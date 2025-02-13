@@ -3529,11 +3529,42 @@ mod tests {
         let tokens = vec![
             Token::Identifier("test"),
             Token::ParenthesisOpen,
-            Token::Value(Literal::U64(10)),
+            Token::Value(Literal::U8(10)),
             Token::ParenthesisClose
         ];
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_type_t_same_as_instance() {
+        // let a: optional<u64> = 10;
+        // let b: u64 = a.unwrap_or(50);
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::U64(10)),
+            Token::Let,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Identifier("a"),
+            Token::Dot,
+            Token::Identifier("unwrap_or"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(50)),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, vec![], &None, &EnvironmentBuilder::default());
+        assert_eq!(statements.len(), 2);
     }
 }

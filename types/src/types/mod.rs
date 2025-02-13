@@ -165,6 +165,17 @@ impl Type {
         }
     }
 
+    // Our current self type may be a generic type
+    // We have an instance of this type to know the real types instead of the "generic" types
+    // We have to verify that they are exactly the same as other
+    pub fn is_generic_compatible_with(&self, instance: &Type, other: &Type) -> bool {
+        match self {
+            Type::T(id) => instance.get_generic_type(*id).map_or(false, |t| t == other),
+            Type::Any => true,
+            _ => false
+        }
+    }
+
     // check if the type contains a sub type
     pub fn contains_sub_type(&self) -> bool {
         match self {
