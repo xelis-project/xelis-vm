@@ -116,7 +116,7 @@ impl<'a> FunctionMapper<'a> {
 
                 if let Some(instance) = on_type.filter(|v| v.contains_sub_type()) {
                     if !a.is_generic_compatible_with(instance, b) {
-                        println!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
+                        trace!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
                         continue 'main;
                     }
                 }
