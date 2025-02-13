@@ -159,7 +159,7 @@ sum(a, b)
 `entry` function is a "public callable" function and must return a `u64` value.
 
 **Rules**
-- Must starts with `func` or `entry` keyword.
+- Must starts with `fn` or `entry` keyword.
 - Signature is based on function name and parameters.
 - For type functions, the type must not be primitive.
 - Recursive functions are allowed.
