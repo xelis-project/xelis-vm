@@ -232,7 +232,7 @@ pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
 pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
-    let owned = right.into_owned();
+    let owned = right.into_owned()?;
 
     // Verify the depth of the owned value
     owned.calculate_depth(context.max_value_depth())?;
@@ -242,8 +242,8 @@ pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'
 }
 
 pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let right = stack.pop_stack()?.into_owned();
-    let left = stack.pop_stack()?.into_owned();
+    let right = stack.pop_stack()?.into_inner();
+    let left = stack.pop_stack()?.into_inner();
     let result = match (left, right) {
         (ValueCell::Default(a), ValueCell::Default(b)) => {
             let pow_n = b.as_u32()?;
@@ -264,7 +264,7 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>,
 }
 
 pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let right = stack.pop_stack()?.into_owned();
+    let right = stack.pop_stack()?.into_owned()?;
     let mut left = stack.pop_stack()?;
     let result = {
         let left_value = left.as_ref();
@@ -292,7 +292,7 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManag
 pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let _type = manager.read_type()?;
     let current = stack.pop_stack()?
-        .into_owned();
+        .into_inner();
 
     let value = match _type {
         Type::U8 => Value::U8(current.cast_to_u8()?),

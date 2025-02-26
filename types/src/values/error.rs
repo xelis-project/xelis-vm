@@ -6,6 +6,10 @@ use super::{constant::Constant, Value};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
+    #[error("Expected a value")]
+    ExpectedValue,
+    #[error("Unexpected cycle reference")]
+    CyclicError,
     #[error("Invalid opaque: type mismatch")]
     InvalidOpaqueTypeMismatch,
     #[error("max depth reached")]

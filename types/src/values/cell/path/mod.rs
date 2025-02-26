@@ -108,10 +108,10 @@ impl<'a> Path<'a> {
 
     // Get the value of the path
     #[inline(always)]
-    pub fn into_owned(self) -> ValueCell {
+    pub fn into_owned(self) -> Result<ValueCell, ValueError> {
         match self {
-            Self::Owned(v) => v,
-            Self::Borrowed(v) => v.clone(),
+            Self::Owned(v) => Ok(v),
+            Self::Borrowed(v) => Ok(v.clone()),
             Self::Wrapper(v) => v.into_owned()
         }
     }

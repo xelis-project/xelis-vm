@@ -27,7 +27,7 @@ fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> Fn
     }
 
     let param = parameters.remove(0);
-    let value = param.into_owned();
+    let value = param.into_owned()?;
 
     // Verify the depth of the value
     value.calculate_depth(context.max_value_depth() - 1)?;
@@ -48,13 +48,13 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
     // moving all elements after the index to the left is costly
     context.increase_gas_usage((array.len() as u64) * 5)?;
 
-    Ok(Some(array.remove(index).into_owned()))
+    Ok(Some(array.remove(index).into_owned()?))
 }
 
 fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value.into_owned()))
+        Ok(Some(value.into_owned()?))
     } else {
         Ok(Some(ValueCell::Optional(None)))
     }

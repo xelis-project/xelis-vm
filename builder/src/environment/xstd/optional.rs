@@ -25,29 +25,29 @@ fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    let opt = zelf?.take_as_optional().ok_or(ValueError::OptionalIsNull)?;
+    let opt = zelf?.take_as_optional()?.ok_or(ValueError::OptionalIsNull)?;
     Ok(Some(opt))
 }
 
 fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let default = parameters.remove(0);
-    let optional = zelf?.take_as_optional();
+    let optional = zelf?.take_as_optional()?;
     match optional {
-        Some(value) => Ok(Some(value.into_owned())),
-        None => Ok(Some(default.into_owned()))
+        Some(value) => Ok(Some(value)),
+        None => Ok(Some(default.into_owned()?))
     }
 }
 
 fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0)
-        .into_owned();
+        .into_owned()?;
     let msg = param.to_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);
     }
 
-    let opt = zelf?.take_as_optional()
+    let opt = zelf?.take_as_optional()?
         .ok_or(EnvironmentError::Expect(msg))?;
 
     Ok(Some(opt))

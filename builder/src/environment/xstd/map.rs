@@ -45,7 +45,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
 }
 
 fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
-    let key = parameters.remove(0).into_owned();
+    let key = parameters.remove(0).into_owned()?;
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -65,7 +65,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
         .calculate_depth(max_depth)?;
 
     let previous = map
-        .insert(key, value.into_owned().into());
+        .insert(key, value.into_owned()?.into());
     Ok(Some(ValueCell::Optional(previous)))
 }
 

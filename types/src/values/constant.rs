@@ -99,24 +99,24 @@ impl From<Value> for Constant {
 }
 
 impl TryFrom<ValueCell> for Constant {
-    type Error = &'static str;
+    type Error = ValueError;
 
     fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
         Ok(match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?),
+            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
+            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?),
             ValueCell::Optional(opt) => match opt {
-                Some(value) => Self::Optional(Some(Box::new(value.into_owned().try_into()?))),
+                Some(value) => Self::Optional(Some(Box::new(value.into_owned()?.try_into()?))),
                 None => Self::Optional(None)
             },
             ValueCell::Map(map) => {
                 let m = map.into_iter()
-                    .map(|(k, v)| Ok((k.into_owned().try_into()?, v.into_owned().try_into()?)))
+                    .map(|(k, v)| Ok((k.into_owned()?.try_into()?, v.into_owned()?.try_into()?)))
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
             },
-            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned().try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
+            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
         })
     }
 }

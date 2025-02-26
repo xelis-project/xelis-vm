@@ -14,7 +14,7 @@ macro_rules! overflow_fn {
         paste! {
             fn [<overflowing_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
                 // Extract and convert parameters
-                let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
+                let other = parameters.remove(0).into_owned()?.[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
                 // Perform the operation with `overflowing_$op` as a method name

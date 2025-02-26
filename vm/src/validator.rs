@@ -154,7 +154,6 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 16;
                 },
-
                 Constant::Optional(opt) => {
                     if let Some(value) = opt {
                         memory_usage += 1;

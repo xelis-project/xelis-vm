@@ -47,7 +47,7 @@ fn debug(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
 
 fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
-    let value = param.into_owned();
+    let value = param.into_owned()?;
 
     Err(EnvironmentError::Panic(format!("{:#}", value)))
 }
@@ -70,7 +70,7 @@ fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturn
 
 fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let msg = parameters.remove(1)
-        .into_owned()
+        .into_owned()?
         .to_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {

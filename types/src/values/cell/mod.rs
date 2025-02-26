@@ -5,7 +5,6 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
-    ops::{Deref, DerefMut},
     ptr
 };
 use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
@@ -43,48 +42,6 @@ impl PartialEq for ValueCell {
             (Self::Enum(a, _), Self::Enum(b, _)) => a == b,
             _ => false
         }
-    }
-}
-
-// Wrapper to drop the value without stackoverflow
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct ValueCellWrapper(pub ValueCell);
-
-impl Drop for ValueCellWrapper {
-    fn drop(&mut self) {
-        if matches!(self.0, ValueCell::Default(_)) {
-            return
-        }
-
-        let mut stack = vec![std::mem::take(&mut self.0)];
-        while let Some(value) = stack.pop() {
-            match value {
-                ValueCell::Default(_) => {},
-                ValueCell::Struct(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
-                ValueCell::Array(values) => stack.extend(values.into_iter().map(SubValue::into_owned)),
-                ValueCell::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push(value.into_owned());
-                    }
-                },
-                ValueCell::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v.into_owned()])),
-                ValueCell::Enum(fields, _) => stack.extend(fields.into_iter().map(SubValue::into_owned)),
-            }
-        }
-    }
-}
-
-impl Deref for ValueCellWrapper {
-    type Target = ValueCell;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ValueCellWrapper {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 
@@ -393,13 +350,13 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn take_as_optional(&mut self) -> Option<Self> {
+    pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
-            Self::Default(Value::Null) => None,
-            Self::Optional(opt) => opt.take().map(SubValue::into_owned),
+            Self::Default(Value::Null) => Ok(None),
+            Self::Optional(opt) => opt.take().map(SubValue::into_owned).transpose(),
             v => {
                 let value = std::mem::take(v);
-                Some(value)
+                Ok(Some(value))
             }
         }
     }
@@ -752,9 +709,9 @@ impl ValueCell {
 
     // Clone all the SubValue into a new ValueCell
     // We need to do it in iterative way to prevent any stackoverflow
-    pub fn into_owned(self) -> Self {
+    pub fn into_owned(self) -> Result<Self, ValueError> {
         if matches!(self, Self::Default(_)) {
-            return self
+            return Ok(self)
         }
 
         #[derive(Debug)]
@@ -779,6 +736,7 @@ impl ValueCell {
 
         let mut stack = vec![self];
         let mut queue = Vec::new();
+        let mut pointers = HashSet::new();
 
         // Disassemble
         while let Some(value) = stack.pop() {
@@ -787,12 +745,19 @@ impl ValueCell {
                 Self::Array(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
                     for value in values.into_iter().rev() {
+                        if !pointers.insert(value.ptr()) {
+                            return Err(ValueError::CyclicError);
+                        }
                         stack.push(value.into_inner());
                     }
                 },
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
                     for (k, v) in map.into_iter() {
+                        if !pointers.insert(v.ptr()) {
+                            return Err(ValueError::CyclicError);
+                        }
+
                         stack.push(k);
                         stack.push(v.into_inner());
                     }
@@ -800,18 +765,30 @@ impl ValueCell {
                 Self::Optional(opt) => {
                     queue.push(QueueItem::Optional(opt.is_some()));
                     if let Some(value) = opt {
+                        if !pointers.insert(value.ptr()) {
+                            return Err(ValueError::CyclicError);
+                        }
+
                         stack.push(value.into_inner());
                     }
                 },
                 Self::Struct(fields, ty) => {
                     queue.push(QueueItem::Struct { ty, len: fields.len() });
                     for field in fields.into_iter().rev() {
+                        if !pointers.insert(field.ptr()) {
+                            return Err(ValueError::CyclicError);
+                        }
+
                         stack.push(field.into_inner());
                     }
                 },
                 Self::Enum(fields, ty) => {
                     queue.push(QueueItem::Enum { ty, len: fields.len() });
                     for field in fields.into_iter().rev() {
+                        if !pointers.insert(field.ptr()) {
+                            return Err(ValueError::CyclicError);
+                        }
+
                         stack.push(field.into_inner());
                     }
                 }
@@ -827,22 +804,22 @@ impl ValueCell {
                 QueueItem::Array { len } => {
                     let mut values = Vec::with_capacity(len);
                     for _ in 0..len {
-                        values.push(SubValue::new(stack.pop().unwrap()));
+                        values.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
                     }
                     stack.push(ValueCell::Array(values));
                 },
                 QueueItem::Map { len } => {
                     let mut map = HashMap::with_capacity(len);
                     for _ in 0..len {
-                        let value = stack.pop().unwrap();
-                        let key = stack.pop().unwrap();
-                        map.insert(key.into_owned(), SubValue::new(value));
+                        let value = stack.pop().ok_or(ValueError::ExpectedValue)?;
+                        let key = stack.pop().ok_or(ValueError::ExpectedValue)?;
+                        map.insert(key, SubValue::new(value));
                     }
                     stack.push(ValueCell::Map(map));
                 },
                 QueueItem::Optional(is_some) => {
                     let value = if is_some {
-                        Some(SubValue::new(stack.pop().unwrap()))
+                        Some(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?))
                     } else {
                         None
                     };
@@ -851,21 +828,21 @@ impl ValueCell {
                 QueueItem::Struct { ty, len } => {
                     let mut fields = Vec::with_capacity(len);
                     for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().unwrap()));
+                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
                     }
                     stack.push(ValueCell::Struct(fields, ty));
                 },
                 QueueItem::Enum { ty, len } => {
                     let mut fields = Vec::with_capacity(len);
                     for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().unwrap()));
+                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
                     }
                     stack.push(ValueCell::Enum(fields, ty));
                 }
             }
         }
 
-        stack.pop().unwrap()
+        stack.pop().ok_or(ValueError::ExpectedValue)
     }
 }
 
@@ -929,12 +906,10 @@ mod tests {
                 .insert(Value::U8(10).into(), map.reference());
         }
 
-        let owned = map.into_owned();
-        println!("{}", owned);
-
-        let _ = ValueCellWrapper(owned);
-        // let mut inner_map = HashMap::new();
-        // inner_map.insert(ValueCellWrapper(owned), Value::U8(10));
+        let owned = map.into_inner();
+        assert!(
+            matches!(owned.into_owned(), Err(ValueError::CyclicError))
+        );
     }
 
     #[test]
@@ -945,23 +920,20 @@ mod tests {
             SubValue::new(ValueCell::Default(Value::U8(30))),
         ]);
 
-        assert_eq!(array, array.clone().into_owned());
+        assert_eq!(array, array.clone().into_owned().unwrap());
     }
 
     #[test]
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
         let mut map = ValueCell::Map(HashMap::new());
-        for _ in 0..28000 {
+        for _ in 0..100000 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Value::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
 
-        println!("Map");
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        println!("hash");
-        ValueCellWrapper(map).hash(&mut hasher);
-        println!("Hash: {}", hasher.finish());
+        map.hash(&mut hasher);
     }
 }
