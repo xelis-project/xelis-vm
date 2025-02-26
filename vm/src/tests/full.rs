@@ -379,7 +379,7 @@ fn test_range_contains() {
 fn test_range_contains_u256() {
     let code = r#"
         entry main() {
-            let x: bool = (0u256..10u256).contains(5);
+            let x: bool = (0u256..10u256).contains(5u256);
             return x as u64
         }
     "#;
@@ -496,7 +496,7 @@ fn test_map() {
     let code = r#"
         entry main() {
             let x: map<string, u8> = {};
-            x.insert("a", 10);
+            x.insert("a", 10u8);
             let a: optional<u8> = x.get("a");
             return a.unwrap() as u64
         }
@@ -713,7 +713,7 @@ fn test_optional_unwrap_or() {
     let code = r#"
         entry main() {
             let x: optional<u8> = null;
-            return x.unwrap_or(10) as u64
+            return x.unwrap_or(10u8) as u64
         }
     "#;
 
