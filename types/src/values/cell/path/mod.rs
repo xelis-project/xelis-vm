@@ -48,7 +48,7 @@ impl Path {
     pub fn get_sub_variable(self, index: usize) -> Result<Path, ValueError> {
         match self {
             Self::Owned(v) => {
-                let mut values = v.to_sub_vec()?;
+                let mut values = v.to_vec()?;
                 let len = values.len();
                 if index >= len {
                     return Err(ValueError::OutOfBounds(index, len))
@@ -59,7 +59,7 @@ impl Path {
             },
             Self::Wrapper(v) => {
                 let mut values = v.borrow_mut();
-                let values = values.as_mut_sub_vec()?;
+                let values = values.as_mut_vec()?;
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)

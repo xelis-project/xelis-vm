@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use xelis_environment::EnvironmentError;
-use xelis_types::{EnumValueType, Path, Value, ValueCell};
+use xelis_types::{DefinedType, EnumValueType, Path, Value, ValueCell};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -27,7 +27,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Ch
         fields.push_front(stack.pop_stack()?.into_owned()?.into());
     }
 
-    stack.push_stack(Path::Owned(ValueCell::Struct(fields.into(), struct_type.clone())))?;
+    stack.push_stack(Path::Owned(ValueCell::Typed(fields.into(), DefinedType::Struct(struct_type.clone()))))?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -79,6 +79,6 @@ pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
         values.push_front(stack.pop_stack()?.into_owned()?.into());
     }
 
-    stack.push_stack(Path::Owned(ValueCell::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;
+    stack.push_stack(Path::Owned(ValueCell::Typed(values.into(), DefinedType::Enum(EnumValueType::new(enum_type.clone(), variant_id)))))?;
     Ok(InstructionResult::Nothing)
 }

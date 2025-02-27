@@ -7,7 +7,7 @@ use std::{
     hash::{Hash, Hasher},
     ptr
 };
-use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
+use crate::{opaque::OpaqueWrapper, DefinedType, Opaque, Type, U256};
 use super::{Constant, Value, ValueError};
 
 pub use path::*;
@@ -22,19 +22,17 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     // Key must be immutable also!
     Map(HashMap<ValueCell, Path>),
-    Struct(Vec<Path>, StructType),
-    Enum(Vec<Path>, EnumValueType),
+    Typed(Vec<Path>, DefinedType),
 }
 
 impl PartialEq for ValueCell {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Default(a), Self::Default(b)) => a == b,
-            (Self::Struct(a, _), Self::Struct(b, _)) => a == b,
             (Self::Array(a), Self::Array(b)) => a == b,
 
             (Self::Map(a), Self::Map(b)) => a == b,
-            (Self::Enum(a, _), Self::Enum(b, _)) => a == b,
+            (Self::Typed(a, at), Self::Typed(b, bt)) => at == bt && a == b,
             _ => false
         }
     }
@@ -62,10 +60,9 @@ impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
             Constant::Default(v) => Self::Default(v),
-            Constant::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
+            Constant::Typed(values, ty) => Self::Typed(values.into_iter().map(|v| v.into()).collect(), ty)
         }
     }
 }
@@ -268,6 +265,7 @@ impl ValueCell {
     pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<Path>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
+            Self::Typed(values, _) => Ok(values),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
@@ -276,6 +274,7 @@ impl ValueCell {
     pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<Path>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
+            Self::Typed(values, _) => Ok(values),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
@@ -356,27 +355,11 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<Path>, ValueError> {
-        match self {
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::ExpectedStruct)
-        }
-    }
-
-    #[inline]
     pub fn to_vec(self) -> Result<Vec<Path>, ValueError> {
         match self {
-            Self::Array(n) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn to_sub_vec(self) -> Result<Vec<Path>, ValueError> {
-        match self {
             Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
+            Self::Typed(values, _) => Ok(values),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
 
@@ -432,24 +415,6 @@ impl ValueCell {
         match self {
             Self::Default(Value::Opaque(op)) => op.is_serializable(),
             _ => true
-        }
-    }
-
-    #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<Path>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<Path>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
         }
     }
 
@@ -653,14 +618,10 @@ impl ValueCell {
             Map {
                 len: usize,
             },
-            Struct {
-                ty: StructType,
+            Typed {
+                ty: DefinedType,
                 len: usize,
             },
-            Enum {
-                ty: EnumValueType,
-                len: usize,
-            }
         }
 
         let mut stack = vec![self];
@@ -684,14 +645,8 @@ impl ValueCell {
                         stack.push(v.into_inner());
                     }
                 },
-                Self::Struct(fields, ty) => {
-                    queue.push(QueueItem::Struct { ty, len: fields.len() });
-                    for value in fields.into_iter().rev() {
-                        stack.push(value.into_inner());
-                    }                },
-                Self::Enum(fields, ty) => {
-                    queue.push(QueueItem::Enum { ty, len: fields.len() });
-                    // stack.extend(fields.into_iter().rev());
+                Self::Typed(fields, ty) => {
+                    queue.push(QueueItem::Typed { ty, len: fields.len() });
                     for value in fields.into_iter().rev() {
                         stack.push(value.into_inner());
                     }
@@ -725,7 +680,7 @@ impl ValueCell {
                     }
                     stack.push(ValueCell::Map(map));
                 },
-                QueueItem::Struct { ty, len } => {
+                QueueItem::Typed { ty, len } => {
                     let mut fields = Vec::with_capacity(len);
                     for _ in 0..len {
                         fields.push(
@@ -733,18 +688,7 @@ impl ValueCell {
                                 .ok_or(ValueError::ExpectedValue)?
                                 .into()
                         );                    }
-                    stack.push(ValueCell::Struct(fields, ty));
-                },
-                QueueItem::Enum { ty, len } => {
-                    let mut fields = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        fields.push(
-                            stack.pop()
-                                .ok_or(ValueError::ExpectedValue)?
-                                .into()
-                        );
-                    }
-                    stack.push(ValueCell::Enum(fields, ty));
+                    stack.push(ValueCell::Typed(fields, ty));
                 }
             }
         }
@@ -765,16 +709,10 @@ impl fmt::Display for ValueCell {
                 let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             },
-            Self::Struct(fields, _type) => {
+            Self::Typed(fields, _type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
                 write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
-            },
-            Self::Enum(fields, enum_type) => {
-                let s: Vec<String> = fields.iter()
-                    .map(|v| format!("{}", v.as_ref()))
-                    .collect();
-                write!(f, "enum[{}:{}] {} {} {}", enum_type.id(), enum_type.variant_id(), "{", s.join(", "), "}")
-            },
+            }
         }
     }
 }

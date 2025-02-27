@@ -789,7 +789,7 @@ impl<'a> Parser<'a> {
                     *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
-                Constant::Struct(new_fields, struct_type.clone())
+                Constant::Typed(new_fields, DefinedType::Struct(struct_type.clone()))
             },
             Expression::EnumConstructor(fields, enum_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
@@ -798,7 +798,7 @@ impl<'a> Parser<'a> {
                     *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
-                Constant::Enum(new_fields, enum_type.clone())
+                Constant::Typed(new_fields, DefinedType::Enum(enum_type.clone()))
             },
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = IndexMap::with_capacity(entries.len());

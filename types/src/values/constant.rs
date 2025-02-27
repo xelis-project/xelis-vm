@@ -2,20 +2,19 @@ use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{EnumValueType, StructType, Type, U256};
+use crate::{DefinedType, Type, U256};
 use super::{Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Constant {
     Default(Value),
-    Struct(Vec<Constant>, StructType),
     Array(Vec<Constant>),
 
     // Use box directly because the range are primitive only
     // Map cannot be used as a key in another map
     Map(IndexMap<Constant, Constant>),
-    Enum(Vec<Constant>, EnumValueType),
+    Typed(Vec<Constant>, DefinedType),
 }
 
 // Wrapper to drop the value without stackoverflow
@@ -33,10 +32,9 @@ impl Drop for ConstantWrapper {
         while let Some(value) = stack.pop() {
             match value {
                 Constant::Default(_) => {},
-                Constant::Struct(fields, _) => stack.extend(fields),
                 Constant::Array(values) => stack.extend(values),
                 Constant::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
-                Constant::Enum(fields, _) => stack.extend(fields),
+                Constant::Typed(fields, _) => stack.extend(fields),
             }
         }
     }
@@ -59,15 +57,10 @@ impl Hash for Constant {
                         stack.push(&value);
                     }
                 },
-                Self::Enum(fields, enum_type) => {
+                Self::Typed(fields, ty) => {
                     14u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
-                    enum_type.hash(state);
-                },
-                Self::Struct(fields, struct_type) => {
-                    15u8.hash(state);
-                    fields.iter().for_each(|f| stack.push(f));
-                    struct_type.hash(state);
+                    ty.hash(state);
                 }
             }
         }
@@ -99,8 +92,12 @@ impl TryFrom<ValueCell> for Constant {
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
             },
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
-            ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
+            ValueCell::Typed(values, ty) => {
+                let values = values.into_iter()
+                    .map(|v| v.into_owned()?.try_into())
+                    .collect::<Result<Vec<_>, _>>()?;
+                Self::Typed(values, ty)
+            }
         })
     }
 }
@@ -307,45 +304,11 @@ impl Constant {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<Self>, ValueError> {
-        match self {
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::ExpectedStruct)
-        }
-    }
-
-    #[inline]
     pub fn to_vec(self) -> Result<Vec<Self>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
+            Self::Typed(values, _) => Ok(values),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn to_sub_vec(self) -> Result<Vec<Self>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<Self>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<Self>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
         }
     }
 
@@ -529,10 +492,6 @@ impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Default(v) => write!(f, "{}", v),
-            Self::Struct(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
-                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
-            },
             Self::Array(values) => {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
@@ -541,9 +500,9 @@ impl fmt::Display for Constant {
                 let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             },
-            Self::Enum(fields, enum_type) => {
+            Self::Typed(fields, _type) => {
                 let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
-                write!(f, "enum{:?} {} {} {}", enum_type, "{", s.join(", "), "}")
+                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
             }
         }
     }

@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError, Constant};
+use xelis_types::{Constant, DefinedType, EnumType, EnumVariant, StructType, Type, Value, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -95,39 +95,37 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                Constant::Struct(fields, t) => {
-                    if fields.len() != t.fields().len() {
-                        return Err(ValidatorError::IncorrectFields);
-                    }
+                Constant::Typed(fields, t) => {
+                    match t {
+                        DefinedType::Enum(t) => {
+                            let variant = t.enum_type()
+                                .variants()
+                                .get(t.variant_id() as usize)
+                                .ok_or(ValidatorError::IncorrectVariant)?;
         
-                    if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
-                        return Err(ValidatorError::UnknownStruct);
+                            if fields.len() != variant.fields().len() {
+                                return Err(ValidatorError::IncorrectFields);
+                            }
+        
+                            if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
+                                return Err(ValidatorError::UnknownEnum);
+                            }    
+                        },
+                        DefinedType::Struct(t) => {
+                            if fields.len() != t.fields().len() {
+                                return Err(ValidatorError::IncorrectFields);
+                            }
+                
+                            if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
+                                return Err(ValidatorError::UnknownStruct);
+                            }
+                        }
                     }
 
                     for field in fields {
                         stack.push((field, depth + 1));
                     }
-                    memory_usage += 8;
-                },
-                Constant::Enum(fields, t) => {
-                    let variant = t.enum_type()
-                        .variants()
-                        .get(t.variant_id() as usize)
-                        .ok_or(ValidatorError::IncorrectVariant)?;
-
-                    if fields.len() != variant.fields().len() {
-                        return Err(ValidatorError::IncorrectFields);
-                    }
-
-                    if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
-                        return Err(ValidatorError::UnknownEnum);
-                    }
-
-                    for field in fields {
-                        stack.push((field, depth + 1));
-                    }
-
-                    memory_usage += 10;
+                    memory_usage += 16;
                 },
                 Constant::Array(elements) => {
                     if elements.len() > u32::MAX as usize {

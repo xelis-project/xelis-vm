@@ -42,6 +42,12 @@ pub enum Type {
     Opaque(OpaqueType),
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinedType {
+    Struct(StructType),
+    Enum(EnumValueType)
+}
+
 impl Type {
     // transform a byte into a primitive type
     pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
@@ -109,14 +115,16 @@ impl Type {
         Some(match value_type {
             Constant::Default(v) => Self::from_value(v)?,
             Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
-            Constant::Struct(_, _type) => Type::Struct(_type.clone()),
             Constant::Map(map) => {
                 let (key, value) = map.iter().next()?;
                 let key = Type::from_value_type(&key)?;
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
-            Constant::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
+            Constant::Typed(_, ty) => match ty {
+                DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
+                DefinedType::Struct(ty) => Type::Struct(ty.clone()),
+            },
         })
     }
 

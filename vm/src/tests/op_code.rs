@@ -205,12 +205,12 @@ fn test_struct() {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            ValueCell::Struct(
+            ValueCell::Typed(
                 vec![
                     Value::U8(10).into(),
                     Value::U16(20).into()
                 ].into(),
-                new_struct
+                DefinedType::Struct(new_struct)
             )
         );
     }
@@ -310,9 +310,9 @@ fn test_function_call_on_value() {
     // Main function
     let mut main = Chunk::new();
     // Create a struct
-    let index = module.add_constant(Constant::Struct(vec![
+    let index = module.add_constant(Constant::Typed(vec![
         Value::U64(10).into()
-    ], new_struct));
+    ], DefinedType::Struct(new_struct)));
 
     main.emit_opcode(OpCode::Constant);
     main.write_u16(index as u16);
