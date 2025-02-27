@@ -70,10 +70,8 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
         instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
         instructions[OpCode::NewArray.as_usize()] = (new_array, 1);
-        instructions[OpCode::NewStruct.as_usize()] = (new_struct, 1);
         instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
         instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
-        instructions[OpCode::NewEnum.as_usize()] = (new_enum, 1);
 
         instructions[OpCode::Add.as_usize()] = (add, 1);
         instructions[OpCode::Sub.as_usize()] = (sub, 1);

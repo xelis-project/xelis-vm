@@ -35,37 +35,11 @@ pub struct Backend<'a> {
 }
 
 impl<'a> Backend<'a> {
-    // Get a struct with an id
-    #[inline]
-    pub fn get_struct_with_id(&self, mut id: usize) -> Result<&StructType, VMError> {
-        let env_structs = self.environment.get_structures();
-        if let Some(struct_type) = env_structs.get_index(id) {
-            return Ok(struct_type);
-        } else {
-            id -= env_structs.len();
-        }
-
-        self.module.get_struct_at(id).ok_or(VMError::StructNotFound)
-    }
-
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&Constant, VMError> {
         self.module.get_constant_at(id)
             .ok_or(VMError::ConstantNotFound)
-    }
-
-    // Get an enum with an id
-    #[inline]
-    pub fn get_enum_with_id(&self, mut id: usize) -> Result<&EnumType, VMError> {
-        let env_enums = self.environment.get_enums();
-        if let Some(enum_type) = env_enums.get_index(id) {
-            return Ok(enum_type);
-        } else {
-            id -= env_enums.len();
-        }
-
-        self.module.get_enum_at(id).ok_or(VMError::EnumNotFound)
     }
 }
 

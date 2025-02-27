@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use xelis_types::{Constant, ConstantWrapper, EnumType, StructType};
+use xelis_types::{Constant, ConstantWrapper};
 
 use super::Chunk;
 
@@ -13,11 +13,7 @@ pub struct Module {
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
-    entry_chunk_ids: IndexSet<usize>,
-    // registered structs
-    structs: IndexSet<StructType>,
-    // registered enums
-    enums: IndexSet<EnumType>
+    entry_chunk_ids: IndexSet<usize>
 }
 
 impl Module {
@@ -26,9 +22,7 @@ impl Module {
         Self {
             constants: IndexSet::new(),
             chunks: Vec::new(),
-            entry_chunk_ids: IndexSet::new(),
-            structs: IndexSet::new(),
-            enums: IndexSet::new()
+            entry_chunk_ids: IndexSet::new()
         }
     }
 
@@ -36,16 +30,12 @@ impl Module {
     pub fn with(
         constants: IndexSet<ConstantWrapper>,
         chunks: Vec<Chunk>,
-        entry_chunk_ids: IndexSet<usize>,
-        structs: IndexSet<StructType>,
-        enums: IndexSet<EnumType>
+        entry_chunk_ids: IndexSet<usize>
     ) -> Self {
         Self {
             constants,
             chunks,
-            entry_chunk_ids,
-            structs,
-            enums
+            entry_chunk_ids
         }
     }
 
@@ -109,42 +99,6 @@ impl Module {
     #[inline]
     pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
         self.chunks.get_mut(index)
-    }
-
-    // Get all the structs declared in the module
-    #[inline]
-    pub fn structs(&self) -> &IndexSet<StructType> {
-        &self.structs
-    }
-
-    // Add a struct to the module
-    #[inline]
-    pub fn add_struct(&mut self, structure: StructType) -> bool {
-        self.structs.insert(structure)
-    }
-
-    // Get a struct at a specific index
-    #[inline]
-    pub fn get_struct_at(&self, index: usize) -> Option<&StructType> {
-        self.structs.get_index(index)
-    }
-
-    // Get all the enums declared in the module
-    #[inline]
-    pub fn enums(&self) -> &IndexSet<EnumType> {
-        &self.enums
-    }
-
-    // Add an enum to the module
-    #[inline]
-    pub fn add_enum(&mut self, enumeration: EnumType) -> bool {
-        self.enums.insert(enumeration)
-    }
-
-    // Get an enum at a specific index
-    #[inline]
-    pub fn get_enum_at(&self, index: usize) -> Option<&EnumType> {
-        self.enums.get_index(index)
     }
 }
 

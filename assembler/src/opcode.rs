@@ -103,11 +103,6 @@ pub enum OpCodeWithArgs {
         // Array length
         length: u8
     },
-    // pop type id, pop N values => create struct
-    NewStruct {
-        // Struct id
-        struct_id: u16
-    },
     // N..Y
     // pop start, pop end, push range
     NewRange,
@@ -218,7 +213,6 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::InvokeChunk { .. } => OpCode::InvokeChunk,
             OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
             OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
-            OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
             OpCodeWithArgs::NewRange => OpCode::NewRange,
             OpCodeWithArgs::NewMap { .. } => OpCode::NewMap,
 
@@ -294,7 +288,6 @@ impl OpCodeWithArgs {
             },
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::NewArray { length } => chunk.write_u8(*length),
-            OpCodeWithArgs::NewStruct { struct_id } => chunk.write_u16(*struct_id),
             OpCodeWithArgs::NewMap { length } => chunk.write_u8(*length),
             _ => {}
         }
@@ -527,15 +520,6 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::NewArray {
                     length: args[0].parse().map_err(|_| "Invalid length")?
-                }
-            },
-            "NEWSTRUCT" => {
-                if args.len() != 1 {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::NewStruct {
-                    struct_id: args[0].parse().map_err(|_| "Invalid struct id")?
                 }
             },
             "NEWRANGE" => {

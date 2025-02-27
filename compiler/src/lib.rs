@@ -157,15 +157,14 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::StructConstructor(exprs, _type) => {
+            Expression::StructConstructor(exprs, _) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
 
                 // We don't verify the struct ID, the parser should have done it
-                chunk.emit_opcode(OpCode::NewStruct);
-                // Because we write the type ID, we know how many expressions to read
-                chunk.write_u16(_type.id());
+                chunk.emit_opcode(OpCode::NewArray);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -196,15 +195,13 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::EnumConstructor(exprs, enum_type) => {
+            Expression::EnumConstructor(exprs, _) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
 
-                chunk.emit_opcode(OpCode::NewEnum);
-                // Because we write the type ID, we know how many expressions to read
-                chunk.write_u16(enum_type.id());
-                chunk.write_u8(enum_type.variant_id());
+                chunk.emit_opcode(OpCode::NewArray);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -726,21 +723,6 @@ impl<'a> Compiler<'a> {
 
     // Compile the program
     pub fn compile(mut self) -> Result<Module, CompilerError> {
-        // Include the structs created
-        for struct_type in self.program.structures() {
-            trace!("Adding struct: {:?}", struct_type);
-            if !self.module.add_struct(struct_type.clone()) {
-                return Err(CompilerError::DuplicatedStruct(struct_type.id()));
-            }
-        }
-
-        for enum_type in self.program.enums() {
-            trace!("Adding enum: {:?}", enum_type);
-            if !self.module.add_enum(enum_type.clone()) {
-                return Err(CompilerError::DuplicatedEnum(enum_type.id()));
-            }
-        }
-
         // Compile the program
         for function in self.program.functions() {
             self.compile_function(function)?;
@@ -1043,7 +1025,7 @@ mod tests {
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
-                OpCode::NewStruct.as_byte(), 0, 0,
+                OpCode::NewArray.as_byte(), 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0,
@@ -1157,7 +1139,7 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::NewEnum.as_byte(), 0, 0, 0,
+                OpCode::NewArray.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1174,7 +1156,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::NewEnum.as_byte(), 0, 0, 1,
+                OpCode::NewArray.as_byte(), 1,
                 OpCode::Return.as_byte()
             ]
         );

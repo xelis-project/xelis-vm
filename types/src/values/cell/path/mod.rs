@@ -44,8 +44,8 @@ impl Path {
         }
     }
 
-    // Get the sub value of the path
-    pub fn get_sub_variable(self, index: usize) -> Result<Path, ValueError> {
+    // Get the sub value at index requested
+    pub fn get_at_index(self, index: usize) -> Result<Path, ValueError> {
         match self {
             Self::Owned(v) => {
                 let mut values = v.to_vec()?;

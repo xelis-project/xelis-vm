@@ -170,16 +170,7 @@ fn test_multi_depth_array_call() {
 
 #[test]
 fn test_struct() {
-    // Create a new struct
-    let new_struct = StructType::new(0, vec![
-            Type::U8,
-            Type::U16
-        ]
-    );
-
     let mut module = Module::new();
-    module.add_struct(new_struct.clone());
-
     let mut chunk = Chunk::new();
     // Push the first field
     let index = module.add_constant(Value::U8(10));
@@ -191,9 +182,9 @@ fn test_struct() {
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
-    chunk.emit_opcode(OpCode::NewStruct);
+    chunk.emit_opcode(OpCode::NewArray);
     // struct id
-    chunk.write_u16(0);
+    chunk.write_u32(0);
 
     chunk.emit_opcode(OpCode::Return);
 
@@ -205,12 +196,11 @@ fn test_struct() {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            ValueCell::Typed(
+            ValueCell::Array(
                 vec![
                     Value::U8(10).into(),
                     Value::U16(20).into()
-                ].into(),
-                DefinedType::Struct(new_struct)
+                ]
             )
         );
     }
@@ -295,11 +285,6 @@ fn test_function_call() {
 fn test_function_call_on_value() {
     let mut module = Module::new();
 
-    // Create a struct with u64 field
-    let new_struct = StructType::new(0, vec![Type::U64]);
-
-    module.add_struct(new_struct.clone());
-
     // Create a function on a struct
     // When called, the first stack value should be the struct
     let mut struct_fn = Chunk::new();
@@ -310,9 +295,9 @@ fn test_function_call_on_value() {
     // Main function
     let mut main = Chunk::new();
     // Create a struct
-    let index = module.add_constant(Constant::Typed(vec![
+    let index = module.add_constant(Constant::Array(vec![
         Value::U64(10).into()
-    ], DefinedType::Struct(new_struct)));
+    ]));
 
     main.emit_opcode(OpCode::Constant);
     main.write_u16(index as u16);

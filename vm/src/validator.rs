@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{Constant, DefinedType, EnumType, EnumVariant, StructType, Type, Value, ValueError};
+use xelis_types::{Constant, EnumType, EnumVariant, StructType, Value, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -95,38 +95,6 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                Constant::Typed(fields, t) => {
-                    match t {
-                        DefinedType::Enum(t) => {
-                            let variant = t.enum_type()
-                                .variants()
-                                .get(t.variant_id() as usize)
-                                .ok_or(ValidatorError::IncorrectVariant)?;
-        
-                            if fields.len() != variant.fields().len() {
-                                return Err(ValidatorError::IncorrectFields);
-                            }
-        
-                            if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
-                                return Err(ValidatorError::UnknownEnum);
-                            }    
-                        },
-                        DefinedType::Struct(t) => {
-                            if fields.len() != t.fields().len() {
-                                return Err(ValidatorError::IncorrectFields);
-                            }
-                
-                            if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
-                                return Err(ValidatorError::UnknownStruct);
-                            }
-                        }
-                    }
-
-                    for field in fields {
-                        stack.push((field, depth + 1));
-                    }
-                    memory_usage += 16;
-                },
                 Constant::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
@@ -200,6 +168,7 @@ impl<'a> ModuleValidator<'a> {
                         memory_usage += opaque.get_size();
                     }
                 },
+                _ => {}
             }
         }
 
@@ -250,52 +219,6 @@ impl<'a> ModuleValidator<'a> {
         Ok(())
     }
 
-    // Verify the enums integrity
-    fn verify_enums(&self) -> Result<(), ValidatorError<'a>> {
-        // No need to check the ids, they are already checked by the Module
-        for e in self.module.enums() {
-            // Verify the variants
-            if e.variants().len() > u8::MAX as usize {
-                return Err(ValidatorError::TooManyEnumsVariants);
-            }
-
-            for variant in e.variants() {
-                if variant.fields().len() > u8::MAX as usize {
-                    return Err(ValidatorError::TooManyEnumsVariantsFields(variant));
-                }
-
-                for field in variant.fields() {
-                    if let Type::Enum(inner) = field {
-                        if e == inner {
-                            return Err(ValidatorError::RecursiveEnum(e));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    // Verify the structs integrity
-    fn verify_structs(&self) -> Result<(), ValidatorError<'a>> {
-        // No need to check the ids, they are already checked by the Module
-        for s in self.module.structs() {
-            if s.fields().len() > u8::MAX as usize {
-                return Err(ValidatorError::TooManyStructFields(s));
-            }
-
-            for field in s.fields() {
-                if let Type::Struct(inner) = field {
-                    if s == inner {
-                        return Err(ValidatorError::RecursiveStruct(s));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     // Verify the module integrity and return an error if it's invalid
     pub fn verify(&self) -> Result<(), ValidatorError<'a>> {
         let max = u16::MAX as usize;
@@ -309,22 +232,6 @@ impl<'a> ModuleValidator<'a> {
             return Err(ValidatorError::TooManyChunks);
         }
 
-        if self.module.structs().len() >= max {
-            return Err(ValidatorError::TooManyStructs);
-        }
-
-        if self.module.enums().len() >= max {
-            return Err(ValidatorError::TooManyEnums);
-        }
-
-        // Maximum of 65535 types
-        let max_types = self.module.structs().len() + self.module.enums().len();
-        if max_types >= max {
-            return Err(ValidatorError::TooManyTypes);
-        }
-
-        self.verify_enums()?;
-        self.verify_structs()?;
         self.verify_constants(self.module.constants().iter().map(|v| &v.0))?;
         self.verify_chunks()?;
 

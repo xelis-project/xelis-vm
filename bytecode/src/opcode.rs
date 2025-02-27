@@ -51,14 +51,10 @@ pub enum OpCode {
     SysCall,
     // pop length, pop N values => create array with N values
     NewArray,
-    // pop type id, pop N values => create struct
-    NewStruct,
     // N..Y
     NewRange,
     // pop length, pop N entries (N * (key + value)) => create map with N entries
     NewMap,
-    // read enum id u16, variant id u8, pop N values => create enum
-    NewEnum,
 
     // Operators
     // +
@@ -167,10 +163,8 @@ impl OpCode {
             OpCode::SysCall => 20,
 
             OpCode::NewArray => 21,
-            OpCode::NewStruct => 22,
             OpCode::NewRange => 23,
             OpCode::NewMap => 24,
-            OpCode::NewEnum => 25,
 
             OpCode::Add => 26,
             OpCode::Sub => 27,
@@ -242,10 +236,8 @@ impl OpCode {
             20 => OpCode::SysCall,
 
             21 => OpCode::NewArray,
-            22 => OpCode::NewStruct,
             23 => OpCode::NewRange,
             24 => OpCode::NewMap,
-            25 => OpCode::NewEnum,
 
             26 => OpCode::Add,
             27 => OpCode::Sub,
@@ -332,8 +324,6 @@ impl OpCode {
             OpCode::SysCall => 4, // id u16, on_value bool, args u8
 
             OpCode::NewArray => 1, // u8 initial values
-            OpCode::NewStruct => 2, // struct type id u16
-            OpCode::NewRange => 0,
             OpCode::NewMap => 1, // u8 initial values
 
             _ => 0,

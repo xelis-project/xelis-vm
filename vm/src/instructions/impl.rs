@@ -33,7 +33,7 @@ pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMan
 pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     let path = stack.pop_stack()?;
-    let sub = path.get_sub_variable(index as usize)?;
+    let sub = path.get_at_index(index as usize)?;
     stack.push_stack_unchecked(sub);
 
     Ok(InstructionResult::Nothing)
@@ -82,7 +82,7 @@ pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<
 pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = stack.pop_stack()?.into_inner().cast_to_u32()?;
     let value = stack.pop_stack()?;
-    let sub = value.get_sub_variable(index as usize)?;
+    let sub = value.get_at_index(index as usize)?;
     stack.push_stack_unchecked(sub);
     Ok(InstructionResult::Nothing)
 }

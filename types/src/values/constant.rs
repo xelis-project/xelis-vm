@@ -92,12 +92,7 @@ impl TryFrom<ValueCell> for Constant {
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
             },
-            ValueCell::Typed(values, ty) => {
-                let values = values.into_iter()
-                    .map(|v| v.into_owned()?.try_into())
-                    .collect::<Result<Vec<_>, _>>()?;
-                Self::Typed(values, ty)
-            }
+            _ => todo!()
         })
     }
 }
