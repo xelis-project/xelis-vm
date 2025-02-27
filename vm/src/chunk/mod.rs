@@ -15,9 +15,9 @@ const REGISTERS_SIZE: usize = u16::MAX as usize;
 pub struct ChunkManager<'a> {
     reader: ChunkReader<'a>,
     // Registers are temporary and "scoped" per chunk
-    registers: Vec<Path<'a>>,
+    registers: Vec<Path>,
     // Iterators stack
-    iterators: Vec<PathIterator<'a>>,
+    iterators: Vec<PathIterator>,
 }
 
 impl<'a> ChunkManager<'a> {
@@ -35,22 +35,22 @@ impl<'a> ChunkManager<'a> {
 
     // Get the registers
     #[inline]
-    pub fn get_registers(&self) -> &Vec<Path<'a>> {
+    pub fn get_registers(&self) -> &Vec<Path> {
         &self.registers
     }
 
     // Add an iterator to the stack
-    pub fn add_iterator(&mut self, iterator: PathIterator<'a>) {
+    pub fn add_iterator(&mut self, iterator: PathIterator) {
         self.iterators.push(iterator);
     }
 
     // Pop an iterator from the stack
-    pub fn pop_iterator(&mut self) -> Result<PathIterator<'a>, VMError> {
+    pub fn pop_iterator(&mut self) -> Result<PathIterator, VMError> {
         self.iterators.pop().ok_or(VMError::EmptyIterator)
     }
 
     // Get the next value from the iterators stack
-    pub fn next_iterator(&mut self) -> Result<Option<Path<'a>>, VMError> {
+    pub fn next_iterator(&mut self) -> Result<Option<Path>, VMError> {
         Ok(self.iterators.last_mut()
             .ok_or(VMError::EmptyIterator)?
             .next()?)
@@ -58,7 +58,7 @@ impl<'a> ChunkManager<'a> {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: Path<'a>) -> Result<(), VMError> {
+    pub fn set_register(&mut self, index: usize, value: Path) -> Result<(), VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -76,13 +76,13 @@ impl<'a> ChunkManager<'a> {
 
     // Get a value from the registers
     #[inline]
-    pub fn from_register(&mut self, index: usize) -> Result<&mut Path<'a>, VMError> {
+    pub fn from_register(&mut self, index: usize) -> Result<&mut Path, VMError> {
         self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
     }
 
     // Pop a value from the registers
     #[inline]
-    pub fn pop_register(&mut self) -> Result<Path<'a>, VMError> {
+    pub fn pop_register(&mut self) -> Result<Path, VMError> {
         self.registers.pop().ok_or(VMError::EmptyRegister)
     }
 }

@@ -8,7 +8,7 @@ use std::{
     ptr
 };
 use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
-use super::{Constant, SubValue, Value, ValueError};
+use super::{Constant, Value, ValueError};
 
 pub use path::*;
 
@@ -17,13 +17,13 @@ pub use path::*;
 #[derive(Debug, Clone, Eq)]
 pub enum ValueCell {
     Default(Value),
-    Struct(Vec<SubValue>, StructType),
-    Array(Vec<SubValue>),
-    Optional(Option<SubValue>),
+    Array(Vec<Path>),
 
     // Map cannot be used as a key in another map
-    Map(HashMap<ValueCell, SubValue>),
-    Enum(Vec<SubValue>, EnumValueType),
+    // Key must be immutable also!
+    Map(HashMap<ValueCell, Path>),
+    Struct(Vec<Path>, StructType),
+    Enum(Vec<Path>, EnumValueType),
 }
 
 impl PartialEq for ValueCell {
@@ -32,11 +32,6 @@ impl PartialEq for ValueCell {
             (Self::Default(a), Self::Default(b)) => a == b,
             (Self::Struct(a, _), Self::Struct(b, _)) => a == b,
             (Self::Array(a), Self::Array(b)) => a == b,
-            (Self::Optional(a), Self::Optional(b)) => a == b,
-
-            // Support null comparison
-            (Self::Optional(a), Self::Default(Value::Null)) => a.is_none(),
-            (Self::Default(Value::Null), Self::Optional(b)) => b.is_none(),
 
             (Self::Map(a), Self::Map(b)) => a == b,
             (Self::Enum(a, _), Self::Enum(b, _)) => a == b,
@@ -69,7 +64,6 @@ impl From<Constant> for ValueCell {
             Constant::Default(v) => Self::Default(v),
             Constant::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
-            Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
             Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
         }
@@ -83,156 +77,93 @@ impl ValueCell {
             return;
         }
 
-        match self {
-            ValueCell::Default(v) => {
-                v.hash(state);
-            },
-            ValueCell::Struct(fields, _) => {
-                12u8.hash(state);
-                fields.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
-            ValueCell::Array(array) => {
-                13u8.hash(state);
-                array.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
-            ValueCell::Optional(v) => {
-                14u8.hash(state);
-                if let Some(v) = v {
-                    v.borrow()
-                        .hash_with_pointers(state, tracked_pointers);
-                } else {
-                    Self::Default(Value::Null).hash(state);
-                }
-            },
-            ValueCell::Map(map) => {
-                15u8.hash(state);
-                map.iter()
-                    .for_each(|(k, v)| {
-                        k.hash(state);
-                        v.borrow()
-                            .hash_with_pointers(state, tracked_pointers);
-                    });
-            },
-            ValueCell::Enum(fields, _) => {
-                16u8.hash(state);
-                fields.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
-        }
+        // match self {
+        //     ValueCell::Default(v) => {
+        //         v.hash(state);
+        //     },
+        //     ValueCell::Array(array) => {
+        //         13u8.hash(state);
+        //         array.iter()
+        //             .for_each(|field| field
+        //                 .hash_with_pointers(state, tracked_pointers)
+        //             );
+        //     },
+        //     ValueCell::Map(map) => {
+        //         14u8.hash(state);
+        //         map.iter()
+        //             .for_each(|(k, v)| {
+        //                 k.hash(state);
+        //                 v.hash_with_pointers(state, tracked_pointers);
+        //             });
+        //     },
+        //     ValueCell::Struct(fields, _) => {
+        //         15u8.hash(state);
+        //         fields.iter()
+        //             .for_each(|field| field
+        //                 .hash_with_pointers(state, tracked_pointers)
+        //             );
+        //     },
+        //     ValueCell::Enum(fields, _) => {
+        //         16u8.hash(state);
+        //         fields.iter()
+        //             .for_each(|field| field
+        //                 .hash_with_pointers(state, tracked_pointers)
+        //             );
+        //     },
+        // }
     }
 
     // Calculate the depth of the value
-    pub fn calculate_depth(&self, max_depth: usize) -> Result<usize, ValueError> {
+    pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
         if matches!(self, Self::Default(_)) {
             return Ok(0);
         }
 
-        let mut stack = vec![(Path::Borrowed(self), 0)];
+        let mut stack = vec![(self, 0)];
         let mut biggest_depth = 0;
 
-        while let Some((next, depth)) = stack.pop() {
-            if depth > max_depth {
-                return Err(ValueError::MaxDepthReached);
-            }
+        // while let Some((next, depth)) = stack.pop() {
+        //     if depth > max_depth {
+        //         return Err(ValueError::MaxDepthReached);
+        //     }
 
-            if depth > biggest_depth {
-                biggest_depth = depth;
-            }
+        //     if depth > biggest_depth {
+        //         biggest_depth = depth;
+        //     }
 
-            let handle = next.as_ref();
-            let value = handle.as_value();
-            match value {
-                ValueCell::Default(_) => {},
-                ValueCell::Array(values) => {
-                    for value in values {
-                        stack.push((Path::Wrapper(value.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Struct(fields, _) => {
-                    for field in fields {
-                        stack.push((Path::Wrapper(field.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push((Path::Wrapper(value.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Map(map) => {
-                    for (k, v) in map {
-                        stack.push((Path::Owned(k.clone()), depth + 1));
-                        stack.push((Path::Wrapper(v.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Enum(fields, _) => {
-                    for field in fields {
-                        stack.push((Path::Wrapper(field.clone()), depth + 1));
-                    }
-                },
-            };
-        }
+        //     match next {
+        //         ValueCell::Default(_) => {},
+        //         ValueCell::Array(values) => {
+        //             for value in values {
+        //                 stack.push((value, depth + 1));
+        //             }
+        //         },
+        //         ValueCell::Map(map) => {
+        //             for (_, v) in map {
+        //                 stack.push((v, depth + 1));
+        //             }
+        //         },
+        //         ValueCell::Struct(fields, _) => {
+        //             for field in fields {
+        //                 stack.push((field, depth + 1));
+        //             }
+        //         },
+        //         ValueCell::Enum(fields, _) => {
+        //             for field in fields {
+        //                 stack.push((field, depth + 1));
+        //             }
+        //         },
+        //     };
+        // }
 
         Ok(biggest_depth)
-    }
-
-    pub fn get_memory_usage(&self, max_memory: usize) -> Result<usize, ValueError> {
-        let mut memory = 0;
-        let mut stack = vec![Path::Borrowed(self)];
-        while let Some(next) = stack.pop() {
-            let handle = next.as_ref();
-            let value = handle.as_value();
-            match value {
-                ValueCell::Default(v) => memory += v.get_memory_usage(),
-                ValueCell::Array(values) => {
-                    for value in values {
-                        stack.push(Path::Wrapper(value.clone()));
-                    }
-                },
-                ValueCell::Struct(fields, _) => {
-                    for field in fields {
-                        stack.push(Path::Wrapper(field.clone()));
-                    }
-                },
-                ValueCell::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push(Path::Wrapper(value.clone()));
-                    }
-                },
-                ValueCell::Map(map) => {
-                    for (k, v) in map {
-                        stack.push(Path::Owned(k.clone()));
-                        stack.push(Path::Wrapper(v.clone()));
-                    }
-                },
-                ValueCell::Enum(fields, _) => {
-                    for field in fields {
-                        stack.push(Path::Wrapper(field.clone()));
-                    }
-                },
-            };
-
-            if memory > max_memory {
-                return Err(ValueError::MaxMemoryReached);
-            }
-        }
-
-        Ok(memory)
     }
 
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
             Self::Default(Value::Null) => true,
-            Self::Optional(opt) => opt.is_none(),
             _ => false
         }
     }
@@ -318,7 +249,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Self, SubValue>, ValueError> {
+    pub fn as_map(&self) -> Result<&HashMap<ValueCell, Path>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -326,7 +257,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Self, SubValue>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<ValueCell, Path>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct),
@@ -334,7 +265,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<SubValue>, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<Path>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -342,7 +273,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<SubValue>, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<Path>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -353,7 +284,6 @@ impl ValueCell {
     pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
             Self::Default(Value::Null) => Ok(None),
-            Self::Optional(opt) => opt.take().map(SubValue::into_owned).transpose(),
             v => {
                 let value = std::mem::take(v);
                 Ok(Some(value))
@@ -426,7 +356,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<SubValue>, ValueError> {
+    pub fn to_map(self) -> Result<Vec<Path>, ValueError> {
         match self {
             Self::Struct(fields, _) => Ok(fields),
             _ => Err(ValueError::ExpectedStruct)
@@ -434,7 +364,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<SubValue>, ValueError> {
+    pub fn to_vec(self) -> Result<Vec<Path>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -442,7 +372,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_sub_vec(self) -> Result<Vec<SubValue>, ValueError> {
+    pub fn to_sub_vec(self) -> Result<Vec<Path>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -506,7 +436,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<SubValue>, ValueError> {
+    pub fn as_sub_vec(&self) -> Result<&Vec<Path>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -515,7 +445,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<SubValue>, ValueError> {
+    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<Path>, ValueError> {
         match self {
             Self::Array(values) => Ok(values),
             Self::Struct(fields, _) => Ok(fields),
@@ -598,7 +528,7 @@ impl ValueCell {
             Type::Bool => self.cast_to_bool().map(Value::Boolean),
             Type::Optional(inner) => {
                 if self.is_null() {
-                    return Ok(Self::Optional(None))
+                    return Ok(self)
                 } else {
                     return self.checked_cast_to_primitive_type(inner)
                 }
@@ -723,7 +653,6 @@ impl ValueCell {
             Map {
                 len: usize,
             },
-            Optional(bool),
             Struct {
                 ty: StructType,
                 len: usize,
@@ -736,7 +665,7 @@ impl ValueCell {
 
         let mut stack = vec![self];
         let mut queue = Vec::new();
-        let mut pointers = HashSet::new();
+        // let mut pointers = HashSet::new();
 
         // Disassemble
         while let Some(value) = stack.pop() {
@@ -745,51 +674,26 @@ impl ValueCell {
                 Self::Array(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
                     for value in values.into_iter().rev() {
-                        if !pointers.insert(value.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
                         stack.push(value.into_inner());
                     }
                 },
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
                     for (k, v) in map.into_iter() {
-                        if !pointers.insert(v.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
                         stack.push(k);
                         stack.push(v.into_inner());
                     }
                 },
-                Self::Optional(opt) => {
-                    queue.push(QueueItem::Optional(opt.is_some()));
-                    if let Some(value) = opt {
-                        if !pointers.insert(value.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(value.into_inner());
-                    }
-                },
                 Self::Struct(fields, ty) => {
                     queue.push(QueueItem::Struct { ty, len: fields.len() });
-                    for field in fields.into_iter().rev() {
-                        if !pointers.insert(field.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(field.into_inner());
-                    }
-                },
+                    for value in fields.into_iter().rev() {
+                        stack.push(value.into_inner());
+                    }                },
                 Self::Enum(fields, ty) => {
                     queue.push(QueueItem::Enum { ty, len: fields.len() });
-                    for field in fields.into_iter().rev() {
-                        if !pointers.insert(field.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(field.into_inner());
+                    // stack.extend(fields.into_iter().rev());
+                    for value in fields.into_iter().rev() {
+                        stack.push(value.into_inner());
                     }
                 }
             }
@@ -804,7 +708,11 @@ impl ValueCell {
                 QueueItem::Array { len } => {
                     let mut values = Vec::with_capacity(len);
                     for _ in 0..len {
-                        values.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
+                        values.push(
+                            stack.pop()
+                                .ok_or(ValueError::ExpectedValue)?
+                                .into()
+                        );
                     }
                     stack.push(ValueCell::Array(values));
                 },
@@ -813,29 +721,28 @@ impl ValueCell {
                     for _ in 0..len {
                         let value = stack.pop().ok_or(ValueError::ExpectedValue)?;
                         let key = stack.pop().ok_or(ValueError::ExpectedValue)?;
-                        map.insert(key, SubValue::new(value));
+                        map.insert(key, value.into());
                     }
                     stack.push(ValueCell::Map(map));
-                },
-                QueueItem::Optional(is_some) => {
-                    let value = if is_some {
-                        Some(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?))
-                    } else {
-                        None
-                    };
-                    stack.push(ValueCell::Optional(value));
                 },
                 QueueItem::Struct { ty, len } => {
                     let mut fields = Vec::with_capacity(len);
                     for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
-                    }
+                        fields.push(
+                            stack.pop()
+                                .ok_or(ValueError::ExpectedValue)?
+                                .into()
+                        );                    }
                     stack.push(ValueCell::Struct(fields, ty));
                 },
                 QueueItem::Enum { ty, len } => {
                     let mut fields = Vec::with_capacity(len);
                     for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
+                        fields.push(
+                            stack.pop()
+                                .ok_or(ValueError::ExpectedValue)?
+                                .into()
+                        );
                     }
                     stack.push(ValueCell::Enum(fields, ty));
                 }
@@ -850,28 +757,24 @@ impl fmt::Display for ValueCell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Default(v) => write!(f, "{}", v),
-            Self::Struct(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
-                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
-            },
             Self::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v.as_ref())).collect();
                 write!(f, "[{}]", s.join(", "))
             },
-            Self::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", value.borrow().to_string()),
-                None => write!(f, "optional<null>")
-            },
             Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
+            },
+            Self::Struct(fields, _type) => {
+                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
+                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
             },
             Self::Enum(fields, enum_type) => {
                 let s: Vec<String> = fields.iter()
-                    .map(|v| format!("{}", v.borrow()))
+                    .map(|v| format!("{}", v.as_ref()))
                     .collect();
                 write!(f, "enum[{}:{}] {} {} {}", enum_type.id(), enum_type.variant_id(), "{", s.join(", "), "}")
-            }
+            },
         }
     }
 }
@@ -887,7 +790,7 @@ mod tests {
         let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..100 {
             let mut inner_map = HashMap::new();
-            inner_map.insert(Value::U8(10).into(), SubValue::new(map));
+            inner_map.insert(Value::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
 
@@ -898,15 +801,15 @@ mod tests {
     #[test]
     fn test_recursive_cycle() {
         // Create a map that contains itself
-        let map = SubValue::new(ValueCell::Map(HashMap::new()));
+        let sub = SubValue::new(ValueCell::Map(HashMap::new()));
         {
-            let mut m = map.borrow_mut();
+            let mut m = sub.borrow_mut();
             m.as_mut_map()
                 .unwrap()
-                .insert(Value::U8(10).into(), map.reference());
+                .insert(Value::U8(10).into(), sub.clone().into());
         }
 
-        let owned = map.into_inner();
+        let owned = sub.into_inner();
         assert!(
             matches!(owned.into_owned(), Err(ValueError::CyclicError))
         );
@@ -915,9 +818,9 @@ mod tests {
     #[test]
     fn test_into_owned() {
         let array = ValueCell::Array(vec![
-            SubValue::new(ValueCell::Default(Value::U8(10))),
-            SubValue::new(ValueCell::Default(Value::U8(20))),
-            SubValue::new(ValueCell::Default(Value::U8(30))),
+            ValueCell::Default(Value::U8(10)).into(),
+            ValueCell::Default(Value::U8(20)).into(),
+            ValueCell::Default(Value::U8(30)).into(),
         ]);
 
         assert_eq!(array, array.clone().into_owned().unwrap());

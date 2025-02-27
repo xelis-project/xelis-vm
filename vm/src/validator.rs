@@ -154,12 +154,6 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 16;
                 },
-                Constant::Optional(opt) => {
-                    if let Some(value) = opt {
-                        memory_usage += 1;
-                        stack.push((value, depth + 1));
-                    }
-                },
                 Constant::Default(v) => match v {
                     Value::Range(left, right, _type) => {
                         if !left.is_number() || !right.is_number() {

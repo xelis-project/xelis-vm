@@ -29,7 +29,7 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let contains = zelf?.as_map()?.contains_key(&k);
+    let contains = zelf?.as_map()?.contains_key(k.as_value());
     Ok(Some(Value::Boolean(contains).into()))
 }
 
@@ -40,8 +40,14 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let value = zelf?.as_map()?.get(&k).cloned();
-    Ok(Some(ValueCell::Optional(value)))
+    let value = zelf?.as_map()?
+        .get(k.as_value())
+        .cloned();
+
+    Ok(Some(match value {
+        Some(v) => v.into_inner(),
+        None => Value::Null.into(),
+    }))
 }
 
 fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
@@ -65,8 +71,12 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
         .calculate_depth(max_depth)?;
 
     let previous = map
-        .insert(key, value.into_owned()?.into());
-    Ok(Some(ValueCell::Optional(previous)))
+        .insert(key.into_owned()?, value.into_owned()?.into());
+
+    Ok(Some(match previous {
+        Some(v) => v.into_inner(),
+        None => Value::Null.into(),
+    }))
 }
 
 fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -78,8 +88,11 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     }
 
     let value = zelf?.as_mut_map()?
-        .remove(&k);
-    Ok(Some(ValueCell::Optional(value)))
+        .remove(k.as_value());
+    Ok(Some(match value {
+        Some(v) => v.into_inner(),
+        None => Value::Null.into(),
+    }))
 }
 
 fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
@@ -107,7 +120,7 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
     let values = map.values()
-        .map(|v| v.reference())
+        .map(|v| v.clone())
         .collect::<Vec<_>>();
 
     Ok(Some(ValueCell::Array(values)))

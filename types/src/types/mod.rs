@@ -108,7 +108,6 @@ impl Type {
     pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
             Constant::Default(v) => Self::from_value(v)?,
-            Constant::Optional(value) => Type::Optional(Box::new(Type::from_value_type(value.as_ref()?)?)),
             Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
             Constant::Struct(_, _type) => Type::Struct(_type.clone()),
             Constant::Map(map) => {

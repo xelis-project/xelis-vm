@@ -68,6 +68,8 @@ pub enum VMError {
     CallStackOverflow,
     #[error("unexpected type")]
     UnexpectedType,
+    #[error("{0}")]
+    Static(&'static str)
 }
 
 impl From<EnvironmentError> for VMError {
@@ -79,5 +81,11 @@ impl From<EnvironmentError> for VMError {
 impl From<ValueError> for VMError {
     fn from(error: ValueError) -> Self {
         VMError::ValueError(error)
+    }
+}
+
+impl From<&'static str> for VMError {
+    fn from(value: &'static str) -> Self {
+        VMError::Static(value)
     }
 }

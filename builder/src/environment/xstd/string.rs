@@ -84,9 +84,9 @@ fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
         let inner = Value::U32(index as u32).into();
-        Ok(Some(ValueCell::Optional(Some(inner))))
+        Ok(Some(inner))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
@@ -97,9 +97,9 @@ fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) ->
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
         let inner = Value::U32(index as u32).into();
-        Ok(Some(ValueCell::Optional(Some(inner))))
+        Ok(Some(inner))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
@@ -149,9 +149,9 @@ fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
     let s = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
         let inner = Value::String(c.to_string()).into();
-        Ok(Some(ValueCell::Optional(Some(inner))))
+        Ok(Some(inner))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
@@ -175,9 +175,9 @@ fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context)
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
         let inner = Value::String(s.to_owned()).into();
-        Ok(Some(ValueCell::Optional(Some(inner))))
+        Ok(Some(inner))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
@@ -189,8 +189,8 @@ fn string_substring_range(zelf: FnInstance, mut parameters: FnParams, _: &mut Co
     let end = param2.as_u32()? as usize;
     if let Some(s) = s.get(start..end) {
         let inner = Value::String(s.to_owned()).into();
-        Ok(Some(ValueCell::Optional(Some(inner))))
+        Ok(Some(inner))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }

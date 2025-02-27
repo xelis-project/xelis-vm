@@ -1,13 +1,13 @@
 use xelis_types::{Path, Type, Value, ValueCell, ValueError};
 
 #[derive(Debug)]
-pub struct PathIterator<'a> {
-    inner: Path<'a>,
+pub struct PathIterator {
+    inner: Path,
     index: Value,
 }
 
-impl<'a> PathIterator<'a> {
-    pub fn new(inner: Path<'a>) -> Result<Self, ValueError> {
+impl PathIterator {
+    pub fn new(inner: Path) -> Result<Self, ValueError> {
         let index = match inner.as_ref().as_value() {
             ValueCell::Default(Value::Range(_, _, index_type)) => match index_type {
                 Type::U8 => Value::U8(0),
@@ -24,7 +24,7 @@ impl<'a> PathIterator<'a> {
         Ok(PathIterator { inner, index })
     }
 
-    pub fn next(&mut self) -> Result<Option<Path<'a>>, ValueError> {
+    pub fn next(&mut self) -> Result<Option<Path>, ValueError> {
         let index = self.index.clone();
         self.index.increment()?;
 
@@ -33,7 +33,7 @@ impl<'a> PathIterator<'a> {
             ValueCell::Array(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
-                .map(|v| Path::Wrapper(v.reference()))
+                .map(|v| v.clone())
             },
             ValueCell::Default(Value::Range(start, end, _type)) => {
                 if index >= **start && index < **end {

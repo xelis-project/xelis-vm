@@ -56,7 +56,7 @@ fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     if let Some(value) = array.pop() {
         Ok(Some(value.into_owned()?))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
@@ -84,8 +84,8 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
     let mut slice = Vec::new();
     for i in start..end {
         // due to ValuePointer, slice are connected.
-        let value = match vec.get(i as usize) {
-            Some(v) => v.reference(),
+        let value = match vec.get_mut(i as usize) {
+            Some(v) => v.shareable(),
             None => return Err(EnvironmentError::NoValueFoundAtIndex(i))
         };
         slice.push(value);
@@ -103,33 +103,33 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.borrow() == *expected).is_some()).into()))
+    Ok(Some(Value::Boolean(vec.iter().find(|v| *v.as_ref() == *expected).is_some()).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(ValueCell::Optional(Some(value.reference()))))
+        Ok(Some(value.clone().into_inner()))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
 fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(ValueCell::Optional(Some(value.reference()))))
+        Ok(Some(value.clone().into_inner()))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }
 
 fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(ValueCell::Optional(Some(value.reference()))))
+        Ok(Some(value.clone().into_inner()))
     } else {
-        Ok(Some(ValueCell::Optional(None)))
+        Ok(Some(Value::Null.into()))
     }
 }

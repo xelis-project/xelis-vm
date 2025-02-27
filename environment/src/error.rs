@@ -42,4 +42,13 @@ pub enum EnvironmentError {
     Expect(String),
     #[error("Invalid expect message, require alphanumeric chars only")]
     InvalidExpect,
+    #[error("{0}")]
+    Static(&'static str)
+}
+
+
+impl From<&'static str> for EnvironmentError {
+    fn from(value: &'static str) -> Self {
+        EnvironmentError::Static(value)
+    }
 }

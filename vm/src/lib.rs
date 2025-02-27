@@ -77,7 +77,7 @@ pub struct VM<'a, 'r> {
     call_stack: Vec<ChunkManager<'a>>,
     // The stack of the VM
     // Every values are stored here
-    stack: Stack<'a>,
+    stack: Stack,
     // Context given to each instruction
     context: Context<'a, 'r>,
 }
@@ -108,7 +108,7 @@ impl<'a, 'r> VM<'a, 'r> {
 
     // Get the stack
     #[inline]
-    pub fn get_stack(&self) -> &Stack<'a> {
+    pub fn get_stack(&self) -> &Stack {
         &self.stack
     }
 
@@ -157,7 +157,7 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_chunk_with_args<V: Into<Path>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.stack.extend_stack(args.map(Into::into))?;
         self.invoke_chunk_id(id)
     }
@@ -171,12 +171,12 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Push a value to the stack
-    pub fn push_stack<V: Into<Path<'a>>>(&mut self, value: V) -> Result<(), VMError> {
+    pub fn push_stack<V: Into<Path>>(&mut self, value: V) -> Result<(), VMError> {
         self.stack.push_stack(value.into())
     }
 
     // Invoke an entry chunk using its id
-    pub fn invoke_entry_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_entry_chunk_with_args<V: Into<Path>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
         self.stack.extend_stack(args.map(Into::into))?;
         Ok(())

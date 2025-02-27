@@ -6,11 +6,11 @@ use super::VMError;
 // Function Call can have up to 255 arguments and 1 on value
 const STACK_SIZE: usize = 256;
 
-pub struct Stack<'a> {
-    stack: Vec<Path<'a>>,
+pub struct Stack {
+    stack: Vec<Path>,
 }
 
-impl<'a> Stack<'a> {
+impl Stack {
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(16),
@@ -19,7 +19,7 @@ impl<'a> Stack<'a> {
 
     // Push a value to the stack
     #[inline]
-    pub fn push_stack(&mut self, value: Path<'a>) -> Result<(), VMError> {
+    pub fn push_stack(&mut self, value: Path) -> Result<(), VMError> {
         if self.stack.len() >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
@@ -31,13 +31,13 @@ impl<'a> Stack<'a> {
 
     // Get the value at a specific index
     #[inline]
-    pub fn get_stack_at(&self, index: usize) -> Result<&Path<'a>, VMError> {
+    pub fn get_stack_at(&self, index: usize) -> Result<&Path, VMError> {
         self.stack.get(index).ok_or(VMError::StackIndexOutOfBounds)
     }
 
     // Push a value to the stack without checking the stack size
     #[inline(always)]
-    pub fn push_stack_unchecked(&mut self, value: Path<'a>) {
+    pub fn push_stack_unchecked(&mut self, value: Path) {
         self.stack.push(value);
     }
 
@@ -67,7 +67,7 @@ impl<'a> Stack<'a> {
 
     // Push multiple values to the stack
     #[inline]
-    pub fn extend_stack<I: IntoIterator<Item = Path<'a>> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
+    pub fn extend_stack<I: IntoIterator<Item = Path> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
         if self.stack.len() + values.len() >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
@@ -78,7 +78,7 @@ impl<'a> Stack<'a> {
 
     // Get the last value from the stack
     #[inline]
-    pub fn pop_stack(&mut self) -> Result<Path<'a>, VMError> {
+    pub fn pop_stack(&mut self) -> Result<Path, VMError> {
         self.stack.pop().ok_or(VMError::EmptyStack)
     }
 
@@ -96,19 +96,19 @@ impl<'a> Stack<'a> {
 
     // Get the last value from the stack
     #[inline]
-    pub fn last_stack(&self) -> Result<&Path<'a>, VMError> {
+    pub fn last_stack(&self) -> Result<&Path, VMError> {
         self.stack.last().ok_or(VMError::EmptyStack)
     }
 
     // Get the last mutable value from the stack
     #[inline]
-    pub fn last_mut_stack(&mut self) -> Result<&mut Path<'a>, VMError> {
+    pub fn last_mut_stack(&mut self) -> Result<&mut Path, VMError> {
         self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
     // Get the inner stack
     #[inline]
-    pub fn get_inner(&mut self) -> &mut Vec<Path<'a>> {
+    pub fn get_inner(&mut self) -> &mut Vec<Path> {
         &mut self.stack
     }
 

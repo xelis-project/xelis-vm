@@ -11,7 +11,6 @@ pub enum Constant {
     Default(Value),
     Struct(Vec<Constant>, StructType),
     Array(Vec<Constant>),
-    Optional(Option<Box<Constant>>),
 
     // Use box directly because the range are primitive only
     // Map cannot be used as a key in another map
@@ -36,11 +35,6 @@ impl Drop for ConstantWrapper {
                 Constant::Default(_) => {},
                 Constant::Struct(fields, _) => stack.extend(fields),
                 Constant::Array(values) => stack.extend(values),
-                Constant::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push(*value);
-                    }
-                },
                 Constant::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
                 Constant::Enum(fields, _) => stack.extend(fields),
             }
@@ -54,33 +48,27 @@ impl Hash for Constant {
         while let Some(value) = stack.pop() {
             match value {
                 Self::Default(v) => v.hash(state),
-                Self::Struct(fields, struct_type) => {
-                    12u8.hash(state);
-                    fields.iter().for_each(|f| stack.push(f));
-                    struct_type.hash(state);
-                },
                 Self::Array(values) => {
-                    13u8.hash(state);
+                    12u8.hash(state);
                     values.iter().for_each(|f| stack.push(f));
                 },
-                Self::Optional(opt) => {
-                    14u8.hash(state);
-                    if let Some(value) = opt {
-                        stack.push(value);
-                    }
-                },
                 Self::Map(map) => {
-                    15u8.hash(state);
+                    13u8.hash(state);
                     for (key, value) in map {
                         stack.push(&key);
                         stack.push(&value);
                     }
                 },
                 Self::Enum(fields, enum_type) => {
-                    16u8.hash(state);
+                    14u8.hash(state);
                     fields.iter().for_each(|f| stack.push(f));
                     enum_type.hash(state);
                 },
+                Self::Struct(fields, struct_type) => {
+                    15u8.hash(state);
+                    fields.iter().for_each(|f| stack.push(f));
+                    struct_type.hash(state);
+                }
             }
         }
     }
@@ -104,18 +92,14 @@ impl TryFrom<ValueCell> for Constant {
     fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
         Ok(match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
             ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?),
-            ValueCell::Optional(opt) => match opt {
-                Some(value) => Self::Optional(Some(Box::new(value.into_owned()?.try_into()?))),
-                None => Self::Optional(None)
-            },
             ValueCell::Map(map) => {
                 let m = map.into_iter()
                     .map(|(k, v)| Ok((k.into_owned()?.try_into()?, v.into_owned()?.try_into()?)))
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
             },
+            ValueCell::Struct(fields, struct_type) => Self::Struct(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, struct_type),
             ValueCell::Enum(fields, enum_type) => Self::Enum(fields.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?, enum_type),
         })
     }
@@ -243,27 +227,10 @@ impl Constant {
     }
 
     #[inline]
-    pub fn as_optional(&self, expected: &Type) -> Result<Option<&Self>, ValueError> {
+    pub fn as_optional(&self) -> Result<Option<&Self>, ValueError> {
         match self {
             Self::Default(Value::Null) => Ok(None),
-            Self::Optional(n) => Ok(n.as_deref()),
-            v => Err(ValueError::InvalidValueType(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_from_optional(&mut self, expected: &Type) -> Result<Self, ValueError> {
-        match self {
-            Self::Optional(opt) => opt.take().map(|v| *v).ok_or(ValueError::OptionalIsNull),
-            v => Err(ValueError::InvalidValueType(v.clone(), Type::Optional(Box::new(expected.clone()))))
-        }
-    }
-
-    #[inline]
-    pub fn take_optional(&mut self) -> Result<Option<Self>, ValueError> {
-        match self {
-            Self::Optional(opt) => Ok(opt.take().map(|v| *v)),
-            v => Err(ValueError::InvalidValueType(v.clone(), Type::Optional(Box::new(Type::Any))))
+            v => Ok(Some(v))
         }
     }
 
@@ -336,13 +303,6 @@ impl Constant {
         match self {
             Self::Default(Value::Boolean(n)) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::Bool))
-        }
-    }
-
-    #[inline]
-    pub fn to_optional(self) -> Self {
-        match self {
-            _ => Self::Optional(Some(Box::new(self)))
         }
     }
 
@@ -455,7 +415,7 @@ impl Constant {
             Type::Bool => self.cast_to_bool().map(Value::Boolean),
             Type::Optional(inner) => {
                 if self.is_null() {
-                    return Ok(Self::Optional(None))
+                    return Ok(self)
                 } else {
                     return self.checked_cast_to_primitive_type(inner)
                 }
@@ -577,10 +537,6 @@ impl fmt::Display for Constant {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
             },
-            Self::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", value.to_string()),
-                None => write!(f, "optional<null>")
-            },
             Self::Map(map) => {
                 let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
@@ -602,7 +558,10 @@ mod tests {
     fn test_huge_depth() {
         let mut map = Constant::Map(Default::default());
         for _ in 0..100000 {
-            map = Constant::Optional(Some(Box::new(map)));
+            let mut m = IndexMap::new();
+            m.insert(Constant::Default(Value::U8(0)), map);
+
+            map = Constant::Map(m);
         }
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

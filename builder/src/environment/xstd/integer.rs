@@ -21,10 +21,10 @@ macro_rules! overflow_fn {
                 let (result, overflow) = value.[<overflowing_ $op>](other);
                 
                 Ok(Some(if overflow {
-                    ValueCell::Optional(None)
+                    Value::Null.into()
                 } else {
                     let inner = Value::$t(result).into();
-                    ValueCell::Optional(Some(inner))
+                    inner
                 }))
             }
 
