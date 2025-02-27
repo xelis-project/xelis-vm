@@ -72,6 +72,10 @@ impl<'a> ChunkReader<'a> {
         }
     }
 
+    pub fn has_next(&self) -> bool {
+        self.ip <= self.chunk.last_index()
+    }
+
     // Read a u8 from the instructions
     #[inline]
     pub fn read_u8(&mut self) -> Result<u8, VMError> {

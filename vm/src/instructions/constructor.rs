@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use xelis_environment::EnvironmentError;
-use xelis_types::{Path, Value, ValueCell};
+use xelis_types::{Value, ValueCell};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -10,10 +10,10 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(pop.into_owned()?.into());
+        array.push_front(pop.into_owned()?);
     }
 
-    stack.push_stack(Path::Owned(ValueCell::Array(array.into())))?;
+    stack.push_stack(ValueCell::Array(array.into()).into())?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -31,7 +31,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
     }
 
     let value = Value::Range(Box::new(start.into_value()?), Box::new(end.into_value()?), start_type);
-    stack.push_stack_unchecked(Path::Owned(ValueCell::Default(value)));
+    stack.push_stack_unchecked(value.into());
     Ok(InstructionResult::Nothing)
 }
 
@@ -48,6 +48,6 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
         map.insert(key, value.into_owned()?.into());
     }
 
-    stack.push_stack_unchecked(Path::Owned(ValueCell::Map(map)));
+    stack.push_stack_unchecked(ValueCell::Map(map).into());
     Ok(InstructionResult::Nothing)
 }

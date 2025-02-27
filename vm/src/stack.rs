@@ -1,4 +1,4 @@
-use xelis_types::Path;
+use xelis_types::StackValue;
 
 use super::VMError;
 
@@ -7,19 +7,38 @@ use super::VMError;
 const STACK_SIZE: usize = 256;
 
 pub struct Stack {
-    stack: Vec<Path>,
+    stack: Vec<StackValue>,
+    // Each element is the stack index until which
+    // we will need to clean up the pointers
+    pub checkpoints: Vec<usize>,
 }
 
 impl Stack {
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(16),
+            checkpoints: Vec::new(),
         }
+    }
+
+    pub fn checkpoint_commit(&mut self) {
+        self.checkpoints.push(self.stack.len());
+    }
+
+    pub fn checkpoint_clean(&mut self) -> Result<(), VMError> {
+        let index = self.checkpoints.pop().unwrap();
+        if let Some(values) = self.stack.get_mut(index..) {
+            for value in values {
+                value.take_ownership();
+            }
+        }
+
+        Ok(())
     }
 
     // Push a value to the stack
     #[inline]
-    pub fn push_stack(&mut self, value: Path) -> Result<(), VMError> {
+    pub fn push_stack(&mut self, value: StackValue) -> Result<(), VMError> {
         if self.stack.len() >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
@@ -29,15 +48,31 @@ impl Stack {
         Ok(())
     }
 
+    pub fn verify_pointers(&mut self, value: StackValue) -> Result<(), VMError> {
+        let checkpoint = self.checkpoints.last()
+            .copied()
+            .unwrap_or(0);
+
+        let Some(values) = self.stack.get_mut(checkpoint..) else {
+            return Ok(())
+        };
+
+        for v in values {
+            v.make_owned_if_same_ptr(&value);
+        }
+
+        Ok(())
+    }
+
     // Get the value at a specific index
     #[inline]
-    pub fn get_stack_at(&self, index: usize) -> Result<&Path, VMError> {
+    pub fn get_stack_at(&self, index: usize) -> Result<&StackValue, VMError> {
         self.stack.get(index).ok_or(VMError::StackIndexOutOfBounds)
     }
 
     // Push a value to the stack without checking the stack size
     #[inline(always)]
-    pub fn push_stack_unchecked(&mut self, value: Path) {
+    pub fn push_stack_unchecked(&mut self, value: StackValue) {
         self.stack.push(value);
     }
 
@@ -67,7 +102,7 @@ impl Stack {
 
     // Push multiple values to the stack
     #[inline]
-    pub fn extend_stack<I: IntoIterator<Item = Path> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
+    pub fn extend_stack<I: IntoIterator<Item = StackValue> + ExactSizeIterator>(&mut self, values: I) -> Result<(), VMError> {
         if self.stack.len() + values.len() >= STACK_SIZE {
             return Err(VMError::StackOverflow);
         }
@@ -78,7 +113,7 @@ impl Stack {
 
     // Get the last value from the stack
     #[inline]
-    pub fn pop_stack(&mut self) -> Result<Path, VMError> {
+    pub fn pop_stack(&mut self) -> Result<StackValue, VMError> {
         self.stack.pop().ok_or(VMError::EmptyStack)
     }
 
@@ -96,19 +131,19 @@ impl Stack {
 
     // Get the last value from the stack
     #[inline]
-    pub fn last_stack(&self) -> Result<&Path, VMError> {
+    pub fn last_stack(&self) -> Result<&StackValue, VMError> {
         self.stack.last().ok_or(VMError::EmptyStack)
     }
 
     // Get the last mutable value from the stack
     #[inline]
-    pub fn last_mut_stack(&mut self) -> Result<&mut Path, VMError> {
+    pub fn last_mut_stack(&mut self) -> Result<&mut StackValue, VMError> {
         self.stack.last_mut().ok_or(VMError::EmptyStack)
     }
 
     // Get the inner stack
     #[inline]
-    pub fn get_inner(&mut self) -> &mut Vec<Path> {
+    pub fn get_inner(&mut self) -> &mut Vec<StackValue> {
         &mut self.stack
     }
 

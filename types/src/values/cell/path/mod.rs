@@ -1,6 +1,8 @@
 mod handle;
 
-use crate::{values::ValueError, Constant, SubValue, Value};
+use std::mem;
+
+use crate::{values::ValueError, Constant, Value};
 pub use handle::{
     ValueHandle,
     ValueHandleMut
@@ -9,12 +11,13 @@ pub use handle::{
 use super::ValueCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Path {
-    Owned(ValueCell),
-    Wrapper(SubValue)
+pub enum StackValue {
+    // Value is on stack directly
+    Owned(Box<ValueCell>),
+    Pointer(*mut ValueCell)
 }
 
-impl Path {
+impl StackValue {
     #[inline(always)]
     pub fn as_bool<'a>(&'a self) -> Result<bool, ValueError> {
         self.as_ref().as_bool()
@@ -30,22 +33,8 @@ impl Path {
         self.as_ref().as_u64()
     }
 
-    // Share the value
-    // This will create a new reference to the value
-    pub fn shareable(&mut self) -> Path {
-        match self {
-            Self::Owned(v) => {
-                let dst = std::mem::take(v);
-                let inner = SubValue::new(dst);
-                *self = Self::Wrapper(inner.reference());
-                Self::Wrapper(inner)
-            },
-            Self::Wrapper(v) => Self::Wrapper(v.reference())
-        }
-    }
-
     // Get the sub value at index requested
-    pub fn get_at_index(self, index: usize) -> Result<Path, ValueError> {
+    pub fn get_at_index(self, index: usize) -> Result<StackValue, ValueError> {
         match self {
             Self::Owned(v) => {
                 let mut values = v.to_vec()?;
@@ -55,109 +44,127 @@ impl Path {
                 }
 
                 let at_index = values.remove(index);
-                Ok(at_index)
+                Ok(Self::Owned(Box::new(at_index)))
             },
-            Self::Wrapper(v) => {
-                let mut values = v.borrow_mut();
-                let values = values.as_mut_vec()?;
+            Self::Pointer(v) => unsafe {
+                let cell = v.as_mut().unwrap();
+                let values = cell.as_mut_vec()?;
                 let len = values.len();
                 let at_index = values
                     .get_mut(index)
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(at_index.shareable())
+                Ok(Self::Pointer(at_index as *mut ValueCell))
             }
         }
     }
 
-    // Get the sub value of the path
-    // This will return a new Path::Owned
-    #[inline(always)]
-    pub fn to_owned(&self) -> Path {
+    pub fn reference(&mut self) -> Self {
         match self {
-            Self::Owned(v) => Self::Owned(v.clone()),
-            Self::Wrapper(v) => Self::Owned(v.borrow().clone())
+            Self::Owned(value) => Self::Pointer(value.as_mut() as *mut ValueCell),
+            Self::Pointer(ptr) => Self::Pointer(*ptr)
         }
     }
 
     // Get the internal value
     pub fn into_inner(self) -> ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Wrapper(v) => v.into_inner()
-        }
+        self.into_owned().unwrap()
     }
 
     // Get the value of the path
     #[inline(always)]
     pub fn into_owned(self) -> Result<ValueCell, ValueError> {
         match self {
-            Self::Owned(v) => Ok(v),
-            Self::Wrapper(v) => v.into_owned()
+            Self::Owned(v) => Ok(*v),
+            Self::Pointer(v) => unsafe {
+                Ok(v.as_ref().unwrap().clone())
+            }
+        }
+    }
+
+    pub fn take_ownership(&mut self) {
+        if let Self::Pointer(ptr) = self {
+            println!("MAKE OWNED {:?}", ptr);
+            unsafe {
+                let cell = ptr.as_mut().unwrap();
+                let owned = mem::take(cell);
+                *self = owned.into();
+            }
         }
     }
 
     // Make the path owned if the pointer is the same
-    pub fn make_owned_if_same_ptr(&mut self, other: &Path) {
+    pub fn make_owned_if_same_ptr(&mut self, other: &StackValue) {
         if self.is_same_ptr(other) {
-            *self = other.to_owned();
+            println!("SAMMEEE");
+            if let Self::Pointer(ptr) = self {
+                println!("MAKE OWNED {:?}", ptr);
+                unsafe {
+                    let cell = ptr.as_mut().unwrap();
+                    *self = cell.clone().into();
+                }
+            }
         }
     }
 
     pub fn is_wrapped(&self) -> bool {
-        matches!(self, Self::Wrapper(_))
+        matches!(self, Self::Pointer(_))
     }
 
     // Get a reference to the value
     #[inline(always)]
-    pub fn as_ref<'b>(&'b self) -> ValueHandle<'b> {
+    pub fn as_ref<'b>(&'b self) -> &'b ValueCell {
         match self {
-            Self::Owned(v) => ValueHandle::Borrowed(v),
-            Self::Wrapper(v) => ValueHandle::Ref(v.borrow())
+            Self::Owned(v) => v,
+            Self::Pointer(v) => unsafe {
+                v.as_ref().unwrap()
+            }
         }
     }
 
     // Get a mutable reference to the value
     #[inline(always)]
-    pub fn as_mut<'b>(&'b mut self) -> ValueHandleMut<'b> {
+    pub fn as_mut<'b>(&'b mut self) -> &'b mut ValueCell {
         match self {
-            Self::Owned(v) => ValueHandleMut::Borrowed(v),
-            Self::Wrapper(v) => ValueHandleMut::RefMut(v.borrow_mut())
+            Self::Owned(v) => v,
+            Self::Pointer(v) => unsafe {
+                v.as_mut().unwrap()
+            }
         }
     }
 
     // Verify if its the same pointer
     #[inline]
-    pub fn is_same_ptr<'b>(&'b self, other: &'b Path) -> bool {
+    pub fn is_same_ptr<'b>(&'b self, other: &'b StackValue) -> bool {
         self.ptr() == other.ptr()
     }
 
     #[inline]
     pub fn ptr(&self) -> *const ValueCell {
-        self.as_ref().as_value() as *const ValueCell
+        self.as_ref() as *const ValueCell
     }
 }
 
-impl From<ValueCell> for Path {
+impl From<ValueCell> for StackValue {
     fn from(value: ValueCell) -> Self {
-        Self::Owned(value)
+        Self::Owned(Box::new(value))
     }
 }
 
-impl From<SubValue> for Path {
-    fn from(value: SubValue) -> Self {
-        Self::Wrapper(value)
+impl From<&mut ValueCell> for StackValue {
+    fn from(value: &mut ValueCell) -> Self {
+        Self::Pointer(value as *mut _)
     }
 }
 
-impl From<Value> for Path {
+impl From<Value> for StackValue {
     fn from(value: Value) -> Self {
-        Self::Owned(value.into())
+        Self::Owned(Box::new(value.into()))
     }
 }
 
-impl From<Constant> for Path {
+impl From<Constant> for StackValue {
     fn from(value: Constant) -> Self {
-        Self::Owned(value.into())
+        Self::Owned(Box::new(value.into()))
     }
 }

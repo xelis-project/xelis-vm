@@ -183,8 +183,7 @@ fn test_struct() {
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::NewArray);
-    // struct id
-    chunk.write_u32(0);
+    chunk.write_u8(2);
 
     chunk.emit_opcode(OpCode::Return);
 

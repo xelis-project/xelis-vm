@@ -33,14 +33,14 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    println!("{}", param.as_ref().as_value());
+    println!("{}", param.as_ref());
 
     Ok(None)
 }
 
 fn debug(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    println!("{:?}", param.as_ref().as_value());
+    println!("{:?}", param);
 
     Ok(None)
 }

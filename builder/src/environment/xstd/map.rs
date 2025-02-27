@@ -29,7 +29,7 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let contains = zelf?.as_map()?.contains_key(k.as_value());
+    let contains = zelf?.as_map()?.contains_key(k);
     Ok(Some(Value::Boolean(contains).into()))
 }
 
@@ -41,11 +41,11 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     }
 
     let value = zelf?.as_map()?
-        .get(k.as_value())
+        .get(k)
         .cloned();
 
     Ok(Some(match value {
-        Some(v) => v.into_inner(),
+        Some(v) => v,
         None => Value::Null.into(),
     }))
 }
@@ -74,7 +74,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
         .insert(key.into_owned()?, value.into_owned()?.into());
 
     Ok(Some(match previous {
-        Some(v) => v.into_inner(),
+        Some(v) => v,
         None => Value::Null.into(),
     }))
 }
@@ -88,9 +88,9 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     }
 
     let value = zelf?.as_mut_map()?
-        .remove(k.as_value());
+        .remove(k);
     Ok(Some(match value {
-        Some(v) => v.into_inner(),
+        Some(v) => v,
         None => Value::Null.into(),
     }))
 }

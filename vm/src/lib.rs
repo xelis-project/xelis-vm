@@ -48,7 +48,7 @@ pub struct VM<'a, 'r> {
     backend: Backend<'a>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
-    call_stack: Vec<ChunkManager<'a>>,
+    call_stack: Vec<(ChunkManager<'a>, bool)>,
     // The stack of the VM
     // Every values are stored here
     stack: Stack,
@@ -126,12 +126,12 @@ impl<'a, 'r> VM<'a, 'r> {
             .ok_or(VMError::ChunkNotFound)?;
 
         let manager = ChunkManager::new(chunk);
-        self.call_stack.push(manager);
+        self.call_stack.push((manager, true));
         Ok(())
     }
 
     // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args<V: Into<Path>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.stack.extend_stack(args.map(Into::into))?;
         self.invoke_chunk_id(id)
     }
@@ -145,12 +145,12 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Push a value to the stack
-    pub fn push_stack<V: Into<Path>>(&mut self, value: V) -> Result<(), VMError> {
+    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         self.stack.push_stack(value.into())
     }
 
     // Invoke an entry chunk using its id
-    pub fn invoke_entry_chunk_with_args<V: Into<Path>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
         self.stack.extend_stack(args.map(Into::into))?;
         Ok(())
@@ -160,7 +160,12 @@ impl<'a, 'r> VM<'a, 'r> {
     // It will execute the bytecode
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
-        while let Some(mut manager) = self.call_stack.pop() {
+        while let Some((mut manager, commit)) = self.call_stack.pop() {
+            if commit {
+                self.stack.checkpoint_commit();
+            }
+
+            let mut clean_pointers = true;
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
                     InstructionResult::Nothing => {},
@@ -169,7 +174,8 @@ impl<'a, 'r> VM<'a, 'r> {
                             return Err(VMError::EntryChunkCalled);
                         }
 
-                        self.call_stack.push(manager);
+                        clean_pointers = false;
+                        self.call_stack.push((manager, false));
                         self.invoke_chunk_id(id)?;
                         break;
                     },
@@ -177,6 +183,10 @@ impl<'a, 'r> VM<'a, 'r> {
                         break;
                     }
                 }
+            }
+
+            if clean_pointers {
+                self.stack.checkpoint_clean()?;
             }
         }
 

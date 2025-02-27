@@ -1,4 +1,4 @@
-use xelis_types::{Path, Type, ValueCell};
+use xelis_types::{StackValue, Type, ValueCell};
 use crate::Context;
 
 use super::EnvironmentError;
@@ -7,7 +7,7 @@ use super::EnvironmentError;
 // second is the list of all parameters for this function call
 pub type FnReturnType = Result<Option<ValueCell>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
-pub type FnParams = Vec<Path>;
+pub type FnParams = Vec<StackValue>;
 pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 
 // Native function that is implemented in Rust

@@ -5,13 +5,13 @@ use crate::{
     Context,
     VMError
 };
-use xelis_types::{Value, ValueCell, Type, Path};
+use xelis_types::{Value, ValueCell, Type};
 
 use super::InstructionResult;
 
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a.as_value(), $b.as_value()) {
+        match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
                 (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
@@ -28,7 +28,7 @@ macro_rules! op {
 
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a.as_value(), $b.as_value()) {
+        match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
                 (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
@@ -46,7 +46,7 @@ macro_rules! op_bool {
 
 macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a.as_value(), $b.as_value()) {
+        match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
                 (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
@@ -92,7 +92,9 @@ macro_rules! op_string {
 
 macro_rules! op_bool_res {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a.as_value(), $b.as_value()) {
+        println!("{:?} {:?}", $a, $b);
+
+        match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
                 (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
@@ -111,7 +113,7 @@ macro_rules! op_bool_res {
 
 macro_rules! op_bool_all {
     ($a: expr, $b: expr, $op: tt) => {{
-        Value::Boolean($a.as_value() $op $b.as_value())
+        Value::Boolean($a $op $b)
     }};
 }
 
@@ -121,14 +123,14 @@ macro_rules! opcode_op {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
             // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked(Path::Owned($macr!(left.as_ref(), right.as_ref(), $op).into()));
+            $self.push_stack_unchecked($macr!(left.as_ref(), right.as_ref(), $op).into());
         }
     };
 }
 
 macro_rules! op_div {
     ($a: expr, $b: expr, $op: tt) => {{
-        match ($a.as_value(), $b.as_value()) {
+        match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::U8(a), Value::U8(b)) => {
                     if *b == 0 {
@@ -225,7 +227,7 @@ opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
 pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(!value.as_bool()?).into()));
+    stack.push_stack_unchecked(Value::Boolean(!value.as_bool()?).into());
     Ok(InstructionResult::Nothing)
 }
 
@@ -259,16 +261,15 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
         }
         _ => return Err(VMError::UnexpectedType)
     };
-    stack.push_stack_unchecked(Path::Owned(result.into()));
+    stack.push_stack_unchecked(result.into());
     Ok(InstructionResult::Nothing)
 }
 
 pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let right = stack.pop_stack()?.into_owned()?;
+    let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let result = {
-        let left_value = left.as_ref();
-        match (left_value.as_value(), right) {
+        match (left.as_ref(), right.as_ref()) {
             (ValueCell::Default(a), ValueCell::Default(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
@@ -305,7 +306,7 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'
         _ => return Err(VMError::UnsupportedCastType)
     };
 
-    stack.push_stack(Path::Owned(value.into()))?;
+    stack.push_stack(value.into())?;
     Ok(InstructionResult::Nothing)
 }
 
@@ -313,7 +314,7 @@ pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
     let value = stack.pop_stack()?;
     let left = value.as_bool()?;
     let right = stack.pop_stack()?.as_bool()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(left && right).into()));
+    stack.push_stack_unchecked(Value::Boolean(left && right).into());
 
     Ok(InstructionResult::Nothing)
 }
@@ -322,7 +323,7 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
     let value = left.as_bool()? || right.as_bool()?;
-    stack.push_stack_unchecked(Path::Owned(Value::Boolean(value).into()));
+    stack.push_stack_unchecked(Value::Boolean(value).into());
 
     Ok(InstructionResult::Nothing)
 }

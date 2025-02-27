@@ -1,8 +1,8 @@
 mod reader;
 
-use std::ops::{Deref, DerefMut};
+use std::{cmp::Ordering, ops::{Deref, DerefMut}};
 use xelis_bytecode::Chunk;
-use xelis_types::Path;
+use xelis_types::StackValue;
 use super::{iterator::PathIterator, VMError};
 
 pub use reader::ChunkReader;
@@ -15,7 +15,7 @@ const REGISTERS_SIZE: usize = u16::MAX as usize;
 pub struct ChunkManager<'a> {
     reader: ChunkReader<'a>,
     // Registers are temporary and "scoped" per chunk
-    registers: Vec<Path>,
+    registers: Vec<StackValue>,
     // Iterators stack
     iterators: Vec<PathIterator>,
 }
@@ -35,7 +35,7 @@ impl<'a> ChunkManager<'a> {
 
     // Get the registers
     #[inline]
-    pub fn get_registers(&self) -> &Vec<Path> {
+    pub fn get_registers(&self) -> &Vec<StackValue> {
         &self.registers
     }
 
@@ -50,7 +50,7 @@ impl<'a> ChunkManager<'a> {
     }
 
     // Get the next value from the iterators stack
-    pub fn next_iterator(&mut self) -> Result<Option<Path>, VMError> {
+    pub fn next_iterator(&mut self) -> Result<Option<StackValue>, VMError> {
         Ok(self.iterators.last_mut()
             .ok_or(VMError::EmptyIterator)?
             .next()?)
@@ -58,31 +58,34 @@ impl<'a> ChunkManager<'a> {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: Path) -> Result<(), VMError> {
+    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<Option<StackValue>, VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
 
-        if self.registers.len() == index {
-            self.registers.push(value);
-        } else if self.registers.len() > index {
-            self.registers[index] = value;
-        } else {
-            return Err(VMError::RegisterOverflow);
+        let cmp = self.registers.len().cmp(&index);
+        match cmp {
+            Ordering::Equal => {
+                self.registers.push(value);
+                Ok(None)
+            },
+            Ordering::Greater => {
+                let value = std::mem::replace(&mut self.registers[index], value);
+                Ok(Some(value))
+            },
+            Ordering::Less => Err(VMError::RegisterOverflow)
         }
-
-        Ok(())
     }
 
     // Get a value from the registers
     #[inline]
-    pub fn from_register(&mut self, index: usize) -> Result<&mut Path, VMError> {
+    pub fn from_register(&mut self, index: usize) -> Result<&mut StackValue, VMError> {
         self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
     }
 
     // Pop a value from the registers
     #[inline]
-    pub fn pop_register(&mut self) -> Result<Path, VMError> {
+    pub fn pop_register(&mut self) -> Result<StackValue, VMError> {
         self.registers.pop().ok_or(VMError::EmptyRegister)
     }
 }

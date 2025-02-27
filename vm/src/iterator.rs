@@ -1,14 +1,14 @@
-use xelis_types::{Path, Type, Value, ValueCell, ValueError};
+use xelis_types::{StackValue, Type, Value, ValueCell, ValueError};
 
 #[derive(Debug)]
 pub struct PathIterator {
-    inner: Path,
+    inner: StackValue,
     index: Value,
 }
 
 impl PathIterator {
-    pub fn new(inner: Path) -> Result<Self, ValueError> {
-        let index = match inner.as_ref().as_value() {
+    pub fn new(inner: StackValue) -> Result<Self, ValueError> {
+        let index = match inner.as_ref() {
             ValueCell::Default(Value::Range(_, _, index_type)) => match index_type {
                 Type::U8 => Value::U8(0),
                 Type::U16 => Value::U16(0),
@@ -24,20 +24,20 @@ impl PathIterator {
         Ok(PathIterator { inner, index })
     }
 
-    pub fn next(&mut self) -> Result<Option<Path>, ValueError> {
+    pub fn next(&mut self) -> Result<Option<StackValue>, ValueError> {
         let index = self.index.clone();
         self.index.increment()?;
 
         let value = self.inner.as_ref();
-        Ok(match value.as_value() {
+        Ok(match value {
             ValueCell::Array(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
-                .map(|v| v.clone())
+                .map(|v| v.clone().into())
             },
             ValueCell::Default(Value::Range(start, end, _type)) => {
                 if index >= **start && index < **end {
-                    Some(Path::Owned(ValueCell::Default(index)))
+                    Some(index.into())
                 } else {
                     None
                 }

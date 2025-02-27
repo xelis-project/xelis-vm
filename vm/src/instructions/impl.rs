@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use xelis_types::Path;
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -9,15 +8,14 @@ pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
     let index = manager.read_u16()? as usize;
     let constant = backend.get_constant_with_id(index)?;
 
-    stack.push_stack(Path::Owned(constant.clone().into()))?;
+    stack.push_stack(constant.clone().into())?;
     Ok(InstructionResult::Nothing)
 }
 
 pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()?;
-    let value = manager.from_register(index as usize)?
-        .shareable();
-    stack.push_stack(value)?;
+    let value = manager.from_register(index as usize)?;
+    stack.push_stack(value.reference())?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -25,7 +23,9 @@ pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMa
 pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()?;
     let value = stack.pop_stack()?;
-    manager.set_register(index as usize, value)?;
+    if let Some(old) = manager.set_register(index as usize, value)? {
+        stack.verify_pointers(old)?;
+    }
 
     Ok(InstructionResult::Nothing)
 }
@@ -102,7 +102,8 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkM
         return Err(VMError::NotEnoughArguments);
     }
 
-    stack.get_inner()[len - args..len].reverse();
+    let slice = &mut stack.get_inner()[len - args..len];
+    slice.reverse();
 
     Ok(InstructionResult::InvokeChunk(id))
 }
@@ -122,6 +123,7 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     } else {
         None
     };
+    println!("on value {:?}", on_value);
 
     let f = backend.environment.get_functions()
         .get(id as usize)
@@ -131,7 +133,7 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 
     // We need to find if we are using two times the same instance
 
-    let mut instance = match on_value.as_mut() {
+    let instance = match on_value.as_mut() {
         Some(v) => {
             if v.is_wrapped() {
                 for argument in arguments.iter_mut() {
@@ -144,8 +146,8 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
         None => None,
     };
 
-    if let Some(v) = f.call_function(instance.as_deref_mut(), arguments.into(), context)? {
-        stack.push_stack(Path::Owned(v))?;
+    if let Some(v) = f.call_function(instance, arguments.into(), context)? {
+        stack.push_stack(v.into())?;
     }
 
     Ok(InstructionResult::Nothing)
