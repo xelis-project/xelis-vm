@@ -92,8 +92,6 @@ macro_rules! op_string {
 
 macro_rules! op_bool_res {
     ($a: expr, $b: expr, $op: tt) => {{
-        println!("{:?} {:?}", $a, $b);
-
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
                 (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),

@@ -84,7 +84,6 @@ impl StackValue {
 
     pub fn take_ownership(&mut self) {
         if let Self::Pointer(ptr) = self {
-            println!("MAKE OWNED {:?}", ptr);
             unsafe {
                 let cell = ptr.as_mut().unwrap();
                 let owned = mem::take(cell);
@@ -96,9 +95,7 @@ impl StackValue {
     // Make the path owned if the pointer is the same
     pub fn make_owned_if_same_ptr(&mut self, other: &StackValue) {
         if self.is_same_ptr(other) {
-            println!("SAMMEEE");
             if let Self::Pointer(ptr) = self {
-                println!("MAKE OWNED {:?}", ptr);
                 unsafe {
                     let cell = ptr.as_mut().unwrap();
                     *self = cell.clone().into();

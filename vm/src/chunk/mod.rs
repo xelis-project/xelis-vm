@@ -71,6 +71,10 @@ impl<'a> ChunkManager<'a> {
             },
             Ordering::Greater => {
                 let value = std::mem::replace(&mut self.registers[index], value);
+                for register in self.registers.iter_mut() {
+                    register.make_owned_if_same_ptr(&value);
+                }
+
                 Ok(Some(value))
             },
             Ordering::Less => Err(VMError::RegisterOverflow)

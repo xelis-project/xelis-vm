@@ -123,7 +123,6 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     } else {
         None
     };
-    println!("on value {:?}", on_value);
 
     let f = backend.environment.get_functions()
         .get(id as usize)

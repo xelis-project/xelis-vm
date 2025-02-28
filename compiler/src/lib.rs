@@ -1025,7 +1025,7 @@ mod tests {
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
-                OpCode::NewArray.as_byte(), 0,
+                OpCode::NewArray.as_byte(), 2,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0,
