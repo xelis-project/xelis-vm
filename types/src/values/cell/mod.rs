@@ -1,16 +1,15 @@
-mod path;
+mod stack_value;
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt,
-    hash::{Hash, Hasher},
-    ptr
+    hash::{Hash, Hasher}
 };
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Value, ValueError};
 
-pub use path::*;
+pub use stack_value::*;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
@@ -38,7 +37,26 @@ impl PartialEq for ValueCell {
 
 impl Hash for ValueCell {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash_with_pointers(state, &mut HashSet::new());
+        // Fast path
+        if let Self::Default(v) = self {
+            v.hash(state);
+            return;
+        }
+
+        let mut stack = vec![self];
+        while let Some(value) = stack.pop() {
+            match value {
+                Self::Default(v) => v.hash(state),
+                Self::Array(values) => {
+                    12u8.hash(state);
+                    stack.extend(values);
+                },
+                Self::Map(map) => {
+                    13u8.hash(state);
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]))
+                }
+            }
+        }
     }
 }
 
@@ -66,36 +84,6 @@ impl From<Constant> for ValueCell {
 }
 
 impl ValueCell {
-    pub(crate) fn hash_with_pointers<H: Hasher>(&self, state: &mut H, tracked_pointers: &mut HashSet<*const Self>) {
-        if !tracked_pointers.insert(ptr::from_ref(self)) {
-            // Cyclic reference detected
-            return;
-        }
-
-        // match self {
-        //     ValueCell::Default(v) => {
-        //         v.hash(state);
-        //     },
-        //     ValueCell::Array(array) => {
-        //         13u8.hash(state);
-        //         array.iter()
-        //             .for_each(|field| field
-        //                 .as_ref()
-        //                 .hash_with_pointers(state, tracked_pointers)
-        //             );
-        //     },
-        //     ValueCell::Map(map) => {
-        //         14u8.hash(state);
-        //         map.iter()
-        //             .for_each(|(k, v)| {
-        //                 k.hash(state);
-        //                 v.as_ref()
-        //                     .hash_with_pointers(state, tracked_pointers);
-        //             });
-        //     }
-        // }
-    }
-
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
@@ -106,39 +94,29 @@ impl ValueCell {
         let mut stack = vec![(self, 0)];
         let mut biggest_depth = 0;
 
-        // while let Some((next, depth)) = stack.pop() {
-        //     if depth > max_depth {
-        //         return Err(ValueError::MaxDepthReached);
-        //     }
+        while let Some((next, depth)) = stack.pop() {
+            if depth > max_depth {
+                return Err(ValueError::MaxDepthReached);
+            }
 
-        //     if depth > biggest_depth {
-        //         biggest_depth = depth;
-        //     }
+            if depth > biggest_depth {
+                biggest_depth = depth;
+            }
 
-        //     match next {
-        //         ValueCell::Default(_) => {},
-        //         ValueCell::Array(values) => {
-        //             for value in values {
-        //                 stack.push((value, depth + 1));
-        //             }
-        //         },
-        //         ValueCell::Map(map) => {
-        //             for (_, v) in map {
-        //                 stack.push((v, depth + 1));
-        //             }
-        //         },
-        //         ValueCell::Struct(fields, _) => {
-        //             for field in fields {
-        //                 stack.push((field, depth + 1));
-        //             }
-        //         },
-        //         ValueCell::Enum(fields, _) => {
-        //             for field in fields {
-        //                 stack.push((field, depth + 1));
-        //             }
-        //         },
-        //     };
-        // }
+            match next {
+                ValueCell::Default(_) => {},
+                ValueCell::Array(values) => {
+                    for value in values {
+                        stack.push((value, depth + 1));
+                    }
+                },
+                ValueCell::Map(map) => {
+                    for (_, v) in map {
+                        stack.push((v, depth + 1));
+                    }
+                }
+            };
+        }
 
         Ok(biggest_depth)
     }
@@ -678,8 +656,6 @@ impl fmt::Display for ValueCell {
 
 #[cfg(test)]
 mod tests {
-    use crate::SubValue;
-
     use super::*;
 
     #[test]
@@ -693,23 +669,6 @@ mod tests {
 
         assert!(matches!(map.calculate_depth(100), Ok(100)));
         assert!(matches!(map.calculate_depth(99), Err(ValueError::MaxDepthReached)));
-    }
-
-    #[test]
-    fn test_recursive_cycle() {
-        // Create a map that contains itself
-        // let sub = SubValue::new(ValueCell::Map(HashMap::new()));
-        // {
-        //     let mut m = sub.borrow_mut();
-        //     m.as_mut_map()
-        //         .unwrap()
-        //         .insert(Value::U8(10).into(), sub.clone());
-        // }
-
-        // let owned = sub.into_inner();
-        // assert!(
-        //     matches!(owned.into_owned(), Err(ValueError::CyclicError))
-        // );
     }
 
     #[test]
@@ -735,5 +694,8 @@ mod tests {
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         map.hash(&mut hasher);
+
+        // TODO: drop correctly the map without stack overflow
+        std::mem::forget(map);
     }
 }

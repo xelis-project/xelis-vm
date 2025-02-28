@@ -1,13 +1,6 @@
-mod handle;
-
 use std::mem;
 
 use crate::{values::ValueError, Constant, Value};
-pub use handle::{
-    ValueHandle,
-    ValueHandleMut
-};
-
 use super::ValueCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

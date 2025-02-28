@@ -1,5 +1,4 @@
 mod error;
-mod pointer;
 mod cell;
 mod constant;
 
@@ -15,7 +14,6 @@ use super::{
     U256
 };
 
-pub use pointer::*;
 pub use cell::*;
 pub use error::*;
 pub use constant::*;

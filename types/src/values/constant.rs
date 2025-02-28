@@ -42,24 +42,27 @@ impl Drop for ConstantWrapper {
 
 impl Hash for Constant {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // Fast path
+        if let Self::Default(v) = self {
+            v.hash(state);
+            return;
+        }
+
         let mut stack = vec![self];
         while let Some(value) = stack.pop() {
             match value {
                 Self::Default(v) => v.hash(state),
                 Self::Array(values) => {
                     12u8.hash(state);
-                    values.iter().for_each(|f| stack.push(f));
+                    stack.extend(values);
                 },
                 Self::Map(map) => {
                     13u8.hash(state);
-                    for (key, value) in map {
-                        stack.push(&key);
-                        stack.push(&value);
-                    }
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]))
                 },
                 Self::Typed(fields, ty) => {
                     14u8.hash(state);
-                    fields.iter().for_each(|f| stack.push(f));
+                    stack.extend(fields);
                     ty.hash(state);
                 }
             }
@@ -91,8 +94,7 @@ impl TryFrom<ValueCell> for Constant {
                     .map(|(k, v)| Ok((k.into_owned()?.try_into()?, v.into_owned()?.try_into()?)))
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
-            },
-            _ => todo!()
+            }
         })
     }
 }
