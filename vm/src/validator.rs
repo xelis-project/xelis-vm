@@ -121,18 +121,14 @@ impl<'a> ModuleValidator<'a> {
                     memory_usage += 16;
                 },
                 Constant::Default(v) => match v {
-                    Value::Range(left, right, _type) => {
-                        if !left.is_number() || !right.is_number() {
+                    Value::Range(range) => {
+                        if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);
                         }
     
-                        let left_type = left.get_type()?;
-                        if left_type != right.get_type()? {
+                        let left_type = range.0.get_type()?;
+                        if left_type != range.1.get_type()? {
                             return Err(ValidatorError::InvalidRange);
-                        }
-    
-                        if left_type != *_type {
-                            return Err(ValidatorError::InvalidRangeType);
                         }
 
                         memory_usage += 8;
@@ -167,8 +163,7 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += opaque.get_size();
                     }
-                },
-                _ => {}
+                }
             }
         }
 

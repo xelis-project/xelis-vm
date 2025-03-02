@@ -8,10 +8,8 @@ macro_rules! contains {
     ($t: ident, $start: expr, $end: expr, $value: expr) => {
         paste! {
             {
-                let start = $start.[<as_ $t>]()?;
-                let end = $end.[<as_ $t>]()?;
                 let value = $value.[<as_ $t>]()?;
-                Value::Boolean((start..end).contains(&value)).into()
+                Value::Boolean((*$start..*$end).contains(&value)).into()
             }
         }
     };
@@ -21,20 +19,17 @@ macro_rules! collect {
     ($t: ident, $start: expr, $end: expr, $type: ident, $context: expr) => {
         paste! {
             {
-                let start = $start.[<as_ $type>]()?;
-                let end = $end.[<as_ $type>]()?;
-
-                if start >= end {
+                if $start >= $end {
                     ValueCell::Array(Vec::new())
                 } else {
-                    let diff = end - start;
+                    let diff = $end - $start;
                     if diff > u32::MAX as _ {
                         return Err(EnvironmentError::RangeTooLarge);
                     }
 
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (start..end).map(|i| Value::$t(i).into()).collect();
+                    let vec = (*$start..*$end).map(|i| Value::$t(i).into()).collect();
                     ValueCell::Array(vec)
                 }
             }
@@ -46,9 +41,7 @@ macro_rules! count {
     ($t: ident, $start: expr, $end: expr, $type: ident) => {
         paste! {
             {
-                let start = $start.[<as_ $type>]()?;
-                let end = $end.[<as_ $type>]()?;
-                let count = end.checked_sub(start).unwrap_or(Default::default());
+                let count = $end.checked_sub(*$start).unwrap_or(Default::default());
                 Value::$t(count).into()
             }
         }
@@ -67,33 +60,31 @@ pub fn register(env: &mut EnvironmentBuilder) {
 fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let value = parameters.remove(0);
     let zelf = zelf?;
-    let (start, end, _type) = zelf.as_range()?;
+    let (start, end) = zelf.as_range()?;
 
     let value = value.as_ref();
-    Ok(Some(match _type {
-        Type::U8 => contains!(u8, start, end, value),
-        Type::U16 => contains!(u16, start, end, value),
-        Type::U32 => contains!(u32, start, end, value),
-        Type::U64 => contains!(u64, start, end, value),
-        Type::U128 => contains!(u128, start, end, value),
-        Type::U256 => contains!(u256, start, end, value),
+    Ok(Some(match (start, end) {
+        (Value::U8(start), Value::U8(end)) => contains!(u8, start, end, value),
+        (Value::U16(start), Value::U16(end)) => contains!(u16, start, end, value),
+        (Value::U32(start), Value::U32(end)) => contains!(u32, start, end, value),
+        (Value::U64(start), Value::U64(end)) => contains!(u64, start, end, value),
+        (Value::U128(start), Value::U128(end)) => contains!(u128, start, end, value),
+        (Value::U256(start), Value::U256(end)) => contains!(u256, start, end, value),
         _ => return Err(EnvironmentError::InvalidType)
     }))
 }
 
 fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
     let zelf = zelf?;
-    let (start, end, _type) = zelf.as_range()?;
-    Ok(Some(match _type {
-        Type::U8 => collect!(U8, start, end, u8, context),
-        Type::U16 => collect!(U16, start, end, u16, context),
-        Type::U32 => collect!(U32, start, end, u32, context),
-        Type::U64 => collect!(U64, start, end, u64, context),
-        Type::U128 => collect!(U128, start, end, u128, context),
-        Type::U256 => {
-            let start = start.as_u256()?;
-            let end = end.as_u256()?;
-            let (diff, overflow) = end.overflowing_sub(start);
+    let (start, end) = zelf.as_range()?;
+    Ok(Some(match (start, end) {
+        (Value::U8(start), Value::U8(end)) => collect!(U8, start, end, u8, context),
+        (Value::U16(start), Value::U16(end)) => collect!(U16, start, end, u16, context),
+        (Value::U32(start), Value::U32(end)) => collect!(U32, start, end, u32, context),
+        (Value::U64(start), Value::U64(end)) => collect!(U64, start, end, u64, context),
+        (Value::U128(start), Value::U128(end)) => collect!(U128, start, end, u128, context),
+        (Value::U256(start), Value::U256(end)) => {
+            let (diff, overflow) = end.overflowing_sub(*start);
 
             let mut vec = Vec::new();
             if !overflow {
@@ -117,27 +108,27 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
 
 fn max(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
-    let (_, end, _) = zelf.as_range()?;
+    let (_, end) = zelf.as_range()?;
     Ok(Some(end.clone().into()))
 }
 
 fn min(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
-    let (start, _, _) = zelf.as_range()?;
+    let (start, _) = zelf.as_range()?;
     Ok(Some(start.clone().into()))
 }
 
 fn count(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let zelf = zelf?;
-    let (start, end, _type) = zelf.as_range()?;
+    let (start, end) = zelf.as_range()?;
 
-    Ok(Some(match _type {
-        Type::U8 => count!(U8, start, end, u8),
-        Type::U16 => count!(U16, start, end, u16),
-        Type::U32 => count!(U32, start, end, u32),
-        Type::U64 => count!(U64, start, end, u64),
-        Type::U128 => count!(U128, start, end, u128),
-        Type::U256 => count!(U256, start, end, u256),
+    Ok(Some(match (start, end) {
+        (Value::U8(start), Value::U8(end)) => count!(U8, start, end, u8),
+        (Value::U16(start), Value::U16(end)) => count!(U16, start, end, u16),
+        (Value::U32(start), Value::U32(end)) => count!(U32, start, end, u32),
+        (Value::U64(start), Value::U64(end)) => count!(U64, start, end, u64),
+        (Value::U128(start), Value::U128(end)) => count!(U128, start, end, u128),
+        (Value::U256(start), Value::U256(end)) => count!(U256, start, end, u256),
         _ => return Err(EnvironmentError::InvalidType)
     }))
 }

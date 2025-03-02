@@ -3,7 +3,7 @@ mod reader;
 use std::{cmp::Ordering, ops::{Deref, DerefMut}};
 use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
-use super::{iterator::PathIterator, VMError};
+use super::{iterator::ValueIterator, VMError};
 
 pub use reader::ChunkReader;
 
@@ -17,7 +17,7 @@ pub struct ChunkManager<'a> {
     // Registers are temporary and "scoped" per chunk
     registers: Vec<StackValue>,
     // Iterators stack
-    iterators: Vec<PathIterator>,
+    iterators: Vec<ValueIterator>,
 }
 
 impl<'a> ChunkManager<'a> {
@@ -40,12 +40,12 @@ impl<'a> ChunkManager<'a> {
     }
 
     // Add an iterator to the stack
-    pub fn add_iterator(&mut self, iterator: PathIterator) {
+    pub fn add_iterator(&mut self, iterator: ValueIterator) {
         self.iterators.push(iterator);
     }
 
     // Pop an iterator from the stack
-    pub fn pop_iterator(&mut self) -> Result<PathIterator, VMError> {
+    pub fn pop_iterator(&mut self) -> Result<ValueIterator, VMError> {
         self.iterators.pop().ok_or(VMError::EmptyIterator)
     }
 

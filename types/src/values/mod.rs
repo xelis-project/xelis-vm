@@ -48,7 +48,7 @@ pub enum Value {
     U256(U256),
     String(String),
     Boolean(bool),
-    Range(Box<Value>, Box<Value>, Type),
+    Range(Box<(Value, Value)>),
     // Blob represents a binary data
     Blob(Vec<u8>),
 
@@ -68,7 +68,7 @@ impl PartialEq for Value {
             (Value::U256(a), Value::U256(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
-            (Value::Range(start_a, end_a, _type_a), Value::Range(start_b, end_b, _type_b)) => start_a == start_b && end_a == end_b && _type_a == _type_b,
+            (Value::Range(a), Value::Range(b)) => a == b,
             (Value::Blob(a), Value::Blob(b)) => a == b,
             (Value::Opaque(a), Value::Opaque(b)) => a == b,
             _ => false
@@ -128,11 +128,9 @@ impl Hash for Value {
                 8u8.hash(state);
                 n.hash(state);
             },
-            Value::Range(start, end, range_type) => {
+            Value::Range(b) => {
                 9u8.hash(state);
-                start.hash(state);
-                end.hash(state);
-                range_type.hash(state);
+                b.hash(state);
             },
             Value::Blob(n) => {
                 10u8.hash(state);
@@ -164,7 +162,7 @@ impl Value {
             Value::U256(_) => 32,
             Value::String(s) => s.len(),
             Value::Boolean(_) => 1,
-            Value::Range(start, end, _) => start.get_memory_usage() + end.get_memory_usage(),
+            Value::Range(b) => b.0.get_memory_usage() + b.1.get_memory_usage(),
             Value::Blob(b) => b.len(),
             Value::Opaque(_) => 8
         }
@@ -315,17 +313,17 @@ impl Value {
     }
 
     #[inline]
-    pub fn as_range(&self) -> Result<(&Value, &Value, &Type), ValueError> {
+    pub fn as_range(&self) -> Result<(&Value, &Value), ValueError> {
         match self {
-            Value::Range(start, end, _type) => Ok((start, end, _type)),
+            Value::Range(range) => Ok((&range.0, &range.1)),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
         }
     }
 
     #[inline]
-    pub fn to_range(self) -> Result<(Value, Value, Type), ValueError> {
+    pub fn to_range(self) -> Result<(Value, Value), ValueError> {
         match self {
-            Value::Range(start, end, _type) => Ok((*start, *end, _type)),
+            Value::Range(range) => Ok((range.0, range.1)),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
         }
     }
@@ -438,10 +436,10 @@ impl Value {
             Type::String => self.cast_to_string().map(Value::String),
             Type::Bool => self.cast_to_bool().map(Value::Boolean),
             Type::Range(inner) => {
-                let (start, end, _) = self.to_range()?;
+                let (start, end) = self.to_range()?;
                 let start = start.checked_cast_to_primitive_type(inner)?;
                 let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Value::Range(Box::new(start), Box::new(end), *inner.clone()))
+                Ok(Value::Range(Box::new((start, end))))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }
@@ -608,7 +606,7 @@ impl std::fmt::Display for Value {
             Value::U256(v) => write!(f, "{}", v),
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
-            Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
+            Value::Range(range) => write!(f, "{}..{}", range.0, range.1),
             Value::Blob(b) => write!(f, "{:?}", b),
             Value::Opaque(o) => write!(f, "{}", o)
         }

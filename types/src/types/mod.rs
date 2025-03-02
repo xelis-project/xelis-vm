@@ -105,7 +105,7 @@ impl Type {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
             Value::Blob(_type) => Type::Blob,
-            Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
+            Value::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
             Value::Opaque(_) => return None,
         })
     }
@@ -120,10 +120,6 @@ impl Type {
                 let key = Type::from_value_type(&key)?;
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
-            },
-            Constant::Typed(_, ty) => match ty {
-                DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
-                DefinedType::Struct(ty) => Type::Struct(ty.clone()),
             },
         })
     }

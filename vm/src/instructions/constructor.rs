@@ -30,7 +30,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
         return Err(VMError::InvalidRangeType);
     }
 
-    let value = Value::Range(Box::new(start.into_value()?), Box::new(end.into_value()?), start_type);
+    let value = Value::Range(Box::new((start.into_value()?, end.into_value()?)));
     stack.push_stack_unchecked(value.into());
     Ok(InstructionResult::Nothing)
 }

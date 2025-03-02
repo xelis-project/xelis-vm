@@ -1,5 +1,5 @@
 use crate::{
-    iterator::PathIterator,
+    iterator::ValueIterator,
     stack::Stack,
     Backend,
     ChunkManager,
@@ -19,7 +19,7 @@ pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkMana
 
 pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    let iterator = PathIterator::new(value)?;
+    let iterator = ValueIterator::new(value)?;
     manager.add_iterator(iterator);
     Ok(InstructionResult::Nothing)
 }
