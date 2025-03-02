@@ -30,7 +30,7 @@ pub enum Type {
     String,
     Bool,
 
-    Blob,
+    Bytes,
 
     Array(Box<Type>),
     Optional(Box<Type>),
@@ -104,7 +104,7 @@ impl Type {
             Value::U256(_) => Type::U256,
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Bool,
-            Value::Blob(_type) => Type::Blob,
+            Value::Bytes(_type) => Type::Bytes,
             Value::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
             Value::Opaque(_) => return None,
         })
@@ -309,13 +309,15 @@ impl Type {
         match self {
             Type::Array(_) => true,
             Type::Range(_) => true,
+            Type::Bytes => true,
             _ => false
         }
     }
 
-    pub fn is_array(&self) -> bool {
+    pub fn support_array_call(&self) -> bool {
         match &self {
             Type::Array(_) => true,
+            Type::Bytes => true,
             _ => false
         }
     }
@@ -355,7 +357,7 @@ impl fmt::Display for Type {
             Type::U256 => write!(f, "u256"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
-            Type::Blob => write!(f, "blob"),
+            Type::Bytes => write!(f, "bytes"),
             Type::Struct(id) => write!(f, "struct({:?})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),

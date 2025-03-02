@@ -104,7 +104,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
         context.register_variable_unchecked("d", Type::U128);
-        context.register_variable_unchecked("a", Type::Blob);
+        context.register_variable_unchecked("a", Type::Bytes);
         context.register_variable_unchecked("b", Type::U128);
         context.register_variable_unchecked("a", Type::Bool);
         context.register_variable_unchecked("c", Type::U128);

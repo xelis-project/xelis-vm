@@ -49,8 +49,8 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Range(Box<(Value, Value)>),
-    // Blob represents a binary data
-    Blob(Vec<u8>),
+    // Bytes represents a Vec<u8>
+    Bytes(Vec<u8>),
 
     // Opaque Type injected by the environment
     Opaque(OpaqueWrapper)
@@ -69,7 +69,7 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Range(a), Value::Range(b)) => a == b,
-            (Value::Blob(a), Value::Blob(b)) => a == b,
+            (Value::Bytes(a), Value::Bytes(b)) => a == b,
             (Value::Opaque(a), Value::Opaque(b)) => a == b,
             _ => false
         }
@@ -132,7 +132,7 @@ impl Hash for Value {
                 9u8.hash(state);
                 b.hash(state);
             },
-            Value::Blob(n) => {
+            Value::Bytes(n) => {
                 10u8.hash(state);
                 n.hash(state);
             },
@@ -163,7 +163,7 @@ impl Value {
             Value::String(s) => s.len(),
             Value::Boolean(_) => 1,
             Value::Range(b) => b.0.get_memory_usage() + b.1.get_memory_usage(),
-            Value::Blob(b) => b.len(),
+            Value::Bytes(b) => b.len(),
             Value::Opaque(_) => 8
         }
     }
@@ -607,7 +607,7 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Range(range) => write!(f, "{}..{}", range.0, range.1),
-            Value::Blob(b) => write!(f, "{:?}", b),
+            Value::Bytes(b) => write!(f, "{:?}", b),
             Value::Opaque(o) => write!(f, "{}", o)
         }
     }

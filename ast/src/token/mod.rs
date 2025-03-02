@@ -146,7 +146,7 @@ impl<'a> fmt::Display for Token<'a> {
 
           // Types
           Bool => "bool",
-          Blob => "blob",
+          Bytes => "bytes",
           String => "string",
           Optional => "optional",
           Range => "range",
@@ -168,7 +168,7 @@ pub enum Token<'a> {
     // Types supported
     Number(NumberType),
     Bool,
-    Blob,
+    Bytes,
     String,
     Optional,
     Range,
@@ -304,7 +304,7 @@ impl Token<'_> {
             ";" => SemiColon,
 
             "bool" => Bool,
-            "blob" => Blob,
+            "bytes" => Bytes,
             "string" => String,
             "struct" => Struct,
             "optional" => Optional,
@@ -414,7 +414,7 @@ impl Token<'_> {
             | Range
             | Map
             | Enum
-            | Blob
+            | Bytes
             | Struct => true,
             _ => false,
         }

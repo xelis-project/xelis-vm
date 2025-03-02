@@ -148,12 +148,12 @@ impl<'a> ModuleValidator<'a> {
                     Value::U64(_) => memory_usage += 8,
                     Value::U128(_) => memory_usage += 16,
                     Value::U256(_) => memory_usage += 32,
-                    Value::Blob(blob) => {
-                        if blob.len() > u32::MAX as usize {
+                    Value::Bytes(bytes) => {
+                        if bytes.len() > u32::MAX as usize {
                             return Err(ValidatorError::TooManyConstants);
                         }
 
-                        memory_usage += blob.len();
+                        memory_usage += bytes.len();
                     },
                     Value::Opaque(opaque) => {
                         if !self.environment.get_opaques()
