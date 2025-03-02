@@ -779,8 +779,7 @@ impl<'a> Parser<'a> {
                 let min = min_value?.into_value().ok()?;
                 let max = max_value?.into_value().ok()?;
 
-                let value_type = min.get_type().ok()?;
-                Constant::Default(Value::Range(Box::new(min), Box::new(max), value_type))
+                Constant::Default(Value::Range(Box::new((min, max))))
             },
             Expression::StructConstructor(fields, struct_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
@@ -988,7 +987,7 @@ impl<'a> Parser<'a> {
                 Token::BracketOpen => {
                     match queue.pop() {
                         Some(QueueItem::Expression(v)) => {
-                            if !self.get_type_from_expression(on_type, &v, context)?.is_array() {
+                            if !self.get_type_from_expression(on_type, &v, context)?.support_array_call() {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
 
@@ -1492,7 +1491,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Err(e) => match e.kind { // support empty array declaration
-                    ParserErrorKind::EmptyArrayConstructor if value_type.is_array() => Cow::Owned(value_type.clone()),
+                    ParserErrorKind::EmptyArrayConstructor if value_type.support_array_call() => Cow::Owned(value_type.clone()),
                     _ => return Err(e)
                 }
             };
@@ -2438,9 +2437,7 @@ mod tests {
                     value_type: Type::Range(Box::new(Type::U64)),
                     value: Expression::Constant(
                         Value::Range(
-                            Box::new(Value::U64(0)),
-                            Box::new(Value::U64(10)),
-                            Type::U64
+                            Box::new((Value::U64(0), Value::U64(10)))
                         ).into()
                     )
                 }
@@ -2639,9 +2636,7 @@ mod tests {
                 0,
                 Expression::Constant(
                     Value::Range(
-                        Box::new(Value::U64(0)),
-                        Box::new(Value::U64(10)),
-                        Type::U64
+                        Box::new((Value::U64(0), Value::U64(10)))
                     ).into()
                 ),
                 Vec::new()

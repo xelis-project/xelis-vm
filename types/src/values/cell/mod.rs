@@ -78,6 +78,7 @@ impl From<Constant> for ValueCell {
             Constant::Default(v) => Self::Default(v),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+            Constant::Typed(values, _) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
         }
     }
 }

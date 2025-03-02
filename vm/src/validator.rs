@@ -163,7 +163,8 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += opaque.get_size();
                     }
-                }
+                },
+                _ => {}
             }
         }
 

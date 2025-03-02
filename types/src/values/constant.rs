@@ -310,12 +310,12 @@ impl Constant {
     }
 
     #[inline]
-    pub fn as_range(&self) -> Result<(&Value, &Value, &Type), ValueError> {
+    pub fn as_range(&self) -> Result<(&Value, &Value), ValueError> {
         self.as_value().and_then(Value::as_range)
     }
 
     #[inline]
-    pub fn to_range(self) -> Result<(Value, Value, Type), ValueError> {
+    pub fn to_range(self) -> Result<(Value, Value), ValueError> {
         self.into_value().and_then(Value::to_range)
     }
 
@@ -381,10 +381,10 @@ impl Constant {
                 }
             },
             Type::Range(inner) => {
-                let (start, end, _) = self.to_range()?;
+                let (start, end) = self.to_range()?;
                 let start = start.checked_cast_to_primitive_type(inner)?;
                 let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Value::Range(Box::new(start), Box::new(end), *inner.clone()))
+                Ok(Value::Range(Box::new((start, end))))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }.map(Self::Default)

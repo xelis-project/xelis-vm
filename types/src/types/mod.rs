@@ -121,6 +121,10 @@ impl Type {
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
+            Constant::Typed(_, ty) => match ty {
+                DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
+                DefinedType::Struct(ty) => Type::Struct(ty.clone())
+            }
         })
     }
 
