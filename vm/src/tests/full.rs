@@ -1146,10 +1146,10 @@ fn test_self_reference_owned_with_inner_ref() {
         }
 
         entry main() {
-            let bytes: u8[] = [100];
-            let t: Test = Test { a: bytes[0] };
+            let b: u8[] = [100];
+            let t: Test = Test { a: b[0] };
             t.a = 50;
-            assert(bytes[0] == 100);
+            assert(b[0] == 100);
             return t.overflowing_add(t)
         }
     "#;
