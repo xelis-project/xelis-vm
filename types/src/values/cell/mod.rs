@@ -21,7 +21,7 @@ pub enum ValueCell {
 
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    Map(HashMap<ValueCell, ValueCell>),
+    Map(Box<HashMap<ValueCell, ValueCell>>),
 }
 
 impl PartialEq for ValueCell {
@@ -83,7 +83,7 @@ impl From<Constant> for ValueCell {
             Constant::Default(v) => Self::Default(v),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
-            Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+            Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
             Constant::Typed(values, _) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
         }
     }
@@ -118,7 +118,7 @@ impl ValueCell {
                     }
                 },
                 ValueCell::Map(map) => {
-                    for (_, v) in map {
+                    for (_, v) in map.iter() {
                         stack.push((v, depth + 1));
                     }
                 }
@@ -643,7 +643,7 @@ impl ValueCell {
                         let key = stack.pop().ok_or(ValueError::ExpectedValue)?;
                         map.insert(key, value.into());
                     }
-                    stack.push(ValueCell::Map(map));
+                    stack.push(ValueCell::Map(Box::new(map)));
                 }
             }
         }
@@ -677,11 +677,11 @@ mod tests {
 
     #[test]
     fn test_max_depth() {
-        let mut map = ValueCell::Map(HashMap::new());
+        let mut map = ValueCell::Map(Box::new(HashMap::new()));
         for _ in 0..100 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(inner_map);
+            map = ValueCell::Map(Box::new(inner_map));
         }
 
         assert!(matches!(map.calculate_depth(100), Ok(100)));
@@ -702,11 +702,11 @@ mod tests {
     #[test]
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
-        let mut map = ValueCell::Map(HashMap::new());
+        let mut map = ValueCell::Map(Box::new(HashMap::new()));
         for _ in 0..100000 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(inner_map);
+            map = ValueCell::Map(Box::new(inner_map));
         }
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

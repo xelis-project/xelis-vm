@@ -48,6 +48,6 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
         map.insert(key, value.into_owned()?.into());
     }
 
-    stack.push_stack_unchecked(ValueCell::Map(map).into());
+    stack.push_stack_unchecked(ValueCell::Map(Box::new(map)).into());
     Ok(InstructionResult::Nothing)
 }
