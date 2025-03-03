@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{Constant, EnumType, EnumVariant, StructType, Value, ValueError};
+use xelis_types::{Constant, EnumType, EnumVariant, StructType, Primitive, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -105,6 +105,13 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 4;
                 },
+                Constant::Bytes(values) => {
+                    if values.len() > u32::MAX as usize {
+                        return Err(ValidatorError::TooManyConstants);
+                    }
+
+                    memory_usage += values.len();
+                }
                 Constant::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
@@ -121,7 +128,7 @@ impl<'a> ModuleValidator<'a> {
                     memory_usage += 16;
                 },
                 Constant::Default(v) => match v {
-                    Value::Range(range) => {
+                    Primitive::Range(range) => {
                         if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);
                         }
@@ -133,29 +140,22 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += 8;
                     },
-                    Value::Null => memory_usage += 1,
-                    Value::Boolean(_) => memory_usage += 1,
-                    Value::String(str) => {
+                    Primitive::Null => memory_usage += 1,
+                    Primitive::Boolean(_) => memory_usage += 1,
+                    Primitive::String(str) => {
                         if str.len() > u32::MAX as usize {
                             return Err(ValidatorError::StringTooBig);
                         }
 
                         memory_usage += 8 + str.len();
                     },
-                    Value::U8(_) => memory_usage += 1,
-                    Value::U16(_) => memory_usage += 2,
-                    Value::U32(_) => memory_usage += 4,
-                    Value::U64(_) => memory_usage += 8,
-                    Value::U128(_) => memory_usage += 16,
-                    Value::U256(_) => memory_usage += 32,
-                    Value::Bytes(bytes) => {
-                        if bytes.len() > u32::MAX as usize {
-                            return Err(ValidatorError::TooManyConstants);
-                        }
-
-                        memory_usage += bytes.len();
-                    },
-                    Value::Opaque(opaque) => {
+                    Primitive::U8(_) => memory_usage += 1,
+                    Primitive::U16(_) => memory_usage += 2,
+                    Primitive::U32(_) => memory_usage += 4,
+                    Primitive::U64(_) => memory_usage += 8,
+                    Primitive::U128(_) => memory_usage += 16,
+                    Primitive::U256(_) => memory_usage += 32,
+                    Primitive::Opaque(opaque) => {
                         if !self.environment.get_opaques()
                             .contains(&opaque.get_type_id()) {
                             return Err(ValidatorError::InvalidOpaque);

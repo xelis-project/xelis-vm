@@ -755,7 +755,7 @@ mod tests {
     use xelis_builder::EnvironmentBuilder;
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
-    use xelis_types::Value;
+    use xelis_types::Primitive;
 
     use super::*;
 
@@ -801,7 +801,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(3).into())
+            Some(&Primitive::U64(3).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -836,7 +836,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(0).into())
+            Some(&Primitive::U64(0).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -868,12 +868,12 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(1).into())
+            Some(&Primitive::U64(1).into())
         );
 
         assert_eq!(
             module.get_constant_at(1),
-            Some(&Value::U64(2).into())
+            Some(&Primitive::U64(2).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1249,7 +1249,7 @@ mod tests {
         assert_eq!(module.constants().len(), 1);
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(0).into())
+            Some(&Primitive::U64(0).into())
         );
     }
 }

@@ -4,7 +4,7 @@ use xelis_environment::{
     FnReturnType,
     Context,
 };
-use xelis_types::{Type, Value, ValueCell, Constant, U256 as u256};
+use xelis_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -21,9 +21,9 @@ macro_rules! overflow_fn {
                 let (result, overflow) = value.[<overflowing_ $op>](other);
                 
                 Ok(Some(if overflow {
-                    Value::Null.into()
+                    Primitive::Null.into()
                 } else {
-                    let inner = Value::$t(result).into();
+                    let inner = Primitive::$t(result).into();
                     inner
                 }))
             }
@@ -62,7 +62,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| Value::U8(*b).into()).collect();
+                let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
                 Ok(Some(ValueCell::Array(vec)))
             }
 
@@ -90,8 +90,8 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = Constant::Default(Value::$t(min));
-        let max_inner = Constant::Default(Value::$t(max));
+        let min_inner = Constant::Default(Primitive::$t(min));
+        let max_inner = Constant::Default(Primitive::$t(max));
 
         $env.register_constant(Type::$t, "MIN", min_inner);
         $env.register_constant(Type::$t, "MAX", max_inner);

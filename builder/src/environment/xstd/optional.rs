@@ -1,4 +1,4 @@
-use xelis_types::{Type, Value, ValueError};
+use xelis_types::{Type, Primitive, ValueError};
 use xelis_environment::{
     Context,
     EnvironmentError,
@@ -17,11 +17,11 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 fn is_none(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.is_null()).into()))
+    Ok(Some(Primitive::Boolean(zelf?.is_null()).into()))
 }
 
 fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(!zelf?.is_null()).into()))
+    Ok(Some(Primitive::Boolean(!zelf?.is_null()).into()))
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {

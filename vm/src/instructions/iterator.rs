@@ -6,14 +6,14 @@ use crate::{
     Context,
     VMError
 };
-use xelis_types::Value;
+use xelis_types::Primitive;
 
 use super::InstructionResult;
 
 pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
     let len = value.as_ref().as_vec()?.len();
-    stack.push_stack_unchecked(Value::U32(len as u32).into());
+    stack.push_stack_unchecked(Primitive::U32(len as u32).into());
     Ok(InstructionResult::Nothing)
 }
 

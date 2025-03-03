@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::{values::ValueError, Constant, Value};
+use crate::{values::ValueError, Constant, Primitive};
 use super::ValueCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,8 +147,8 @@ impl From<&mut ValueCell> for StackValue {
     }
 }
 
-impl From<Value> for StackValue {
-    fn from(value: Value) -> Self {
+impl From<Primitive> for StackValue {
+    fn from(value: Primitive) -> Self {
         Self::Owned(Box::new(value.into()))
     }
 }

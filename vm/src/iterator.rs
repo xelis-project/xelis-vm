@@ -1,16 +1,16 @@
-use xelis_types::{StackValue, Value, ValueCell, ValueError};
+use xelis_types::{StackValue, Primitive, ValueCell, ValueError};
 
 #[derive(Debug)]
 pub struct ValueIterator {
     inner: StackValue,
-    index: Value,
+    index: Primitive,
 }
 
 impl ValueIterator {
     pub fn new(inner: StackValue) -> Result<Self, ValueError> {
         let index = match inner.as_ref() {
-            ValueCell::Default(Value::Range(range)) => range.0.clone(),
-            _ => Value::U32(0),
+            ValueCell::Default(Primitive::Range(range)) => range.0.clone(),
+            _ => Primitive::U32(0),
         };
 
         Ok(ValueIterator { inner, index })
@@ -27,7 +27,7 @@ impl ValueIterator {
                 v.get(index)
                 .map(|v| v.clone().into())
             },
-            ValueCell::Default(Value::Range(range)) => {
+            ValueCell::Default(Primitive::Range(range)) => {
                 // Only need to check top bound, because index is init by low bound
                 if index < range.1 {
                     Some(index.into())

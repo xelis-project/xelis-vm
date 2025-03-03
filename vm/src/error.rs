@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::EnvironmentError;
-use xelis_types::{Value, ValueError};
+use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
@@ -29,7 +29,7 @@ pub enum VMError {
     #[error("empty stack")]
     EmptyStack,
     #[error("incompatible values: {0:?} and {1:?}")]
-    IncompatibleValues(Value, Value),
+    IncompatibleValues(Primitive, Primitive),
     #[error("chunk was not found")]
     ChunkNotFound,
     #[error("chunk is not an entry")]

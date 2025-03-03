@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use xelis_environment::EnvironmentError;
-use xelis_types::{Value, ValueCell};
+use xelis_types::{Primitive, ValueCell};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -30,7 +30,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
         return Err(VMError::InvalidRangeType);
     }
 
-    let value = Value::Range(Box::new((start.into_value()?, end.into_value()?)));
+    let value = Primitive::Range(Box::new((start.into_value()?, end.into_value()?)));
     stack.push_stack_unchecked(value.into());
     Ok(InstructionResult::Nothing)
 }

@@ -5,7 +5,7 @@ use crate::{
     Context,
     VMError
 };
-use xelis_types::{Value, ValueCell, Type};
+use xelis_types::{Primitive, ValueCell, Type};
 
 use super::InstructionResult;
 
@@ -13,12 +13,12 @@ macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
+                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
+                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
+                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
+                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
+                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
+                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
                 _ => return Err(VMError::UnexpectedType)
             }
             _ => return Err(VMError::UnexpectedType)
@@ -30,13 +30,13 @@ macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
-                (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
+                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
+                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
+                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
+                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
+                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
+                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+                (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
                 _ => return Err(VMError::UnexpectedType)
             }
             _ => return Err(VMError::UnexpectedType)
@@ -48,13 +48,13 @@ macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-                (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-                (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-                (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-                (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-                (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
-                (Value::U256(a), Value::U256(b)) => Value::U256(*a $op *b),
-                (Value::String(a), Value::String(b)) => {
+                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
+                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
+                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
+                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
+                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
+                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+                (Primitive::String(a), Primitive::String(b)) => {
                     // Verify the final len is less than u32::MAX
                     let len = (a.len() as u32).checked_add(b.len() as u32);
                     match len {
@@ -66,7 +66,7 @@ macro_rules! op_string {
                         None => return Err(VMError::StringTooLarge)
                     }
 
-                    Value::String(a.to_owned() $op b)
+                    Primitive::String(a.to_owned() $op b)
                 }
                 _ => {
                     // we need to handle if one of the values is a string
@@ -79,7 +79,7 @@ macro_rules! op_string {
                             return Err(VMError::StringTooLarge);
                         }
 
-                        Value::String(left $op &right)
+                        Primitive::String(left $op &right)
                     } else {
                         return Err(VMError::UnexpectedType)
                     }
@@ -94,14 +94,14 @@ macro_rules! op_bool_res {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-                (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
-                (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
-                (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
-                (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
-                (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
-                (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
-                (Value::U256(a), Value::U256(b)) => Value::Boolean(a $op b),
-                (Value::String(a), Value::String(b)) => Value::Boolean(a $op b),
+                (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U16(a), Primitive::U16(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U32(a), Primitive::U32(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U64(a), Primitive::U64(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
+                (Primitive::U256(a), Primitive::U256(b)) => Primitive::Boolean(a $op b),
+                (Primitive::String(a), Primitive::String(b)) => Primitive::Boolean(a $op b),
                 _ => return Err(VMError::UnexpectedType)
             }
             _ => return Err(VMError::UnexpectedType)
@@ -111,7 +111,7 @@ macro_rules! op_bool_res {
 
 macro_rules! op_bool_all {
     ($a: expr, $b: expr, $op: tt) => {{
-        Value::Boolean($a $op $b)
+        Primitive::Boolean($a $op $b)
     }};
 }
 
@@ -130,41 +130,41 @@ macro_rules! op_div {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
-                (Value::U8(a), Value::U8(b)) => {
+                (Primitive::U8(a), Primitive::U8(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U8(a $op b)
+                    Primitive::U8(a $op b)
                 },
-                (Value::U16(a), Value::U16(b)) => {
+                (Primitive::U16(a), Primitive::U16(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U16(a $op b)
+                    Primitive::U16(a $op b)
                 },
-                (Value::U32(a), Value::U32(b)) => {
+                (Primitive::U32(a), Primitive::U32(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U32(a $op b)
+                    Primitive::U32(a $op b)
                 },
-                (Value::U64(a), Value::U64(b)) => {
+                (Primitive::U64(a), Primitive::U64(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U64(a $op b)
+                    Primitive::U64(a $op b)
                 },
-                (Value::U128(a), Value::U128(b)) => {
+                (Primitive::U128(a), Primitive::U128(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U128(a $op b)
+                    Primitive::U128(a $op b)
                 },
-                (Value::U256(a), Value::U256(b)) => {
+                (Primitive::U256(a), Primitive::U256(b)) => {
                     if b.is_zero() {
                         return Err(VMError::DivisionByZero);
                     }
-                    Value::U256(*a $op *b)
+                    Primitive::U256(*a $op *b)
                 },
                 _ => return Err(VMError::UnexpectedType)
             }
@@ -225,7 +225,7 @@ opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
 pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    stack.push_stack_unchecked(Value::Boolean(!value.as_bool()?).into());
+    stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool()?).into());
     Ok(InstructionResult::Nothing)
 }
 
@@ -248,12 +248,12 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
         (ValueCell::Default(a), ValueCell::Default(b)) => {
             let pow_n = b.as_u32()?;
             match a {
-                Value::U8(a) => Value::U8(a.pow(pow_n)),
-                Value::U16(a) => Value::U16(a.pow(pow_n)),
-                Value::U32(a) => Value::U32(a.pow(pow_n)),
-                Value::U64(a) => Value::U64(a.pow(pow_n)),
-                Value::U128(a) => Value::U128(a.pow(pow_n)),
-                Value::U256(a) => Value::U256(a.pow(pow_n)),
+                Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
+                Primitive::U16(a) => Primitive::U16(a.pow(pow_n)),
+                Primitive::U32(a) => Primitive::U32(a.pow(pow_n)),
+                Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
+                Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
+                Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
                 _ => return Err(VMError::UnexpectedType)
             }
         }
@@ -271,12 +271,12 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
             (ValueCell::Default(a), ValueCell::Default(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
-                    Value::U8(a) => Value::U8(a.pow(pow_n)),
-                    Value::U16(a) => Value::U16(a.pow(pow_n)),
-                    Value::U32(a) => Value::U32(a.pow(pow_n)),
-                    Value::U64(a) => Value::U64(a.pow(pow_n)),
-                    Value::U128(a) => Value::U128(a.pow(pow_n)),
-                    Value::U256(a) => Value::U256(a.pow(pow_n)),
+                    Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
+                    Primitive::U16(a) => Primitive::U16(a.pow(pow_n)),
+                    Primitive::U32(a) => Primitive::U32(a.pow(pow_n)),
+                    Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
+                    Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
+                    Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
                     _ => return Err(VMError::UnexpectedType)
                 }
             }
@@ -294,13 +294,13 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'
         .into_inner();
 
     let value = match _type {
-        Type::U8 => Value::U8(current.cast_to_u8()?),
-        Type::U16 => Value::U16(current.cast_to_u16()?),
-        Type::U32 => Value::U32(current.cast_to_u32()?),
-        Type::U64 => Value::U64(current.cast_to_u64()?),
-        Type::U128 => Value::U128(current.cast_to_u128()?),
-        Type::U256 => Value::U256(current.cast_to_u256()?),
-        Type::String => Value::String(current.cast_to_string()?),
+        Type::U8 => Primitive::U8(current.cast_to_u8()?),
+        Type::U16 => Primitive::U16(current.cast_to_u16()?),
+        Type::U32 => Primitive::U32(current.cast_to_u32()?),
+        Type::U64 => Primitive::U64(current.cast_to_u64()?),
+        Type::U128 => Primitive::U128(current.cast_to_u128()?),
+        Type::U256 => Primitive::U256(current.cast_to_u256()?),
+        Type::String => Primitive::String(current.cast_to_string()?),
         _ => return Err(VMError::UnsupportedCastType)
     };
 
@@ -312,7 +312,7 @@ pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
     let value = stack.pop_stack()?;
     let left = value.as_bool()?;
     let right = stack.pop_stack()?.as_bool()?;
-    stack.push_stack_unchecked(Value::Boolean(left && right).into());
+    stack.push_stack_unchecked(Primitive::Boolean(left && right).into());
 
     Ok(InstructionResult::Nothing)
 }
@@ -321,7 +321,7 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
     let value = left.as_bool()? || right.as_bool()?;
-    stack.push_stack_unchecked(Value::Boolean(value).into());
+    stack.push_stack_unchecked(Primitive::Boolean(value).into());
 
     Ok(InstructionResult::Nothing)
 }

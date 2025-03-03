@@ -5,7 +5,7 @@ mod integer;
 mod range;
 mod map;
 
-use xelis_types::{Type, Value};
+use xelis_types::{Type, Primitive};
 use xelis_environment::{
     EnvironmentError,
     FnInstance,
@@ -65,7 +65,7 @@ fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType 
 
 fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let same = parameters[0].is_same_ptr(&parameters[1]);
-    Ok(Some(Value::Boolean(same).into()))
+    Ok(Some(Primitive::Boolean(same).into()))
 }
 
 fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {

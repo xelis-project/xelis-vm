@@ -1,4 +1,4 @@
-use xelis_types::{Type, Value, ValueCell};
+use xelis_types::{Type, Primitive, ValueCell};
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
 
@@ -28,7 +28,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 // native functions
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_vec()?.len();
-    Ok(Some(Value::U32(len as u32).into()))
+    Ok(Some(Primitive::U32(len as u32).into()))
 }
 
 fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
@@ -67,7 +67,7 @@ fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     if let Some(value) = array.pop() {
         Ok(Some(value.into_owned()?))
     } else {
-        Ok(Some(Value::Null.into()))
+        Ok(Some(Primitive::Null.into()))
     }
 }
 
@@ -109,7 +109,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(Some(Value::Boolean(vec.iter().find(|v| **v == *handle).is_some()).into()))
+    Ok(Some(Primitive::Boolean(vec.iter().find(|v| **v == *handle).is_some()).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -118,7 +118,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     if let Some(value) = vec.get(index) {
         Ok(Some(value.clone()))
     } else {
-        Ok(Some(Value::Null.into()))
+        Ok(Some(Primitive::Null.into()))
     }
 }
 
@@ -127,7 +127,7 @@ fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     if let Some(value) = vec.first() {
         Ok(Some(value.clone()))
     } else {
-        Ok(Some(Value::Null.into()))
+        Ok(Some(Primitive::Null.into()))
     }
 }
 
@@ -136,6 +136,6 @@ fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     if let Some(value) = vec.last() {
         Ok(Some(value.clone()))
     } else {
-        Ok(Some(Value::Null.into()))
+        Ok(Some(Primitive::Null.into()))
     }
 }

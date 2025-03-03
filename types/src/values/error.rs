@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::Type;
-use super::{constant::Constant, Value};
+use super::{constant::Constant, Primitive};
 
 
 #[derive(Debug, Error)]
@@ -15,7 +15,7 @@ pub enum ValueError {
     #[error("max depth reached")]
     MaxDepthReached,
     #[error("Invalid value: {0:?} is not of type {1:?}")]
-    InvalidValue(Value, Type),
+    InvalidValue(Primitive, Type),
     #[error("Invalid value type: {0:?} is not of type {1:?}")]
     InvalidValueType(Constant, Type),
     #[error("Expected a value of type {0:?}")]

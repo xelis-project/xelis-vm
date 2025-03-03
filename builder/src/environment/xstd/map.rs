@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueCell};
+use xelis_types::{Type, Primitive, ValueCell};
 
 use crate::EnvironmentBuilder;
 
@@ -19,7 +19,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_map()?.len();
-    Ok(Some(Value::U32(len as u32).into()))
+    Ok(Some(Primitive::U32(len as u32).into()))
 }
 
 fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -30,7 +30,7 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
     }
 
     let contains = zelf?.as_map()?.contains_key(k);
-    Ok(Some(Value::Boolean(contains).into()))
+    Ok(Some(Primitive::Boolean(contains).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -46,7 +46,7 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
 
     Ok(Some(match value {
         Some(v) => v,
-        None => Value::Null.into(),
+        None => Primitive::Null.into(),
     }))
 }
 
@@ -75,7 +75,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
 
     Ok(Some(match previous {
         Some(v) => v,
-        None => Value::Null.into(),
+        None => Primitive::Null.into(),
     }))
 }
 
@@ -91,7 +91,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         .remove(k);
     Ok(Some(match value {
         Some(v) => v,
-        None => Value::Null.into(),
+        None => Primitive::Null.into(),
     }))
 }
 

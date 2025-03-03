@@ -8,7 +8,7 @@ pub use r#struct::*;
 pub use r#enum::*;
 use opaque::OpaqueType;
 
-use crate::{values::Value, Constant};
+use crate::{values::Primitive, Constant};
 use std::{fmt, hash::{Hash, Hasher}};
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -93,20 +93,19 @@ impl Type {
     }
 
     // Get a type from a value
-    pub fn from_value(value: &Value) -> Option<Self> {
+    pub fn from_value(value: &Primitive) -> Option<Self> {
         Some(match value {
-            Value::Null => return None,
-            Value::U8(_) => Type::U8,
-            Value::U16(_) => Type::U16,
-            Value::U32(_) => Type::U32,
-            Value::U64(_) => Type::U64,
-            Value::U128(_) => Type::U128,
-            Value::U256(_) => Type::U256,
-            Value::String(_) => Type::String,
-            Value::Boolean(_) => Type::Bool,
-            Value::Bytes(_type) => Type::Bytes,
-            Value::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
-            Value::Opaque(_) => return None,
+            Primitive::Null => return None,
+            Primitive::U8(_) => Type::U8,
+            Primitive::U16(_) => Type::U16,
+            Primitive::U32(_) => Type::U32,
+            Primitive::U64(_) => Type::U64,
+            Primitive::U128(_) => Type::U128,
+            Primitive::U256(_) => Type::U256,
+            Primitive::String(_) => Type::String,
+            Primitive::Boolean(_) => Type::Bool,
+            Primitive::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
+            Primitive::Opaque(_) => return None,
         })
     }
 
@@ -121,6 +120,7 @@ impl Type {
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
+            Constant::Bytes(_) => Type::Bytes,
             Constant::Typed(_, ty) => match ty {
                 DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
                 DefinedType::Struct(ty) => Type::Struct(ty.clone())

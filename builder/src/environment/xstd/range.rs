@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueCell};
+use xelis_types::{Type, Primitive, ValueCell};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -9,7 +9,7 @@ macro_rules! contains {
         paste! {
             {
                 let value = $value.[<as_ $t>]()?;
-                Value::Boolean((*$start..*$end).contains(&value)).into()
+                Primitive::Boolean((*$start..*$end).contains(&value)).into()
             }
         }
     };
@@ -29,7 +29,7 @@ macro_rules! collect {
 
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (*$start..*$end).map(|i| Value::$t(i).into()).collect();
+                    let vec = (*$start..*$end).map(|i| Primitive::$t(i).into()).collect();
                     ValueCell::Array(vec)
                 }
             }
@@ -42,7 +42,7 @@ macro_rules! count {
         paste! {
             {
                 let count = $end.checked_sub(*$start).unwrap_or(Default::default());
-                Value::$t(count).into()
+                Primitive::$t(count).into()
             }
         }
     };
@@ -64,12 +64,12 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
 
     let value = value.as_ref();
     Ok(Some(match (start, end) {
-        (Value::U8(start), Value::U8(end)) => contains!(u8, start, end, value),
-        (Value::U16(start), Value::U16(end)) => contains!(u16, start, end, value),
-        (Value::U32(start), Value::U32(end)) => contains!(u32, start, end, value),
-        (Value::U64(start), Value::U64(end)) => contains!(u64, start, end, value),
-        (Value::U128(start), Value::U128(end)) => contains!(u128, start, end, value),
-        (Value::U256(start), Value::U256(end)) => contains!(u256, start, end, value),
+        (Primitive::U8(start), Primitive::U8(end)) => contains!(u8, start, end, value),
+        (Primitive::U16(start), Primitive::U16(end)) => contains!(u16, start, end, value),
+        (Primitive::U32(start), Primitive::U32(end)) => contains!(u32, start, end, value),
+        (Primitive::U64(start), Primitive::U64(end)) => contains!(u64, start, end, value),
+        (Primitive::U128(start), Primitive::U128(end)) => contains!(u128, start, end, value),
+        (Primitive::U256(start), Primitive::U256(end)) => contains!(u256, start, end, value),
         _ => return Err(EnvironmentError::InvalidType)
     }))
 }
@@ -78,12 +78,12 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
     let zelf = zelf?;
     let (start, end) = zelf.as_range()?;
     Ok(Some(match (start, end) {
-        (Value::U8(start), Value::U8(end)) => collect!(U8, start, end, u8, context),
-        (Value::U16(start), Value::U16(end)) => collect!(U16, start, end, u16, context),
-        (Value::U32(start), Value::U32(end)) => collect!(U32, start, end, u32, context),
-        (Value::U64(start), Value::U64(end)) => collect!(U64, start, end, u64, context),
-        (Value::U128(start), Value::U128(end)) => collect!(U128, start, end, u128, context),
-        (Value::U256(start), Value::U256(end)) => {
+        (Primitive::U8(start), Primitive::U8(end)) => collect!(U8, start, end, u8, context),
+        (Primitive::U16(start), Primitive::U16(end)) => collect!(U16, start, end, u16, context),
+        (Primitive::U32(start), Primitive::U32(end)) => collect!(U32, start, end, u32, context),
+        (Primitive::U64(start), Primitive::U64(end)) => collect!(U64, start, end, u64, context),
+        (Primitive::U128(start), Primitive::U128(end)) => collect!(U128, start, end, u128, context),
+        (Primitive::U256(start), Primitive::U256(end)) => {
             let (diff, overflow) = end.overflowing_sub(*start);
 
             let mut vec = Vec::new();
@@ -96,7 +96,7 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
                 context.increase_gas_usage(diff as u64 * 8)?;
 
                 for i in 0..diff {
-                    vec.push(Value::U256(i.into()).into());
+                    vec.push(Primitive::U256(i.into()).into());
                 }
             }
 
@@ -123,12 +123,12 @@ fn count(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let (start, end) = zelf.as_range()?;
 
     Ok(Some(match (start, end) {
-        (Value::U8(start), Value::U8(end)) => count!(U8, start, end, u8),
-        (Value::U16(start), Value::U16(end)) => count!(U16, start, end, u16),
-        (Value::U32(start), Value::U32(end)) => count!(U32, start, end, u32),
-        (Value::U64(start), Value::U64(end)) => count!(U64, start, end, u64),
-        (Value::U128(start), Value::U128(end)) => count!(U128, start, end, u128),
-        (Value::U256(start), Value::U256(end)) => count!(U256, start, end, u256),
+        (Primitive::U8(start), Primitive::U8(end)) => count!(U8, start, end, u8),
+        (Primitive::U16(start), Primitive::U16(end)) => count!(U16, start, end, u16),
+        (Primitive::U32(start), Primitive::U32(end)) => count!(U32, start, end, u32),
+        (Primitive::U64(start), Primitive::U64(end)) => count!(U64, start, end, u64),
+        (Primitive::U128(start), Primitive::U128(end)) => count!(U128, start, end, u128),
+        (Primitive::U256(start), Primitive::U256(end)) => count!(U256, start, end, u256),
         _ => return Err(EnvironmentError::InvalidType)
     }))
 }
