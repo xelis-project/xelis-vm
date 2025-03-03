@@ -753,13 +753,20 @@ impl<'a> Parser<'a> {
         Some(match expr {
             Expression::Constant(v) => v.clone(),
             Expression::ArrayConstructor(values) => {
-                let mut new_values = Vec::with_capacity(values.len());
+                let len = values.len();
+                let mut new_values = Vec::with_capacity(len);
                 for value in values {
-                    let v = self.try_convert_expr_to_value(value)?;
-                    *value = Expression::Constant(v.clone());
-
-                    new_values.push(v);
+                    if let Some(v) = self.try_convert_expr_to_value(value) {
+                        *value = Expression::Constant(v.clone());
+                        new_values.push(v);
+                    }
                 }
+
+                // We can't fully upgrade it to const
+                if len != new_values.len() {
+                    return None
+                }
+
                 Constant::Array(new_values)
             },
             Expression::RangeConstructor(min, max) => {
@@ -782,12 +789,19 @@ impl<'a> Parser<'a> {
                 Constant::Default(Primitive::Range(Box::new((min, max))))
             },
             Expression::StructConstructor(fields, struct_type) => {
-                let mut new_fields = Vec::with_capacity(fields.len());
+                let len = fields.len();
+                let mut new_fields = Vec::with_capacity(len);
                 for field in fields {
-                    let v = self.try_convert_expr_to_value(field)?;
-                    *field = Expression::Constant(v.clone());
-                    new_fields.push(v);
+                    if let Some(v) = self.try_convert_expr_to_value(field) {
+                        *field = Expression::Constant(v.clone());
+                        new_fields.push(v);
+                    }
                 }
+
+                if len != new_fields.len() {
+                    return None
+                }
+
                 Constant::Typed(new_fields, DefinedType::Struct(struct_type.clone()))
             },
             Expression::EnumConstructor(fields, enum_type) => {
@@ -1013,7 +1027,8 @@ impl<'a> Parser<'a> {
                             required_operator = !required_operator;
                             expr
                         },
-                        None => { // require at least one value in a array constructor
+                        None => {
+                            // require at least one value in a array constructor
                             let mut elements: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while self.peek_is_not(Token::BracketClose) {
