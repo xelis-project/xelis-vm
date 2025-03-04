@@ -1,9 +1,9 @@
-use std::{mem, ptr};
+use std::mem;
 
 use crate::{values::ValueError, Constant, Primitive};
 use super::ValueCell;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum StackValue {
     // Value is on stack directly
     Owned(ValueCell),
@@ -60,6 +60,11 @@ impl StackValue {
         }
     }
 
+    // Get an owned variant from it
+    pub fn to_owned(&self) -> Result<Self, ValueError> {
+        Ok(Self::Owned(self.as_ref()?.clone()))
+    }
+
     // Get the internal value
     pub fn into_inner(self) -> ValueCell {
         self.into_owned().unwrap()
@@ -97,11 +102,10 @@ impl StackValue {
     pub fn make_owned_if_same_ptr(&mut self, other: *mut ValueCell) -> Result<(), ValueError> {
         if let Self::Pointer(ptr) = self {
             unsafe {
-                let cell = ptr.as_mut()
-                    .ok_or(ValueError::InvalidPointer)?;
-
-                if ptr::from_mut(cell) == other {
-                    *self = cell.clone().into();
+                if *ptr == other {
+                    let cell = ptr.as_mut()
+                        .ok_or(ValueError::InvalidPointer)?;
+                    *self = cell.into();
                 }
             }
         }
@@ -129,6 +133,14 @@ impl StackValue {
                 v.as_mut().ok_or(ValueError::InvalidPointer)?
             }
         })
+    }
+
+    #[inline(always)]
+    pub fn ptr(&mut self) -> *mut ValueCell {
+        match self {
+            Self::Owned(v) => v as _,
+            Self::Pointer(ptr) => *ptr
+        }
     }
 }
 

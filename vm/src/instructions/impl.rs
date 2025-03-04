@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ptr};
+use std::collections::VecDeque;
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -41,7 +41,7 @@ pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
 
 pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.last_stack()?;
-    stack.push_stack(value.clone())?;
+    stack.push_stack(value.to_owned()?)?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -49,7 +49,7 @@ pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _:
 pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     let value = stack.get_stack_at(index as usize)?;
-    stack.push_stack(value.clone())?;
+    stack.push_stack(value.to_owned()?)?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -134,13 +134,12 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 
     let instance = match on_value.as_mut() {
         Some(v) => {
-            let instance = v.as_mut()?;
-            let ptr = ptr::from_mut(instance);
+            let ptr = v.ptr();
             for argument in arguments.iter_mut() {
                 argument.make_owned_if_same_ptr(ptr)?;
             }
 
-            Some(instance)
+            Some(v.as_mut()?)
         },
         None => None,
     };

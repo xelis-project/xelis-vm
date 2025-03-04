@@ -436,6 +436,37 @@ fn test_for_each_index() {
     assert_eq!(run(module), Primitive::U8(30));
 }
 
+
+#[test]
+fn test_memory_overwrite_self() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    let index = module.add_constant(Primitive::U64(10));
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(index as u16);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Store the pointer by overwriting its source 
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer stored again
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
+}
+
 #[test]
 fn test_for_each_iterator() {
     let mut module = Module::new();

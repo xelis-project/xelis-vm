@@ -1,6 +1,4 @@
-use std::ptr;
-
-use xelis_types::StackValue;
+use xelis_types::{StackValue, ValueCell};
 
 use super::VMError;
 
@@ -51,7 +49,7 @@ impl Stack {
         Ok(())
     }
 
-    pub fn verify_pointers(&mut self, mut value: StackValue) -> Result<(), VMError> {
+    pub fn verify_pointers(&mut self, ptr: *mut ValueCell) -> Result<(), VMError> {
         let checkpoint = self.checkpoints.last()
             .copied()
             .unwrap_or(0);
@@ -60,10 +58,8 @@ impl Stack {
             return Ok(())
         };
 
-        let m = value.as_mut()?;
-        let pointer = ptr::from_mut(m);
         for v in values {
-            v.make_owned_if_same_ptr(pointer)?;
+            v.make_owned_if_same_ptr(ptr)?;
         }
 
         Ok(())
