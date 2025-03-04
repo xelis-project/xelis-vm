@@ -119,7 +119,7 @@ fn test_array_call() {
     chunk.write_u8(2);
 
     // Load the first element
-    let index = module.add_constant(Primitive::U16(0));
+    let index = module.add_constant(Primitive::U32(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -150,14 +150,14 @@ fn test_multi_depth_array_call() {
     chunk.write_u8(1);
 
     // Load the first element of the first array
-    let index = module.add_constant(Primitive::U16(0));
+    let index = module.add_constant(Primitive::U32(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::ArrayCall);
 
     // Load the last element
-    let index = module.add_constant(Primitive::U16(2));
+    let index = module.add_constant(Primitive::U32(2));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -436,7 +436,6 @@ fn test_for_each_index() {
     assert_eq!(run(module), Primitive::U8(30));
 }
 
-
 #[test]
 fn test_memory_overwrite_self() {
     let mut module = Module::new();
@@ -453,6 +452,44 @@ fn test_memory_overwrite_self() {
     // load the pointer
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
+
+    // Store the pointer by overwriting its source 
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer stored again
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
+}
+
+#[test]
+fn test_safe_sub_value_pointer() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    module.add_constant(Constant::Array(vec![Primitive::U64(10).into()]));
+    module.add_constant(Primitive::U32(0));
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(0);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0
+    chunk.emit_opcode(OpCode::ArrayCall);
 
     // Store the pointer by overwriting its source 
     chunk.emit_opcode(OpCode::MemorySet);
