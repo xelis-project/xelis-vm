@@ -4,6 +4,7 @@ mod string;
 mod integer;
 mod range;
 mod map;
+mod bytes;
 
 use std::ptr;
 
@@ -19,6 +20,7 @@ use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     array::register(env);
+    bytes::register(env);
     optional::register(env);
     string::register(env);
     integer::register(env);

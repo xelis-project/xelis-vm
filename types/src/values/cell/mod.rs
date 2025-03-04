@@ -258,6 +258,23 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn as_bytes<'a>(&'a self) -> Result<&'a Vec<u8>, ValueError> {
+        match self {
+            Self::Bytes(bytes) => Ok(bytes),
+            _ => Err(ValueError::ExpectedBytes)
+        }
+    }
+
+
+    #[inline]
+    pub fn as_bytes_mut<'a>(&'a mut self) -> Result<&'a mut Vec<u8>, ValueError> {
+        match self {
+            Self::Bytes(bytes) => Ok(bytes),
+            _ => Err(ValueError::ExpectedBytes)
+        }
+    }
+
+    #[inline]
     pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
             Self::Default(Primitive::Null) => Ok(None),
