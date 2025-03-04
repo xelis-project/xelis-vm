@@ -90,6 +90,15 @@ impl From<Constant> for ValueCell {
 }
 
 impl ValueCell {
+    // Check if our type contains any sub values
+    // that could be used to get a pointer from
+    pub fn has_sub_values(&self) -> bool {
+        match self {
+            Self::Array(_)
+            | Self::Map(_) => true,
+            _ => false,
+        }
+    }
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value

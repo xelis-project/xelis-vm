@@ -8,6 +8,8 @@ const STACK_SIZE: usize = 256;
 
 pub struct Stack {
     stack: Vec<StackValue>,
+    // Only elements with sub types 
+    dropped_elements: Vec<ValueCell>,
     // Each element is the stack index until which
     // we will need to clean up the pointers
     pub checkpoints: Vec<usize>,
@@ -17,7 +19,19 @@ impl Stack {
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(16),
+            dropped_elements: Vec::new(),
             checkpoints: Vec::new(),
+        }
+    }
+
+    // Keep the elements dropped by adding them to the garbage collector
+    // This is faster than checking all the possible pointers
+    // We should pay anyway based on the memory usage and limit it
+    pub fn add_to_garbage_collector(&mut self, element: StackValue) {
+        if let StackValue::Owned(v) = element {
+            if v.has_sub_values() {
+                self.dropped_elements.push(v);
+            }
         }
     }
 

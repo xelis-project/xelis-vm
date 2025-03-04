@@ -1,6 +1,6 @@
 mod reader;
 
-use std::{cmp::Ordering, ops::{Deref, DerefMut}};
+use std::{cmp::Ordering, mem, ops::{Deref, DerefMut}};
 use xelis_bytecode::Chunk;
 use xelis_types::{StackValue, ValueCell};
 use super::{iterator::ValueIterator, VMError};
@@ -58,7 +58,7 @@ impl<'a> ChunkManager<'a> {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<Option<*mut ValueCell>, VMError> {
+    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<Option<(*mut ValueCell, StackValue)>, VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -79,12 +79,12 @@ impl<'a> ChunkManager<'a> {
                     }
                 }
 
-                self.registers[index] = value;
+                let old_value = mem::replace(&mut self.registers[index], value);
                 for register in self.registers.iter_mut() {
                     register.make_owned_if_same_ptr(old_ptr)?;
                 }
 
-                Ok(Some(old_ptr))
+                Ok(Some((old_ptr, old_value)))
             },
             Ordering::Less => Err(VMError::RegisterOverflow)
         }
