@@ -24,7 +24,7 @@ fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
 fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let k = key.as_ref();
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -35,7 +35,7 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let k = key.as_ref();
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -67,7 +67,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
 
     let value = parameters.remove(0);
     // Verify the depth of the value
-    value.as_ref()
+    value.as_ref()?
         .calculate_depth(max_depth)?;
 
     let previous = map
@@ -82,7 +82,7 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
 fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
 
-    let k = key.as_ref();
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }

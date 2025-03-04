@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, ptr};
 
 use crate::{values::ValueError, Constant, Primitive};
 use super::ValueCell;
@@ -13,17 +13,17 @@ pub enum StackValue {
 impl StackValue {
     #[inline(always)]
     pub fn as_bool<'a>(&'a self) -> Result<bool, ValueError> {
-        self.as_ref().as_bool()
+        self.as_ref()?.as_bool()
     }
 
     #[inline(always)]
     pub fn as_u32<'a>(&'a self) -> Result<u32, ValueError> {
-        self.as_ref().as_u32()
+        self.as_ref()?.as_u32()
     }
 
     #[inline(always)]
     pub fn as_u64<'a>(&'a self) -> Result<u64, ValueError> {
-        self.as_ref().as_u64()
+        self.as_ref()?.as_u64()
     }
 
     // Get the sub value at index requested
@@ -40,7 +40,8 @@ impl StackValue {
                 Ok(Self::Owned(at_index))
             },
             Self::Pointer(v) => unsafe {
-                let cell = v.as_mut().unwrap();
+                let cell = v.as_mut()
+                    .ok_or(ValueError::InvalidPointer)?;
                 let values = cell.as_mut_vec()?;
                 let len = values.len();
                 let at_index = values
@@ -70,68 +71,64 @@ impl StackValue {
         match self {
             Self::Owned(v) => Ok(v),
             Self::Pointer(v) => unsafe {
-                Ok(v.as_ref().unwrap().clone())
+                v.as_ref()
+                    .ok_or(ValueError::InvalidPointer)
+                    .cloned()
             }
         }
     }
 
-    pub fn take_ownership(&mut self) {
+    // Take the ownership by stealing the value from the pointer
+    // and replace our current pointer as a owned value
+    pub fn take_ownership(&mut self) -> Result<(), ValueError> {
         if let Self::Pointer(ptr) = self {
             unsafe {
-                let cell = ptr.as_mut().unwrap();
+                let cell = ptr.as_mut()
+                    .ok_or(ValueError::InvalidPointer)?;
                 let owned = mem::take(cell);
                 *self = owned.into();
             }
         }
+
+        Ok(())
     }
 
     // Make the path owned if the pointer is the same
-    pub fn make_owned_if_same_ptr(&mut self, other: &StackValue) {
-        if self.is_same_ptr(other) {
-            if let Self::Pointer(ptr) = self {
-                unsafe {
-                    let cell = ptr.as_mut().unwrap();
+    pub fn make_owned_if_same_ptr(&mut self, other: *mut ValueCell) -> Result<(), ValueError> {
+        if let Self::Pointer(ptr) = self {
+            unsafe {
+                let cell = ptr.as_mut()
+                    .ok_or(ValueError::InvalidPointer)?;
+
+                if ptr::from_mut(cell) == other {
                     *self = cell.clone().into();
                 }
             }
         }
-    }
 
-    pub fn is_wrapped(&self) -> bool {
-        matches!(self, Self::Pointer(_))
+        Ok(())
     }
 
     // Get a reference to the value
     #[inline(always)]
-    pub fn as_ref<'b>(&'b self) -> &'b ValueCell {
-        match self {
+    pub fn as_ref<'b>(&'b self) -> Result<&'b ValueCell, ValueError> {
+        Ok(match self {
             Self::Owned(v) => v,
             Self::Pointer(v) => unsafe {
-                v.as_ref().unwrap()
+                v.as_ref().ok_or(ValueError::InvalidPointer)?
             }
-        }
+        })
     }
 
     // Get a mutable reference to the value
     #[inline(always)]
-    pub fn as_mut<'b>(&'b mut self) -> &'b mut ValueCell {
-        match self {
+    pub fn as_mut<'b>(&'b mut self) -> Result<&'b mut ValueCell, ValueError> {
+        Ok(match self {
             Self::Owned(v) => v,
             Self::Pointer(v) => unsafe {
-                v.as_mut().unwrap()
+                v.as_mut().ok_or(ValueError::InvalidPointer)?
             }
-        }
-    }
-
-    // Verify if its the same pointer
-    #[inline]
-    pub fn is_same_ptr<'b>(&'b self, other: &'b StackValue) -> bool {
-        self.ptr() == other.ptr()
-    }
-
-    #[inline]
-    pub fn ptr(&self) -> *const ValueCell {
-        self.as_ref() as *const ValueCell
+        })
     }
 }
 

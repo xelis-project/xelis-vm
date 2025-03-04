@@ -4,6 +4,8 @@ use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("Expected checkpoint")]
+    ExpectedCheckPoint,
     #[error("register max size reached")]
     RegisterMaxSize,
     #[error("register overflow")]

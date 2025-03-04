@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ptr};
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
@@ -134,13 +134,13 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 
     let instance = match on_value.as_mut() {
         Some(v) => {
-            if v.is_wrapped() {
-                for argument in arguments.iter_mut() {
-                    argument.make_owned_if_same_ptr(v);
-                }
+            let instance = v.as_mut()?;
+            let ptr = ptr::from_mut(instance);
+            for argument in arguments.iter_mut() {
+                argument.make_owned_if_same_ptr(ptr)?;
             }
 
-            Some(v.as_mut())
+            Some(instance)
         },
         None => None,
     };

@@ -5,7 +5,9 @@ mod integer;
 mod range;
 mod map;
 
-use xelis_types::{Type, Primitive};
+use std::ptr;
+
+use xelis_types::{Primitive, Type};
 use xelis_environment::{
     EnvironmentError,
     FnInstance,
@@ -33,7 +35,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    println!("{}", param.as_ref());
+    println!("{}", param.as_ref()?);
 
     Ok(None)
 }
@@ -54,7 +56,7 @@ fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnTy
 
 fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    let value = param.as_ref().as_bool()?;
+    let value = param.as_bool()?;
 
     if value {
         Ok(None)
@@ -64,7 +66,10 @@ fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType 
 }
 
 fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let same = parameters[0].is_same_ptr(&parameters[1]);
+    let left = parameters[0].as_ref()?;
+    let right = parameters[1].as_ref()?;
+    let same = ptr::from_ref(left) == ptr::from_ref(right);
+
     Ok(Some(Primitive::Boolean(same).into()))
 }
 
@@ -78,7 +83,7 @@ fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturn
     }
 
     let param = &parameters[0];
-    let value = param.as_ref().as_bool()?;
+    let value = param.as_bool()?;
 
     if value {
         Ok(None)

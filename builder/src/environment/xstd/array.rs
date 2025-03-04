@@ -73,7 +73,7 @@ fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
 fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
-    let range = param.as_ref();
+    let range = param.as_ref()?;
     let (start, end) = range.as_range()?;
 
     let start = start.as_u32()?;
@@ -103,7 +103,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
 
 fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
     let value = parameters.remove(0);
-    let handle = value.as_ref();
+    let handle = value.as_ref()?;
     let vec = zelf?.as_vec()?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage

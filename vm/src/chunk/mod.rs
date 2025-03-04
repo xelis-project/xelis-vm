@@ -1,6 +1,6 @@
 mod reader;
 
-use std::{cmp::Ordering, ops::{Deref, DerefMut}};
+use std::{cmp::Ordering, mem, ops::{Deref, DerefMut}, ptr};
 use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
 use super::{iterator::ValueIterator, VMError};
@@ -70,9 +70,10 @@ impl<'a> ChunkManager<'a> {
                 Ok(None)
             },
             Ordering::Greater => {
-                let value = std::mem::replace(&mut self.registers[index], value);
+                let mut value = mem::replace(&mut self.registers[index], value);
+                let ptr = ptr::from_mut(value.as_mut()?);
                 for register in self.registers.iter_mut() {
-                    register.make_owned_if_same_ptr(&value);
+                    register.make_owned_if_same_ptr(ptr)?;
                 }
 
                 Ok(Some(value))

@@ -42,7 +42,7 @@ fn trim(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 
 fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let s = zelf?.as_string()?;
     Ok(Some(Primitive::Boolean(s.contains(value)).into()))
@@ -50,7 +50,7 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
 
 fn contains_ignore_case(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?.to_lowercase();
     let s: String = zelf?.as_string()?.to_lowercase();
     Ok(Some(Primitive::Boolean(s.contains(&value)).into()))
@@ -80,7 +80,7 @@ fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
         let inner = Primitive::U32(index as u32).into();
@@ -93,7 +93,7 @@ fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
 fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
         let inner = Primitive::U32(index as u32).into();
@@ -107,8 +107,8 @@ fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
     let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
-    let handle1 = param1.as_ref();
-    let handle2 = param2.as_ref();
+    let handle1 = param1.as_ref()?;
+    let handle2 = param2.as_ref()?;
     let old = handle1.as_string()?;
     let new = handle2.as_string()?;
     let s = s.replace(old, new);
@@ -118,7 +118,7 @@ fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
 fn starts_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     Ok(Some(Primitive::Boolean(s.starts_with(value)).into()))
 }
@@ -126,7 +126,7 @@ fn starts_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
 fn ends_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     Ok(Some(Primitive::Boolean(s.ends_with(value)).into()))
 }
@@ -134,7 +134,7 @@ fn ends_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
 fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let values = s.split(value)
         .map(|s| Primitive::String(s.to_string()).into())
@@ -163,7 +163,7 @@ fn is_empty(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
 fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref();
+    let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let m = s.matches(value);
     Ok(Some(ValueCell::Array(m.map(|s| Primitive::String(s.to_string()).into()).collect())))

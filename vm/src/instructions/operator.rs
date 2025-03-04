@@ -121,7 +121,7 @@ macro_rules! opcode_op {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
             // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked($macr!(left.as_ref(), right.as_ref(), $op).into());
+            $self.push_stack_unchecked($macr!(left.as_ref()?, right.as_ref()?, $op).into());
         }
     };
 }
@@ -178,8 +178,8 @@ macro_rules! opcode_op_assign {
         {
             let right = $self.pop_stack()?;
             let mut left = $self.pop_stack()?;
-            let result = $macr!(left.as_ref(), right.as_ref(), $op);
-            *left.as_mut() = result.into();
+            let result = $macr!(left.as_ref()?, right.as_ref()?, $op);
+            *left.as_mut()? = result.into();
         }
     };
 }
@@ -237,7 +237,7 @@ pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, 
     // Verify the depth of the owned value
     owned.calculate_depth(context.max_value_depth())?;
 
-    *left.as_mut() = owned;
+    *left.as_mut()? = owned;
     Ok(InstructionResult::Nothing)
 }
 
@@ -267,7 +267,7 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let result = {
-        match (left.as_ref(), right.as_ref()) {
+        match (left.as_ref()?, right.as_ref()?) {
             (ValueCell::Default(a), ValueCell::Default(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
@@ -284,7 +284,7 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
         }
     };
 
-    *left.as_mut() = result.into();
+    *left.as_mut()? = result.into();
     Ok(InstructionResult::Nothing)
 }
 
@@ -328,12 +328,12 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &
 
 pub fn increment<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let v = stack.last_mut_stack()?;
-    v.as_mut().increment()?;
+    v.as_mut()?.increment()?;
     Ok(InstructionResult::Nothing)
 }
 
 pub fn decrement<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let v = stack.last_mut_stack()?;
-    v.as_mut().decrement()?;
+    v.as_mut()?.decrement()?;
     Ok(InstructionResult::Nothing)
 }
