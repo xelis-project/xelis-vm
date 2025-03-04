@@ -3,10 +3,10 @@ use std::mem;
 use crate::{values::ValueError, Constant, Primitive};
 use super::ValueCell;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum StackValue {
     // Value is on stack directly
-    Owned(Box<ValueCell>),
+    Owned(ValueCell),
     Pointer(*mut ValueCell)
 }
 
@@ -37,7 +37,7 @@ impl StackValue {
                 }
 
                 let at_index = values.remove(index);
-                Ok(Self::Owned(Box::new(at_index)))
+                Ok(Self::Owned(at_index))
             },
             Self::Pointer(v) => unsafe {
                 let cell = v.as_mut().unwrap();
@@ -54,7 +54,7 @@ impl StackValue {
 
     pub fn reference(&mut self) -> Self {
         match self {
-            Self::Owned(value) => Self::Pointer(value.as_mut() as *mut ValueCell),
+            Self::Owned(value) => Self::Pointer(value as *mut ValueCell),
             Self::Pointer(ptr) => Self::Pointer(*ptr)
         }
     }
@@ -68,7 +68,7 @@ impl StackValue {
     #[inline(always)]
     pub fn into_owned(self) -> Result<ValueCell, ValueError> {
         match self {
-            Self::Owned(v) => Ok(*v),
+            Self::Owned(v) => Ok(v),
             Self::Pointer(v) => unsafe {
                 Ok(v.as_ref().unwrap().clone())
             }
@@ -137,7 +137,7 @@ impl StackValue {
 
 impl From<ValueCell> for StackValue {
     fn from(value: ValueCell) -> Self {
-        Self::Owned(Box::new(value))
+        Self::Owned(value)
     }
 }
 
@@ -149,12 +149,12 @@ impl From<&mut ValueCell> for StackValue {
 
 impl From<Primitive> for StackValue {
     fn from(value: Primitive) -> Self {
-        Self::Owned(Box::new(value.into()))
+        Self::Owned(value.into())
     }
 }
 
 impl From<Constant> for StackValue {
     fn from(value: Constant) -> Self {
-        Self::Owned(Box::new(value.into()))
+        Self::Owned(value.into())
     }
 }
