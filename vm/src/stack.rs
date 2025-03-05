@@ -12,7 +12,7 @@ pub struct Stack {
     dropped_elements: Vec<ValueCell>,
     // Each element is the stack index until which
     // we will need to clean up the pointers
-    pub checkpoints: Vec<usize>,
+    checkpoints: Vec<usize>,
 }
 
 impl Stack {

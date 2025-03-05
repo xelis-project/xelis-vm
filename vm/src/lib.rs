@@ -21,6 +21,7 @@ pub use error::VMError;
 pub use chunk::*;
 
 // 64 elements maximum in the call stack
+// This represents how many calls can be chained
 const CALL_STACK_SIZE: usize = 64;
 
 // Backend of the VM
