@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use xelis_types::{Constant, ConstantWrapper};
+use xelis_types::{SafeDropValueCell, ValueCell};
 
 use super::Chunk;
 
@@ -9,7 +9,7 @@ use super::Chunk;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<ConstantWrapper>,
+    constants: IndexSet<SafeDropValueCell>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
@@ -28,7 +28,7 @@ impl Module {
 
     // Create a new module with all needed data
     pub fn with(
-        constants: IndexSet<ConstantWrapper>,
+        constants: IndexSet<SafeDropValueCell>,
         chunks: Vec<Chunk>,
         entry_chunk_ids: IndexSet<usize>
     ) -> Self {
@@ -41,20 +41,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<ConstantWrapper> {
+    pub fn constants(&self) -> &IndexSet<SafeDropValueCell> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
-    pub fn add_constant(&mut self, value: impl Into<Constant>) -> usize {
-        self.constants.insert_full(ConstantWrapper(value.into())).0
+    pub fn add_constant(&mut self, value: impl Into<ValueCell>) -> usize {
+        self.constants.insert_full(SafeDropValueCell(value.into())).0
     }
 
     // Get a constant at a specific index
     #[inline]
-    pub fn get_constant_at(&self, index: usize) -> Option<&Constant> {
-        self.constants.get_index(index).map(|wrapper| &wrapper.0)
+    pub fn get_constant_at(&self, index: usize) -> Option<&ValueCell> {
+        self.constants.get_index(index).map(|v| &v.0)
     }
 
     // Get the chunks declared in the module
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_serde_module_json() {
-        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0],"enums":[],"structs":[{"fields":[{"type":"u64"}],"id":0}]}"#;
+        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0]}"#;
         assert!(serde_json::from_str::<Module>(json).is_ok());
     }
 }

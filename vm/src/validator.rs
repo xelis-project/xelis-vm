@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{Constant, EnumType, EnumVariant, StructType, Primitive, ValueError};
+use xelis_types::{EnumType, EnumVariant, Primitive, StructType, ValueCell, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -79,7 +79,7 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify a constant and return the memory usage
-    pub fn verify_constant(&self, constant: &Constant) -> Result<usize, ValidatorError<'a>> {
+    pub fn verify_constant(&self, constant: &ValueCell) -> Result<usize, ValidatorError<'a>> {
         let mut stack = vec![(constant, 0)];
         let mut memory_usage = 0;
 
@@ -95,7 +95,7 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                Constant::Array(elements) => {
+                ValueCell::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
@@ -105,19 +105,19 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 4;
                 },
-                Constant::Bytes(values) => {
+                ValueCell::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
                     memory_usage += values.len();
                 }
-                Constant::Map(map) => {
+                ValueCell::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
-                    for (key, value) in map {
+                    for (key, value) in map.iter() {
                         if key.is_map() {
                             return Err(ValidatorError::MapAsKeyNotAllowed);
                         }
@@ -127,7 +127,7 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 16;
                 },
-                Constant::Default(v) => match v {
+                ValueCell::Default(v) => match v {
                     Primitive::Range(range) => {
                         if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);
@@ -163,8 +163,7 @@ impl<'a> ModuleValidator<'a> {
 
                         memory_usage += opaque.get_size();
                     }
-                },
-                _ => {}
+                }
             }
         }
 
@@ -172,7 +171,7 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify all the declared constants in the module
-    pub fn verify_constants<'b, I: Iterator<Item = &'b Constant>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in constants {
             memory_usage += self.verify_constant(&c)?;

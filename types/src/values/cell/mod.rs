@@ -1,4 +1,5 @@
 mod stack_value;
+mod safe_drop;
 
 use std::{
     borrow::Cow,
@@ -9,11 +10,14 @@ use std::{
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
 
+use serde::{Deserialize, Serialize};
 pub use stack_value::*;
+pub use safe_drop::*;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Default(Primitive),
     Array(Vec<ValueCell>),
