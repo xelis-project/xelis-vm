@@ -1135,6 +1135,26 @@ fn test_self_reference_declared() {
 }
 
 #[test]
+fn test_function_nested() {
+    let code = r#"
+        fn add2(a: u32, b: u32) -> u32 {
+            return a + b;
+        }
+
+        fn add(a: u32, b: u32) -> u32 {
+            return add2(a, b);
+        }
+
+        entry main() {
+            let c: u32 = add(1, 2);
+            return 0;
+        }
+    "#;
+
+    test_code_id_expect_return(code, Primitive::U64(0), 2);
+}
+
+#[test]
 fn test_self_reference_owned_with_inner_ref() {
     let code = r#"
         struct Test {
