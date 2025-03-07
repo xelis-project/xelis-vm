@@ -1,6 +1,6 @@
 mod error;
 
-use std::iter;
+use std::{collections::HashSet, iter};
 use log::{trace, warn};
 use xelis_ast::{
     Expression,
@@ -36,6 +36,9 @@ pub struct Compiler<'a> {
     // and prevent any dangling values
     // Each element is a scope, where its elements are the index of each
     values_on_stack: Vec<Vec<usize>>,
+    // We must track function parameters
+    // and clone them on first assignation
+    parameters_ids: HashSet<u16>,
 }
 
 impl<'a> Compiler<'a> {
@@ -49,6 +52,7 @@ impl<'a> Compiler<'a> {
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
             values_on_stack: Vec::new(),
+            parameters_ids: HashSet::new()
         }
     }
 
@@ -332,6 +336,8 @@ impl<'a> Compiler<'a> {
                 match op {
                     Operator::Assign(None) => {
                         self.compile_expr(chunk, left)?;
+                        self.function_param_copy_on_assign(chunk, left);
+
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Assign);
 
@@ -394,6 +400,10 @@ impl<'a> Compiler<'a> {
                     },
                     _ => {
                         self.compile_expr(chunk, left)?;
+                        if op.is_assignation() {
+                            self.function_param_copy_on_assign(chunk, left);
+                        }
+
                         self.compile_expr(chunk, right)?;
                         let opcode = Self::map_operator_to_opcode(op)?;
                         chunk.emit_opcode(opcode);
@@ -409,6 +419,23 @@ impl<'a> Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    // To prevent any change in function caller variables
+    // Because VM allow us to changes values from one to another chunk invoke
+    fn function_param_copy_on_assign(&mut self, chunk: &mut Chunk, expr: &Expression) {
+        if let Expression::Variable(id) = expr {
+            if self.parameters_ids.remove(id) {
+                trace!("Copying function param {} for assignation", id);
+                chunk.emit_opcode(OpCode::Copy);
+                chunk.emit_opcode(OpCode::MemorySet);
+                chunk.write_u16(*id);
+                chunk.emit_opcode(OpCode::Pop);
+
+                chunk.emit_opcode(OpCode::MemoryLoad);
+                chunk.write_u16(*id);
+            }
+        }
     }
 
     // Push the next register store id
@@ -701,9 +728,12 @@ impl<'a> Compiler<'a> {
         }
 
         // Store the parameters
+        self.parameters_ids.clear();
         for param in function.get_parameters() {
             trace!("Adding parameter: {:?}", param);
             self.memstore(&mut chunk)?;
+
+            self.parameters_ids.insert(*param.get_name());
         }
 
         self.compile_statements(&mut chunk, function.get_statements())?;

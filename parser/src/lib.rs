@@ -933,10 +933,15 @@ impl<'a> Parser<'a> {
 
                     let left_type = self.get_type_from_expression(None, &left, context)?
                         .into_owned();
-                    let right_type = self.get_type_from_expression(None, &right, context)?
-                        .into_owned();
+                    let right_type = self.get_type_from_expression_internal(None, &right, context)?;
+                    if right_type.is_none() && !left_type.allow_null() {
+                        return Err(err!(self, ParserErrorKind::EmptyValue(right)));
+                    }
 
-                    self.verify_operator(&op, left_type, right_type, &mut left, &mut right)?;
+                    if let Some(right_type) = right_type {
+                        self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+                    }
+
                     collapse_queue.push(Expression::Operator(op, Box::new(left), Box::new(right)));
                 },
                 _ => {}

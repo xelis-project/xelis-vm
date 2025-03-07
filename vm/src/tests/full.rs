@@ -1274,3 +1274,32 @@ fn test_fn_call_with_optional_params() {
         Primitive::U64(5)
     );
 }
+
+#[test]
+fn test_fn_params_immutable() {
+    let code = r#"
+        fn test(a: optional<u64>, v: string, arr: u64[]) {
+            a = null;
+            v = "zzzz";
+            arr[0] = 1;
+        }
+
+        entry main() {
+            let a: optional<u64> = 1000;
+            let v: string = "aaa";
+            let arr: u64[] = [0];
+
+            test(a, v, arr);
+            assert(v == "aaa");
+            // Inner mutability is allowed
+            assert(arr[0] == 1);
+
+            return a.unwrap()
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Primitive::U64(1000)
+    );
+}
