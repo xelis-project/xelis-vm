@@ -10,9 +10,6 @@ pub struct Stack {
     stack: Vec<StackValue>,
     // Only elements with sub types 
     dropped_elements: Vec<ValueCell>,
-    // Each element is the stack index until which
-    // we will need to clean up the pointers
-    checkpoints: Vec<usize>,
 }
 
 impl Stack {
@@ -20,7 +17,6 @@ impl Stack {
         Self {
             stack: Vec::with_capacity(16),
             dropped_elements: Vec::new(),
-            checkpoints: Vec::new(),
         }
     }
 
@@ -35,17 +31,9 @@ impl Stack {
         }
     }
 
-    pub fn checkpoint_commit(&mut self) {
-        self.checkpoints.push(self.stack.len());
-    }
-
     pub fn checkpoint_clean(&mut self) -> Result<(), VMError> {
-        let index = self.checkpoints.pop()
-            .ok_or(VMError::ExpectedCheckPoint)?;
-        if let Some(values) = self.stack.get_mut(index..) {
-            for value in values {
-                value.take_ownership()?;
-            }
+        for value in self.stack.iter_mut() {
+            value.make_owned()?;
         }
 
         Ok(())
@@ -64,15 +52,7 @@ impl Stack {
     }
 
     pub fn verify_pointers(&mut self, ptr: *mut ValueCell) -> Result<(), VMError> {
-        let checkpoint = self.checkpoints.last()
-            .copied()
-            .unwrap_or(0);
-
-        let Some(values) = self.stack.get_mut(checkpoint..) else {
-            return Ok(())
-        };
-
-        for v in values {
+        for v in self.stack.iter_mut() {
             v.make_owned_if_same_ptr(ptr)?;
         }
 

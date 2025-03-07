@@ -113,6 +113,20 @@ impl StackValue {
         Ok(())
     }
 
+    // Transform the StackValue into an Owned variant if its a pointer
+    // Do nothing if its a Owned variant already
+    pub fn make_owned(&mut self) -> Result<(), ValueError> {
+        if let Self::Pointer(ptr) = self {
+            unsafe {
+                let cell = ptr.as_ref()
+                    .ok_or(ValueError::InvalidPointer)?;
+                *self = cell.clone().into();
+            }
+        }
+
+        Ok(())
+    }
+
     // Get a reference to the value
     #[inline(always)]
     pub fn as_ref<'b>(&'b self) -> Result<&'b ValueCell, ValueError> {

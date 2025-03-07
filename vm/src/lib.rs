@@ -49,12 +49,15 @@ pub struct VM<'a, 'r> {
     backend: Backend<'a>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
-    call_stack: Vec<(ChunkManager<'a>, bool)>,
+    call_stack: Vec<ChunkManager<'a>>,
     // The stack of the VM
     // Every values are stored here
     stack: Stack,
     // Context given to each instruction
     context: Context<'a, 'r>,
+    // Flag to enable/disable the tail call optimization
+    // in our VM
+    tail_call_optimization: bool
 }
 
 impl<'a, 'r> VM<'a, 'r> {
@@ -78,7 +81,20 @@ impl<'a, 'r> VM<'a, 'r> {
             call_stack: Vec::with_capacity(4),
             stack: Stack::new(),
             context,
+            tail_call_optimization: false
         }
+    }
+
+    // Check if the tail call optimization flag is enabled or not
+    #[inline]
+    pub fn has_tail_call_optimization(&self) -> bool {
+        self.tail_call_optimization
+    }
+
+    // Enable/disable the tail call optimization flag
+    #[inline]
+    pub fn set_tail_call_optimization(&mut self, value: bool) {
+        self.tail_call_optimization = value;
     }
 
     // Get the stack
@@ -127,7 +143,7 @@ impl<'a, 'r> VM<'a, 'r> {
             .ok_or(VMError::ChunkNotFound)?;
 
         let manager = ChunkManager::new(chunk);
-        self.call_stack.push((manager, true));
+        self.call_stack.push(manager);
         Ok(())
     }
 
@@ -161,11 +177,7 @@ impl<'a, 'r> VM<'a, 'r> {
     // It will execute the bytecode
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
-        while let Some((mut manager, commit)) = self.call_stack.pop() {
-            if commit {
-                self.stack.checkpoint_commit();
-            }
-
+        while let Some(mut manager) = self.call_stack.pop() {
             let mut clean_pointers = true;
             while let Some(opcode) = manager.next_u8() {
                 match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
@@ -175,8 +187,18 @@ impl<'a, 'r> VM<'a, 'r> {
                             return Err(VMError::EntryChunkCalled);
                         }
 
-                        clean_pointers = false;
-                        self.call_stack.push((manager, false));
+                        // If tail call optimization is enabled,
+                        // we have another instruction and that its not a OpCode::Return
+                        // push current frame back to our call_stack
+                        // Otherwise, clean pointers for safety reasons
+                        if !self.tail_call_optimization || manager.has_next_instruction() {
+                            // We don't check the call stack size
+                            // because we've pop it from call stack
+                            // and it will be done below for next invoke
+                            self.call_stack.push(manager);
+                            clean_pointers = false;
+                        }
+
                         self.invoke_chunk_id(id)?;
                         break;
                     },

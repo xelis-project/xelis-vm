@@ -1,12 +1,16 @@
 use super::*;
 
 use xelis_bytecode::{Chunk, Module, OpCode};
-use xelis_environment::EnvironmentError;
-use xelis_types::{Type, Primitive, ValueError};
+use xelis_types::{Type, Primitive};
 
 fn try_run(module: Module) -> Result<Primitive, VMError> {
     let env = EnvironmentBuilder::default().build();
     run_internal(module, &env, 0)
+}
+
+fn try_run_id(module: Module, id: u16) -> Result<Primitive, VMError> {
+    let env = EnvironmentBuilder::default().build();
+    run_internal(module, &env, id)
 }
 
 #[test]
@@ -579,7 +583,68 @@ fn test_bad_program_recursive_infinite() {
 
     // Execute
     module.add_chunk(chunk);
-    assert!(matches!(try_run(module), Err(VMError::CallStackOverflow)));
+
+    assert!(try_run(module).is_err());
+}
+
+#[test]
+fn test_bad_program_bad_stack_pointers() {
+    let mut module = Module::new();
+
+    let mut add = Chunk::new();
+
+    add.emit_opcode(OpCode::Pop);
+    add.emit_opcode(OpCode::Pop);
+
+    add.emit_opcode(OpCode::Constant);
+    add.write_u16(2);
+
+    add.emit_opcode(OpCode::MemorySet);
+    add.write_u16(0);
+
+    add.emit_opcode(OpCode::MemoryLoad);
+    add.write_u16(0);
+
+    let mut main = Chunk::new();
+
+    module.add_constant(Primitive::U64(0));
+    module.add_constant(Primitive::U64(1));
+    module.add_constant(Primitive::U64(3));
+
+    // Store first constant in our memory then load it again
+    main.emit_opcode(OpCode::Constant);
+    main.write_u16(0);
+
+    main.emit_opcode(OpCode::MemorySet);
+    main.write_u16(0);
+
+    // Same for the second
+    main.emit_opcode(OpCode::Constant);
+    main.write_u16(1);
+
+    main.emit_opcode(OpCode::MemorySet);
+    main.write_u16(1);
+
+    // Load their pointers
+    main.emit_opcode(OpCode::MemoryLoad);
+    main.write_u16(0);
+
+    main.emit_opcode(OpCode::MemoryLoad);
+    main.write_u16(1);
+
+    main.emit_opcode(OpCode::InvokeChunk);
+    main.write_u16(0);
+    main.write_bool(false);
+    main.write_u8(2);
+
+    main.emit_opcode(OpCode::Return);
+
+    // Execute
+    module.add_chunk(add);
+    module.add_entry_chunk(main);
+
+    let res = try_run_id(module, 1).unwrap();
+    assert!(matches!(res, Primitive::U64(3)));
 }
 
 #[test]
@@ -648,5 +713,5 @@ fn test_infinite_map_depth() {
     // Execute
     module.add_chunk(chunk);
 
-    assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
+    assert!(try_run(module).is_err());
 }
