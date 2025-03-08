@@ -98,9 +98,9 @@ pub enum OpCodeWithArgs {
         // Args count
         args_count: u8
     },
-    // pop length, pop N values => create array
-    NewArray {
-        // Array length
+    // pop length, pop N values => create object
+    NewObject {
+        // object length
         length: u8
     },
     // N..Y
@@ -212,7 +212,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Cast { .. } => OpCode::Cast,
             OpCodeWithArgs::InvokeChunk { .. } => OpCode::InvokeChunk,
             OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
-            OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
+            OpCodeWithArgs::NewObject { .. } => OpCode::NewObject,
             OpCodeWithArgs::NewRange => OpCode::NewRange,
             OpCodeWithArgs::NewMap { .. } => OpCode::NewMap,
 
@@ -287,7 +287,7 @@ impl OpCodeWithArgs {
                 chunk.write_u8(*args_count);
             },
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
-            OpCodeWithArgs::NewArray { length } => chunk.write_u8(*length),
+            OpCodeWithArgs::NewObject { length } => chunk.write_u8(*length),
             OpCodeWithArgs::NewMap { length } => chunk.write_u8(*length),
             _ => {}
         }
@@ -513,12 +513,12 @@ impl OpCodeWithArgs {
                     args_count: args[2].parse().map_err(|_| "Invalid args count")?
                 }
             }
-            "NEWARRAY" => {
+            "NEWOBJECT" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::NewArray {
+                OpCodeWithArgs::NewObject {
                     length: args[0].parse().map_err(|_| "Invalid length")?
                 }
             },

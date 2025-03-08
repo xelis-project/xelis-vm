@@ -1,4 +1,5 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 pub enum OpCode {
     // load constant
     Constant,
@@ -6,6 +7,15 @@ pub enum OpCode {
     MemoryLoad,
     // pop, set in registers[index]
     MemorySet,
+    // pop from registers and push in stack
+    // If there is no 
+    MemoryPop,
+    // Return u16 memory len
+    // u32 is returned because memory/pointers can't be bigger than that
+    MemoryLen,
+    // Transform the stored value at registers[index]
+    // into an owned value (similar to Copy)
+    MemoryToOwned,
     // load from stack, read u8, load sub value, push
     // types are limited to max u8 sub values
     SubLoad,
@@ -17,6 +27,10 @@ pub enum OpCode {
     Copy,
     // Copy value at N
     CopyN,
+    // Make the top stack value an owned variant
+    // Parameters passed through chunks may be pointers
+    // and people may want to NOT modify "upper" value
+    ToOwned,
 
     // Swap top and N value
     Swap,
@@ -49,8 +63,8 @@ pub enum OpCode {
     InvokeChunk,
     // Same as InvokeChunk, but for system calls
     SysCall,
-    // pop length, pop N values => create array with N values
-    NewArray,
+    // pop length, pop N values => create object with N values
+    NewObject,
     // N..Y
     NewRange,
     // pop length, pop N entries (N * (key + value)) => create map with N entries
@@ -131,80 +145,15 @@ pub enum OpCode {
 
 impl OpCode {
     // Convert the OpCode to a usize
-    #[inline]
+    #[inline(always)]
     pub const fn as_usize(&self) -> usize {
-        self.as_byte() as usize
+        *self as usize
     }
 
     // Convert the OpCode to a byte
-    #[inline]
+    #[inline(always)]
     pub const fn as_byte(&self) -> u8 {
-        match self {
-            OpCode::Constant => 0,
-            OpCode::MemoryLoad => 1,
-            OpCode::MemorySet => 2,
-            OpCode::SubLoad => 3,
-            OpCode::Pop => 4,
-            OpCode::PopN => 5,
-            OpCode::Copy => 6,
-            OpCode::CopyN => 7,
-            OpCode::Swap => 8,
-            OpCode::Swap2 => 9,
-            OpCode::Jump => 10,
-            OpCode::JumpIfFalse => 11,
-            OpCode::IterableLength => 12,
-            OpCode::IteratorBegin => 13,
-            OpCode::IteratorNext => 14,
-            OpCode::IteratorEnd => 15,
-            OpCode::Return => 16,
-            OpCode::ArrayCall => 17,
-            OpCode::Cast => 18,
-            OpCode::InvokeChunk => 19,
-            OpCode::SysCall => 20,
-
-            OpCode::NewArray => 21,
-            OpCode::NewRange => 23,
-            OpCode::NewMap => 24,
-
-            OpCode::Add => 26,
-            OpCode::Sub => 27,
-            OpCode::Mul => 28,
-            OpCode::Div => 29,
-            OpCode::Mod => 30,
-            OpCode::Pow => 31,
-            
-            OpCode::BitwiseAnd => 32,
-            OpCode::BitwiseOr => 33,
-            OpCode::BitwiseXor => 34,
-            OpCode::BitwiseShl => 35,
-            OpCode::BitwiseShr => 36,
-            
-            OpCode::And => 37,
-            OpCode::Or => 38,
-            OpCode::Eq => 39,
-            OpCode::Neg => 40,
-            OpCode::Gt => 41,
-            OpCode::Lt => 42,
-            OpCode::Gte => 43,
-            OpCode::Lte => 44,
-
-            OpCode::Assign => 45,
-            OpCode::AssignAdd => 46,
-            OpCode::AssignSub => 47,
-            OpCode::AssignMul => 48,
-            OpCode::AssignDiv => 49,
-            OpCode::AssignMod => 50,
-            OpCode::AssignPow => 51,
-
-            OpCode::AssignBitwiseAnd => 52,
-            OpCode::AssignBitwiseOr => 53,
-            OpCode::AssignBitwiseXor => 54,
-            OpCode::AssignBitwiseShl => 55,
-            OpCode::AssignBitwiseShr => 56,
-
-            OpCode::Inc => 57,
-            OpCode::Dec => 58,
-        }
+        *self as u8
     }
 
     // Convert a byte to an OpCode
@@ -212,71 +161,78 @@ impl OpCode {
     pub const fn from_byte(byte: u8) -> Option<OpCode> {
         Some(match byte {
             0 => OpCode::Constant,
+
             1 => OpCode::MemoryLoad,
             2 => OpCode::MemorySet,
-            3 => OpCode::SubLoad,
-            4 => OpCode::Pop,
-            5 => OpCode::PopN,
-            6 => OpCode::Copy,
-            7 => OpCode::CopyN,
-            8 => OpCode::Swap,
-            9 => OpCode::Swap2,
-            10 => OpCode::Jump,
-            11 => OpCode::JumpIfFalse,
+            3 => OpCode::MemoryPop,
+            4 => OpCode::MemoryPop,
+            5 => OpCode::MemoryToOwned,
 
-            12 => OpCode::IterableLength,
-            13 => OpCode::IteratorBegin,
-            14 => OpCode::IteratorNext,
-            15 => OpCode::IteratorEnd,
+            6 => OpCode::SubLoad,
+            7 => OpCode::Pop,
+            8 => OpCode::PopN,
+            9 => OpCode::Copy,
+            10 => OpCode::CopyN,
+            11 => OpCode::ToOwned,
 
-            16 => OpCode::Return,
-            17 => OpCode::ArrayCall,
-            18 => OpCode::Cast,
-            19 => OpCode::InvokeChunk,
-            20 => OpCode::SysCall,
+            12 => OpCode::Swap,
+            13 => OpCode::Swap2,
+            14 => OpCode::Jump,
+            15 => OpCode::JumpIfFalse,
 
-            21 => OpCode::NewArray,
-            23 => OpCode::NewRange,
-            24 => OpCode::NewMap,
+            16 => OpCode::IterableLength,
+            17 => OpCode::IteratorBegin,
+            18 => OpCode::IteratorNext,
+            19 => OpCode::IteratorEnd,
 
-            26 => OpCode::Add,
-            27 => OpCode::Sub,
-            28 => OpCode::Mul,
-            29 => OpCode::Div,
-            30 => OpCode::Mod,
-            31 => OpCode::Pow,
+            20 => OpCode::Return,
+            21 => OpCode::ArrayCall,
+            22 => OpCode::Cast,
+            23 => OpCode::InvokeChunk,
+            24 => OpCode::SysCall,
 
-            32 => OpCode::BitwiseAnd,
-            33 => OpCode::BitwiseOr,
-            34 => OpCode::BitwiseXor,
-            35 => OpCode::BitwiseShl,
-            36 => OpCode::BitwiseShr,
+            25 => OpCode::NewObject,
+            26 => OpCode::NewRange,
+            27 => OpCode::NewMap,
 
-            37 => OpCode::And,
-            38 => OpCode::Or,
-            39 => OpCode::Eq,
-            40 => OpCode::Neg,
-            41 => OpCode::Gt,
-            42 => OpCode::Lt,
-            43 => OpCode::Gte,
-            44 => OpCode::Lte,
+            28 => OpCode::Add,
+            29 => OpCode::Sub,
+            30 => OpCode::Mul,
+            31 => OpCode::Div,
+            32 => OpCode::Mod,
+            33 => OpCode::Pow,
 
-            45 => OpCode::Assign,
-            46 => OpCode::AssignAdd,
-            47 => OpCode::AssignSub,
-            48 => OpCode::AssignMul,
-            49 => OpCode::AssignDiv,
-            50 => OpCode::AssignMod,
-            51 => OpCode::AssignPow,
+            34 => OpCode::BitwiseAnd,
+            35 => OpCode::BitwiseOr,
+            36 => OpCode::BitwiseXor,
+            37 => OpCode::BitwiseShl,
+            38 => OpCode::BitwiseShr,
 
-            52 => OpCode::AssignBitwiseAnd,
-            53 => OpCode::AssignBitwiseOr,
-            54 => OpCode::AssignBitwiseXor,
-            55 => OpCode::AssignBitwiseShl,
-            56 => OpCode::AssignBitwiseShr,
+            39 => OpCode::And,
+            40 => OpCode::Or,
+            41 => OpCode::Eq,
+            42 => OpCode::Neg,
+            43 => OpCode::Gt,
+            44 => OpCode::Lt,
+            45 => OpCode::Gte,
+            46 => OpCode::Lte,
 
-            57 => OpCode::Inc,
-            58 => OpCode::Dec,
+            47 => OpCode::Assign,
+            48 => OpCode::AssignAdd,
+            49 => OpCode::AssignSub,
+            50 => OpCode::AssignMul,
+            51 => OpCode::AssignDiv,
+            52 => OpCode::AssignMod,
+            53 => OpCode::AssignPow,
+
+            54 => OpCode::AssignBitwiseAnd,
+            55 => OpCode::AssignBitwiseOr,
+            56 => OpCode::AssignBitwiseXor,
+            57 => OpCode::AssignBitwiseShl,
+            58 => OpCode::AssignBitwiseShr,
+
+            59 => OpCode::Inc,
+            60 => OpCode::Dec,
             _ => return None,
         })
     }
@@ -323,7 +279,7 @@ impl OpCode {
             OpCode::InvokeChunk => 4, // id u16, on_value bool, args u8
             OpCode::SysCall => 4, // id u16, on_value bool, args u8
 
-            OpCode::NewArray => 1, // u8 initial values
+            OpCode::NewObject => 1, // u8 initial values
             OpCode::NewMap => 1, // u8 initial values
 
             _ => 0,

@@ -12,25 +12,6 @@ pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = manager.read_u16()?;
-    let value = manager.from_register(index as usize)?;
-    stack.push_stack(value.reference())?;
-
-    Ok(InstructionResult::Nothing)
-}
-
-pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = manager.read_u16()?;
-    let value = stack.pop_stack()?;
-    if let Some((ptr, old)) = manager.set_register(index as usize, value)? {
-        stack.verify_pointers(ptr)?;
-        stack.add_to_garbage_collector(old);
-    }
-
-    Ok(InstructionResult::Nothing)
-}
-
 pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     let path = stack.pop_stack()?;
@@ -51,6 +32,13 @@ pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager
     let index = manager.read_u8()?;
     let value = stack.get_stack_at(index as usize)?;
     stack.push_stack(value.to_owned()?)?;
+
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn to_owned<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let value = stack.last_mut_stack()?;
+    value.make_owned()?;
 
     Ok(InstructionResult::Nothing)
 }

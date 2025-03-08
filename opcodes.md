@@ -112,15 +112,10 @@ Errors occur if the argument count or format is invalid.
   - `on_value` (boolean): Whether the call operates on a value.
   - `args_count` (integer): Number of arguments passed.
 
-#### **NEWARRAY**
-- **Description**: Creates a new array with a specified length.
+#### **NEWOBJECT**
+- **Description**: Creates a new object with a specified length.
 - **Arguments**:
   - `length` (integer): Number of elements.
-
-#### **NEWSTRUCT**
-- **Description**: Creates a new struct with a specified ID.
-- **Arguments**:
-  - `struct_id` (integer): Identifier of the struct.
 
 #### **NEWRANGE**
 - **Description**: Creates a new range object.

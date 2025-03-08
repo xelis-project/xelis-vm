@@ -2,11 +2,13 @@ mod operator;
 mod r#impl;
 mod iterator;
 mod constructor;
+mod memory;
 
 use operator::*;
 use r#impl::*;
 use iterator::*;
 use constructor::*;
+use memory::*;
 
 use xelis_bytecode::OpCode;
 
@@ -47,11 +49,17 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Constant.as_usize()] = (constant, 1);
         instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
         instructions[OpCode::MemorySet.as_usize()] = (memory_set, 5);
+        instructions[OpCode::MemoryPop.as_usize()] = (memory_pop, 3);
+        instructions[OpCode::MemoryLen.as_usize()] = (memory_len, 1);
+        instructions[OpCode::MemoryToOwned.as_usize()] = (memory_to_owned, 5);
+
         instructions[OpCode::SubLoad.as_usize()] = (subload, 5);
+
         instructions[OpCode::Pop.as_usize()] = (pop, 1);
         instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
         instructions[OpCode::Copy.as_usize()] = (copy, 1);
         instructions[OpCode::CopyN.as_usize()] = (copy_n, 1);
+        instructions[OpCode::ToOwned.as_usize()] = (to_owned, 1);
 
         instructions[OpCode::Swap.as_usize()] = (swap, 1);
         instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
@@ -69,7 +77,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Cast.as_usize()] = (cast, 1);
         instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
         instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
-        instructions[OpCode::NewArray.as_usize()] = (new_array, 1);
+        instructions[OpCode::NewObject.as_usize()] = (new_array, 1);
         instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
         instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
 

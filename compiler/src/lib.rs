@@ -155,7 +155,7 @@ impl<'a> Compiler<'a> {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
-                chunk.emit_opcode(OpCode::NewArray);
+                chunk.emit_opcode(OpCode::NewObject);
                 chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
@@ -167,7 +167,7 @@ impl<'a> Compiler<'a> {
                 }
 
                 // We don't verify the struct ID, the parser should have done it
-                chunk.emit_opcode(OpCode::NewArray);
+                chunk.emit_opcode(OpCode::NewObject);
                 chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
@@ -204,7 +204,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(chunk, expr)?;
                 }
 
-                chunk.emit_opcode(OpCode::NewArray);
+                chunk.emit_opcode(OpCode::NewObject);
                 chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
@@ -335,8 +335,8 @@ impl<'a> Compiler<'a> {
             Expression::Operator(op, left, right) => {
                 match op {
                     Operator::Assign(None) => {
-                        self.compile_expr(chunk, left)?;
                         self.function_param_copy_on_assign(chunk, left);
+                        self.compile_expr(chunk, left)?;
 
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Assign);
@@ -399,10 +399,10 @@ impl<'a> Compiler<'a> {
                         self.add_value_on_stack(chunk.last_index())?;
                     },
                     _ => {
-                        self.compile_expr(chunk, left)?;
                         if op.is_assignation() {
                             self.function_param_copy_on_assign(chunk, left);
                         }
+                        self.compile_expr(chunk, left)?;
 
                         self.compile_expr(chunk, right)?;
                         let opcode = Self::map_operator_to_opcode(op)?;
@@ -427,12 +427,7 @@ impl<'a> Compiler<'a> {
         if let Expression::Variable(id) = expr {
             if self.parameters_ids.remove(id) {
                 trace!("Copying function param {} for assignation", id);
-                chunk.emit_opcode(OpCode::Copy);
-                chunk.emit_opcode(OpCode::MemorySet);
-                chunk.write_u16(*id);
-                chunk.emit_opcode(OpCode::Pop);
-
-                chunk.emit_opcode(OpCode::MemoryLoad);
+                chunk.emit_opcode(OpCode::MemoryToOwned);
                 chunk.write_u16(*id);
             }
         }
@@ -1001,7 +996,7 @@ mod tests {
                 // 3
                 OpCode::Constant.as_byte(), 2, 0,
                 // [1, 2, 3]
-                OpCode::NewArray.as_byte(), 3,
+                OpCode::NewObject.as_byte(), 3,
                 OpCode::IteratorBegin.as_byte(),
                 OpCode::IteratorNext.as_byte(), 29, 0, 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
@@ -1055,7 +1050,7 @@ mod tests {
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
-                OpCode::NewArray.as_byte(), 2,
+                OpCode::NewObject.as_byte(), 2,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0,
@@ -1169,7 +1164,7 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::NewArray.as_byte(), 0,
+                OpCode::NewObject.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1186,7 +1181,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::NewArray.as_byte(), 1,
+                OpCode::NewObject.as_byte(), 1,
                 OpCode::Return.as_byte()
             ]
         );

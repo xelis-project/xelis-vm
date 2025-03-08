@@ -119,7 +119,7 @@ fn test_array_call() {
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(2);
 
     // Load the first element
@@ -150,7 +150,7 @@ fn test_multi_depth_array_call() {
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(1);
 
     // Load the first element of the first array
@@ -186,7 +186,7 @@ fn test_struct() {
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(2);
 
     chunk.emit_opcode(OpCode::Return);
@@ -359,7 +359,7 @@ fn test_for_each_index() {
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(2);
 
     // Store the array in the memory

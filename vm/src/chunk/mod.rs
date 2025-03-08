@@ -101,6 +101,21 @@ impl<'a> ChunkManager<'a> {
     pub fn pop_register(&mut self) -> Result<StackValue, VMError> {
         self.registers.pop().ok_or(VMError::EmptyRegister)
     }
+
+    // Make owned the stack value at the registers index
+    #[inline]
+    pub fn to_owned_register(&mut self, index: usize) -> Result<(), VMError> {
+        let value = self.from_register(index)?;
+        value.make_owned()?;
+
+        Ok(())
+    }
+
+    // Make owned the stack value at the registers index
+    #[inline]
+    pub fn registers_len(&mut self) -> usize {
+        self.registers.len()
+    }
 }
 
 impl<'a> Deref for ChunkManager<'a> {
