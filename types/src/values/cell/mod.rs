@@ -742,7 +742,6 @@ mod tests {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         map.hash(&mut hasher);
 
-        // TODO: drop correctly the map without stack overflow
-        std::mem::forget(map);
+        let _ = SafeDropValueCell(map);
     }
 }
