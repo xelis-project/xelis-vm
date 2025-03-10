@@ -1,4 +1,5 @@
 use std::{collections::HashMap, sync::RwLock};
+use anyhow::anyhow;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use crate::opaque::OpaqueWrapper;
@@ -10,48 +11,28 @@ lazy_static! {
 }
 
 #[macro_export]
-macro_rules! impl_opaque_json {
-    ($name:expr, $type:ty) => {
-        impl $crate::opaque::traits::JSONHelper for $type {
-            fn get_type_name(&self) -> &'static str {
-                $name
-            }
-    
-            fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
-                Ok(serde_json::to_value(&self)?)
-            }
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! register_opaque_json {
-    ($name:expr, $type:ty) => {
-        $crate::traits::JSON_REGISTRY.write()
-            .unwrap()
-            .insert($name, Box::new(|value| {
-                use anyhow::Context;
+    ($registry:expr, $name:expr, $type:ty) => {
+        $registry.insert($name, Box::new(|value| {
+            use anyhow::Context;
 
-                let value: $type = serde_json::from_value(value)
-                    .context("Failed to deserialize JSON")?;
+            let value: $type = serde_json::from_value(value)
+                .context("Failed to deserialize JSON")?;
 
-                Ok($crate::opaque::OpaqueWrapper::new(value))
-            }));
+            Ok($crate::opaque::OpaqueWrapper::new(value))
+        }));
     };
 }
 
 pub trait JSONHelper {
-    // used to identify the type in the JSON
-    // It must be unique across all types
-    // and match the string used in `register_json!`
-    fn get_type_name(&self) -> &'static str;
-
     // Serialize the type to JSON
-    fn serialize_json(&self) -> Result<Value, anyhow::Error>;
+    fn serialize_json(&self) -> Result<Value, anyhow::Error> {
+        Err(anyhow!("Serialization not supported for this type"))
+    }
 
     // Check if the type is supported by the JSON serialization
-    // By default, return true
+    // By default, return false
     fn is_json_supported(&self) -> bool {
-        true
+        false
     }
 }

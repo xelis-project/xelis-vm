@@ -3,14 +3,18 @@ use xelis_environment::{Environment, EnvironmentError};
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
-use xelis_types::Value;
+use xelis_types::{traits::{JSONHelper, Serializable}, Value};
 
 use super::*;
 
 #[track_caller]
 fn prepare_module(code: &str) -> (Module, Environment) {
+    prepare_module_with(code, EnvironmentBuilder::default())
+}
+
+#[track_caller]
+fn prepare_module_with(code: &str, env: EnvironmentBuilder) -> (Module, Environment) {
     let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
-    let env = EnvironmentBuilder::default();
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
 
     let env = env.build();
@@ -376,7 +380,7 @@ fn test_range_contains() {
 fn test_range_contains_u256() {
     let code = r#"
         entry main() {
-            let x: bool = (0u256..10u256).contains(5);
+            let x: bool = (0u256..10u256).contains(5u256);
             return x as u64
         }
     "#;
@@ -493,7 +497,7 @@ fn test_map() {
     let code = r#"
         entry main() {
             let x: map<string, u8> = {};
-            x.insert("a", 10);
+            x.insert("a", 10u8);
             let a: optional<u8> = x.get("a");
             return a.unwrap() as u64
         }
@@ -710,7 +714,7 @@ fn test_optional_unwrap_or() {
     let code = r#"
         entry main() {
             let x: optional<u8> = null;
-            return x.unwrap_or(10) as u64
+            return x.unwrap_or(10u8) as u64
         }
     "#;
 
@@ -1161,5 +1165,93 @@ fn test_optional_expect() {
             try_run_code("entry main() { let a: optional<u64> = null; return a.expect('a valid value'); }", 0),
             Err(VMError::EnvironmentError(EnvironmentError::Expect(_)))
         )
+    );
+}
+
+#[test]
+fn test_opaque_fn_call() {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct Foo;
+    impl Serializable for Foo {}
+    impl JSONHelper for Foo {}
+
+    impl_opaque!("Foo", Foo);
+
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<Foo>("Foo"));
+
+    env.register_native_function("foo", None, vec![], |_, _, _| {
+        Ok(Some(Value::Opaque(Foo.into()).into()))
+    }, 0, Some(ty.clone()));
+
+    env.register_native_function("call", Some(ty), vec![], |_, _, _| {
+        Ok(Some(Value::U64(0).into()))
+    }, 0, Some(Type::U64));
+
+    let code = r#"
+        entry main() {
+            let foo: Foo = foo();
+            return foo.call()
+        }
+    "#;
+
+    let (module, env) = prepare_module_with(code, env);
+
+    assert_eq!(
+        run_internal(module, &env, 0).unwrap(),
+        Value::U64(0)
+    );
+}
+
+#[test]
+fn test_shadow_variable() {
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let a: u64 = 20;
+            return a
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Value::U64(20)
+    );
+}
+
+#[test]
+fn test_null_as_return() {
+    let code = r#"
+        fn test() -> optional<u64> {
+            return null
+        }
+
+        entry main() {
+            let a: optional<u64> = test();
+            return a.unwrap_or(10)
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Value::U64(10)
+    );
+}
+
+#[test]
+fn test_fn_call_with_optional_params() {
+    let code = r#"
+        fn test(a: optional<u64>) -> u64 {
+            return a.unwrap_or(10)
+        }
+
+        entry main() {
+            return test(5u64)
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Value::U64(5)
     );
 }

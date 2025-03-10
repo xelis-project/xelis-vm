@@ -60,8 +60,16 @@ impl<'a> Context<'a> {
         self.max_variables_count as IdentifierType
     }
 
+    // Get the variable identifier from its registered name
     pub fn get_variable_id(&self, key: &str) -> Option<IdentifierType> {
-        self.scopes.iter().position(|(k, _)| *k == key).map(|v| v as IdentifierType)
+        // We go through our scopes in reverse order to get the last variable registered with the same name
+        // This is done to support variables names shadowing
+        self.scopes.iter()
+            .rev()
+            .position(|(k, _)| *k == key)
+            // We return the position of the variable in the scopes
+            // Position don't give the real index, but the actual index in the reverse order
+            .map(|v| (self.scopes.len() - 1 - v) as IdentifierType)
     }
 
     // register a variable in the current scope
@@ -103,5 +111,23 @@ impl<'a> Context<'a> {
     // set if the Context is in a loop
     pub fn set_in_a_loop(&mut self, is_in_loop: bool) {
         self.is_in_loop = is_in_loop;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shadow_variables() {
+        let mut context = Context::new();
+        context.begin_scope();
+        context.register_variable_unchecked("d", Type::U128);
+        context.register_variable_unchecked("a", Type::Blob);
+        context.register_variable_unchecked("b", Type::U128);
+        context.register_variable_unchecked("a", Type::Bool);
+        context.register_variable_unchecked("c", Type::U128);
+
+        assert_eq!(context.get_variable_id("a"), Some(3));
     }
 }

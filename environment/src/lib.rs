@@ -2,15 +2,16 @@ mod error;
 mod function;
 mod context;
 
+use std::any::TypeId;
+
 use indexmap::IndexSet;
-use xelis_types::{EnumType, OpaqueType, StructType};
+use xelis_types::{EnumType, StructType};
 
 // Also re-export the necessary macro
 pub use better_any::tid;
 pub use error::EnvironmentError;
 pub use function::*;
 pub use context::*;
-
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
@@ -23,7 +24,7 @@ pub struct Environment {
     // All enums provided by the Environment
     enums: IndexSet<EnumType>,
     // All opaques types provided by the Environment
-    opaques: IndexSet<OpaqueType>,
+    opaques: IndexSet<TypeId>,
 }
 
 tid!(Environment);
@@ -65,7 +66,7 @@ impl Environment {
 
     // Get all the registered opaques
     #[inline(always)]
-    pub fn get_opaques(&self) -> &IndexSet<OpaqueType> {
+    pub fn get_opaques(&self) -> &IndexSet<TypeId> {
         &self.opaques
     }
 
@@ -94,8 +95,8 @@ impl Environment {
 
     // Add a new opaque type to the environment
     #[inline(always)]
-    pub fn add_opaque(&mut self, opaque: OpaqueType) {
-        self.opaques.insert(opaque);
+    pub fn add_opaque(&mut self, ty: TypeId) {
+        self.opaques.insert(ty);
     }
 
     // Allow to change the cost of a function

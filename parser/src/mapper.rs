@@ -75,11 +75,11 @@ mod tests {
     use xelis_types::Type;
 
     #[test]
-    fn test_functions() {
+    fn test_function_instance() {
         let mut global_mapper = GlobalMapper::new();
 
         let functions = global_mapper.functions_mut();
-        functions.register("test", Some(Type::Any), vec![("name", Type::String)], Some(Type::String)).unwrap();
+        functions.register("test", Some(Type::Any), true, vec![("name", Type::String)], Some(Type::String)).unwrap();
 
         let results = functions.get_functions_for_type(Some(&Type::String));
         assert_eq!(results.len(), 1);
@@ -127,4 +127,28 @@ mod tests {
     //     assert!(global_mapper.functions_in_namespace(&["math", "advanced"]).get_declared_functions()
     //         .len() == 1);
     // }
+
+  #[test]
+    fn test_static_function_on_type() {
+        let mut global_mapper = GlobalMapper::new();
+
+        let functions = global_mapper.functions_mut();
+        functions.register("test", Some(Type::Any), false, vec![("name", Type::String)], Some(Type::String)).unwrap();
+
+        let results = functions.get_functions_for_type(Some(&Type::Any));
+        assert_eq!(results.len(), 1);
+
+        assert_eq!(
+            results[0].name,
+            "test"
+        );
+        assert_eq!(
+            results[0].parameters,
+            vec![("name", Type::String)]
+        );
+        assert_eq!(
+            results[0].return_type,
+            Some(Type::String)
+        );
+    }
 }

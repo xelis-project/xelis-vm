@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     rc::Rc
 };
-use crate::{Value, ValueCell, Constant};
+use crate::{Constant, Value, ValueCell, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubValue(Rc<RefCell<ValueCell>>);
@@ -43,13 +43,18 @@ impl SubValue {
     }
 
     #[inline(always)]
-    pub fn into_owned(self) -> ValueCell {
+    pub fn into_owned(self) -> Result<ValueCell, ValueError> {
         self.into_inner().into_owned()
     }
 
     #[inline(always)]
     pub fn reference(&self) -> Self {
         Self(self.0.clone())
+    }
+
+    #[inline(always)]
+    pub fn ptr(&self) -> *const ValueCell {
+        std::ptr::from_ref(&self.borrow())
     }
 }
 

@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use xelis_ast::{Expression, Signature};
 use xelis_types::{IdentifierType, NoHashMap, Type};
+use log::trace;
 
 use crate::BuilderError;
 
@@ -15,6 +16,7 @@ pub struct Function<'a> {
     pub namespace: Vec<&'a str>,
     pub on_type: Option<Type>,
     pub parameters: Vec<(&'a str, Type)>,
+    pub require_instance: bool,
     pub return_type: Option<Type>
 }
 
@@ -22,7 +24,7 @@ pub struct Function<'a> {
 /// So we can reduce the memory footprint of the VM by using an incremented id
 #[derive(Debug)]
 pub struct FunctionMapper<'a> {
-    mapper: Mapper<'a, Signature>,
+    mapper: Mapper<'a, Signature<'a>>,
     parent: Option<&'a FunctionMapper<'a>>,
     mappings: NoHashMap<Function<'a>>,
 }
@@ -51,9 +53,11 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Register a function signature
-    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
+    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let signature = Signature::new(name.to_owned(), on_type.clone(), params);
+        let ty = on_type.clone()
+            .map(|t| (Cow::Owned(t), require_instance));
+        let signature = Signature::new(Cow::Borrowed(name), ty, Cow::Owned(params));
 
         if self.mapper.has_variable(&signature) {
             return Err(BuilderError::SignatureAlreadyRegistered);
@@ -67,6 +71,7 @@ impl<'a> FunctionMapper<'a> {
             namespace: [""].to_vec(),
             on_type,
             parameters,
+            require_instance,
             return_type
         });
 
@@ -119,28 +124,57 @@ impl<'a> FunctionMapper<'a> {
         self.mappings.get(id)
     }
 
-    pub fn get_compatible(&self, key: Signature, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
+    pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature
-        if let Ok(id) = self.mapper.get(&key) {
-            return Ok(id);
+        if types.iter().all(|t| t.is_some()) {
+            let types: Vec<Type> = types.iter()
+            .map(|t| t.clone().unwrap())
+            .collect();
+        
+            let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
+            if let Ok(id) = self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Owned(types))) {
+                return Ok(id);
+            }
         }
 
         // Lets find a compatible signature
-        'main: for (signature, id) in self.mapper.mappings.iter().filter(|(s, _)| s.get_name() == key.get_name() && s.get_parameters().len() == key.get_parameters().len()) {            
-            let on_type = match (signature.get_on_type(), key.get_on_type()) {
+        'main: for (signature, id) in self.mapper.mappings.iter()
+            .filter(|(s, _)|
+                s.get_name() == name
+                && s.get_parameters().len() == types.len()
+                && s.is_on_instance() == instance
+            ) {
+            let is_on_type = match (signature.get_on_type(), on_type) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
                 (None, None) => true,
                 _ => false
             };
 
-            if !on_type {
+            if !is_on_type {
                 continue;
             }
 
             let mut updated_expressions = Vec::new();
-            for (i, (a, b)) in signature.get_parameters().iter().zip(key.get_parameters()).enumerate() {
-                let mut cast_to_type = key.get_on_type()
-                    .as_ref()
+            for (i, (a, b)) in signature.get_parameters().iter().zip(types).enumerate() {
+                trace!("Checking parameter {} with types {:?} and {:?}", i, a, b);
+                let Some(b) = b else {
+                    // We don't know the type of the parameter, we can't cast it
+                    if !a.allow_null() {
+                        trace!("Parameter {} is not nullable", i);
+                        continue 'main;
+                    } else {
+                        continue;
+                    }
+                };
+
+                if let Some(instance) = on_type.filter(|v| v.contains_sub_type() && a.is_generic()) {
+                    if !a.is_generic_compatible_with(instance, b) {
+                        trace!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
+                        continue 'main;
+                    }
+                }
+
+                let mut cast_to_type = on_type
                     .map(Type::get_inner_type)
                     .filter(|t| b.is_castable_to(t));
 
@@ -149,7 +183,15 @@ impl<'a> FunctionMapper<'a> {
                     if b.is_castable_to(a) {
                         cast_to_type = Some(a);
                     } else {
-                        continue 'main;
+                        // If the parameter is optional and its the exact same type inside
+                        // we allow to pass it
+                        if let Type::Optional(inner) = a {
+                            if !inner.is_compatible_with(b) {
+                                continue 'main;
+                            }
+                        } else {
+                            continue 'main;
+                        }
                     }
                 }
 
@@ -163,9 +205,13 @@ impl<'a> FunctionMapper<'a> {
                                 updated_expressions.push(Expression::Constant(v));
                                 continue;
                             },
-                            Err(_) => continue 'main
+                            Err(e) => {
+                                trace!("Parameter {} failed to cast: {:?}", i, e);
+                                continue 'main;
+                            }
                         };
                     } else {
+                        trace!("Parameter {} is not a constant", i);
                         continue 'main;
                     }
                 }
@@ -179,7 +225,7 @@ impl<'a> FunctionMapper<'a> {
         }
 
         if let Some(parent) = self.parent {
-            return parent.get_compatible(key, expressions);
+            return parent.get_compatible(name, on_type, instance, types, expressions);
         }
         
         Err(BuilderError::MappingNotFound)
@@ -221,7 +267,7 @@ impl<'a> FunctionMapper<'a> {
         for (id, function) in self.mappings.iter() {
             if let Some(signature) = self.mapper.get_by_id(*id) {
                 let on_type = signature.get_on_type()
-                    .as_ref();
+                    .map(|t| t.as_ref());
                 functions.entry(on_type)
                     .or_insert_with(Vec::new)
                     .push(function);

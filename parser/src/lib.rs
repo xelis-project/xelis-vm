@@ -135,6 +135,10 @@ pub struct Parser<'a> {
     environment: &'a EnvironmentBuilder<'a>,
     // Disable upgrading values to consts
     disable_const_upgrading: bool,
+    // Disable shadowing variables
+    // This check that the variable name is not already declared
+    // in the same scope or by a parent scope
+    disable_shadowing_variables: bool,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
     // Used for errors, we track the line and column
@@ -163,14 +167,21 @@ impl<'a> Parser<'a> {
             global_mapper: GlobalMapper::with(environment),
             environment,
             disable_const_upgrading: false,
+            disable_shadowing_variables: false,
             line: 0,
             column_start: 0,
             column_end: 0,
         }
     }
 
-    pub fn set_disable_const_upgrading(&mut self, value: bool) {
+    // Set the const upgrading to true or false
+    pub fn set_const_upgrading(&mut self, value: bool) {
         self.disable_const_upgrading = value;
+    }
+
+    // Set the shadowing variables to true or false
+    pub fn set_shadowing_variables(&mut self, value: bool) {
+        self.disable_shadowing_variables = value;
     }
 
     // Consume the next token
@@ -378,7 +389,7 @@ impl<'a> Parser<'a> {
     fn get_type_from_expression<'b>(&'b self, on_type: Option<&Type>, expression: &'b Expression, context: &'b Context<'a>) -> Result<Cow<'b, Type>, ParserError<'a>> {
         match self.get_type_from_expression_internal(on_type, expression, context)? {
             Some(v) => Ok(v),
-            None => Err(err!(self, ParserErrorKind::EmptyValue))
+            None => Err(err!(self, ParserErrorKind::EmptyValue(expression.clone())))
         }
     }
 
@@ -519,18 +530,19 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Type>), ParserError<'a>> {
+    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
         trace!("Read function params");
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
-        let mut types: Vec<Type> = Vec::new();
+        let mut types: Vec<Option<Type>> = Vec::new();
         while self.peek_is_not(Token::ParenthesisClose) {
             let expr = self.read_expression_delimited(&Token::Comma, context)?;
             // We are forced to clone the type because we can't borrow it from the expression
             // I prefer to do this than doing an iteration below
+            let t = self.get_type_from_expression_internal(None, &expr, context)?
+                .map(|v| v.into_owned());
 
-            let t = self.get_type_from_expression(None, &expr, context)?.into_owned();
             types.push(t);
             parameters.push(expr);
 
@@ -545,7 +557,8 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, ns: &Vec<&'a str>, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read function call {}", name);
         let (mut parameters, types) = self.read_function_params(context)?;
         
         let local_name = if ns.is_empty() {
@@ -718,9 +731,11 @@ impl<'a> Parser<'a> {
 
         trace!("Read type constant: {:?}::{}", _type, constant_name);
 
+        // check if its a constant value
         if let Some(expr) = self.environment.get_constant_by_name(&_type, &constant_name)
             .map(|v| Expression::Constant(v.clone())) {
             Ok(expr)
+        // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
             let (mut parameters, _) = self.read_function_params(context)?;
             let mut constants = Vec::with_capacity(parameters.len());
@@ -733,6 +748,10 @@ impl<'a> Parser<'a> {
             const_fn.call(constants)
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
+        } else if self.peek_is(Token::ParenthesisOpen) {
+            // Try to read a static (on type) function call from it
+            self.read_function_call(None, false, Some(&_type), constant_name, context)
+        // If its a enum, it may be a variant constructor
         } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
@@ -1211,7 +1230,8 @@ impl<'a> Parser<'a> {
                                 // mostly an access to a struct field
                                 Some(t) => {
                                     if let Type::Struct(_type) = t {
-                                        let builder = self.global_mapper.structs().get_by_ref(_type)
+                                        let builder = self.global_mapper.structs()
+                                            .get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
                                         let id = builder.get_id_for_field(id)
                                             .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?;
@@ -1678,11 +1698,11 @@ impl<'a> Parser<'a> {
      */
     fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
         let (name, value_type, value) = self.read_variable_internal(context, false)?;
-        let id = if name != "_" {
-            context.register_variable_unchecked(name, value_type.clone())
-        } else {
+        let id = if self.disable_shadowing_variables {
             context.register_variable(name, value_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+        } else {
+            context.register_variable_unchecked(name, value_type.clone())
         };
 
         Ok(DeclarationStatement {
@@ -1804,10 +1824,12 @@ impl<'a> Parser<'a> {
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;
-                        let expr_type = self.get_type_from_expression(None, &expr, context)?;
-                        if !expr_type.is_compatible_with(return_type) {
-                            return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
+                        if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
+                            if !expr_type.is_compatible_with(return_type) {
+                                return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
+                            }
                         }
+
                         Some(expr)
                     } else {
                         None
@@ -1900,7 +1922,7 @@ impl<'a> Parser<'a> {
             match statement {
                 Statement::If(_, statements, else_statements) => {
                     // if its the last statement
-                    ok = Self::ends_with_return(statements)?;
+                    ok = Self::ends_with_return(&statements)?;
                     // if it ends with a return, else must also end with a return
                     if let Some(statements) = else_statements.as_ref().filter(|_| ok) {
                         ok = Self::ends_with_return(statements)?;
@@ -1998,12 +2020,12 @@ impl<'a> Parser<'a> {
         let id = if ns.is_empty() {
             self.global_mapper
                 .functions_mut()
-                .register(name, for_type.clone(), parameters.clone(), return_type.clone())
+                .register(name, for_type.clone(), instance_name.is_some(), parameters.clone(), return_type.clone())
                 .map_err(|e| err!(self, e.into()))?
         } else {
             self.global_mapper
                 .functions_mut()
-                .register_qualified(name, ns, for_type.clone(), parameters.clone(), return_type.clone())
+                .register_qualified(name, ns, for_type.clone(), instance_name.is_some(), parameters.clone(), return_type.clone())
                 .map_err(|e| err!(self, e.into()))?
         };
 
@@ -2294,11 +2316,11 @@ mod tests {
     #[track_caller]
     fn test_parser_statement(tokens: Vec<Token>, variables: Vec<(&str, Type)>) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
-        test_parser_statement_with(tokens, variables, &None, env)
+        test_parser_statement_with(tokens, variables, &None, &env)
     }
 
     #[track_caller]
-    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: EnvironmentBuilder) -> Vec<Statement> {
+    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: &EnvironmentBuilder) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -2312,7 +2334,7 @@ mod tests {
     #[track_caller]
     fn test_parser_statement_with_return_type(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: Type) -> Vec<Statement> {
         let env = EnvironmentBuilder::new();
-        test_parser_statement_with(tokens, variables, &Some(return_type), env)
+        test_parser_statement_with(tokens, variables, &Some(return_type), &env)
     }
 
     #[test]
@@ -2458,7 +2480,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         env.register_constant(Type::U8, "MAX", Value::U8(u8::MAX).into());
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     
         // Build the expected AST
@@ -3400,7 +3422,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3468,7 +3490,7 @@ mod tests {
             Token::Identifier("message_id")
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3489,7 +3511,7 @@ mod tests {
 
         let mut env = EnvironmentBuilder::new();
         env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX).into());
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3535,7 +3557,7 @@ mod tests {
             Token::Identifier("HELLO"),
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3571,7 +3593,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3608,7 +3630,7 @@ mod tests {
             Token::ParenthesisClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
     }
 
@@ -3664,7 +3686,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
 
@@ -3691,7 +3713,7 @@ mod tests {
             Token::ParenthesisClose
         ];
 
-        let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
         let Statement::Variable(variable) = &statements[0] else {
             panic!("Expected a variable statement");
@@ -3699,5 +3721,104 @@ mod tests {
 
         assert_eq!(variable.value_type, Type::String);
         assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
+    }
+
+    #[test]
+    fn test_optional_fn_param() {
+        let mut env = EnvironmentBuilder::new();
+        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], |_, _, _| { Ok(None) }, 0, None);
+
+        // test(null)
+        let tokens = vec![
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::Null),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        // test(10)
+        let tokens = vec![
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U8(10)),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_type_t_same_as_instance() {
+        // let a: optional<u64> = 10;
+        // let b: u64 = a.unwrap_or(50);
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::U64(10)),
+            Token::Let,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Identifier("a"),
+            Token::Dot,
+            Token::Identifier("unwrap_or"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(50)),
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, vec![], &None, &EnvironmentBuilder::default());
+        assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
+    fn test_static_function_on_type() {
+        // register Foo in environment
+        let mut env = EnvironmentBuilder::new();
+        let ty = Type::Struct(env.register_structure("Foo", Vec::new()));
+        // register a static function on it
+        env.register_static_function("bar", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
+
+        // Foo::bar()
+        let tokens = vec![
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("bar"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        // Try also on a enum type
+        let ty = Type::Enum(env.register_enum("Bar", Vec::new()));
+        // register a static function on it
+        env.register_static_function("foo", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
+
+        // Bar::foo()
+        let tokens = vec![
+            Token::Identifier("Bar"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }

@@ -112,8 +112,8 @@ pub enum ParserErrorKind<'a> {
     InvalidTypeT,
     #[error("no return found in function")]
     NoReturnFound,
-    #[error("empty value")]
-    EmptyValue,
+    #[error("empty value on {0:?}")]
+    EmptyValue(Expression),
     #[error("invalid 'null' value with type {0}")]
     IncompatibleNullWith(Type),
     #[error("empty struct name")]

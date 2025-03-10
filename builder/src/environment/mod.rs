@@ -1,10 +1,10 @@
 pub mod xstd;
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
-use crate::{ConstFnCall, ConstFunction, ConstFunctionMapper, EnumManager, EnumVariantBuilder, FunctionMapper, StructManager};
+use crate::{ConstFnCall, ConstFunction, ConstFunctionMapper, EnumManager, EnumVariantBuilder, FunctionMapper, OpaqueManager, StructManager};
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -13,7 +13,7 @@ pub struct EnvironmentBuilder<'a> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,
     enum_manager: EnumManager<'a>,
-    opaque_manager: HashMap<&'a str, OpaqueType>,
+    opaque_manager: OpaqueManager<'a>,
     // All types constants (like u64::MAX)
     types_constants: HashMap<Type, HashMap<&'a str, Constant>>,
     // All types constants functions
@@ -29,19 +29,32 @@ impl<'a> EnvironmentBuilder<'a> {
             functions_mapper: FunctionMapper::new(),
             struct_manager: StructManager::new(),
             enum_manager: EnumManager::new(),
-            opaque_manager: HashMap::new(),
+            opaque_manager: OpaqueManager::new(),
             types_constants: HashMap::new(),
             types_constants_functions: ConstFunctionMapper::new(),
             env: Environment::new(),
         }
     }
 
+    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
+        let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone()).unwrap();
+        self.env.add_function(NativeFunction::new(on_type, params, on_call, cost, return_type));
+    }
+
     // Register a native function
     // Panic if the function signature is already registered
     pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
-        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let _ = self.functions_mapper.register(name, for_type.clone(), parameters, return_type.clone()).unwrap();
-        self.env.add_function(NativeFunction::new(for_type, params, on_call, cost, return_type));
+        let instance = for_type.is_some();
+        self.register_function_internal(name, for_type, instance, parameters, on_call, cost, return_type);
+    }
+
+    // Register a native static function
+    // This is function not accessible from an instance but still behind the type
+    // Example: u64::from_be_bytes
+    // Panic if the function signature is already registered
+    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
+        self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type);
     }
 
     // Register a constant function
@@ -52,10 +65,11 @@ impl<'a> EnvironmentBuilder<'a> {
         self.types_constants_functions.register(name, for_type, parameters, on_call).unwrap();
     }
 
-    // Get a function by its signature
+    // Get a native function by its signature
     // Panic if the function signature is not found
-    pub fn get_mut_function(&mut self, name: &str, on_type: Option<Type>, parameters: Vec<Type>) -> &mut NativeFunction {
-        let id = self.functions_mapper.get(&Signature::new(name.to_owned(), on_type.clone(), parameters)).unwrap();
+    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<(Type, bool)>, parameters: Vec<Type>) -> &mut NativeFunction {
+        let signature = Signature::new(Cow::Borrowed(name), on_type.map(|(t, v)| (Cow::Owned(t), v)), Cow::Owned(parameters));
+        let id = self.functions_mapper.get(&signature).unwrap();
         self.env.get_function_by_id_mut(id as usize).unwrap()
 
     }
@@ -79,20 +93,20 @@ impl<'a> EnvironmentBuilder<'a> {
     // Register an opaque type in the environment
     // Panic if the opaque name is already used
     pub fn register_opaque<T: Opaque>(&mut self, name: &'a str) -> OpaqueType {
-        let _type = OpaqueType::new::<T>();
-        self.opaque_manager.insert(name, _type.clone());
-        self.env.add_opaque(_type.clone());
-        _type
+        let ty = TypeId::of::<T>();
+        let opaque = self.opaque_manager.build(name).unwrap();
+        self.env.add_opaque(ty);
+        opaque
     }
 
     // Get an opaque type by name
     pub fn get_opaque_by_name(&self, name: &str) -> Option<&OpaqueType> {
-        self.opaque_manager.get(name)
+        self.opaque_manager.get_by_name(name)
     }
 
     // Get the name of an opaque type
-    pub fn get_opaque_name(&self, _type: &OpaqueType) -> Option<&str> {
-        self.opaque_manager.iter().find_map(|(k, v)| if v == _type { Some(*k) } else { None })
+    pub fn get_opaque_name(&self, ty: &OpaqueType) -> Option<&str> {
+        self.opaque_manager.get_name_of(ty)
     }
 
     // Register a constant in the environment

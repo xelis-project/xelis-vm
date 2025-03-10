@@ -42,7 +42,6 @@ pub enum Type {
     Struct(StructType),
     Enum(EnumType),
     Namespace(NamespaceType),
-    #[serde(skip)]
     Opaque(OpaqueType),
 }
 
@@ -104,7 +103,7 @@ impl Type {
             Value::Boolean(_) => Type::Bool,
             Value::Blob(_type) => Type::Blob,
             Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
-            Value::Opaque(opaque) => Type::Opaque(opaque.get_type()),
+            Value::Opaque(_) => return None,
         })
     }
 
@@ -165,6 +164,17 @@ impl Type {
     pub fn is_generic(&self) -> bool {
         match self {
             Type::T(_) | Type::Any => true,
+            _ => false
+        }
+    }
+
+    // Our current self type may be a generic type
+    // We have an instance of this type to know the real types instead of the "generic" types
+    // We have to verify that they are exactly the same as other
+    pub fn is_generic_compatible_with(&self, instance: &Type, other: &Type) -> bool {
+        match self {
+            Type::T(id) => instance.get_generic_type(*id).map_or(false, |t| t == other),
+            Type::Any => true,
             _ => false
         }
     }
@@ -259,6 +269,10 @@ impl Type {
             Type::Range(inner) => match other {
                 Type::Range(inner2) => inner.is_castable_to(inner2),
                 _ => false
+            },
+            Type::Optional(inner) => match other {
+                Type::Optional(inner2) => inner.is_castable_to(inner2),
+                _ => inner.is_compatible_with(other)
             },
             _ => false
         }

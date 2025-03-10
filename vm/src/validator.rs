@@ -154,7 +154,6 @@ impl<'a> ModuleValidator<'a> {
                     }
                     memory_usage += 16;
                 },
-
                 Constant::Optional(opt) => {
                     if let Some(value) = opt {
                         memory_usage += 1;
@@ -201,7 +200,8 @@ impl<'a> ModuleValidator<'a> {
                         memory_usage += blob.len();
                     },
                     Value::Opaque(opaque) => {
-                        if !self.environment.get_opaques().contains(&opaque.get_type()) {
+                        if !self.environment.get_opaques()
+                            .contains(&opaque.get_type_id()) {
                             return Err(ValidatorError::InvalidOpaque);
                         }
 

@@ -22,10 +22,10 @@ pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()?;
     let value = stack.pop_stack()?;
-    manager.set_register(index as usize, value, context)?;
+    manager.set_register(index as usize, value)?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -80,7 +80,7 @@ pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMana
 }
 
 pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = stack.pop_stack()?.into_owned().cast_to_u32()?;
+    let index = stack.pop_stack()?.into_inner().cast_to_u32()?;
     let value = stack.pop_stack()?;
     let sub = value.get_sub_variable(index as usize)?;
     stack.push_stack_unchecked(sub);

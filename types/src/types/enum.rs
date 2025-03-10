@@ -112,9 +112,6 @@ impl Serialize for EnumType {
 
 impl<'a> Deserialize<'a> for EnumType {
     fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
-        Ok(Self(Arc::new(Enum {
-            id: IdentifierType::deserialize(deserializer)?,
-            variants: Vec::new()
-        })))
+        Ok(Self(Arc::new(Enum::deserialize(deserializer)?)))
     }
 }

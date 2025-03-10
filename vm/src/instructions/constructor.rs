@@ -10,7 +10,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Chunk
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(pop.into_owned().into());
+        array.push_front(pop.into_owned()?.into());
     }
 
     stack.push_stack(Path::Owned(ValueCell::Array(array.into())))?;
@@ -24,7 +24,7 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
     let fields_count = struct_type.fields().len();
     let mut fields = VecDeque::with_capacity(fields_count);
     for _ in 0..fields_count {
-        fields.push_front(stack.pop_stack()?.into_owned().into());
+        fields.push_front(stack.pop_stack()?.into_owned()?.into());
     }
 
     stack.push_stack(Path::Owned(ValueCell::Struct(fields.into(), struct_type.clone())))?;
@@ -32,8 +32,8 @@ pub fn new_struct<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mu
 }
 
 pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let end = stack.pop_stack()?.into_owned();
-    let start = stack.pop_stack()?.into_owned();
+    let end = stack.pop_stack()?.into_owned()?;
+    let start = stack.pop_stack()?.into_owned()?;
 
     if !start.is_number() || !end.is_number() {
         return Err(VMError::InvalidRangeType);
@@ -54,12 +54,12 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMa
     let mut map = HashMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
-        let key = stack.pop_stack()?.into_owned();
+        let key = stack.pop_stack()?.into_owned()?;
         if key.is_map() {
             return Err(EnvironmentError::InvalidKeyType.into());
         }
 
-        map.insert(key, value.into_owned().into());
+        map.insert(key, value.into_owned()?.into());
     }
 
     stack.push_stack_unchecked(Path::Owned(ValueCell::Map(map)));
@@ -76,7 +76,7 @@ pub fn new_enum<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut 
 
     let mut values = VecDeque::with_capacity(variant.fields().len());
     for _ in variant.fields() {
-        values.push_front(stack.pop_stack()?.into_owned().into());
+        values.push_front(stack.pop_stack()?.into_owned()?.into());
     }
 
     stack.push_stack(Path::Owned(ValueCell::Enum(values.into(), EnumValueType::new(enum_type.clone(), variant_id))))?;

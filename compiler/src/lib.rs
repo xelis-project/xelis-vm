@@ -793,7 +793,7 @@ mod tests {
         let tokens = Lexer::new(code).get().unwrap();
         let environment = EnvironmentBuilder::default();
         let mut parser = Parser::new(tokens, &environment);
-        parser.set_disable_const_upgrading(true);
+        parser.set_const_upgrading(true);
 
         let (program, _) = parser.parse().unwrap();
         (program, environment.build())
@@ -1243,6 +1243,32 @@ mod tests {
                 OpCode::Constant.as_byte(), 3, 0,
                 OpCode::Return.as_byte()
             ]
+        );
+    }
+
+    #[test]
+    fn test_constants_compiled() {
+        let code = r#"
+            struct CAsset {
+                asset: u64
+            }
+
+            entry deploy_asset() {
+                return 0;
+            }
+
+            entry transfer_ownership() {
+                return 0;
+            }
+        "#;
+
+        let (program, environment) = prepare_program(code);
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+        assert_eq!(module.constants().len(), 1);
+        assert_eq!(
+            module.get_constant_at(0),
+            Some(&Value::U64(0).into())
         );
     }
 }
