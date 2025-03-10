@@ -1,9 +1,8 @@
-use indexmap::{IndexSet, IndexMap};
+use indexmap::IndexSet;
 use xelis_types::{EnumType, StructType};
 use crate::ConstantDeclaration;
 
 use super::FunctionType;
-use super::FunctionType::*;
 
 #[derive(Debug, Clone)]
 pub struct Program {

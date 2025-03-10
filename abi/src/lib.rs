@@ -1,35 +1,21 @@
-use std::{
-  collections::HashMap,
-  sync::{
-      atomic::{AtomicBool, Ordering},
-      mpsc, Mutex,
-  },
-};
-
-use humantime::format_duration;
-use indexmap::IndexMap;
 // use storage::MockStorage;
-use tokio;
 use xelis_builder::EnvironmentBuilder;
-use xelis_bytecode::Module;
-use xelis_common::{
-  block::{Block, BlockHeader, BlockVersion},
-  contract::{ChainState, DeterministicRandom, StorageWrapper},
-  crypto::{elgamal::CompressedPublicKey, Hash},
-  serializer::Serializer,
-  utils::format_xelis,
-};
-use xelis_compiler::Compiler;
+// use xelis_common::{
+//   block::{Block, BlockHeader, BlockVersion},
+//   contract::{ChainState, DeterministicRandom, StorageWrapper},
+//   crypto::{elgamal::CompressedPublicKey, Hash},
+//   serializer::Serializer,
+//   utils::format_xelis,
+// };
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
-use xelis_types::{Type, Value};
-use xelis_vm::VM;
+use xelis_types::Type;
 use xelis_ast::*;
 
 use xelis_parser::mapper::GlobalMapper;
 use xelis_builder::Builder;
 
-pub fn abi_from_silex(code: &str, path: &str) -> anyhow::Result<String> {
+pub fn abi_from_silex(code: &str) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?;
@@ -125,7 +111,6 @@ pub fn abi_from_parse(program: Program, mapper: &GlobalMapper, environment: &Env
                 }
             }
 
-            let name_info = mapping;
             let namespace = &mapping.namespace;
             let is_root = namespace.is_empty() || (
                 namespace.len() == 1 && namespace[0] == ""

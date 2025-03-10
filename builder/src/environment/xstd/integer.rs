@@ -3,7 +3,6 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     Context,
-    EnvironmentError,
 };
 use xelis_types::{Type, Value, ValueCell, Constant, U256 as u256};
 use paste::paste;
@@ -44,40 +43,6 @@ macro_rules! overflow_fn {
     };
 }
 
-macro_rules! safe_fn {
-    ($env: expr, $op: ident, $t: ident, $f: ident) => {
-        paste! {
-            fn [<safe_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-                // Extract and convert parameters
-                let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
-                let value = zelf?.[<as_ $f>]()?;
-                
-                // Perform the operation with `safe_$op` as a method name
-                let (result, overflow) = value.[<overflowing_ $op>](other);
-                
-                Ok(Some(if overflow {
-                    return Err(EnvironmentError::Panic(format!("{:#}", value)))
-                } else {
-                    let inner = Value::$t(result).into();
-                    ValueCell::Optional(Some(inner))
-                }))
-            }
-
-            // Registering the generated function in the environment
-            $env.register_native_function(
-                // Function name as a string
-                stringify!([<safe_ $op>]),
-                Some(Type::$t),
-                vec![("other", Type::$t)],
-                // The function identifier
-                [<safe_ $op _ $f>],
-                2,
-                Some(Type::Optional(Box::new(Type::$t)))
-            );
-        }
-    };
-}
-
 // macro to register multiple operations for a specific type
 macro_rules! register_overflows {
     ($env: expr, $t: ident, $f: ident) => {
@@ -87,19 +52,6 @@ macro_rules! register_overflows {
             overflow_fn!($env, mul, $t, $f);
             overflow_fn!($env, div, $t, $f);
             overflow_fn!($env, rem, $t, $f);
-        }
-    };
-}
-
-// macro to register multiple operations for a specific type
-macro_rules! register_safe {
-    ($env: expr, $t: ident, $f: ident) => {
-        {
-            safe_fn!($env, add, $t, $f);
-            safe_fn!($env, sub, $t, $f);
-            safe_fn!($env, mul, $t, $f);
-            safe_fn!($env, div, $t, $f);
-            safe_fn!($env, rem, $t, $f);
         }
     };
 }
@@ -154,15 +106,6 @@ pub fn register(env: &mut EnvironmentBuilder) {
     register_overflows!(env, U64, u64);
     register_overflows!(env, U128, u128);
     register_overflows!(env, U256, u256);
-
-    // TODO: Modify opcode crate to handle the safe_ functions below
-    // Register all operations with instant panic on overflow
-    // register_safe!(env, U8, u8);
-    // register_safe!(env, U16, u16);
-    // register_safe!(env, U32, u32);
-    // register_safe!(env, U64, u64);
-    // register_safe!(env, U128, u128);
-    // register_safe!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);

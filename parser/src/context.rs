@@ -1,5 +1,4 @@
 use xelis_types::{IdentifierType, Type};
-use typed_arena::Arena;
 
 #[derive(Clone, Debug)]
 pub struct Context<'a> {
@@ -45,9 +44,10 @@ impl<'a> Context<'a> {
         &self.current_namespace
     }
 
-    pub fn get_namespace_mut(&mut self) -> &mut Vec<&'a str> {
-        &mut self.current_namespace
-    }
+    // Likely needed when namespaces+imports are scoped instead of global, in the future
+    // pub fn get_namespace_mut(&mut self) -> &mut Vec<&'a str> {
+    //     &mut self.current_namespace
+    // }
 
     // returns true if this variable name is registered in scopes
     #[inline]

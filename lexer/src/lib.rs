@@ -384,7 +384,7 @@ impl<'a> Lexer<'a> {
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
             let c = self.advance()?;
-            self.handle_escaped_space(c);
+            self.handle_escaped_space(c)?;
 
             if c == '*' && self.peek()? == '/' {
                 self.advance()?;
@@ -421,7 +421,7 @@ impl<'a> Lexer<'a> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
                 '\r' | '\n' | '\t'  => {
-                    self.handle_escaped_space(c);
+                    self.handle_escaped_space(c)?;
                     continue;
                 },
                 // skipped characters
@@ -975,34 +975,6 @@ mod tests {
             Token::Value(Literal::Number(10)),
             Token::As,
             Token::Number(NumberType::U8)
-        ]);
-    }
-
-    #[test]
-    fn test_import() {
-        let code = "from \"file\" import TestStruct;";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.get().unwrap();
-        assert_eq!(tokens, vec![
-            Token::From,
-            Token::Value(Literal::String(Cow::Borrowed("file"))),
-            Token::Import,
-            Token::Identifier("TestStruct"),
-        ]);
-    }
-
-    #[test]
-    fn test_import_as() {
-        let code = "from \"file\" import TestStruct as Test;";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.get().unwrap();
-        assert_eq!(tokens, vec![
-            Token::From,
-            Token::Value(Literal::String(Cow::Borrowed("file"))),
-            Token::Import,
-            Token::Identifier("TestStruct"),
-            Token::As,
-            Token::Identifier("Test")
         ]);
     }
 

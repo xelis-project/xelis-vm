@@ -306,7 +306,7 @@ impl<'a> Parser<'a> {
                                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
                                     break Type::Enum(builder.get_type().clone());
 
-                                } else if let Ok(builder) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
+                                } else if let Ok(_) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
                                     namespace_stack.push(id);
                                     while *self.peek()? == Token::Colon {
                                         self.advance()?;
@@ -1008,8 +1008,6 @@ impl<'a> Parser<'a> {
 
         let mut required_operator = false;
 
-        let local_path = &context.get_namespace().clone();
-
         let mut namespace_stack: Vec<&'a str> = Vec::new();
 
         while self.peek()
@@ -1125,13 +1123,6 @@ impl<'a> Parser<'a> {
                             let mut next = token.clone();
                             let mut enum_type: Option<EnumType> = None;
 
-                            let local_ns = context.get_namespace();
-                            let context_prefix = if local_ns.is_empty() {
-                                ""
-                            } else {
-                                &(local_ns.join("::") + "::" + id)
-                            };
-
                             namespace_stack.clear();
 
                             loop {
@@ -1154,7 +1145,7 @@ impl<'a> Parser<'a> {
                                             next = self.advance()?;
                                             continue;
 
-                                        } else if let Ok(builder) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
+                                        } else if let Ok(_) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
                                             namespace_stack.push(id);
                                             while *self.peek()? == Token::Colon {
                                                 self.advance()?;
@@ -2003,7 +1994,7 @@ impl<'a> Parser<'a> {
 
         // apply namespace locality prefix to the function name, for recognition in the final signature
 
-        let mut ns = context.get_namespace();
+        let ns = context.get_namespace();
         let id = if ns.is_empty() {
             self.global_mapper
                 .functions_mut()
@@ -2246,7 +2237,7 @@ impl<'a> Parser<'a> {
         while let Some(token) = self.next() {
             match token {
                 Token::EnterNamespace => {
-                    self.read_namespace(&mut context);
+                    self.read_namespace(&mut context)?;
                 },
                 Token::Import(_) => {
                     continue;
@@ -3701,12 +3692,12 @@ mod tests {
         ];
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, env);
-        // assert_eq!(statements.len(), 1);
-        // let Statement::Variable(variable) = &statements[0] else {
-        //     panic!("Expected a variable statement");
-        // };
+        assert_eq!(statements.len(), 1);
+        let Statement::Variable(variable) = &statements[0] else {
+            panic!("Expected a variable statement");
+        };
 
-        // assert_eq!(variable.value_type, Type::String);
-        // assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
+        assert_eq!(variable.value_type, Type::String);
+        assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
     }
 }

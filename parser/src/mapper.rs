@@ -1,9 +1,4 @@
-use crate::error::ParserError;
 use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager, NamespaceManager};
-use xelis_types::*;
-use xelis_builder::*;
-use indexmap::{IndexMap, IndexSet};
-use crate::ParserErrorKind;
 use std::borrow::Cow;
 
 #[derive(Debug)]
@@ -17,7 +12,7 @@ pub struct GlobalMapper<'a> {
 impl<'a> GlobalMapper<'a> {
     pub fn new() -> Self {
         let mut namespace_manager = NamespaceManager::new();
-        namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
+        let _ = namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
 
         Self {
             functions_mapper: FunctionMapper::new(),
@@ -29,9 +24,9 @@ impl<'a> GlobalMapper<'a> {
 
     pub fn with(environment: &'a EnvironmentBuilder) -> Self {
         let mut namespace_manager = NamespaceManager::new();
-        namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
+        let _ = namespace_manager.add(Cow::Borrowed(""), &Vec::new(), Vec::new());
 
-        let mut mapper = Self {
+        let mapper = Self {
             functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper()),
             struct_manager: StructManager::with_parent(environment.get_struct_manager()),
             enum_manager: EnumManager::with_parent(environment.get_enum_manager()),

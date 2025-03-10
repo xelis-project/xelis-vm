@@ -2,7 +2,6 @@ use std::{hash::{Hash, Hasher}, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::IdentifierType;
-use super::Type;
 
 #[derive(Clone, Eq, Debug, Serialize, Deserialize)]
 pub struct Namespace {

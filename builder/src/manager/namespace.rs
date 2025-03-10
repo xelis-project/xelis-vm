@@ -1,4 +1,4 @@
-use xelis_types::{IdentifierType, NamespaceType, Type};
+use xelis_types::{IdentifierType, NamespaceType};
 use super::{Builder, BuilderType, TypeManager};
 
 #[derive(Debug, Clone)]

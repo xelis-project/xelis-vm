@@ -1,8 +1,8 @@
 use crate::*;
+use playground::*;
 use std::env;
-use std::fs;
 
-use xelis_vm::VMError;
+use xelis_vm::*;
 
 #[track_caller]
 fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
