@@ -7,8 +7,8 @@ pub enum EnvironmentError {
     InvalidParameter,
     #[error("Assertion failed")]
     AssertionFailed,
-    #[error("Invalid function call")]
-    InvalidFnCall,
+    #[error("Invalid function call, expected {} parameters got {}, expected {} got {} for instance", _0, _1, _2, _3)]
+    InvalidFnCall(usize, usize, bool, bool),
     #[error("Invalid function call: expected instance")]
     FnExpectedInstance,
     #[error("Panic: {0}")]

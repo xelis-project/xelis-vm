@@ -39,7 +39,7 @@ impl NativeFunction {
     // Execute the function
     pub fn call_function(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context) -> Result<Option<ValueCell>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
-            return Err(EnvironmentError::InvalidFnCall)
+            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.for_type.is_some()));
         }
 
         let instance = match instance_value {
