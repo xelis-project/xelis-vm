@@ -154,7 +154,7 @@ impl ValueCell {
 
         while let Some(next) = stack.pop() {
             if memory > max_memory {
-                return Err(ValueError::MaxDepthReached);
+                return Err(ValueError::MaxMemoryReached(memory, max_memory));
             }
 
             match next {

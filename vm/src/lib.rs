@@ -215,7 +215,7 @@ impl<'a, 'r> VM<'a, 'r> {
 
         let end_value = self.stack.pop_stack()?.into_owned()?;
         if self.stack.count() != 0 {
-            return Err(VMError::StackNotCleaned);
+            return Err(VMError::StackNotCleaned(self.stack.count()));
         }
 
         Ok(end_value)

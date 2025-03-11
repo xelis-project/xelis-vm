@@ -239,8 +239,8 @@ pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, 
 }
 
 pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let right = stack.pop_stack()?.into_inner();
-    let left = stack.pop_stack()?.into_inner();
+    let right = stack.pop_stack()?.into_owned()?;
+    let left = stack.pop_stack()?.into_owned()?;
     let result = match (left, right) {
         (ValueCell::Default(a), ValueCell::Default(b)) => {
             let pow_n = b.as_u32()?;
@@ -288,7 +288,7 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let _type = manager.read_type()?;
     let current = stack.pop_stack()?
-        .into_inner();
+        .into_owned()?;
 
     let value = match _type {
         Type::U8 => Primitive::U8(current.cast_to_u8()?),

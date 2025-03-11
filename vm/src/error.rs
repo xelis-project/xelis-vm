@@ -24,8 +24,8 @@ pub enum VMError {
     EnumNotFound,
     #[error("enum variant not found")]
     InvalidEnumVariant,
-    #[error("stack not cleaned")]
-    StackNotCleaned,
+    #[error("stack not cleaned, we have {0} elements left")]
+    StackNotCleaned(usize),
     #[error("invalid range type")]
     InvalidRangeType,
     #[error("empty stack")]
@@ -71,7 +71,9 @@ pub enum VMError {
     #[error("unexpected type")]
     UnexpectedType,
     #[error("{0}")]
-    Static(&'static str)
+    Static(&'static str),
+    #[error("Error, memory not cleaned, we have {0} bytes left")]
+    MemoryNotCleaned(usize),
 }
 
 impl From<EnvironmentError> for VMError {

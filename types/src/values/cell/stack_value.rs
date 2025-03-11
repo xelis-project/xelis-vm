@@ -65,11 +65,6 @@ impl StackValue {
         Ok(Self::Owned(self.as_ref()?.clone()))
     }
 
-    // Get the internal value
-    pub fn into_inner(self) -> ValueCell {
-        self.into_owned().unwrap()
-    }
-
     // Get the value of the path
     #[inline(always)]
     pub fn into_owned(self) -> Result<ValueCell, ValueError> {

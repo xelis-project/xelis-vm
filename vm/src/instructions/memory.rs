@@ -23,14 +23,22 @@ pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMan
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_pop<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    stack.push_stack(manager.pop_register()?)?;
+pub fn memory_pop<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let v = manager.pop_register()?;
+    let memory_usage = v.as_ref()?
+        .calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage);
+
+    stack.push_stack(v)?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_len<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let len = manager.registers_len();
-    stack.push_stack(Primitive::U32(len as u32).into())?;
+pub fn memory_len<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let len = Primitive::U32(manager.registers_len() as u32);
+    let memory_usage = len.get_memory_usage();
+    context.increase_memory_usage(memory_usage)?;
+
+    stack.push_stack(len.into())?;
 
     Ok(InstructionResult::Nothing)
 }
