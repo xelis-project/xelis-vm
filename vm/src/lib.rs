@@ -9,6 +9,7 @@ mod instructions;
 mod tests;
 
 use stack::Stack;
+use log::trace;
 
 // Re-export the necessary types
 pub use xelis_environment::*;
@@ -180,9 +181,9 @@ impl<'a, 'r> VM<'a, 'r> {
         while let Some(mut manager) = self.call_stack.pop() {
             let mut clean_pointers = true;
             while let Some(opcode) = manager.next_u8() {
-                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
-                    InstructionResult::Nothing => {},
-                    InstructionResult::InvokeChunk(id) => {
+                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
+                    Ok(InstructionResult::Nothing) => {},
+                    Ok(InstructionResult::InvokeChunk(id)) => {
                         if self.backend.module.is_entry_chunk(id as usize) {
                             return Err(VMError::EntryChunkCalled);
                         }
@@ -202,8 +203,15 @@ impl<'a, 'r> VM<'a, 'r> {
                         self.invoke_chunk_id(id)?;
                         break;
                     },
-                    InstructionResult::Break => {
+                    Ok(InstructionResult::Break) => {
                         break;
+                    },
+                    Err(e) => {
+                        trace!("Error: {:?}", e);
+                        trace!("Stack: {:?}", self.stack.get_inner());
+                        trace!("Call stack left: {}", self.call_stack.len());
+                        trace!("Current registers: {:?}", manager.get_registers());
+                        return Err(e);
                     }
                 }
             }
@@ -213,7 +221,8 @@ impl<'a, 'r> VM<'a, 'r> {
             }
         }
 
-        let end_value = self.stack.pop_stack()?.into_owned()?;
+        let end_value = self.stack.pop_stack()?
+            .into_owned()?;
         if self.stack.count() != 0 {
             return Err(VMError::StackNotCleaned(self.stack.count()));
         }

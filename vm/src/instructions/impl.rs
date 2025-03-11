@@ -103,13 +103,13 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkM
     }
 
     // We need to reverse the order of the arguments
-    let inner = stack.get_inner();
+    let inner = stack.get_inner_mut();
     let len = inner.len();
     if len < args {
         return Err(VMError::NotEnoughArguments);
     }
 
-    let slice = &mut stack.get_inner()[len - args..len];
+    let slice = &mut stack.get_inner_mut()[len - args..len];
     slice.reverse();
 
     Ok(InstructionResult::InvokeChunk(id))

@@ -138,8 +138,14 @@ impl Stack {
 
     // Get the inner stack
     #[inline]
-    pub fn get_inner(&mut self) -> &mut Vec<StackValue> {
+    pub fn get_inner_mut(&mut self) -> &mut Vec<StackValue> {
         &mut self.stack
+    }
+
+    // Get the inner stack
+    #[inline]
+    pub fn get_inner(&self) -> &Vec<StackValue> {
+        &self.stack
     }
 
     // Count the number of elements in the stack
