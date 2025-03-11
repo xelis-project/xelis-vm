@@ -343,8 +343,7 @@ impl<'a> Parser<'a> {
                         Type::Namespace(builder.get_type().clone())
                     } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                         Type::Opaque(ty.clone())
-                    }
-                    else {
+                    } else {
                         return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                     }
                 }
@@ -557,7 +556,7 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, ns: &Vec<&'a str>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {}", name);
         let (mut parameters, types) = self.read_function_params(context)?;
         
@@ -577,7 +576,13 @@ impl<'a> Parser<'a> {
         // Check for locally qualified ID with current namespace
         let id = self.global_mapper
             .functions()
-            .get_compatible(Signature::new(local_name.to_owned(), on_type.cloned(), types.clone()), &mut parameters);
+            .get_compatible(
+              local_name, 
+              on_type, 
+              instance,
+              &types,
+              &mut parameters
+            );
 
         // Check for locally qualified ID with global namespace
         let qualified_id = if id.is_ok() {
@@ -585,7 +590,13 @@ impl<'a> Parser<'a> {
         } else {
             self.global_mapper
                 .functions()
-                .get_compatible(Signature::new(global_name.to_owned(), on_type.cloned(), types.clone()), &mut parameters)
+                .get_compatible(
+                  global_name, 
+                  on_type, 
+                  instance,
+                  &types,
+                  &mut parameters
+                )
                 .map_err(|e| err!(self, e.into()))?
         };
 
@@ -730,7 +741,6 @@ impl<'a> Parser<'a> {
         let constant_name = self.next_identifier()?;
 
         trace!("Read type constant: {:?}::{}", _type, constant_name);
-
         // check if its a constant value
         if let Some(expr) = self.environment.get_constant_by_name(&_type, &constant_name)
             .map(|v| Expression::Constant(v.clone())) {
@@ -750,7 +760,7 @@ impl<'a> Parser<'a> {
                 .map_err(|e| err!(self, e.into()))
         } else if self.peek_is(Token::ParenthesisOpen) {
             // Try to read a static (on type) function call from it
-            self.read_function_call(None, false, Some(&_type), constant_name, context)
+            self.read_function_call(None, &Vec::new(), false, Some(&_type), constant_name, context)
         // If its a enum, it may be a variant constructor
         } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
@@ -1136,7 +1146,7 @@ impl<'a> Parser<'a> {
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
 
-                            self.read_function_call(prev_expr, &Vec::new(), on_type, id, context)?
+                            self.read_function_call(prev_expr, &Vec::new(), on_type.is_some(), on_type, id, context)?
                         },
                         Ok(Token::Colon) => {
                             let mut next = token.clone();
@@ -1149,20 +1159,37 @@ impl<'a> Parser<'a> {
                                     Token::Identifier(id) => {
                                         if enum_type.is_some() {
                                             break self.read_enum_variant_constructor(enum_type.unwrap(), id, context)?;
-
+                                        
                                         } else if let Some(constant) = self.constants.get(&(id, namespace_stack.clone())) {
                                             break Expression::Constant(constant.value.clone());
-  
-                                        } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
-                                            break self.read_struct_constructor(builder.get_type().clone(), context)?;
-                                            
-                                        } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
-                                            enum_type = Some(builder.get_type().clone());
-                                            while *self.peek()? == Token::Colon {
-                                                self.advance()?;
+
+                                        } else if let Ok(builder_ref) = self.global_mapper.structs().get_by_name(id, &namespace_stack) {
+                                            let builder_type = builder_ref.get_type().clone();
+                                            match self.read_type_constant(Token::Identifier(id), context) {
+                                                Ok(val) => {
+                                                    break val;
+                                                },
+                                                Err(_) => {
+                                                    break self.read_struct_constructor(builder_type, context)?;
+                                                }
                                             }
-                                            next = self.advance()?;
-                                            continue;
+                                        
+                                        } else if let Ok(builder_ref) = self.global_mapper.enums().get_by_name(id, &namespace_stack) {
+                                            let builder_type = builder_ref.get_type().clone();
+                                            match self.read_type_constant(Token::Identifier(id), context) {
+                                                Ok(val) => {
+                                                  break val;
+                                                },
+                                                Err(_) => {
+                                                    enum_type = Some(builder_type);
+
+                                                    while *self.peek()? == Token::Colon {
+                                                        self.advance()?;
+                                                    }
+                                                    next = self.advance()?;
+                                                    continue;
+                                                }
+                                            }
 
                                         } else if let Ok(_) = self.global_mapper.namespaces().get_by_name(id, &namespace_stack) {
                                             namespace_stack.push(id);
@@ -1181,7 +1208,7 @@ impl<'a> Parser<'a> {
                                                         _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                                                     };
 
-                                                    break self.read_function_call(prev_expr, &namespace_stack, on_type, id, context)?;
+                                                    break self.read_function_call(prev_expr, &namespace_stack, on_type.is_some(), on_type, id, context)?;
                                                 }
                                                 Token::Colon => {
                                                     namespace_stack.clear();
@@ -1189,6 +1216,7 @@ impl<'a> Parser<'a> {
                                                 }
                                                 _ => {
                                                     namespace_stack.clear();
+
                                                     match on_type {
                                                         // mostly an access to a struct field
                                                         Some(t) => {
@@ -2231,7 +2259,7 @@ impl<'a> Parser<'a> {
         match self.next() {
             Some(Token::Identifier(id)) => {
                 let local_ns = &context.get_namespace().clone();
-                println!("statement namespace, entering {}", id);
+                trace!("statement namespace, entering {}", id);
                 context.enter_namespace(id);
                 self.global_mapper
                     .namespaces_mut()
@@ -2239,7 +2267,7 @@ impl<'a> Parser<'a> {
                     .map_err(|e| err!(self, e.into()))?;
 
                 self.expect_token(Token::BraceOpen)?;
-                println!("new path: {:?}", context.get_namespace());
+                trace!("new path: {:?}", context.get_namespace());
                 Ok(())
             },
             Some(t) => {
@@ -2274,9 +2302,9 @@ impl<'a> Parser<'a> {
                     if local_ns.is_empty() {
                         return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
                     } else {
-                        println!("statement exit");
+                        trace!("namespace scope exit");
                         context.exit_namespace();
-                        println!("current path: {:?}", context.get_namespace());
+                        trace!("new path: {:?}", context.get_namespace());
                     }
                 },
                 token => {

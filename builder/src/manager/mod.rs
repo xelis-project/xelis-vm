@@ -1,9 +1,11 @@
 mod r#struct;
 mod r#enum;
+mod namespace;
 mod opaque;
 
 pub use r#struct::*;
 pub use r#enum::*;
+pub use namespace::*;
 pub use opaque::*;
 
 use std::borrow::Cow;

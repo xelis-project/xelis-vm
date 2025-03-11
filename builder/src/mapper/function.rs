@@ -79,11 +79,13 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Register a function signature within a namespace
-    pub fn register_qualified(&mut self, name: &'a str, namespace: &Vec<&'a str>, on_type: Option<Type>, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
+    pub fn register_qualified(&mut self, name: &'a str, namespace: &Vec<&'a str>, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
         let qualified_name = namespace.join("::") + "::" + name;
 
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let signature = Signature::new(qualified_name.clone(), on_type.clone(), params);
+        let ty = on_type.clone()
+          .map(|t| (Cow::Owned(t), require_instance));
+        let signature = Signature::new(Cow::Owned(qualified_name), ty, Cow::Owned(params));
 
         if self.mapper.has_variable(&signature) {
             return Err(BuilderError::SignatureAlreadyRegistered);
@@ -97,24 +99,9 @@ impl<'a> FunctionMapper<'a> {
             namespace: namespace.clone(),
             on_type,
             parameters,
+            require_instance,
             return_type
         });
-
-        Ok(id)
-    }
-
-    pub fn insert_function(&mut self, name: &'a str, function: Function<'a>) -> Result<IdentifierType, BuilderError> {
-        let params: Vec<_> = function.parameters.iter().map(|(_, t)| t.clone()).collect();
-        let signature = Signature::new(name.to_owned(), function.on_type.clone(), params);
-
-        if self.mapper.has_variable(&signature) {
-            return Err(BuilderError::SignatureAlreadyRegistered);
-        }
-
-        // Register the signature
-        let id = self.mapper.register(signature)?;
-        // Register the mappings
-        self.mappings.insert(id.clone(), function);
 
         Ok(id)
     }

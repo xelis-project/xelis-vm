@@ -1627,6 +1627,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "indexmap",
+ "log",
  "paste",
  "thiserror 2.0.9",
  "xelis-ast 0.1.0",
@@ -1640,7 +1641,6 @@ version = "0.1.0"
 source = "git+https://github.com/xelis-project/xelis-vm?branch=dev#83e12fde1aad8d0362de474c25e3d4487ee9f615"
 dependencies = [
  "anyhow",
- "log",
  "paste",
  "thiserror 2.0.9",
  "xelis-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=dev)",
@@ -1654,6 +1654,7 @@ version = "0.1.0"
 dependencies = [
  "indexmap",
  "serde",
+ "serde_json",
  "xelis-types 0.1.0",
 ]
 
@@ -1665,8 +1666,6 @@ dependencies = [
  "indexmap",
  "serde",
  "xelis-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=dev)",
- "serde_json",
- "xelis-types",
 ]
 
 [[package]]
