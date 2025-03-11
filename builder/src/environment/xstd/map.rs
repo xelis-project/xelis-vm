@@ -61,9 +61,10 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         return Err(EnvironmentError::OutOfMemory)
     }
 
-    let value = parameters.remove(0);
+    let value = parameters.remove(0)
+        .into_owned()?;
     let previous = map
-        .insert(key.into_owned()?, value.into_owned()?.into());
+        .insert(key, value);
 
     Ok(Some(match previous {
         Some(v) => v,

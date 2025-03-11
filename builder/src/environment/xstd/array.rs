@@ -45,13 +45,13 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
     // moving all elements after the index to the left is costly
     context.increase_gas_usage((array.len() as u64) * 5)?;
 
-    Ok(Some(array.remove(index).into_owned()?))
+    Ok(Some(array.remove(index)))
 }
 
 fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value.into_owned()?))
+        Ok(Some(value))
     } else {
         Ok(Some(Primitive::Null.into()))
     }

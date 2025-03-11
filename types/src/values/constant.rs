@@ -95,11 +95,11 @@ impl TryFrom<ValueCell> for Constant {
     fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
         Ok(match cell {
             ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.into_owned()?.try_into()).collect::<Result<Vec<_>, _>>()?),
+            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.try_into()).collect::<Result<Vec<_>, _>>()?),
             ValueCell::Bytes(bytes) => Self::Bytes(bytes),
             ValueCell::Map(map) => {
                 let m = map.into_iter()
-                    .map(|(k, v)| Ok((k.into_owned()?.try_into()?, v.into_owned()?.try_into()?)))
+                    .map(|(k, v)| Ok((k.try_into()?, v.try_into()?)))
                     .collect::<Result<IndexMap<_, _>, _>>()?;
                 Self::Map(m)
             }

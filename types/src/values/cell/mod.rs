@@ -638,87 +638,6 @@ impl ValueCell {
             _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }
-
-    // Clone all the SubValue into a new ValueCell
-    // We need to do it in iterative way to prevent any stackoverflow
-    pub fn into_owned(self) -> Result<Self, ValueError> {
-        if matches!(self, Self::Default(_) | Self::Bytes(_)) {
-            return Ok(self)
-        }
-
-        #[derive(Debug)]
-        enum QueueItem {
-            Value(Primitive),
-            Array {
-                len: usize,
-            },
-            Map {
-                len: usize,
-            },
-            Bytes(Vec<u8>)
-        }
-
-        let mut stack = vec![self];
-        let mut queue = Vec::new();
-        // let mut pointers = HashSet::new();
-
-        // Disassemble
-        while let Some(value) = stack.pop() {
-            match value {
-                Self::Default(v) => queue.push(QueueItem::Value(v)),
-                Self::Array(values) => {
-                    queue.push(QueueItem::Array { len: values.len() });
-                    for value in values.into_iter().rev() {
-                        stack.push(value);
-                    }
-                },
-                Self::Bytes(bytes) => {
-                    queue.push(QueueItem::Bytes(bytes));
-                }
-                Self::Map(map) => {
-                    queue.push(QueueItem::Map { len: map.len() });
-                    for (k, v) in map.into_iter() {
-                        stack.push(k);
-                        stack.push(v);
-                    }
-                }
-            }
-        };
-
-        // Assemble back
-        while let Some(item) = queue.pop() {
-            match item {
-                QueueItem::Value(v) => {
-                    stack.push(ValueCell::Default(v));
-                },
-                QueueItem::Array { len } => {
-                    let mut values = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        values.push(
-                            stack.pop()
-                                .ok_or(ValueError::ExpectedValue)?
-                                .into()
-                        );
-                    }
-                    stack.push(ValueCell::Array(values));
-                },
-                QueueItem::Bytes(bytes) => {
-                    stack.push(ValueCell::Bytes(bytes));
-                }
-                QueueItem::Map { len } => {
-                    let mut map = HashMap::with_capacity(len);
-                    for _ in 0..len {
-                        let value = stack.pop().ok_or(ValueError::ExpectedValue)?;
-                        let key = stack.pop().ok_or(ValueError::ExpectedValue)?;
-                        map.insert(key, value.into());
-                    }
-                    stack.push(ValueCell::Map(Box::new(map)));
-                }
-            }
-        }
-
-        stack.pop().ok_or(ValueError::ExpectedValue)
-    }
 }
 
 impl fmt::Display for ValueCell {
@@ -755,17 +674,6 @@ mod tests {
 
         assert!(matches!(map.calculate_depth(100), Ok(100)));
         assert!(matches!(map.calculate_depth(99), Err(ValueError::MaxDepthReached)));
-    }
-
-    #[test]
-    fn test_into_owned() {
-        let array = ValueCell::Array(vec![
-            ValueCell::Default(Primitive::U8(10)).into(),
-            ValueCell::Default(Primitive::U8(20)).into(),
-            ValueCell::Default(Primitive::U8(30)).into(),
-        ]);
-
-        assert_eq!(array, array.clone().into_owned().unwrap());
     }
 
     #[test]
