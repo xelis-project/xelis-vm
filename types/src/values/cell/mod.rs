@@ -103,6 +103,7 @@ impl ValueCell {
             _ => false,
         }
     }
+
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
@@ -139,6 +140,44 @@ impl ValueCell {
         }
 
         Ok(biggest_depth)
+    }
+
+    // Calculate the depth of the value
+    pub fn calculate_memory_usage<'a>(&'a self, max_memory: usize) -> Result<usize, ValueError> {
+        // Prevent allocation if the value is a default value
+        if let Self::Default(v) = self {
+            return Ok(v.get_memory_usage());
+        }
+
+        let mut stack = vec![self];
+        let mut memory = 0;
+
+        while let Some(next) = stack.pop() {
+            if memory > max_memory {
+                return Err(ValueError::MaxDepthReached);
+            }
+
+            match next {
+                ValueCell::Default(v) => {
+                    memory += 1;
+                    memory += v.get_memory_usage();
+                },
+                ValueCell::Bytes(bytes) => {
+                    memory += 32;
+                    memory += bytes.len();
+                },
+                ValueCell::Array(values) => {
+                    memory += 32;
+                    stack.extend(values);
+                },
+                ValueCell::Map(map) => {
+                    memory += 64;
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
+                }
+            };
+        }
+
+        Ok(memory)
     }
 
     #[inline]

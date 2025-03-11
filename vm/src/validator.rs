@@ -79,19 +79,12 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify a constant and return the memory usage
-    pub fn verify_constant(&self, constant: &ValueCell) -> Result<usize, ValidatorError<'a>> {
+    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError<'a>> {
         let mut stack = vec![(constant, 0)];
-        let mut memory_usage = 0;
 
         while let Some((value, depth)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
-            }
-
-            // Increase by one for the byte type of the value
-            memory_usage += 1;
-            if memory_usage > self.constant_max_memory {
-                return Err(ValidatorError::TooMuchMemoryUsage);
             }
 
             match value {
@@ -103,14 +96,11 @@ impl<'a> ModuleValidator<'a> {
                     for element in elements {
                         stack.push((element, depth + 1));
                     }
-                    memory_usage += 4;
                 },
                 ValueCell::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
-
-                    memory_usage += values.len();
                 }
                 ValueCell::Map(map) => {
                     if map.len() > u32::MAX as usize {
@@ -125,7 +115,6 @@ impl<'a> ModuleValidator<'a> {
                         stack.push((key, depth + 1));
                         stack.push((value, depth + 1));
                     }
-                    memory_usage += 16;
                 },
                 ValueCell::Default(v) => match v {
                     Primitive::Range(range) => {
@@ -137,45 +126,33 @@ impl<'a> ModuleValidator<'a> {
                         if left_type != range.1.get_type()? {
                             return Err(ValidatorError::InvalidRange);
                         }
-
-                        memory_usage += 8;
                     },
-                    Primitive::Null => memory_usage += 1,
-                    Primitive::Boolean(_) => memory_usage += 1,
                     Primitive::String(str) => {
                         if str.len() > u32::MAX as usize {
                             return Err(ValidatorError::StringTooBig);
                         }
-
-                        memory_usage += 8 + str.len();
                     },
-                    Primitive::U8(_) => memory_usage += 1,
-                    Primitive::U16(_) => memory_usage += 2,
-                    Primitive::U32(_) => memory_usage += 4,
-                    Primitive::U64(_) => memory_usage += 8,
-                    Primitive::U128(_) => memory_usage += 16,
-                    Primitive::U256(_) => memory_usage += 32,
                     Primitive::Opaque(opaque) => {
                         if !self.environment.get_opaques()
                             .contains(&opaque.get_type_id()) {
                             return Err(ValidatorError::InvalidOpaque);
                         }
-
-                        memory_usage += opaque.get_size();
-                    }
+                    },
+                    _ => {}
                 }
             }
         }
 
-        Ok(memory_usage)
+        Ok(())
     }
 
     // Verify all the declared constants in the module
     pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in constants {
-            memory_usage += self.verify_constant(&c)?;
+            self.verify_constant(&c)?;
 
+            memory_usage += c.calculate_memory_usage(self.constant_max_memory)?;
             if memory_usage > self.constant_max_memory {
                 return Err(ValidatorError::TooManyConstants);
             }

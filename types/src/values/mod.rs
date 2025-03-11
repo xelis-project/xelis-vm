@@ -153,9 +153,9 @@ impl Primitive {
             Primitive::U64(_) => 8,
             Primitive::U128(_) => 16,
             Primitive::U256(_) => 32,
-            Primitive::String(s) => s.len(),
+            Primitive::String(s) => 8 + s.len(),
             Primitive::Boolean(_) => 1,
-            Primitive::Range(b) => b.0.get_memory_usage() + b.1.get_memory_usage(),
+            Primitive::Range(b) => 16 + b.0.get_memory_usage() + b.1.get_memory_usage(),
             Primitive::Opaque(_) => 8
         }
     }

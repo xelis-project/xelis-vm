@@ -20,7 +20,7 @@ fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     Ok(Some(Primitive::U32(len as u32).into()))
 }
 
-fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let array =  zelf?.as_mut_vec()?;
     if array.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
@@ -28,9 +28,6 @@ fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> Fn
 
     let param = parameters.remove(0);
     let value = param.into_owned()?;
-
-    // Verify the depth of the value
-    value.calculate_depth(context.max_value_depth() - 1)?;
 
     array.push(value.into());
 
