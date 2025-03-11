@@ -1178,7 +1178,7 @@ impl<'a> Parser<'a> {
                                             let builder_type = builder_ref.get_type().clone();
                                             match self.read_type_constant(Token::Identifier(id), context) {
                                                 Ok(val) => {
-                                                  break val;
+                                                    break val;
                                                 },
                                                 Err(_) => {
                                                     enum_type = Some(builder_type);
