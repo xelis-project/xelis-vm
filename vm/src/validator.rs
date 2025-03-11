@@ -42,8 +42,8 @@ pub enum ValidatorError<'a> {
     IncorrectVariant,
     #[error("invalid op code")]
     InvalidOpCode,
-    #[error("invalid opcode arguments")]
-    InvalidOpCodeArguments,
+    #[error("invalid opcode {0:?} arguments, expected {1}")]
+    InvalidOpCodeArguments(OpCode, usize),
     #[error("invalid range")]
     InvalidRange,
     #[error("invalid range type")]
@@ -176,8 +176,9 @@ impl<'a> ModuleValidator<'a> {
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
 
-                reader.advance(op.arguments_bytes())
-                    .map_err(|_| ValidatorError::InvalidOpCodeArguments)?;
+                let count = op.arguments_bytes();
+                reader.advance(count)
+                    .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
             }
         }
 

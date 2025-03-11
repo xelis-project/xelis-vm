@@ -71,11 +71,7 @@ pub enum OpCodeWithArgs {
     Return,
 
     // pop index, pop array => push array[index]
-    // Allow up to u32 index
-    ArrayCall {
-        // Array index
-        index: u32
-    },
+    ArrayCall,
     // pop value => push value
     Cast {
         primitive_type_id: u8
@@ -274,7 +270,6 @@ impl OpCodeWithArgs {
             },
             OpCodeWithArgs::Jump { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::JumpIfFalse { addr } => chunk.write_u32(*addr),
-            OpCodeWithArgs::ArrayCall { index } => chunk.write_u32(*index),
             OpCodeWithArgs::Cast { primitive_type_id } => chunk.write_u8(*primitive_type_id),
             OpCodeWithArgs::InvokeChunk { chunk_id, on_value, args_count } => {
                 chunk.write_u16(*chunk_id);
@@ -465,15 +460,7 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Return
             },
-            "ARRAYCALL" => {
-                if args.len() != 1 {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::ArrayCall {
-                    index: args[0].parse().map_err(|_| "Invalid index")?
-                }
-            },
+            "ARRAYCALL" => OpCodeWithArgs::ArrayCall,
             "CAST" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");

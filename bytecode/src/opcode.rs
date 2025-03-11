@@ -274,7 +274,6 @@ impl OpCode {
             OpCode::Jump => 4, // u32 addr
             OpCode::JumpIfFalse => 4, // u32 addr
             OpCode::IteratorNext => 4, // u32 addr
-            OpCode::ArrayCall => 4, // index u32
             OpCode::Cast => 1, // primitive type id u8
             OpCode::InvokeChunk => 4, // id u16, on_value bool, args u8
             OpCode::SysCall => 4, // id u16, on_value bool, args u8
