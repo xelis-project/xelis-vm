@@ -652,11 +652,10 @@ fn test_infinite_map_depth() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
 
+    let max_iterations = 28_000;
     // let map = {};
-    // foreach _ in 0..28000 {
-    //     let mut inner_map = {};
-    //     inner_map.insert("hello world", map);
-    //     map = inner_map;
+    // foreach _ in 0..max_iterations {
+    //     map.insert("hello world", map);
     // }
 
     let constant_id = module.add_constant(Primitive::String("hello world".to_string())) as u16;
@@ -669,20 +668,27 @@ fn test_infinite_map_depth() {
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
-    let jump_at = chunk.index();
-    // Create the inner map
-    chunk.emit_opcode(OpCode::NewMap);
-    chunk.write_u8(0);
+    let id = module.add_constant(Primitive::U32(0)) as u16;
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(id);
 
-    // Store in memory
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(1);
 
-    // Load the map for insert
+    let jump_at = chunk.index();
+
+    // Load the index and increment it
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    // Insert the map into the inner map
+    chunk.emit_opcode(OpCode::Inc);
+    chunk.emit_opcode(OpCode::Pop);
+
+    // Now load the initial map
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Insert the map into itself
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(constant_id);
 
@@ -698,20 +704,24 @@ fn test_infinite_map_depth() {
     // Drop the returned value
     chunk.emit_opcode(OpCode::Pop);
 
-    // Load again the map
+    // jump to beginning if we are less than len
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    // Store it in memory at place of the map
-    chunk.emit_opcode(OpCode::MemorySet);
-    chunk.write_u16(0);
+    let id = module.add_constant(Primitive::U32(max_iterations)) as u16;
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(id);
 
-    // jump to beginning
-    chunk.emit_opcode(OpCode::Jump);
+    chunk.emit_opcode(OpCode::Gte);
+
+    chunk.emit_opcode(OpCode::JumpIfFalse);
     chunk.write_u32(jump_at as u32);
+
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
 
     // Execute
     module.add_chunk(chunk);
 
-    assert!(try_run(module).is_err());
+    assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
 }
