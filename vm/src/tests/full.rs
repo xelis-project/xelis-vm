@@ -609,12 +609,13 @@ fn test_enum() {
 
 #[test]
 fn test_array_slice() {
+    // Slice copy the array
     let code = r#"
         entry main() {
             let x: u64[] = [10, 20, 30, 40, 50];
             let y: u64[] = x.slice(1..4);
 
-            assert(is_same_ptr(y[0], x[1]));
+            assert(!is_same_ptr(y[0], x[1]));
             y.push(60);
             assert(!is_same_ptr(y[3], x[4]));
 
