@@ -55,7 +55,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
         map.insert(key, value.into_owned()?.into());
     }
 
-    let map = ValueCell::Map(Box::new(map));
+    let map = ValueCell::Map(map);
     let memory_usage = map.calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage);
 

@@ -1,5 +1,4 @@
 mod stack_value;
-mod safe_drop;
 
 use std::{
     borrow::Cow,
@@ -13,11 +12,10 @@ use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
 
 pub use stack_value::*;
-pub use safe_drop::*;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Default(Primitive),
@@ -26,12 +24,12 @@ pub enum ValueCell {
 
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    Map(Box<HashMap<ValueCell, ValueCell>>),
+    Map(HashMap<ValueCell, ValueCell>),
 }
 
 impl Drop for ValueCell {
     fn drop(&mut self) {
-        let mut stack = vec![];
+        let mut stack = Vec::new();
         match self {
             ValueCell::Array(values) => {
                 stack.extend(values.drain(..));
@@ -39,7 +37,7 @@ impl Drop for ValueCell {
             ValueCell::Map(map) => {
                 stack.extend(map.drain().flat_map(|(k, v)| [k, v]));
             },
-            _ => {}
+            _ => return
         }
 
         while let Some(mut value) = stack.pop() {
@@ -114,7 +112,7 @@ impl From<Constant> for ValueCell {
             Constant::Default(v) => Self::Default(v),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
-            Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
+            Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
             Constant::Typed(values, _) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
         }
     }
@@ -638,6 +636,91 @@ impl ValueCell {
             _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }
+
+    // Create a clone in a iterative way
+    pub fn deep_clone(&self) -> Result<Self, ValueError> {
+        match self {
+            Self::Bytes(v) => return Ok(Self::Bytes(v.clone())),
+            Self::Default(v) => return Ok(Self::Default(v.clone())),
+            _ => {}
+        };
+
+        #[derive(Debug)]
+        enum QueueItem {
+            Primitive(Primitive),
+            Array {
+                len: usize,
+            },
+            Map {
+                len: usize,
+            },
+            Bytes(Vec<u8>)
+        }
+
+        let mut stack = vec![self];
+        let mut queue = Vec::new();
+
+        // Disassemble
+        while let Some(value) = stack.pop() {
+            match value {
+                Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
+                Self::Array(values) => {
+                    queue.push(QueueItem::Array { len: values.len() });
+                    for value in values.into_iter().rev() {
+                        stack.push(value);
+                    }
+                },
+                Self::Bytes(bytes) => {
+                    queue.push(QueueItem::Bytes(bytes.clone()));
+                }
+                Self::Map(map) => {
+                    queue.push(QueueItem::Map { len: map.len() });
+                    for (k, v) in map.into_iter() {
+                        stack.push(k);
+                        stack.push(v);
+                    }
+                }
+            }
+        };
+
+        let mut stack = vec![];
+        // Assemble back
+        while let Some(item) = queue.pop() {
+            match item {
+                QueueItem::Primitive(v) => {
+                    stack.push(ValueCell::Default(v));
+                },
+                QueueItem::Array { len } => {
+                    let mut values = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        values.push(
+                            stack.pop()
+                                .ok_or(ValueError::ExpectedValue)?
+                                .into()
+                        );
+                    }
+                    stack.push(ValueCell::Array(values));
+                },
+                QueueItem::Bytes(bytes) => {
+                    stack.push(ValueCell::Bytes(bytes));
+                }
+                QueueItem::Map { len } => {
+                    let mut map = HashMap::with_capacity(len);
+                    for _ in 0..len {
+                        let value = stack.pop()
+                            .ok_or(ValueError::ExpectedValue)?;
+                        let key = stack.pop()
+                            .ok_or(ValueError::ExpectedValue)?;
+                        map.insert(key, value.into());
+                    }
+                    stack.push(ValueCell::Map(map));
+                }
+            }
+        }
+
+        debug_assert!(stack.len() == 1);
+        stack.pop().ok_or(ValueError::ExpectedValue)
+    }
 }
 
 impl fmt::Display for ValueCell {
@@ -659,16 +742,24 @@ impl fmt::Display for ValueCell {
     }
 }
 
+impl Clone for ValueCell {
+    fn clone(&self) -> Self {
+        self.deep_clone().expect("Failed to deep clone value")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_drop() {
+    fn test_drop_and_clone() {
         let v = ValueCell::default();
+        drop(v.clone());
         drop(v);
 
         let v = ValueCell::Array(vec![ValueCell::default()]);
+        drop(v.clone());
         drop(v);
 
         // Create a array with a huge depth of 100000
@@ -677,26 +768,28 @@ mod tests {
             v = ValueCell::Array(vec![v]);
         }
 
+        drop(v.clone());
         drop(v);
 
         // Create a map with a huge depth of 100000
-        let mut v = ValueCell::Map(Box::new(HashMap::new()));
+        let mut v = ValueCell::Map(HashMap::new());
         for _ in 0..100_000 {
             let mut inner_map = HashMap::new();
-            inner_map.insert(Primitive::U8(10).into(), v.into());
-            v = ValueCell::Map(Box::new(inner_map));
+            inner_map.insert(Primitive::U8(10).into(), v);
+            v = ValueCell::Map(inner_map);
         }
 
+        drop(v.clone());
         drop(v);
     }
 
     #[test]
     fn test_max_depth() {
-        let mut map = ValueCell::Map(Box::new(HashMap::new()));
+        let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..100 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
+            map = ValueCell::Map(inner_map);
         }
 
         assert!(matches!(map.calculate_depth(100), Ok(100)));
@@ -706,11 +799,11 @@ mod tests {
     #[test]
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
-        let mut map = ValueCell::Map(Box::new(HashMap::new()));
+        let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..100_000 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
+            map = ValueCell::Map(inner_map);
         }
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
