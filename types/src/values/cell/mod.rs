@@ -681,7 +681,7 @@ impl ValueCell {
             }
         };
 
-        let mut stack = Vec::new();
+        let mut stack = Vec::with_capacity(queue.len());
         // Assemble back
         while let Some(item) = queue.pop() {
             match item {
