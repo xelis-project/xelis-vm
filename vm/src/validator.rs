@@ -205,7 +205,7 @@ impl<'a> ModuleValidator<'a> {
             return Err(ValidatorError::TooManyChunks);
         }
 
-        self.verify_constants(self.module.constants().iter().map(|v| &v.0))?;
+        self.verify_constants(self.module.constants().iter())?;
         self.verify_chunks()?;
 
         Ok(())

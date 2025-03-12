@@ -8,10 +8,10 @@ use std::{
     hash::{Hash, Hasher},
     mem
 };
+use serde::{Deserialize, Serialize};
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
 
-use serde::{Deserialize, Serialize};
 pub use stack_value::*;
 pub use safe_drop::*;
 
@@ -27,6 +27,32 @@ pub enum ValueCell {
     // Map cannot be used as a key in another map
     // Key must be immutable also!
     Map(Box<HashMap<ValueCell, ValueCell>>),
+}
+
+impl Drop for ValueCell {
+    fn drop(&mut self) {
+        let mut stack = vec![];
+        match self {
+            ValueCell::Array(values) => {
+                stack.extend(values.drain(..));
+            },
+            ValueCell::Map(map) => {
+                stack.extend(map.drain().flat_map(|(k, v)| [k, v]));
+            },
+            _ => {}
+        }
+
+        while let Some(mut value) = stack.pop() {
+            match &mut value {
+                ValueCell::Array(values) => stack.extend(values.drain(..)),
+                ValueCell::Map(map) => stack.extend(
+                    map.drain()
+                        .flat_map(|(k, v)| [k, v])
+                ),
+                _ => {}
+            };
+        }
+    }
 }
 
 impl PartialEq for ValueCell {
@@ -638,6 +664,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_drop() {
+        let v = ValueCell::default();
+        drop(v);
+
+        let v = ValueCell::Array(vec![ValueCell::default()]);
+        drop(v);
+
+        // Create a array with a huge depth of 100000
+        let mut v = ValueCell::Array(vec![ValueCell::default()]);
+        for _ in 0..100_000 {
+            v = ValueCell::Array(vec![v]);
+        }
+
+        drop(v);
+
+        // Create a map with a huge depth of 100000
+        let mut v = ValueCell::Map(Box::new(HashMap::new()));
+        for _ in 0..100_000 {
+            let mut inner_map = HashMap::new();
+            inner_map.insert(Primitive::U8(10).into(), v.into());
+            v = ValueCell::Map(Box::new(inner_map));
+        }
+
+        drop(v);
+    }
+
+    #[test]
     fn test_max_depth() {
         let mut map = ValueCell::Map(Box::new(HashMap::new()));
         for _ in 0..100 {
@@ -654,7 +707,7 @@ mod tests {
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
         let mut map = ValueCell::Map(Box::new(HashMap::new()));
-        for _ in 0..100000 {
+        for _ in 0..100_000 {
             let mut inner_map = HashMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
@@ -662,7 +715,5 @@ mod tests {
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         map.hash(&mut hasher);
-
-        let _ = SafeDropValueCell(map);
     }
 }

@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use xelis_types::{SafeDropValueCell, ValueCell};
+use xelis_types::ValueCell;
 
 use super::Chunk;
 
@@ -9,7 +9,7 @@ use super::Chunk;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<SafeDropValueCell>,
+    constants: IndexSet<ValueCell>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
@@ -28,7 +28,7 @@ impl Module {
 
     // Create a new module with all needed data
     pub fn with(
-        constants: IndexSet<SafeDropValueCell>,
+        constants: IndexSet<ValueCell>,
         chunks: Vec<Chunk>,
         entry_chunk_ids: IndexSet<usize>
     ) -> Self {
@@ -41,20 +41,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<SafeDropValueCell> {
+    pub fn constants(&self) -> &IndexSet<ValueCell> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
     pub fn add_constant(&mut self, value: impl Into<ValueCell>) -> usize {
-        self.constants.insert_full(SafeDropValueCell(value.into())).0
+        self.constants.insert_full(value.into()).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<&ValueCell> {
-        self.constants.get_index(index).map(|v| &v.0)
+        self.constants.get_index(index)
     }
 
     // Get the chunks declared in the module

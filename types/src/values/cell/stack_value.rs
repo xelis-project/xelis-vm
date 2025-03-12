@@ -29,8 +29,8 @@ impl StackValue {
     // Get the sub value at index requested
     pub fn get_at_index(self, index: usize) -> Result<StackValue, ValueError> {
         match self {
-            Self::Owned(v) => {
-                let mut values = v.to_vec()?;
+            Self::Owned(mut v) => {
+                let values = v.as_mut_vec()?;
                 let len = values.len();
                 if index >= len {
                     return Err(ValueError::OutOfBounds(index, len))

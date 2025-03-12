@@ -241,7 +241,7 @@ pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, 
 pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?.into_owned()?;
     let left = stack.pop_stack()?.into_owned()?;
-    let result = match (left, right) {
+    let result = match (&left, &right) {
         (ValueCell::Default(a), ValueCell::Default(b)) => {
             let pow_n = b.as_u32()?;
             match a {

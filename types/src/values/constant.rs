@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{DefinedType, Type, U256};
-use super::{Primitive, ValueCell, ValueError};
+use super::{Primitive, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
@@ -86,24 +86,6 @@ impl Default for Constant {
 impl From<Primitive> for Constant {
     fn from(value: Primitive) -> Self {
         Self::Default(value)
-    }
-}
-
-impl TryFrom<ValueCell> for Constant {
-    type Error = ValueError;
-
-    fn try_from(cell: ValueCell) -> Result<Self, Self::Error> {
-        Ok(match cell {
-            ValueCell::Default(v) => Self::Default(v),
-            ValueCell::Array(values) => Self::Array(values.into_iter().map(|v| v.try_into()).collect::<Result<Vec<_>, _>>()?),
-            ValueCell::Bytes(bytes) => Self::Bytes(bytes),
-            ValueCell::Map(map) => {
-                let m = map.into_iter()
-                    .map(|(k, v)| Ok((k.try_into()?, v.try_into()?)))
-                    .collect::<Result<IndexMap<_, _>, _>>()?;
-                Self::Map(m)
-            }
-        })
     }
 }
 
