@@ -30,24 +30,36 @@ pub enum ValueCell {
 
 impl Drop for ValueCell {
     fn drop(&mut self) {
+        if matches!(self, Self::Default(_) | Self::Bytes(_)) {
+            return;
+        }
+
         let mut stack = Vec::new();
         match self {
             ValueCell::Array(values) => {
-                stack.extend(values.drain(..));
+                stack.reserve(values.len());
+                stack.append(values);
             },
             ValueCell::Map(map) => {
+                stack.reserve(map.len() * 2);
                 stack.extend(map.drain().flat_map(|(k, v)| [k, v]));
             },
-            _ => return
-        }
+            _ => unreachable!()
+        };
 
         while let Some(mut value) = stack.pop() {
             match &mut value {
-                ValueCell::Array(values) => stack.extend(values.drain(..)),
-                ValueCell::Map(map) => stack.extend(
-                    map.drain()
-                        .flat_map(|(k, v)| [k, v])
-                ),
+                ValueCell::Array(values) => {
+                    stack.reserve(values.len());
+                    stack.append(values);
+                },
+                ValueCell::Map(map) => {
+                    stack.reserve(map.len() * 2);
+                    stack.extend(
+                        map.drain()
+                            .flat_map(|(k, v)| [k, v])
+                    );
+                }
                 _ => {}
             };
         }
