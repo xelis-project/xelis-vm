@@ -7,6 +7,7 @@ use std::{
     hash::{Hash, Hasher},
     mem
 };
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
@@ -638,10 +639,10 @@ impl ValueCell {
     }
 
     // Create a clone in a iterative way
-    pub fn deep_clone(&self) -> Result<Self, ValueError> {
+    pub fn deep_clone(&self) -> Self {
         match self {
-            Self::Bytes(v) => return Ok(Self::Bytes(v.clone())),
-            Self::Default(v) => return Ok(Self::Default(v.clone())),
+            Self::Bytes(v) => return Self::Bytes(v.clone()),
+            Self::Default(v) => return Self::Default(v.clone()),
             _ => {}
         };
 
@@ -666,24 +667,21 @@ impl ValueCell {
                 Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
                 Self::Array(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
-                    for value in values.into_iter().rev() {
-                        stack.push(value);
-                    }
+                    stack.reserve(values.len());
+                    stack.extend(values.iter().rev());
                 },
                 Self::Bytes(bytes) => {
                     queue.push(QueueItem::Bytes(bytes.clone()));
                 }
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
-                    for (k, v) in map.into_iter() {
-                        stack.push(k);
-                        stack.push(v);
-                    }
+                    stack.reserve(map.len() * 2);
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
                 }
             }
         };
 
-        let mut stack = vec![];
+        let mut stack = Vec::new();
         // Assemble back
         while let Some(item) = queue.pop() {
             match item {
@@ -691,35 +689,25 @@ impl ValueCell {
                     stack.push(ValueCell::Default(v));
                 },
                 QueueItem::Array { len } => {
-                    let mut values = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        values.push(
-                            stack.pop()
-                                .ok_or(ValueError::ExpectedValue)?
-                                .into()
-                        );
-                    }
+                    let values = stack.split_off(stack.len() - len);
                     stack.push(ValueCell::Array(values));
                 },
                 QueueItem::Bytes(bytes) => {
                     stack.push(ValueCell::Bytes(bytes));
                 }
                 QueueItem::Map { len } => {
-                    let mut map = HashMap::with_capacity(len);
-                    for _ in 0..len {
-                        let value = stack.pop()
-                            .ok_or(ValueError::ExpectedValue)?;
-                        let key = stack.pop()
-                            .ok_or(ValueError::ExpectedValue)?;
-                        map.insert(key, value.into());
-                    }
+                    let map = stack.split_off(stack.len() - len * 2)
+                        .into_iter()
+                        .tuples()
+                        .collect();
+
                     stack.push(ValueCell::Map(map));
                 }
             }
         }
 
         debug_assert!(stack.len() == 1);
-        stack.pop().ok_or(ValueError::ExpectedValue)
+        stack.remove(0)
     }
 }
 
@@ -744,7 +732,7 @@ impl fmt::Display for ValueCell {
 
 impl Clone for ValueCell {
     fn clone(&self) -> Self {
-        self.deep_clone().expect("Failed to deep clone value")
+        self.deep_clone()
     }
 }
 
