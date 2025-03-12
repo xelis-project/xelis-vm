@@ -5,7 +5,8 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     fmt,
-    hash::{Hash, Hasher}
+    hash::{Hash, Hasher},
+    mem
 };
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
@@ -329,82 +330,66 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_u8(self) -> Result<u8, ValueError> {
+    pub fn to_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Default(Primitive::U8(n)) => Ok(n),
+            Self::Default(Primitive::U8(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
 
     #[inline]
-    pub fn to_u16(self) -> Result<u16, ValueError> {
+    pub fn to_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Default(Primitive::U16(n)) => Ok(n),
+            Self::Default(Primitive::U16(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
 
     #[inline]
-    pub fn to_u32(self) -> Result<u32, ValueError> {
+    pub fn to_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Default(Primitive::U32(n)) => Ok(n),
+            Self::Default(Primitive::U32(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
 
     #[inline]
-    pub fn to_u64(self) -> Result<u64, ValueError> {
+    pub fn to_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Default(Primitive::U64(n)) => Ok(n),
+            Self::Default(Primitive::U64(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
 
     #[inline]
-    pub fn to_u128(self) -> Result<u128, ValueError> {
+    pub fn to_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Default(Primitive::U128(n)) => Ok(n),
+            Self::Default(Primitive::U128(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
 
     #[inline]
-    pub fn to_u256(self) -> Result<U256, ValueError> {
+    pub fn to_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Default(Primitive::U256(n)) => Ok(n),
+            Self::Default(Primitive::U256(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
 
     #[inline]
-    pub fn to_string(self) -> Result<String, ValueError> {
+    pub fn to_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Self::Default(Primitive::String(n)) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::String))
-        }
-    }
-
-    #[inline]
-    pub fn to_bool(self) -> Result<bool, ValueError> {
-        match self {
-            Self::Default(Primitive::Boolean(n)) => Ok(n),
+            Self::Default(Primitive::Boolean(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
     #[inline]
-    pub fn to_vec(self) -> Result<Vec<ValueCell>, ValueError> {
+    pub fn into_string(&mut self) -> Result<String, ValueError> {
         match self {
-            Self::Array(values) => Ok(values),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
-        match self {
-            Self::Default(Primitive::Opaque(opaque)) => Ok(opaque),
-            _ => Err(ValueError::ExpectedOpaque)
+            Self::Default(Primitive::String(v)) => Ok(mem::take(v)),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
@@ -440,13 +425,6 @@ impl ValueCell {
         }
     }
 
-    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
-        match self {
-            Self::Default(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
-            _ => Err(ValueError::ExpectedOpaque)
-        }
-    }
-
     #[inline]
     pub fn is_serializable(&self) -> bool {
         match self {
@@ -461,7 +439,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_range(self) -> Result<(Primitive, Primitive), ValueError> {
+    pub fn to_range(&mut self) -> Result<(Primitive, Primitive), ValueError> {
         self.into_value().and_then(Primitive::to_range)
     }
 
@@ -492,11 +470,8 @@ impl ValueCell {
 
     // Cast value to string
     #[inline]
-    pub fn cast_to_string(self) -> Result<String, ValueError> {
-        match self {
-            Self::Default(v) => v.cast_to_string(),
-            _ => Err(ValueError::InvalidCastType(Type::String))
-        }
+    pub fn cast_to_string(&mut self) -> Result<String, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_string)
     }
 
     // Transform a value to a string
@@ -510,15 +485,14 @@ impl ValueCell {
 
     // Cast the value to the expected type
     pub fn mut_checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<(), ValueError> {
-        let take = std::mem::take(self);
-        let value = take.checked_cast_to_primitive_type(expected)?;
+        let value = self.checked_cast_to_primitive_type(expected)?;
         *self = value;
         Ok(())
     }
 
     // Cast without loss in the expected type
     #[inline]
-    pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Self, ValueError> {
+    pub fn checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<Self, ValueError> {
         match expected {
             Type::U8 => self.checked_cast_to_u8().map(Primitive::U8),
             Type::U16 => self.checked_cast_to_u16().map(Primitive::U16),
@@ -530,7 +504,7 @@ impl ValueCell {
             Type::Bool => self.cast_to_bool().map(Primitive::Boolean),
             Type::Optional(inner) => {
                 if self.is_null() {
-                    return Ok(self)
+                    return Ok(Default::default())
                 } else {
                     return self.checked_cast_to_primitive_type(inner)
                 }
@@ -547,79 +521,79 @@ impl ValueCell {
 
     // Cast to u8, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u8(self) -> Result<u8, ValueError> {
+    pub fn checked_cast_to_u8(&mut self) -> Result<u8, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u8)
     }
 
     // Cast to u16, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u16(self) -> Result<u16, ValueError> {
+    pub fn checked_cast_to_u16(&mut self) -> Result<u16, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u16)
     }
 
     // Cast to u32, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u32(self) -> Result<u32, ValueError> {
+    pub fn checked_cast_to_u32(&mut self) -> Result<u32, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u32)
     }
 
     // Cast to u64, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u64(self) -> Result<u64, ValueError> {
+    pub fn checked_cast_to_u64(&mut self) -> Result<u64, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u64)
     }
 
     // Cast to u128, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u128(self) -> Result<u128, ValueError> {
+    pub fn checked_cast_to_u128(&mut self) -> Result<u128, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u128)
     }
 
     // Cast to u256, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u256(self) -> Result<U256, ValueError> {
+    pub fn checked_cast_to_u256(&mut self) -> Result<U256, ValueError> {
         self.into_value().and_then(Primitive::checked_cast_to_u256)
     }
 
     // Cast value to bool
     #[inline]
-    pub fn cast_to_bool(self) -> Result<bool, ValueError> {
+    pub fn cast_to_bool(&mut self) -> Result<bool, ValueError> {
         self.into_value().and_then(Primitive::cast_to_bool)
     }
 
     // Cast value to u8
     #[inline]
-    pub fn cast_to_u8(self) -> Result<u8, ValueError> {
+    pub fn cast_to_u8(&mut self) -> Result<u8, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u8)
     }
 
     // Cast value to u16
     #[inline]
-    pub fn cast_to_u16(self) -> Result<u16, ValueError> {
+    pub fn cast_to_u16(&mut self) -> Result<u16, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u16)
     }
 
     // Cast value to u32
     #[inline]
-    pub fn cast_to_u32(self) -> Result<u32, ValueError> {
+    pub fn cast_to_u32(&mut self) -> Result<u32, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u32)
     }
 
     // Cast value to u64
     #[inline]
-    pub fn cast_to_u64(self) -> Result<u64, ValueError> {
+    pub fn cast_to_u64(&mut self) -> Result<u64, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u64)
     }
 
     // Cast value to u128
     #[inline]
-    pub fn cast_to_u128(self) -> Result<u128, ValueError> {
+    pub fn cast_to_u128(&mut self) -> Result<u128, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u128)
     }
 
     // Cast value to u256
     #[inline]
-    pub fn cast_to_u256(self) -> Result<U256, ValueError> {
+    pub fn cast_to_u256(&mut self) -> Result<U256, ValueError> {
         self.into_value().and_then(Primitive::cast_to_u256)
     }
 
@@ -632,9 +606,9 @@ impl ValueCell {
     }
 
     #[inline(always)]
-    pub fn into_value(self) -> Result<Primitive, ValueError> {
+    pub fn into_value(&mut self) -> Result<Primitive, ValueError> {
         match self {
-            Self::Default(v) => Ok(v),
+            Self::Default(v) => Ok(mem::take(v)),
             _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }

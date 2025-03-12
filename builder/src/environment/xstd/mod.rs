@@ -78,7 +78,7 @@ fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturn
 fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let msg = parameters.remove(1)
         .into_owned()?
-        .to_string()?;
+        .into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);

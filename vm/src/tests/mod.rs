@@ -20,7 +20,7 @@ fn run_internal(module: Module, environment: &Environment, id: u16) -> Result<Pr
     let mut vm = VM::new(&module, environment);
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     vm.invoke_chunk_id(id).unwrap();
-    vm.run().map(|v| v.into_value().unwrap())
+    vm.run().map(|mut v| v.into_value().unwrap())
 }
 
 #[track_caller]

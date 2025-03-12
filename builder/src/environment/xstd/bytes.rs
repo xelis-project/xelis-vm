@@ -39,7 +39,7 @@ fn push(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturn
     }
 
     let param = parameters.remove(0);
-    let value = param.into_owned()?;
+    let mut value = param.into_owned()?;
 
     array.push(value.into_value()?.to_u8()?);
 

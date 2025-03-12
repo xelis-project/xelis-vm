@@ -39,9 +39,9 @@ fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
 }
 
 fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let param = parameters.remove(0)
+    let mut param = parameters.remove(0)
         .into_owned()?;
-    let msg = param.to_string()?;
+    let msg = param.into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);

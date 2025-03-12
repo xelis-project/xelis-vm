@@ -22,8 +22,8 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
 }
 
 pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let end = stack.pop_stack()?.into_owned()?;
-    let start = stack.pop_stack()?.into_owned()?;
+    let mut end = stack.pop_stack()?.into_owned()?;
+    let mut start = stack.pop_stack()?.into_owned()?;
 
     if !start.is_number() || !end.is_number() {
         return Err(VMError::InvalidRangeType);

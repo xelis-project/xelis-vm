@@ -287,7 +287,7 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 
 pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let _type = manager.read_type()?;
-    let current = stack.pop_stack()?
+    let mut current = stack.pop_stack()?
         .into_owned()?;
 
     let value = match _type {

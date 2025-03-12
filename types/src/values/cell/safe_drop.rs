@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use serde::{Deserialize, Serialize};
 
 use super::ValueCell;
@@ -8,6 +10,20 @@ use super::ValueCell;
 #[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SafeDropValueCell(pub ValueCell);
+
+impl Deref for SafeDropValueCell {
+    type Target = ValueCell;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SafeDropValueCell {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Drop for SafeDropValueCell {
     fn drop(&mut self) {
