@@ -465,6 +465,14 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn into_opaque_type<T: Opaque>(&mut self) -> Result<T, ValueError> {
+        match mem::take(self) {
+            Self::Default(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
+            _ => Err(ValueError::ExpectedOpaque)
+        }
+    }
+
+    #[inline]
     pub fn is_serializable(&self) -> bool {
         match self {
             Self::Default(Primitive::Opaque(op)) => op.is_serializable(),
