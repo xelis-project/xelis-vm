@@ -27,6 +27,11 @@ impl ValueIterator {
                 v.get(index)
                 .map(|v| v.clone().into())
             },
+            ValueCell::Bytes(v) => {
+                let index = index.to_u32()? as usize;
+                v.get(index)
+                    .map(|v| Primitive::U8(*v).into())
+            },
             ValueCell::Default(Primitive::Range(range)) => {
                 // Only need to check top bound, because index is init by low bound
                 if index < range.1 {
