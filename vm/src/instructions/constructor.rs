@@ -15,7 +15,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
 
     let value = ValueCell::Array(array.into());
     let memory_usage = value.calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(value.into())?;
     Ok(InstructionResult::Nothing)
@@ -36,7 +36,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
 
     let value = Primitive::Range(Box::new((start.into_value()?, end.into_value()?)));
     let memory_usage = value.get_memory_usage();
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(value.into());
     Ok(InstructionResult::Nothing)
@@ -57,7 +57,7 @@ pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
 
     let map = ValueCell::Map(map);
     let memory_usage = map.calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(map.into());
     Ok(InstructionResult::Nothing)

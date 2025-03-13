@@ -8,7 +8,7 @@ pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
     let constant = backend.get_constant_with_id(index)?;
 
     let memory_usage = constant.calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(constant.clone().into())?;
     Ok(InstructionResult::Nothing)
@@ -28,7 +28,7 @@ pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, co
 
     let memory_usage = value.as_ref()?
         .calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(value.to_owned()?)?;
 
@@ -41,7 +41,7 @@ pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager
 
     let memory_usage = value.as_ref()?
         .calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(value.to_owned()?)?;
 
@@ -88,7 +88,7 @@ pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 
     let memory_usage = sub.as_ref()?
         .calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(sub);
     Ok(InstructionResult::Nothing)
@@ -153,7 +153,7 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 
     if let Some(v) = f.call_function(instance, arguments.into(), context)? {
         let memory_usage = v.calculate_memory_usage(context.memory_left())?;
-        context.increase_memory_usage_unchecked(memory_usage);
+        context.increase_memory_usage_unchecked(memory_usage)?;
 
         stack.push_stack(v.into())?;
     }

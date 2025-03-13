@@ -33,7 +33,7 @@ pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     if let Some(value) = manager.next_iterator()? {
         let memory_usage = value.as_ref()?
             .calculate_memory_usage(context.memory_left())?;
-        context.increase_memory_usage_unchecked(memory_usage);
+        context.increase_memory_usage_unchecked(memory_usage)?;
 
         stack.push_stack(value)?;
     } else {

@@ -146,14 +146,15 @@ impl<'ty, 'r> Context<'ty, 'r> {
             return Err(EnvironmentError::OutOfMemory);
         }
 
-        Ok(())
+        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
     }
 
-
     // Increase the memory usage by a specific amount
+    // The memory added is unchecked but we still check for the gas price of the memory
     #[inline]
-    pub fn increase_memory_usage_unchecked(&mut self, memory: usize) {
+    pub fn increase_memory_usage_unchecked(&mut self, memory: usize) -> Result<(), EnvironmentError> {
         self.current_memory += memory;
+        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
     }
 
     // Decrease the memory usage by a specific amount

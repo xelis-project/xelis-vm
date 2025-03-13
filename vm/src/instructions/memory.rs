@@ -27,7 +27,7 @@ pub fn memory_pop<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMan
     let v = manager.pop_register()?;
     let memory_usage = v.as_ref()?
         .calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage);
+    context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(v)?;
     Ok(InstructionResult::Nothing)
