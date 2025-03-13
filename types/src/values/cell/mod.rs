@@ -680,7 +680,7 @@ impl ValueCell {
                 Self::Array(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
                     stack.reserve(values.len());
-                    stack.extend(values.iter().rev());
+                    stack.extend(values);
                 },
                 Self::Bytes(bytes) => {
                     queue.push(QueueItem::Bytes(bytes.clone()));
