@@ -50,19 +50,33 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
     }))
 }
 
-fn insert(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let key = parameters.remove(0).into_owned()?;
+fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+    let param = parameters.remove(0);
+    let key_depth = param.depth();
+    let key = param.into_owned()?;
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
+
+    key.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(key_depth.saturating_add(1))
+    )?;
 
     let map = zelf?.as_mut_map()?;
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
 
-    let value = parameters.remove(0)
-        .into_owned()?;
+    let param = parameters.remove(0);
+    let value_depth = param.depth();
+    let value = param.into_owned()?;
+
+    value.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(value_depth.saturating_add(1))
+    )?;
+
     let previous = map
         .insert(key, value);
 

@@ -58,7 +58,7 @@ impl<'a> ChunkManager<'a> {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<Option<(*mut ValueCell, StackValue)>, VMError> {
+    pub fn set_register(&mut self, index: usize, mut value: StackValue) -> Result<Option<(*mut ValueCell, StackValue)>, VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -73,10 +73,8 @@ impl<'a> ChunkManager<'a> {
                 let old_ptr = self.registers[index].ptr();
 
                 // Check if we try to replace our Owned variant by a Pointer
-                if let StackValue::Pointer(ptr) = &value {
-                    if *ptr == old_ptr {
-                        return Ok(None)
-                    }
+                if value.ptr() == old_ptr {
+                    return Ok(None)
                 }
 
                 let old_value = mem::replace(&mut self.registers[index], value);

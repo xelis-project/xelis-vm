@@ -229,10 +229,16 @@ pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let owned = right.into_owned()?;
+
+    let left_depth = left.depth();
+    owned.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(left_depth)
+    )?;
 
     *left.as_mut()? = owned;
     Ok(InstructionResult::Nothing)
