@@ -20,3 +20,6 @@ criterion = "0.5.1"
 [[bench]]
 name = "vm"
 harness = false
+
+[features]
+infinite-cell-depth = ["xelis-types/infinite-cell-depth"]

@@ -17,6 +17,7 @@ pub use stack_value::*;
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
 #[derive(Debug, Eq, Serialize, Deserialize)]
+#[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Default(Primitive),
@@ -28,6 +29,7 @@ pub enum ValueCell {
     Map(HashMap<ValueCell, ValueCell>),
 }
 
+#[cfg(feature = "infinite-cell-depth")]
 impl Drop for ValueCell {
     fn drop(&mut self) {
         if matches!(self, Self::Default(_) | Self::Bytes(_)) {
@@ -742,13 +744,14 @@ impl fmt::Display for ValueCell {
     }
 }
 
+#[cfg(feature = "infinite-cell-depth")]
 impl Clone for ValueCell {
     fn clone(&self) -> Self {
         self.deep_clone()
     }
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "infinite-cell-depth", test))]
 mod tests {
     use super::*;
 
