@@ -75,7 +75,7 @@ pub struct ModuleValidator<'a> {
 
 impl<'a> ModuleValidator<'a> {
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 }
+        Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 * 1024 }
     }
 
     // Verify a constant and return the memory usage
