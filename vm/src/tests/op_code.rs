@@ -489,18 +489,74 @@ fn test_safe_sub_value_pointer() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
+    // push index
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(1);
 
-    // Load index 0
+    // Load index 0 from array
     chunk.emit_opcode(OpCode::ArrayCall);
 
-    // Store the pointer by overwriting its source 
+    // Store the pointer by overwriting its source
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
     // load the pointer stored again
     chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
+}
+
+
+#[test]
+fn test_safe_sub_intermediate_value_pointer() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    module.add_constant(Constant::Array(vec![Constant::Array(vec![Primitive::U64(10).into()])]));
+    module.add_constant(Primitive::U32(0));
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(0);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // push index
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0 from array
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Store the pointer by writing the pointer in #1
+    // So here we have the sub array
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(1);
+
+    // Load the stored pointer of above instruction
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(1);
+
+    // Repush index
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0 from sub array
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Copy the value so the pointer live in the stack
+    chunk.emit_opcode(OpCode::Copy);
+
+    // Now overwrite the origin array on which mem#1 depends
+    chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
     module.add_chunk(chunk);

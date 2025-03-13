@@ -8,6 +8,7 @@ pub enum StackValue {
     // Value is on stack directly
     Owned(ValueCell),
     Pointer {
+        origin: Option<*mut ValueCell>,
         ptr: *mut ValueCell,
         depth: usize
     }
@@ -42,7 +43,7 @@ impl StackValue {
                 let at_index = values.remove(index);
                 Ok(Self::Owned(at_index))
             },
-            Self::Pointer { ptr, depth } => unsafe {
+            Self::Pointer { origin, ptr, depth } => unsafe {
                 let cell = ptr.as_mut()
                     .ok_or(ValueError::InvalidPointer)?;
                 let values = cell.as_mut_vec()?;
@@ -52,6 +53,7 @@ impl StackValue {
                     .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
                 Ok(Self::Pointer {
+                    origin: origin.or(Some(ptr)),
                     ptr: at_index as *mut ValueCell,
                     depth: depth + 1
                 })
@@ -62,10 +64,12 @@ impl StackValue {
     pub fn reference(&mut self) -> Self {
         match self {
             Self::Owned(value) => Self::Pointer {
+                origin: None,
                 ptr: value as *mut ValueCell,
                 depth: 0
             },
-            Self::Pointer { ptr, depth } => Self::Pointer {
+            Self::Pointer { origin, ptr, depth } => Self::Pointer {
+                origin: *origin,
                 ptr: *ptr,
                 depth: *depth
             }
@@ -107,9 +111,9 @@ impl StackValue {
 
     // Make the path owned if the pointer is the same
     pub fn make_owned_if_same_ptr(&mut self, other: *mut ValueCell) -> Result<(), ValueError> {
-        if let Self::Pointer { ptr,  .. } = self {
+        if let Self::Pointer { origin, ptr,  .. } = self {
             unsafe {
-                if *ptr == other {
+                if *ptr == other || *origin == Some(other) {
                     let cell = ptr.as_ref()
                         .ok_or(ValueError::InvalidPointer)?;
                     *self = cell.clone().into();

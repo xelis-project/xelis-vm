@@ -15,10 +15,7 @@ pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMa
 pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()?;
     let value = stack.pop_stack()?;
-    if let Some((ptr, old)) = manager.set_register(index as usize, value)? {
-        stack.verify_pointers(ptr)?;
-        stack.add_to_garbage_collector(old);
-    }
+    manager.set_register(index as usize, value, stack)?;
 
     Ok(InstructionResult::Nothing)
 }
