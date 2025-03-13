@@ -11,7 +11,8 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], contains_key, 15, Some(Type::Bool));
     env.register_native_function("get", Some(_type.clone()), vec![("key", key_type.clone())], get, 15, Some(Type::Optional(Box::new(value_type.clone()))));
     env.register_native_function("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], insert, 30, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("remove", Some(_type.clone()), vec![("key", key_type.clone())], remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
+    env.register_native_function("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], shift_remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
+    env.register_native_function("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], swap_remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
     env.register_native_function("clear", Some(_type.clone()), vec![], clear, 5, None);
     env.register_native_function("keys", Some(_type.clone()), vec![], keys, 20, Some(Type::Array(Box::new(key_type.clone()))));
     env.register_native_function("values", Some(_type.clone()), vec![], values, 20, Some(Type::Array(Box::new(value_type.clone()))));
@@ -86,7 +87,26 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
     }))
 }
 
-fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn shift_remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+    let key = parameters.remove(0);
+
+    let k = key.as_ref()?;
+    if k.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
+    let map = zelf?.as_mut_map()?;
+    // pay based on O(N)
+    context.increase_gas_usage(map.len() as _)?;
+
+    let value = map.shift_remove(k);
+    Ok(Some(match value {
+        Some(v) => v,
+        None => Primitive::Null.into(),
+    }))
+}
+
+fn swap_remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
 
     let k = key.as_ref()?;
@@ -95,7 +115,7 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     }
 
     let value = zelf?.as_mut_map()?
-        .remove(k);
+        .swap_remove(k);
     Ok(Some(match value {
         Some(v) => v,
         None => Primitive::Null.into(),

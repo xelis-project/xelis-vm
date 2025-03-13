@@ -1,4 +1,5 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use indexmap::IndexMap;
 use xelis_environment::EnvironmentError;
 use xelis_types::{Primitive, ValueCell};
 
@@ -44,7 +45,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
 
 pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let len = manager.read_u8()?;
-    let mut map = HashMap::with_capacity(len as usize);
+    let mut map = IndexMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
         let key = stack.pop_stack()?.into_owned()?;

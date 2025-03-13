@@ -2,11 +2,11 @@ mod stack_value;
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fmt,
     hash::{Hash, Hasher},
     mem
 };
+use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
@@ -26,7 +26,7 @@ pub enum ValueCell {
 
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    Map(HashMap<ValueCell, ValueCell>),
+    Map(IndexMap<ValueCell, ValueCell>),
 }
 
 #[cfg(feature = "infinite-cell-depth")]
@@ -309,7 +309,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<ValueCell, ValueCell>, ValueError> {
+    pub fn as_map(&self) -> Result<&IndexMap<ValueCell, ValueCell>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -317,7 +317,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<ValueCell, ValueCell>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<ValueCell, ValueCell>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct),
