@@ -21,9 +21,8 @@ pub use stack_value::*;
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Default(Primitive),
-    Array(Vec<ValueCell>),
     Bytes(Vec<u8>),
-
+    Array(Vec<ValueCell>),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
     Map(IndexMap<ValueCell, ValueCell>),
@@ -72,8 +71,8 @@ impl PartialEq for ValueCell {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Default(a), Self::Default(b)) => a == b,
+            (Self::Bytes(a), Self::Bytes(b)) => a == b,
             (Self::Array(a), Self::Array(b)) => a == b,
-
             (Self::Map(a), Self::Map(b)) => a == b,
             _ => false
         }
