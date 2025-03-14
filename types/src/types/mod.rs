@@ -209,6 +209,10 @@ impl Type {
 
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
+        self.is_compatible_with_internal(other, true)
+    }
+
+    fn is_compatible_with_internal(&self, other: &Type, reverse: bool) -> bool {
         match other {
             Type::Range(inner) => match self {
                 Type::Range(inner2) => inner.is_compatible_with(inner2),
@@ -217,7 +221,15 @@ impl Type {
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
-                _ => self.is_generic(),
+                _ => self.is_generic() || other.is_compatible_with(self)
+            },
+            Type::Struct(a) => match self {
+                Type::Struct(b) => a == b,
+                _ => self.is_generic() || other.is_compatible_with(self) 
+            },
+            Type::Opaque(a) => match self {
+                Type::Opaque(b) => a == b,
+                _ => self.is_generic() || other.is_compatible_with(self)
             },
             Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
@@ -228,14 +240,14 @@ impl Type {
             Type::Optional(sub_type) => match self {
                 Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
                 Type::Any => true,
-                _ => *self == *other,
+                _ => *self == *other || self.is_compatible_with(&sub_type),
             },
             Type::Map(k, v) => match self {
                 Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
                 Type::Any => true,
                 _ => false
             },
-            o => *o == *self || self.is_generic(),
+            _ => *self == *other || self.is_generic() || (reverse && other.is_compatible_with_internal(self, false)),
         }
     }
 
@@ -401,6 +413,14 @@ impl Equivalent<StructType> for TypeId {
 mod tests {
     use std::hash::{DefaultHasher, Hash, Hasher};
     use super::*;
+
+    #[test]
+    fn test_compatibility_between_types() {
+        assert!(Type::Optional(Box::new(Type::Bool)).is_compatible_with(&Type::Bool));
+
+        let struct_type = StructType::new(0, Vec::new());
+        assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_compatible_with(&Type::Struct(struct_type.clone())));
+    }
 
     #[test]
     fn test_type_id_equivalent() {
