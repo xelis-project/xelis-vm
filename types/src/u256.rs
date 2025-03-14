@@ -277,14 +277,12 @@ impl U256 {
 
     /// Export the data as a big-endian byte array
     pub fn to_be_bytes(&self) -> [u8; 32] {
-        let bytes = [
-            self.0[3].to_be_bytes(),
-            self.0[2].to_be_bytes(),
-            self.0[1].to_be_bytes(),
-            self.0[0].to_be_bytes(),
-        ].concat();
+        let mut result = [0u8; 32];
+        for (i, part) in self.0.iter().enumerate() {
+            result[i * 8..(i + 1) * 8].copy_from_slice(&part.to_be_bytes());
+        }
 
-        bytes.try_into().unwrap()
+        result
     }
 
     /// Import the data from a big-endian byte array
@@ -299,14 +297,12 @@ impl U256 {
 
     /// Export the data as a little-endian byte array
     pub fn to_le_bytes(&self) -> [u8; 32] {
-        let bytes = [
-            self.0[0].to_le_bytes(),
-            self.0[1].to_le_bytes(),
-            self.0[2].to_le_bytes(),
-            self.0[3].to_le_bytes(),
-        ].concat();
+        let mut result = [0u8; 32];
+        for (i, part) in self.0.iter().enumerate() {
+            result[i * 8..(i + 1) * 8].copy_from_slice(&part.to_le_bytes());
+        }
 
-        bytes.try_into().unwrap()
+        result
     }
 
     /// Import the data from a little-endian byte array
@@ -855,5 +851,17 @@ mod tests {
         let a = U256([0, 0, 0, 1]);
         let b = U256([0, 0, 0, 2]);
         assert_eq!(a / b, U256::ZERO);
+    }
+
+    #[test]
+    fn test_from_to_be() {
+        let bytes = U256::ONE.to_be_bytes();
+        assert_eq!(U256::ONE, U256::from_be_bytes(bytes));
+    }
+
+    #[test]
+    fn test_from_to_le() {
+        let bytes = U256::ONE.to_le_bytes();
+        assert_eq!(U256::ONE, U256::from_le_bytes(bytes));
     }
 }
