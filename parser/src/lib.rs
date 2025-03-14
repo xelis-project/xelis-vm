@@ -566,7 +566,7 @@ impl<'a> Parser<'a> {
     // Verify the type of an expression, if not the same, try to cast it with no loss
     fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
         let _type = self.get_type_from_expression(None, &expr, context)?.into_owned();
-        if _type != *expected_type {
+        if !_type.is_compatible_with(expected_type) {
             match expr {
                 Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
                     .map_err(|e| err!(self, e.into()))?,
@@ -1216,7 +1216,7 @@ impl<'a> Parser<'a> {
                     let else_expr = self.read_expr(None, on_type, true, true, expected_type, context)?;
                     let else_type = self.get_type_from_expression(None, &else_expr, context)?;
                     
-                    if first_type != *else_type { // both expr should have the SAME type.
+                    if !first_type.is_compatible_with(&else_type) { // both expr should have the SAME type.
                         return Err(err!(self, ParserErrorKind::InvalidValueType(else_type.into_owned(), first_type)))
                     }
                     required_operator = !required_operator;
@@ -1428,7 +1428,7 @@ impl<'a> Parser<'a> {
             let key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
             let k_type = self.get_type_from_expression(None, &key, context)?;
             if let Some(t) = key_type.as_ref() {
-                if *k_type != *t {
+                if !k_type.is_compatible_with(t) {
                     return Err(err!(self, ParserErrorKind::InvalidValueType(k_type.into_owned(), t.clone())))
                 }
             } else {
@@ -1439,7 +1439,7 @@ impl<'a> Parser<'a> {
             let value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
             let v_type = self.get_type_from_expression(None, &value, context)?;
             if let Some(t) = value_type.as_ref() {
-                if *v_type != *t {
+                if !v_type.is_compatible_with(t) {
                     return Err(err!(self, ParserErrorKind::InvalidValueType(v_type.into_owned(), t.clone())))
                 }
             } else {
