@@ -1,6 +1,29 @@
-use xelis_types::{Type, Primitive, ValueCell};
+use xelis_types::{Constant, Primitive, Type, ValueCell};
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
 use super::EnvironmentBuilder;
+use paste::paste;
+
+macro_rules! array_number_with_size {
+    ($env: expr, $op: ident, $t: ident) => {
+        paste! {
+            fn [<with_size_ $op>](params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
+                let count = params[0].as_u32()? as usize;
+                let values = vec![Constant::Default(Primitive::$t(Default::default())); count];
+                Ok(Constant::Array(values))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_const_function(
+                // Function name as a string
+                "with_size",
+                Type::Array(Box::new(Type::$t)),
+                vec![("size", Type::U32)],
+                // The function ptr
+                [<with_size_ $op>]
+            );
+        }
+    };
+}
 
 pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::T(0)))), vec![], len, 1, Some(Type::U32));
@@ -12,6 +35,16 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("get", Some(Type::Array(Box::new(Type::T(0)))), vec![("index", Type::U32)], get, 1, Some(Type::Optional(Box::new(Type::T(0)))));
     env.register_native_function("first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
     env.register_native_function("last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
+
+    // Constant function
+    env.register_const_function("with", Type::Array(Box::new(Type::T(0))), vec![("size", Type::U32), ("default", Type::T(0))], const_with);
+
+    array_number_with_size!(env, u8, U8);
+    array_number_with_size!(env, u16, U16);
+    array_number_with_size!(env, u32, U32);
+    array_number_with_size!(env, u64, U64);
+    array_number_with_size!(env, u128, U128);
+    array_number_with_size!(env, u256, U256);
 }
 
 // native functions
@@ -130,4 +163,11 @@ fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     } else {
         Ok(Some(Primitive::Null.into()))
     }
+}
+
+fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
+    let default = params.remove(1);
+    let count = params[0].as_u32()? as usize;
+    let values = vec![default; count];
+    Ok(Constant::Array(values))
 }
