@@ -146,6 +146,8 @@ pub enum ParserErrorKind<'a> {
     InvalidTypeInArray(Type, Type),
     #[error("invalid value type: got '{0}' expected '{1}'")]
     InvalidValueType(Type, Type),
+    #[error("null is not allowed for type '{0}'")]
+    NullNotAllowed(Type),
     #[error("no value type found")]
     NoValueType,
     #[error("empty array constructor")]

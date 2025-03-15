@@ -565,7 +565,17 @@ impl<'a> Parser<'a> {
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
     fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
-        let _type = self.get_type_from_expression(None, &expr, context)?.into_owned();
+        let _type = match self.get_type_from_expression_internal(None, &expr, context)? {
+            Some(v) => v.into_owned(),
+            None => {
+                if expected_type.allow_null() {
+                    return Ok(())
+                }
+
+                return Err(err!(self, ParserErrorKind::NullNotAllowed(expected_type.clone())))
+            }
+        };
+
         if !_type.is_compatible_with(expected_type) {
             match expr {
                 Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
@@ -3619,6 +3629,24 @@ mod tests {
             Token::Identifier("foo"),
             Token::ParenthesisOpen,
             Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_assign_struct_field_null() {
+        let mut env = EnvironmentBuilder::default();
+        env.register_structure("Message", vec![("message_id", Type::Optional(Box::new(Type::U64)))]);
+
+        let tokens = vec![
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("message_id"),
+            Token::Colon,
+            Token::Value(Literal::Null),
+            Token::BraceClose
         ];
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
