@@ -565,8 +565,14 @@ impl<'a> Parser<'a> {
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
     fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
-        let _type = match self.get_type_from_expression_internal(None, &expr, context)? {
-            Some(v) => v.into_owned(),
+        let ty = self.get_type_from_expression_internal(None, &expr, context)?
+            .map(Cow::into_owned);
+        self.is_type_compatible(expr, ty.as_ref(), expected_type)
+    }
+
+    fn is_type_compatible(&self, expr: &mut Expression, got: Option<&Type>, expected_type: &Type) -> Result<(), ParserError<'a>> {
+        let _type = match got {
+            Some(v) => v,
             None => {
                 if expected_type.allow_null() {
                     return Ok(())
@@ -580,9 +586,10 @@ impl<'a> Parser<'a> {
             match expr {
                 Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
                     .map_err(|e| err!(self, e.into()))?,
-                _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type, expected_type.clone())))
+                _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type.clone(), expected_type.clone())))
             }
         }
+
         Ok(())
     }
 
@@ -1331,6 +1338,10 @@ impl<'a> Parser<'a> {
     }
 
     fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
+        if expected_type.is_generic() {
+            return Ok(true)
+        }
+
         if let Expression::Constant(v) = expr {
             let taken = mem::take(v); 
             *v = taken.checked_cast_to_primitive_type(expected_type)
@@ -1435,25 +1446,25 @@ impl<'a> Parser<'a> {
 
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
-            let key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
-            let k_type = self.get_type_from_expression(None, &key, context)?;
-            if let Some(t) = key_type.as_ref() {
-                if !k_type.is_compatible_with(t) {
-                    return Err(err!(self, ParserErrorKind::InvalidValueType(k_type.into_owned(), t.clone())))
-                }
+            let mut key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
+            let expr_type = self.get_type_from_expression_internal(None, &key, context)?
+                .map(Cow::into_owned);
+
+            if let Some(ty) = &key_type {
+                self.is_type_compatible(&mut key, expr_type.as_ref(), ty)?;
             } else {
-                key_type = Some(k_type.into_owned());
+                key_type = expr_type;
             }
 
             self.expect_token(Token::Colon)?;
-            let value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
-            let v_type = self.get_type_from_expression(None, &value, context)?;
-            if let Some(t) = value_type.as_ref() {
-                if !v_type.is_compatible_with(t) {
-                    return Err(err!(self, ParserErrorKind::InvalidValueType(v_type.into_owned(), t.clone())))
-                }
+            let mut value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
+            let expr_type = self.get_type_from_expression_internal(None, &value, context)?
+                .map(Cow::into_owned);
+
+            if let Some(ty) = &value_type {
+                self.is_type_compatible(&mut value, expr_type.as_ref(), ty)?;
             } else {
-                value_type = Some(v_type.into_owned());
+                value_type = expr_type;
             }
 
             expressions.push((key, value));

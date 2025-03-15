@@ -221,29 +221,29 @@ impl Type {
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
-                _ => self.is_generic() || other.is_compatible_with(self)
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
             },
             Type::Struct(a) => match self {
                 Type::Struct(b) => a == b,
-                _ => self.is_generic() || other.is_compatible_with(self) 
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
             },
             Type::Opaque(a) => match self {
                 Type::Opaque(b) => a == b,
-                _ => self.is_generic() || other.is_compatible_with(self)
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
             },
             Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
-                Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                Type::Array(sub) => sub.is_compatible_with_internal(sub_type.as_ref(), false),
                 Type::Any => true,
-                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
+                _ => *self == *other || self.is_compatible_with_internal(sub_type.as_ref(), false),
             },
             Type::Optional(sub_type) => match self {
-                Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                Type::Optional(sub) => sub.is_compatible_with_internal(sub_type.as_ref(), false),
                 Type::Any => true,
-                _ => *self == *other || self.is_compatible_with(&sub_type),
+                _ => *self == *other || self.is_compatible_with_internal(&sub_type, false),
             },
             Type::Map(k, v) => match self {
-                Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
+                Type::Map(k2, v2) => k.is_compatible_with_internal(k2, false) && v.is_compatible_with_internal(v2, false),
                 Type::Any => true,
                 _ => false
             },

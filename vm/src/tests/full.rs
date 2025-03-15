@@ -1304,3 +1304,25 @@ fn test_fn_params_immutable() {
         Primitive::U64(1000)
     );
 }
+
+#[test]
+fn test_types_compatibility() {
+    let mut env = EnvironmentBuilder::default();
+    env.register_native_function("test", None, vec![], |_, _, _| todo!(), 0, Some(Type::Any)); 
+
+    prepare_module_with("
+    struct Foo {}
+
+    entry main() {
+        let m: map<optional<optional<Foo>>, u64> = {
+            null: 0
+        };
+        let _: map<optional<optional<Foo>>, u64> = {
+            Foo {}: 0
+        };
+
+        let _: u64 = test() + 1u64;
+
+        return 0
+    }", env);
+}
