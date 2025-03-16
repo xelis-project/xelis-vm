@@ -42,11 +42,11 @@ macro_rules! err {
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
+            (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
+            (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
+            (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
+            (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
             _ => return None
         }
     }};
@@ -59,16 +59,16 @@ macro_rules! op_div {
                 return None
             }
     
-            Value::$t($a / $b)
+            Primitive::$t($a / $b)
         }
     };
     ($a: expr, $b: expr) => {
         match ($a, $b) {
-            (Value::U8(a), Value::U8(b)) => op_div!(U8, a, b),
-            (Value::U16(a), Value::U16(b)) => op_div!(U16, a, b),
-            (Value::U32(a), Value::U32(b)) => op_div!(U32, a, b),
-            (Value::U64(a), Value::U64(b)) => op_div!(U64, a, b),
-            (Value::U128(a), Value::U128(b)) => op_div!(U128, a, b),
+            (Primitive::U8(a), Primitive::U8(b)) => op_div!(U8, a, b),
+            (Primitive::U16(a), Primitive::U16(b)) => op_div!(U16, a, b),
+            (Primitive::U32(a), Primitive::U32(b)) => op_div!(U32, a, b),
+            (Primitive::U64(a), Primitive::U64(b)) => op_div!(U64, a, b),
+            (Primitive::U128(a), Primitive::U128(b)) => op_div!(U128, a, b),
             _ => return None
         }
     };
@@ -77,12 +77,12 @@ macro_rules! op_div {
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
-            (Value::U8(a), Value::U8(b)) => Value::Boolean(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::Boolean(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::Boolean(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::Boolean(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::Boolean(a $op b),
+            (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U16(a), Primitive::U16(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U32(a), Primitive::U32(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U64(a), Primitive::U64(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
             _ => return None
         }
     }};
@@ -91,12 +91,12 @@ macro_rules! op_bool {
 macro_rules! op_num_with_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a $op b),
-            (Value::U8(a), Value::U8(b)) => Value::U8(a $op b),
-            (Value::U16(a), Value::U16(b)) => Value::U16(a $op b),
-            (Value::U32(a), Value::U32(b)) => Value::U32(a $op b),
-            (Value::U64(a), Value::U64(b)) => Value::U64(a $op b),
-            (Value::U128(a), Value::U128(b)) => Value::U128(a $op b),
+            (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
+            (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
+            (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
+            (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
+            (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
+            (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
             _ => return None
         }
     }};
@@ -638,14 +638,31 @@ impl<'a> Parser<'a> {
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
     fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
-        let _type = self.get_type_from_expression(None, &expr, context)?.into_owned();
-        if _type != *expected_type {
+        let ty = self.get_type_from_expression_internal(None, &expr, context)?
+            .map(Cow::into_owned);
+        self.is_type_compatible(expr, ty.as_ref(), expected_type)
+    }
+
+    fn is_type_compatible(&self, expr: &mut Expression, got: Option<&Type>, expected_type: &Type) -> Result<(), ParserError<'a>> {
+        let _type = match got {
+            Some(v) => v,
+            None => {
+                if expected_type.allow_null() {
+                    return Ok(())
+                }
+
+                return Err(err!(self, ParserErrorKind::NullNotAllowed(expected_type.clone())))
+            }
+        };
+
+        if !_type.is_compatible_with(expected_type) {
             match expr {
                 Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
                     .map_err(|e| err!(self, e.into()))?,
-                _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type, expected_type.clone())))
+                _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type.clone(), expected_type.clone())))
             }
         }
+
         Ok(())
     }
 
@@ -770,11 +787,11 @@ impl<'a> Parser<'a> {
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Value, right: &Value) -> Option<Value> {
+    fn execute_operator(&self, op: &Operator, left: &Primitive, right: &Primitive) -> Option<Primitive> {
         Some(match op {
             Operator::Add => {
                 if left.is_string() || right.is_string() {
-                    Value::String(format!("{}{}", left, right))
+                    Primitive::String(format!("{}{}", left, right))
                 } else {
                     op!(left, right, +)
                 }
@@ -786,11 +803,11 @@ impl<'a> Parser<'a> {
             Operator::Pow => {
                 let pow_n = right.as_u32().ok()?;
                 match left {
-                    Value::U8(v) => Value::U8(v.pow(pow_n)),
-                    Value::U16(v) => Value::U16(v.pow(pow_n)),
-                    Value::U32(v) => Value::U32(v.pow(pow_n)),
-                    Value::U64(v) => Value::U64(v.pow(pow_n)),
-                    Value::U128(v) => Value::U128(v.pow(pow_n)),
+                    Primitive::U8(v) => Primitive::U8(v.pow(pow_n)),
+                    Primitive::U16(v) => Primitive::U16(v.pow(pow_n)),
+                    Primitive::U32(v) => Primitive::U32(v.pow(pow_n)),
+                    Primitive::U64(v) => Primitive::U64(v.pow(pow_n)),
+                    Primitive::U128(v) => Primitive::U128(v.pow(pow_n)),
                     _ => return None
                 }
             },
@@ -801,14 +818,14 @@ impl<'a> Parser<'a> {
             Operator::BitwiseShl => op!(left, right, <<),
             Operator::BitwiseShr => op!(left, right, >>),
 
-            Operator::Eq => Value::Boolean(left == right),
-            Operator::Neq => Value::Boolean(left != right),
+            Operator::Eq => Primitive::Boolean(left == right),
+            Operator::Neq => Primitive::Boolean(left != right),
             Operator::Gte => op_bool!(left, right, >=),
             Operator::Gt => op_bool!(left, right, >),
             Operator::Lte => op_bool!(left, right, <=),
             Operator::Lt => op_bool!(left, right, <),
-            Operator::And => Value::Boolean(left.as_bool().ok()? && right.as_bool().ok()?),
-            Operator::Or => Value::Boolean(left.as_bool().ok()? || right.as_bool().ok()?),
+            Operator::And => Primitive::Boolean(left.as_bool().ok()? && right.as_bool().ok()?),
+            Operator::Or => Primitive::Boolean(left.as_bool().ok()? || right.as_bool().ok()?),
             Operator::Assign(_) => return None,
         })
     }
@@ -826,13 +843,20 @@ impl<'a> Parser<'a> {
         Some(match expr {
             Expression::Constant(v) => v.clone(),
             Expression::ArrayConstructor(values) => {
-                let mut new_values = Vec::with_capacity(values.len());
+                let len = values.len();
+                let mut new_values = Vec::with_capacity(len);
                 for value in values {
-                    let v = self.try_convert_expr_to_value(value)?;
-                    *value = Expression::Constant(v.clone());
-
-                    new_values.push(v);
+                    if let Some(v) = self.try_convert_expr_to_value(value) {
+                        *value = Expression::Constant(v.clone());
+                        new_values.push(v);
+                    }
                 }
+
+                // We can't fully upgrade it to const
+                if len != new_values.len() {
+                    return None
+                }
+
                 Constant::Array(new_values)
             },
             Expression::RangeConstructor(min, max) => {
@@ -852,17 +876,23 @@ impl<'a> Parser<'a> {
                 let min = min_value?.into_value().ok()?;
                 let max = max_value?.into_value().ok()?;
 
-                let value_type = min.get_type().ok()?;
-                Constant::Default(Value::Range(Box::new(min), Box::new(max), value_type))
+                Constant::Default(Primitive::Range(Box::new((min, max))))
             },
             Expression::StructConstructor(fields, struct_type) => {
-                let mut new_fields = Vec::with_capacity(fields.len());
+                let len = fields.len();
+                let mut new_fields = Vec::with_capacity(len);
                 for field in fields {
-                    let v = self.try_convert_expr_to_value(field)?;
-                    *field = Expression::Constant(v.clone());
-                    new_fields.push(v);
+                    if let Some(v) = self.try_convert_expr_to_value(field) {
+                        *field = Expression::Constant(v.clone());
+                        new_fields.push(v);
+                    }
                 }
-                Constant::Struct(new_fields, struct_type.clone())
+
+                if len != new_fields.len() {
+                    return None
+                }
+
+                Constant::Typed(new_fields, DefinedType::Struct(struct_type.clone()))
             },
             Expression::EnumConstructor(fields, enum_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
@@ -871,7 +901,7 @@ impl<'a> Parser<'a> {
                     *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
-                Constant::Enum(new_fields, enum_type.clone())
+                Constant::Typed(new_fields, DefinedType::Enum(enum_type.clone()))
             },
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = IndexMap::with_capacity(entries.len());
@@ -914,7 +944,7 @@ impl<'a> Parser<'a> {
             },
             Expression::IsNot(expr) => {
                 let v = self.try_convert_expr_to_value(expr)?;
-                Constant::Default(Value::Boolean(!v.to_bool().ok()?))
+                Constant::Default(Primitive::Boolean(!v.to_bool().ok()?))
             },
             Expression::Operator(op, left, right) => {
                 let l = self.try_convert_expr_to_value(left);
@@ -995,10 +1025,15 @@ impl<'a> Parser<'a> {
 
                     let left_type = self.get_type_from_expression(None, &left, context)?
                         .into_owned();
-                    let right_type = self.get_type_from_expression(None, &right, context)?
-                        .into_owned();
+                    let right_type = self.get_type_from_expression_internal(None, &right, context)?;
+                    if right_type.is_none() && !left_type.allow_null() {
+                        return Err(err!(self, ParserErrorKind::EmptyValue(right)));
+                    }
 
-                    self.verify_operator(&op, left_type, right_type, &mut left, &mut right)?;
+                    if let Some(right_type) = right_type {
+                        self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
+                    }
+
                     collapse_queue.push(Expression::Operator(op, Box::new(left), Box::new(right)));
                 },
                 _ => {}
@@ -1070,7 +1105,7 @@ impl<'a> Parser<'a> {
                 Token::BracketOpen => {
                     match queue.pop() {
                         Some(QueueItem::Expression(v)) => {
-                            if !self.get_type_from_expression(on_type, &v, context)?.is_array() {
+                            if !self.get_type_from_expression(on_type, &v, context)?.support_array_call() {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
 
@@ -1096,7 +1131,8 @@ impl<'a> Parser<'a> {
                             required_operator = !required_operator;
                             expr
                         },
-                        None => { // require at least one value in a array constructor
+                        None => {
+                            // require at least one value in a array constructor
                             let mut elements: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = None;
                             while self.peek_is_not(Token::BracketClose) {
@@ -1294,24 +1330,24 @@ impl<'a> Parser<'a> {
                 },
                 Token::Value(value) => Expression::Constant(
                     Constant::Default(match value {
-                        Literal::U8(n) => Value::U8(n),
-                        Literal::U16(n) => Value::U16(n),
-                        Literal::U32(n) => Value::U32(n),
-                        Literal::U64(n) => Value::U64(n),
-                        Literal::U128(n) => Value::U128(n),
-                        Literal::U256(n) => Value::U256(n),
+                        Literal::U8(n) => Primitive::U8(n),
+                        Literal::U16(n) => Primitive::U16(n),
+                        Literal::U32(n) => Primitive::U32(n),
+                        Literal::U64(n) => Primitive::U64(n),
+                        Literal::U128(n) => Primitive::U128(n),
+                        Literal::U256(n) => Primitive::U256(n),
                         Literal::Number(n) => match expected_type {
-                            Some(Type::U8) => Value::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
-                            Some(Type::U16) => Value::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
-                            Some(Type::U32) => Value::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
-                            Some(Type::U64) => Value::U64(n),
-                            Some(Type::U128) => Value::U128(n as u128),
-                            Some(Type::U256) => Value::U256(U256::from(n)),
-                            _ => Value::U64(n)
+                            Some(Type::U8) => Primitive::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
+                            Some(Type::U16) => Primitive::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
+                            Some(Type::U32) => Primitive::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
+                            Some(Type::U64) => Primitive::U64(n),
+                            Some(Type::U128) => Primitive::U128(n as u128),
+                            Some(Type::U256) => Primitive::U256(U256::from(n)),
+                            _ => Primitive::U64(n)
                         },
-                        Literal::String(s) => Value::String(s.into_owned()),
-                        Literal::Bool(b) => Value::Boolean(b),
-                        Literal::Null => Value::Null
+                        Literal::String(s) => Primitive::String(s.into_owned()),
+                        Literal::Bool(b) => Primitive::Boolean(b),
+                        Literal::Null => Primitive::Null
                     })
                 ),
                 Token::Dot => {
@@ -1390,7 +1426,7 @@ impl<'a> Parser<'a> {
                     let else_expr = self.read_expr(None, on_type, true, true, expected_type, context)?;
                     let else_type = self.get_type_from_expression(None, &else_expr, context)?;
                     
-                    if first_type != *else_type { // both expr should have the SAME type.
+                    if !first_type.is_compatible_with(&else_type) { // both expr should have the SAME type.
                         return Err(err!(self, ParserErrorKind::InvalidValueType(else_type.into_owned(), first_type)))
                     }
                     required_operator = !required_operator;
@@ -1495,6 +1531,10 @@ impl<'a> Parser<'a> {
     }
 
     fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
+        if expected_type.is_generic() {
+            return Ok(true)
+        }
+
         if let Expression::Constant(v) = expr {
             let taken = mem::take(v); 
             *v = taken.checked_cast_to_primitive_type(expected_type)
@@ -1599,25 +1639,25 @@ impl<'a> Parser<'a> {
 
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
-            let key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
-            let k_type = self.get_type_from_expression(None, &key, context)?;
-            if let Some(t) = key_type.as_ref() {
-                if *k_type != *t {
-                    return Err(err!(self, ParserErrorKind::InvalidValueType(k_type.into_owned(), t.clone())))
-                }
+            let mut key = self.read_expr(Some(&Token::Colon), None, true, true, key_type.as_ref(), context)?;
+            let expr_type = self.get_type_from_expression_internal(None, &key, context)?
+                .map(Cow::into_owned);
+
+            if let Some(ty) = &key_type {
+                self.is_type_compatible(&mut key, expr_type.as_ref(), ty)?;
             } else {
-                key_type = Some(k_type.into_owned());
+                key_type = expr_type;
             }
 
             self.expect_token(Token::Colon)?;
-            let value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
-            let v_type = self.get_type_from_expression(None, &value, context)?;
-            if let Some(t) = value_type.as_ref() {
-                if *v_type != *t {
-                    return Err(err!(self, ParserErrorKind::InvalidValueType(v_type.into_owned(), t.clone())))
-                }
+            let mut value = self.read_expr(None, None, true, true, value_type.as_ref(), context)?;
+            let expr_type = self.get_type_from_expression_internal(None, &value, context)?
+                .map(Cow::into_owned);
+
+            if let Some(ty) = &value_type {
+                self.is_type_compatible(&mut value, expr_type.as_ref(), ty)?;
             } else {
-                value_type = Some(v_type.into_owned());
+                value_type = expr_type;
             }
 
             expressions.push((key, value));
@@ -1674,7 +1714,7 @@ impl<'a> Parser<'a> {
 
         let value: Expression = if self.peek_is(Token::OperatorAssign) {
             self.expect_token(Token::OperatorAssign)?;
-            let mut expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
+            let expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
 
             let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
                 Ok(opt_type) => match opt_type {
@@ -1686,7 +1726,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Err(e) => match e.kind { // support empty array declaration
-                    ParserErrorKind::EmptyArrayConstructor if value_type.is_array() => Cow::Owned(value_type.clone()),
+                    ParserErrorKind::EmptyArrayConstructor if value_type.support_array_call() => Cow::Owned(value_type.clone()),
                     _ => return Err(e)
                 }
             };
@@ -1697,10 +1737,6 @@ impl<'a> Parser<'a> {
                     if !expr_type.is_compatible_with(inner) {
                         return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
                     }
-
-                    if let Expression::Constant(c) = expr {
-                        expr = Expression::Constant(c.to_optional());
-                    }
                 } else {
                     return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
                 }
@@ -1708,7 +1744,7 @@ impl<'a> Parser<'a> {
 
             expr
         } else if value_type.is_optional() {
-            Expression::Constant(Constant::Default(Value::Null))
+            Expression::Constant(Constant::Default(Primitive::Null))
         } else {
             return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
@@ -2389,7 +2425,7 @@ mod tests {
         };
         assert_eq!(
             *value,
-            Expression::Constant(Constant::Array(vec![Value::U64(1).into(), Value::U64(2).into()]))
+            Expression::Constant(Constant::Array(vec![Primitive::U64(1).into(), Primitive::U64(2).into()]))
         )
     }
 
@@ -2439,7 +2475,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Default(xelis_types::Value::U64(25)))
+            Expression::Constant(Constant::Default(xelis_types::Primitive::U64(25)))
         );
 
         // Compare the parsed AST to the expected AST
@@ -2474,7 +2510,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Default(xelis_types::Value::U64(25 - 8)))
+            Expression::Constant(Constant::Default(xelis_types::Primitive::U64(25 - 8)))
         );
 
         // Compare the parsed AST to the expected AST
@@ -2506,14 +2542,14 @@ mod tests {
         ];
     
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U8, "MAX", Value::U8(u8::MAX).into());
+        env.register_constant(Type::U8, "MAX", Primitive::U8(u8::MAX).into());
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Default(xelis_types::Value::U64(25+255)))
+            Expression::Constant(Constant::Default(xelis_types::Primitive::U64(25+255)))
         );
 
         // Compare the parsed AST to the expected AST
@@ -2593,7 +2629,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Optional(Box::new(Type::Bool)),
-                    value: Expression::Constant(Value::Null.into())
+                    value: Expression::Constant(Primitive::Null.into())
                 }
             )
         );
@@ -2623,7 +2659,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Optional(Box::new(Type::Bool)),
-                    value: Expression::Constant(Value::Null.into())
+                    value: Expression::Constant(Primitive::Null.into())
                 }
             )
         );
@@ -2647,7 +2683,7 @@ mod tests {
         let constant = constants.iter().next().unwrap();
 
         assert_eq!(constant.value_type, Type::U64);
-        assert_eq!(constant.value, Value::U64(10).into());
+        assert_eq!(constant.value, Primitive::U64(10).into());
     }
 
     #[test]
@@ -2677,10 +2713,8 @@ mod tests {
                     id: 0,
                     value_type: Type::Range(Box::new(Type::U64)),
                     value: Expression::Constant(
-                        Value::Range(
-                            Box::new(Value::U64(0)),
-                            Box::new(Value::U64(10)),
-                            Type::U64
+                        Primitive::Range(
+                            Box::new((Primitive::U64(0), Primitive::U64(10)))
                         ).into()
                     )
                 }
@@ -2713,7 +2747,7 @@ mod tests {
                 DeclarationStatement {
                     id: 0,
                     value_type: Type::Optional(Box::new(Type::Optional(Box::new(Type::U64)))),
-                    value: Expression::Constant(Value::Null.into())
+                    value: Expression::Constant(Primitive::Null.into())
                 }
             )
         );
@@ -2774,7 +2808,7 @@ mod tests {
         let statements = test_parser_statement(tokens, Vec::new());
 
         let mut map = IndexMap::new();
-        map.insert(Value::U64(0).into(), Value::String("hello".to_owned()).into());
+        map.insert(Primitive::U64(0).into(), Primitive::String("hello".to_owned()).into());
 
         assert_eq!(
             statements[0],
@@ -2878,10 +2912,8 @@ mod tests {
             Statement::ForEach(
                 0,
                 Expression::Constant(
-                    Value::Range(
-                        Box::new(Value::U64(0)),
-                        Box::new(Value::U64(10)),
-                        Type::U64
+                    Primitive::Range(
+                        Box::new((Primitive::U64(0), Primitive::U64(10)))
                     ).into()
                 ),
                 Vec::new()
@@ -2955,9 +2987,9 @@ mod tests {
                     value: Expression::Constant(
                         Constant::Array(
                             vec![
-                                Value::U64(1).into(),
-                                Value::U64(2).into(),
-                                Value::U64(3).into()
+                                Primitive::U64(1).into(),
+                                Primitive::U64(2).into(),
+                                Primitive::U64(3).into()
                             ]
                         )
                     )
@@ -2965,7 +2997,7 @@ mod tests {
             ),
             Statement::Return(Some(Expression::Operator(
                 Operator::Gt,
-                Box::new(Expression::Constant(Value::U32(0).into())),
+                Box::new(Expression::Constant(Primitive::U32(0).into())),
                 Box::new(Expression::FunctionCall(
                     Some(Box::new(Expression::Variable(0))),
                     0,
@@ -3236,7 +3268,7 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::U64(10).into()))
                     ),
                     Vec::new(),
                     None
@@ -3256,12 +3288,12 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::U64(10).into()))
                     ),
                     Vec::new(),
                     None
                 ),
-                Statement::Return(Some(Expression::Constant(Value::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Primitive::U64(0).into())))
             ])
         ]);
     }
@@ -3299,7 +3331,7 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Value::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::U64(10).into()))
                     ),
                     Vec::new(),
                     Some(vec![
@@ -3307,51 +3339,51 @@ mod tests {
                             Expression::Operator(
                                 Operator::Lt,
                                 Box::new(Expression::Variable(0)),
-                                Box::new(Expression::Constant(Value::U64(20).into()))
+                                Box::new(Expression::Constant(Primitive::U64(20).into()))
                             ),
                             Vec::new(),
                             Some(Vec::new())
                         )
                     ])
                 ),
-                Statement::Return(Some(Expression::Constant(Value::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Primitive::U64(0).into())))
             ])                
         ]);
     }
 
     #[test]
     fn test_ends_with_return() {
-        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Default(Value::U64(0)))));
+        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Default(Primitive::U64(0)))));
         let statements = vec![RETURN];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
-        let statements = vec![RETURN, Statement::Expression(Expression::Constant(Value::U64(0).into()))];
+        let statements = vec![RETURN, Statement::Expression(Expression::Constant(Primitive::U64(0).into()))];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if ... return
-        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), None), RETURN];
+        let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), None), RETURN];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
-        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), None)];
+        let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), None)];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if else
-        let statements = vec![Statement::If(Expression::Constant(Value::Boolean(true).into()), Vec::new(), Some(Vec::new()))];
+        let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), Some(Vec::new()))];
         assert!(!Parser::ends_with_return(&statements).unwrap());
 
         // if return else return
         let statements = vec![
-            Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
+            Statement::If(Expression::Constant(Primitive::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
         ];
         assert!(Parser::ends_with_return(&statements).unwrap());
 
         // if return else if return else no return
         let statements = vec![
             Statement::If(
-                Expression::Constant(Value::Boolean(true).into()),
+                Expression::Constant(Primitive::Boolean(true).into()),
                 vec![RETURN],
                 Some(vec![
-                    Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], None)
+                    Statement::If(Expression::Constant(Primitive::Boolean(true).into()), vec![RETURN], None)
                 ])
             )
         ];
@@ -3360,10 +3392,10 @@ mod tests {
         // if return else if return else return
         let statements = vec![
             Statement::If(
-                Expression::Constant(Value::Boolean(true).into()),
+                Expression::Constant(Primitive::Boolean(true).into()),
                 vec![RETURN],
                 Some(vec![
-                    Statement::If(Expression::Constant(Value::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
+                    Statement::If(Expression::Constant(Primitive::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
                 ])
             )
         ];
@@ -3538,7 +3570,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U64, "MAX", Value::U64(u64::MAX).into());
+        env.register_constant(Type::U64, "MAX", Primitive::U64(u64::MAX).into());
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
@@ -3722,7 +3754,7 @@ mod tests {
     fn test_const_fn_call() {
         let mut env = EnvironmentBuilder::new();
         env.register_const_function("test", Type::String, vec![("name", Type::String)], |params| {
-            Ok(Constant::Default(Value::String(format!("hello {}", params[0].as_string()?))))
+            Ok(Constant::Default(Primitive::String(format!("hello {}", params[0].as_string()?))))
         });
 
         // let name: string = String::test("world");
@@ -3748,7 +3780,7 @@ mod tests {
         };
 
         assert_eq!(variable.value_type, Type::String);
-        assert_eq!(variable.value, Expression::Constant(Value::String("hello world".to_owned()).into()));
+        assert_eq!(variable.value, Expression::Constant(Primitive::String("hello world".to_owned()).into()));
     }
 
     #[test]
@@ -3844,6 +3876,24 @@ mod tests {
             Token::Identifier("foo"),
             Token::ParenthesisOpen,
             Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_assign_struct_field_null() {
+        let mut env = EnvironmentBuilder::default();
+        env.register_structure("Message", vec![("message_id", Type::Optional(Box::new(Type::U64)))]);
+
+        let tokens = vec![
+            Token::Identifier("Message"),
+            Token::BraceOpen,
+            Token::Identifier("message_id"),
+            Token::Colon,
+            Token::Value(Literal::Null),
+            Token::BraceClose
         ];
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);

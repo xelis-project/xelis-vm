@@ -1,9 +1,11 @@
 use thiserror::Error;
 use xelis_environment::EnvironmentError;
-use xelis_types::{Value, ValueError};
+use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("Expected checkpoint")]
+    ExpectedCheckPoint,
     #[error("register max size reached")]
     RegisterMaxSize,
     #[error("register overflow")]
@@ -22,14 +24,14 @@ pub enum VMError {
     EnumNotFound,
     #[error("enum variant not found")]
     InvalidEnumVariant,
-    #[error("stack not cleaned")]
-    StackNotCleaned,
+    #[error("stack not cleaned, we have {0} elements left")]
+    StackNotCleaned(usize),
     #[error("invalid range type")]
     InvalidRangeType,
     #[error("empty stack")]
     EmptyStack,
     #[error("incompatible values: {0:?} and {1:?}")]
-    IncompatibleValues(Value, Value),
+    IncompatibleValues(Primitive, Primitive),
     #[error("chunk was not found")]
     ChunkNotFound,
     #[error("chunk is not an entry")]
@@ -68,6 +70,10 @@ pub enum VMError {
     CallStackOverflow,
     #[error("unexpected type")]
     UnexpectedType,
+    #[error("{0}")]
+    Static(&'static str),
+    #[error("Error, memory not cleaned, we have {0} bytes left")]
+    MemoryNotCleaned(usize),
 }
 
 impl From<EnvironmentError> for VMError {
@@ -79,5 +85,11 @@ impl From<EnvironmentError> for VMError {
 impl From<ValueError> for VMError {
     fn from(error: ValueError) -> Self {
         VMError::ValueError(error)
+    }
+}
+
+impl From<&'static str> for VMError {
+    fn from(value: &'static str) -> Self {
+        VMError::Static(value)
     }
 }

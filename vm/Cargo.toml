@@ -8,6 +8,8 @@ xelis-bytecode = { path = "../bytecode" }
 xelis-types = { path = "../types" }
 xelis-environment = { path = "../environment" }
 thiserror = "2.0.3"
+log = "0.4.26"
+indexmap = "2.8.0"
 
 [dev-dependencies]
 xelis-builder = { path = "../builder" }
@@ -19,3 +21,6 @@ criterion = "0.5.1"
 [[bench]]
 name = "vm"
 harness = false
+
+[features]
+infinite-cell-depth = ["xelis-types/infinite-cell-depth"]

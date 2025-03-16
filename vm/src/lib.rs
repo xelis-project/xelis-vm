@@ -9,6 +9,7 @@ mod instructions;
 mod tests;
 
 use stack::Stack;
+use log::trace;
 
 // Re-export the necessary types
 pub use xelis_environment::*;
@@ -21,6 +22,7 @@ pub use error::VMError;
 pub use chunk::*;
 
 // 64 elements maximum in the call stack
+// This represents how many calls can be chained
 const CALL_STACK_SIZE: usize = 64;
 
 // Backend of the VM
@@ -35,37 +37,11 @@ pub struct Backend<'a> {
 }
 
 impl<'a> Backend<'a> {
-    // Get a struct with an id
-    #[inline]
-    pub fn get_struct_with_id(&self, mut id: usize) -> Result<&StructType, VMError> {
-        let env_structs = self.environment.get_structures();
-        if let Some(struct_type) = env_structs.get_index(id) {
-            return Ok(struct_type);
-        } else {
-            id -= env_structs.len();
-        }
-
-        self.module.get_struct_at(id).ok_or(VMError::StructNotFound)
-    }
-
     // Get a constant registered in the module using its id
     #[inline(always)]
-    pub fn get_constant_with_id(&self, id: usize) -> Result<&Constant, VMError> {
+    pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
         self.module.get_constant_at(id)
             .ok_or(VMError::ConstantNotFound)
-    }
-
-    // Get an enum with an id
-    #[inline]
-    pub fn get_enum_with_id(&self, mut id: usize) -> Result<&EnumType, VMError> {
-        let env_enums = self.environment.get_enums();
-        if let Some(enum_type) = env_enums.get_index(id) {
-            return Ok(enum_type);
-        } else {
-            id -= env_enums.len();
-        }
-
-        self.module.get_enum_at(id).ok_or(VMError::EnumNotFound)
     }
 }
 
@@ -77,9 +53,12 @@ pub struct VM<'a, 'r> {
     call_stack: Vec<ChunkManager<'a>>,
     // The stack of the VM
     // Every values are stored here
-    stack: Stack<'a>,
+    stack: Stack,
     // Context given to each instruction
     context: Context<'a, 'r>,
+    // Flag to enable/disable the tail call optimization
+    // in our VM
+    tail_call_optimization: bool
 }
 
 impl<'a, 'r> VM<'a, 'r> {
@@ -103,12 +82,25 @@ impl<'a, 'r> VM<'a, 'r> {
             call_stack: Vec::with_capacity(4),
             stack: Stack::new(),
             context,
+            tail_call_optimization: false
         }
+    }
+
+    // Check if the tail call optimization flag is enabled or not
+    #[inline]
+    pub fn has_tail_call_optimization(&self) -> bool {
+        self.tail_call_optimization
+    }
+
+    // Enable/disable the tail call optimization flag
+    #[inline]
+    pub fn set_tail_call_optimization(&mut self, value: bool) {
+        self.tail_call_optimization = value;
     }
 
     // Get the stack
     #[inline]
-    pub fn get_stack(&self) -> &Stack<'a> {
+    pub fn get_stack(&self) -> &Stack {
         &self.stack
     }
 
@@ -157,7 +149,7 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.stack.extend_stack(args.map(Into::into))?;
         self.invoke_chunk_id(id)
     }
@@ -171,12 +163,12 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Push a value to the stack
-    pub fn push_stack<V: Into<Path<'a>>>(&mut self, value: V) -> Result<(), VMError> {
+    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         self.stack.push_stack(value.into())
     }
 
     // Invoke an entry chunk using its id
-    pub fn invoke_entry_chunk_with_args<V: Into<Path<'a>>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
         self.stack.extend_stack(args.map(Into::into))?;
         Ok(())
@@ -187,28 +179,52 @@ impl<'a, 'r> VM<'a, 'r> {
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
         while let Some(mut manager) = self.call_stack.pop() {
+            let mut clean_pointers = true;
             while let Some(opcode) = manager.next_u8() {
-                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context)? {
-                    InstructionResult::Nothing => {},
-                    InstructionResult::InvokeChunk(id) => {
+                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
+                    Ok(InstructionResult::Nothing) => {},
+                    Ok(InstructionResult::InvokeChunk(id)) => {
                         if self.backend.module.is_entry_chunk(id as usize) {
                             return Err(VMError::EntryChunkCalled);
                         }
 
-                        self.call_stack.push(manager);
+                        // If tail call optimization is enabled,
+                        // we have another instruction and that its not a OpCode::Return
+                        // push current frame back to our call_stack
+                        // Otherwise, clean pointers for safety reasons
+                        if !self.tail_call_optimization || manager.has_next_instruction() {
+                            // We don't check the call stack size
+                            // because we've pop it from call stack
+                            // and it will be done below for next invoke
+                            self.call_stack.push(manager);
+                            clean_pointers = false;
+                        }
+
                         self.invoke_chunk_id(id)?;
                         break;
                     },
-                    InstructionResult::Break => {
+                    Ok(InstructionResult::Break) => {
                         break;
+                    },
+                    Err(e) => {
+                        trace!("Error: {:?}", e);
+                        trace!("Stack: {:?}", self.stack.get_inner());
+                        trace!("Call stack left: {}", self.call_stack.len());
+                        trace!("Current registers: {:?}", manager.get_registers());
+                        return Err(e);
                     }
                 }
             }
+
+            if clean_pointers {
+                self.stack.checkpoint_clean()?;
+            }
         }
 
-        let end_value = self.stack.pop_stack()?.into_owned()?;
+        let end_value = self.stack.pop_stack()?
+            .into_owned()?;
         if self.stack.count() != 0 {
-            return Err(VMError::StackNotCleaned);
+            return Err(VMError::StackNotCleaned(self.stack.count()));
         }
 
         Ok(end_value)

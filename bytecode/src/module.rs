@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use xelis_types::{Constant, ConstantWrapper, EnumType, StructType};
+use xelis_types::ValueCell;
 
 use super::Chunk;
 
@@ -9,15 +9,11 @@ use super::Chunk;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
-    constants: IndexSet<ConstantWrapper>,
+    constants: IndexSet<ValueCell>,
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
-    entry_chunk_ids: IndexSet<usize>,
-    // registered structs
-    structs: IndexSet<StructType>,
-    // registered enums
-    enums: IndexSet<EnumType>
+    entry_chunk_ids: IndexSet<usize>
 }
 
 impl Module {
@@ -26,45 +22,39 @@ impl Module {
         Self {
             constants: IndexSet::new(),
             chunks: Vec::new(),
-            entry_chunk_ids: IndexSet::new(),
-            structs: IndexSet::new(),
-            enums: IndexSet::new()
+            entry_chunk_ids: IndexSet::new()
         }
     }
 
     // Create a new module with all needed data
     pub fn with(
-        constants: IndexSet<ConstantWrapper>,
+        constants: IndexSet<ValueCell>,
         chunks: Vec<Chunk>,
-        entry_chunk_ids: IndexSet<usize>,
-        structs: IndexSet<StructType>,
-        enums: IndexSet<EnumType>
+        entry_chunk_ids: IndexSet<usize>
     ) -> Self {
         Self {
             constants,
             chunks,
-            entry_chunk_ids,
-            structs,
-            enums
+            entry_chunk_ids
         }
     }
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<ConstantWrapper> {
+    pub fn constants(&self) -> &IndexSet<ValueCell> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
-    pub fn add_constant(&mut self, value: impl Into<Constant>) -> usize {
-        self.constants.insert_full(ConstantWrapper(value.into())).0
+    pub fn add_constant(&mut self, value: impl Into<ValueCell>) -> usize {
+        self.constants.insert_full(value.into()).0
     }
 
     // Get a constant at a specific index
     #[inline]
-    pub fn get_constant_at(&self, index: usize) -> Option<&Constant> {
-        self.constants.get_index(index).map(|wrapper| &wrapper.0)
+    pub fn get_constant_at(&self, index: usize) -> Option<&ValueCell> {
+        self.constants.get_index(index)
     }
 
     // Get the chunks declared in the module
@@ -110,42 +100,6 @@ impl Module {
     pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
         self.chunks.get_mut(index)
     }
-
-    // Get all the structs declared in the module
-    #[inline]
-    pub fn structs(&self) -> &IndexSet<StructType> {
-        &self.structs
-    }
-
-    // Add a struct to the module
-    #[inline]
-    pub fn add_struct(&mut self, structure: StructType) -> bool {
-        self.structs.insert(structure)
-    }
-
-    // Get a struct at a specific index
-    #[inline]
-    pub fn get_struct_at(&self, index: usize) -> Option<&StructType> {
-        self.structs.get_index(index)
-    }
-
-    // Get all the enums declared in the module
-    #[inline]
-    pub fn enums(&self) -> &IndexSet<EnumType> {
-        &self.enums
-    }
-
-    // Add an enum to the module
-    #[inline]
-    pub fn add_enum(&mut self, enumeration: EnumType) -> bool {
-        self.enums.insert(enumeration)
-    }
-
-    // Get an enum at a specific index
-    #[inline]
-    pub fn get_enum_at(&self, index: usize) -> Option<&EnumType> {
-        self.enums.get_index(index)
-    }
 }
 
 #[cfg(test)]
@@ -154,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_serde_module_json() {
-        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0],"enums":[],"structs":[{"fields":[{"type":"u64"}],"id":0}]}"#;
+        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0]}"#;
         assert!(serde_json::from_str::<Module>(json).is_ok());
     }
 }

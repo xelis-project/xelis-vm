@@ -71,11 +71,7 @@ pub enum OpCodeWithArgs {
     Return,
 
     // pop index, pop array => push array[index]
-    // Allow up to u32 index
-    ArrayCall {
-        // Array index
-        index: u32
-    },
+    ArrayCall,
     // pop value => push value
     Cast {
         primitive_type_id: u8
@@ -98,15 +94,10 @@ pub enum OpCodeWithArgs {
         // Args count
         args_count: u8
     },
-    // pop length, pop N values => create array
-    NewArray {
-        // Array length
+    // pop length, pop N values => create object
+    NewObject {
+        // object length
         length: u8
-    },
-    // pop type id, pop N values => create struct
-    NewStruct {
-        // Struct id
-        struct_id: u16
     },
     // N..Y
     // pop start, pop end, push range
@@ -217,8 +208,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Cast { .. } => OpCode::Cast,
             OpCodeWithArgs::InvokeChunk { .. } => OpCode::InvokeChunk,
             OpCodeWithArgs::SysCall { .. } => OpCode::SysCall,
-            OpCodeWithArgs::NewArray { .. } => OpCode::NewArray,
-            OpCodeWithArgs::NewStruct { .. } => OpCode::NewStruct,
+            OpCodeWithArgs::NewObject { .. } => OpCode::NewObject,
             OpCodeWithArgs::NewRange => OpCode::NewRange,
             OpCodeWithArgs::NewMap { .. } => OpCode::NewMap,
 
@@ -280,7 +270,6 @@ impl OpCodeWithArgs {
             },
             OpCodeWithArgs::Jump { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::JumpIfFalse { addr } => chunk.write_u32(*addr),
-            OpCodeWithArgs::ArrayCall { index } => chunk.write_u32(*index),
             OpCodeWithArgs::Cast { primitive_type_id } => chunk.write_u8(*primitive_type_id),
             OpCodeWithArgs::InvokeChunk { chunk_id, on_value, args_count } => {
                 chunk.write_u16(*chunk_id);
@@ -293,8 +282,7 @@ impl OpCodeWithArgs {
                 chunk.write_u8(*args_count);
             },
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
-            OpCodeWithArgs::NewArray { length } => chunk.write_u8(*length),
-            OpCodeWithArgs::NewStruct { struct_id } => chunk.write_u16(*struct_id),
+            OpCodeWithArgs::NewObject { length } => chunk.write_u8(*length),
             OpCodeWithArgs::NewMap { length } => chunk.write_u8(*length),
             _ => {}
         }
@@ -472,15 +460,7 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Return
             },
-            "ARRAYCALL" => {
-                if args.len() != 1 {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::ArrayCall {
-                    index: args[0].parse().map_err(|_| "Invalid index")?
-                }
-            },
+            "ARRAYCALL" => OpCodeWithArgs::ArrayCall,
             "CAST" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
@@ -520,22 +500,13 @@ impl OpCodeWithArgs {
                     args_count: args[2].parse().map_err(|_| "Invalid args count")?
                 }
             }
-            "NEWARRAY" => {
+            "NEWOBJECT" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
-                OpCodeWithArgs::NewArray {
+                OpCodeWithArgs::NewObject {
                     length: args[0].parse().map_err(|_| "Invalid length")?
-                }
-            },
-            "NEWSTRUCT" => {
-                if args.len() != 1 {
-                    return Err("Invalid args count");
-                }
-
-                OpCodeWithArgs::NewStruct {
-                    struct_id: args[0].parse().map_err(|_| "Invalid struct id")?
                 }
             },
             "NEWRANGE" => {

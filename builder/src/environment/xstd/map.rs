@@ -1,5 +1,5 @@
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
-use xelis_types::{Type, Value, ValueCell};
+use xelis_types::{Type, Primitive, ValueCell};
 
 use crate::EnvironmentBuilder;
 
@@ -11,7 +11,8 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], contains_key, 15, Some(Type::Bool));
     env.register_native_function("get", Some(_type.clone()), vec![("key", key_type.clone())], get, 15, Some(Type::Optional(Box::new(value_type.clone()))));
     env.register_native_function("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], insert, 30, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("remove", Some(_type.clone()), vec![("key", key_type.clone())], remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
+    env.register_native_function("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], shift_remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
+    env.register_native_function("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], swap_remove, 15, Some(Type::Optional(Box::new(value_type.clone()))));
     env.register_native_function("clear", Some(_type.clone()), vec![], clear, 5, None);
     env.register_native_function("keys", Some(_type.clone()), vec![], keys, 20, Some(Type::Array(Box::new(key_type.clone()))));
     env.register_native_function("values", Some(_type.clone()), vec![], values, 20, Some(Type::Array(Box::new(value_type.clone()))));
@@ -19,67 +20,106 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     let len = zelf?.as_map()?.len();
-    Ok(Some(Value::U32(len as u32).into()))
+    Ok(Some(Primitive::U32(len as u32).into()))
 }
 
 fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let k = key.as_ref();
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let contains = zelf?.as_map()?.contains_key(&k);
-    Ok(Some(Value::Boolean(contains).into()))
+    let contains = zelf?.as_map()?.contains_key(k);
+    Ok(Some(Primitive::Boolean(contains).into()))
 }
 
 fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
-    let k = key.as_ref();
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let value = zelf?.as_map()?.get(&k).cloned();
-    Ok(Some(ValueCell::Optional(value)))
+    let value = zelf?.as_map()?
+        .get(k)
+        .cloned();
+
+    Ok(Some(match value {
+        Some(v) => v,
+        None => Primitive::Null.into(),
+    }))
 }
 
 fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
-    let key = parameters.remove(0).into_owned()?;
+    let param = parameters.remove(0);
+    let key_depth = param.depth();
+    let key = param.into_owned()?;
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
+
+    key.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(key_depth.saturating_add(1))
+    )?;
 
     let map = zelf?.as_mut_map()?;
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
 
-    let max_depth = context.max_value_depth() - 1;
-    // Verify the depth of the key
-    key.calculate_depth(max_depth)?;
+    let param = parameters.remove(0);
+    let value_depth = param.depth();
+    let value = param.into_owned()?;
 
-    let value = parameters.remove(0);
-    // Verify the depth of the value
-    value.as_ref()
-        .calculate_depth(max_depth)?;
+    value.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(value_depth.saturating_add(1))
+    )?;
 
     let previous = map
-        .insert(key, value.into_owned()?.into());
-    Ok(Some(ValueCell::Optional(previous)))
+        .insert(key, value);
+
+    Ok(Some(match previous {
+        Some(v) => v,
+        None => Primitive::Null.into(),
+    }))
 }
 
-fn remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn shift_remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
     let key = parameters.remove(0);
 
-    let k = key.as_ref();
+    let k = key.as_ref()?;
+    if k.is_map() {
+        return Err(EnvironmentError::InvalidKeyType);
+    }
+
+    let map = zelf?.as_mut_map()?;
+    // pay based on O(N)
+    context.increase_gas_usage(map.len() as _)?;
+
+    let value = map.shift_remove(k);
+    Ok(Some(match value {
+        Some(v) => v,
+        None => Primitive::Null.into(),
+    }))
+}
+
+fn swap_remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+    let key = parameters.remove(0);
+
+    let k = key.as_ref()?;
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
     let value = zelf?.as_mut_map()?
-        .remove(&k);
-    Ok(Some(ValueCell::Optional(value)))
+        .swap_remove(k);
+    Ok(Some(match value {
+        Some(v) => v,
+        None => Primitive::Null.into(),
+    }))
 }
 
 fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
@@ -107,7 +147,7 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
     let values = map.values()
-        .map(|v| v.reference())
+        .map(|v| v.clone())
         .collect::<Vec<_>>();
 
     Ok(Some(ValueCell::Array(values)))

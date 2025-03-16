@@ -1,77 +1,78 @@
 use std::collections::VecDeque;
-use xelis_types::Path;
 
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
 
-
-pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()? as usize;
     let constant = backend.get_constant_with_id(index)?;
 
-    stack.push_stack(Path::Owned(constant.clone().into()))?;
+    let memory_usage = constant.calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage)?;
+
+    stack.push_stack(constant.clone().into())?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_load<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = manager.read_u16()?;
-    let value = manager.from_register(index as usize)?
-        .shareable();
-    stack.push_stack(value)?;
-
-    Ok(InstructionResult::Nothing)
-}
-
-pub fn memory_set<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = manager.read_u16()?;
-    let value = stack.pop_stack()?;
-    manager.set_register(index as usize, value)?;
-
-    Ok(InstructionResult::Nothing)
-}
-
-pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     let path = stack.pop_stack()?;
-    let sub = path.get_sub_variable(index as usize)?;
+    let sub = path.get_at_index(index as usize)?;
     stack.push_stack_unchecked(sub);
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.last_stack()?;
-    stack.push_stack(value.clone())?;
+
+    let memory_usage = value.as_ref()?
+        .calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage)?;
+
+    stack.push_stack(value.to_owned()?)?;
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     let value = stack.get_stack_at(index as usize)?;
-    stack.push_stack(value.clone())?;
+
+    let memory_usage = value.as_ref()?
+        .calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage)?;
+
+    stack.push_stack(value.to_owned()?)?;
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn to_owned<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let value = stack.last_mut_stack()?;
+    value.make_owned()?;
+
+    Ok(InstructionResult::Nothing)
+}
+
+pub fn pop<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     stack.pop_stack()?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop_n<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn pop_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let n = manager.read_u8()?;
     stack.pop_stack_n(n)?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn swap<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
     stack.swap_stack(index as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index_a = manager.read_u8()?;
     let index_b = manager.read_u8()?;
 
@@ -79,15 +80,21 @@ pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkMana
     Ok(InstructionResult::Nothing)
 }
 
-pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let index = stack.pop_stack()?.into_inner().cast_to_u32()?;
+pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    let sub = value.get_sub_variable(index as usize)?;
+    let index = value.as_u32()?;
+    let value = stack.pop_stack()?;
+    let sub = value.get_at_index(index as usize)?;
+
+    let memory_usage = sub.as_ref()?
+        .calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage)?;
+
     stack.push_stack_unchecked(sub);
     Ok(InstructionResult::Nothing)
 }
 
-pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let on_value = manager.read_bool()?;
     let mut args = manager.read_u8()? as usize;
@@ -96,18 +103,19 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut Ch
     }
 
     // We need to reverse the order of the arguments
-    let inner = stack.get_inner();
+    let inner = stack.get_inner_mut();
     let len = inner.len();
     if len < args {
         return Err(VMError::NotEnoughArguments);
     }
 
-    stack.get_inner()[len - args..len].reverse();
+    let slice = &mut stack.get_inner_mut()[len - args..len];
+    slice.reverse();
 
     Ok(InstructionResult::InvokeChunk(id))
 }
 
-pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let on_value = manager.read_bool()?;
     let args = manager.read_u8()?;
@@ -131,21 +139,23 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
 
     // We need to find if we are using two times the same instance
 
-    let mut instance = match on_value.as_mut() {
+    let instance = match on_value.as_mut() {
         Some(v) => {
-            if v.is_wrapped() {
-                for argument in arguments.iter_mut() {
-                    argument.make_owned_if_same_ptr(v);
-                }
+            let ptr = v.ptr();
+            for argument in arguments.iter_mut() {
+                argument.make_owned_if_same_ptr(ptr)?;
             }
 
-            Some(v.as_mut())
+            Some(v.as_mut()?)
         },
         None => None,
     };
 
-    if let Some(v) = f.call_function(instance.as_deref_mut(), arguments.into(), context)? {
-        stack.push_stack(Path::Owned(v))?;
+    if let Some(v) = f.call_function(instance, arguments.into(), context)? {
+        let memory_usage = v.calculate_memory_usage(context.memory_left())?;
+        context.increase_memory_usage_unchecked(memory_usage)?;
+
+        stack.push_stack(v.into())?;
     }
 
     Ok(InstructionResult::Nothing)

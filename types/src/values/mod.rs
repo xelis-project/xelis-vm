@@ -1,5 +1,4 @@
 mod error;
-mod pointer;
 mod cell;
 mod constant;
 
@@ -15,7 +14,6 @@ use super::{
     U256
 };
 
-pub use pointer::*;
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
@@ -24,13 +22,13 @@ use serde::{Deserialize, Serialize};
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
         match $self {
-            Value::U8(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::U16(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::U32(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::U64(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::U128(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::U256(n) => n.try_into().map_err(|_| ValueError::CastError),
-            Value::Boolean(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U8(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U16(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U32(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U64(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U128(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::U256(n) => n.try_into().map_err(|_| ValueError::CastError),
+            Primitive::Boolean(n) => n.try_into().map_err(|_| ValueError::CastError),
             _ => Err(ValueError::InvalidCastType($type))
         }
     };
@@ -39,8 +37,9 @@ macro_rules! checked_cast {
 // This enum is dedicated for constants values / parser
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
-pub enum Value {
+pub enum Primitive {
     Null,
+    Boolean(bool),
     // number types
     U8(u8),
     U16(u16),
@@ -49,133 +48,122 @@ pub enum Value {
     U128(u128),
     U256(U256),
     String(String),
-    Boolean(bool),
-    Range(Box<Value>, Box<Value>, Type),
-    // Blob represents a binary data
-    Blob(Vec<u8>),
+    Range(Box<(Primitive, Primitive)>),
 
     // Opaque Type injected by the environment
     Opaque(OpaqueWrapper)
 }
 
-impl PartialEq for Value {
+impl PartialEq for Primitive {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Value::Null, Value::Null) => true,
-            (Value::U8(a), Value::U8(b)) => a == b,
-            (Value::U16(a), Value::U16(b)) => a == b,
-            (Value::U32(a), Value::U32(b)) => a == b,
-            (Value::U64(a), Value::U64(b)) => a == b,
-            (Value::U128(a), Value::U128(b)) => a == b,
-            (Value::U256(a), Value::U256(b)) => a == b,
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::Boolean(a), Value::Boolean(b)) => a == b,
-            (Value::Range(start_a, end_a, _type_a), Value::Range(start_b, end_b, _type_b)) => start_a == start_b && end_a == end_b && _type_a == _type_b,
-            (Value::Blob(a), Value::Blob(b)) => a == b,
-            (Value::Opaque(a), Value::Opaque(b)) => a == b,
+            (Primitive::Null, Primitive::Null) => true,
+            (Primitive::U8(a), Primitive::U8(b)) => a == b,
+            (Primitive::U16(a), Primitive::U16(b)) => a == b,
+            (Primitive::U32(a), Primitive::U32(b)) => a == b,
+            (Primitive::U64(a), Primitive::U64(b)) => a == b,
+            (Primitive::U128(a), Primitive::U128(b)) => a == b,
+            (Primitive::U256(a), Primitive::U256(b)) => a == b,
+            (Primitive::String(a), Primitive::String(b)) => a == b,
+            (Primitive::Boolean(a), Primitive::Boolean(b)) => a == b,
+            (Primitive::Range(a), Primitive::Range(b)) => a == b,
+            (Primitive::Opaque(a), Primitive::Opaque(b)) => a == b,
             _ => false
         }
     }
 }
 
-impl PartialOrd for Value {
+impl PartialOrd for Primitive {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (Value::U8(a), Value::U8(b)) => a.partial_cmp(b),
-            (Value::U16(a), Value::U16(b)) => a.partial_cmp(b),
-            (Value::U32(a), Value::U32(b)) => a.partial_cmp(b),
-            (Value::U64(a), Value::U64(b)) => a.partial_cmp(b),
-            (Value::U128(a), Value::U128(b)) => a.partial_cmp(b),
-            (Value::U256(a), Value::U256(b)) => a.partial_cmp(b),
-            (Value::String(a), Value::String(b)) => a.partial_cmp(b),
-            (Value::Boolean(a), Value::Boolean(b)) => a.partial_cmp(b),
+            (Primitive::U8(a), Primitive::U8(b)) => a.partial_cmp(b),
+            (Primitive::U16(a), Primitive::U16(b)) => a.partial_cmp(b),
+            (Primitive::U32(a), Primitive::U32(b)) => a.partial_cmp(b),
+            (Primitive::U64(a), Primitive::U64(b)) => a.partial_cmp(b),
+            (Primitive::U128(a), Primitive::U128(b)) => a.partial_cmp(b),
+            (Primitive::U256(a), Primitive::U256(b)) => a.partial_cmp(b),
+            (Primitive::String(a), Primitive::String(b)) => a.partial_cmp(b),
+            (Primitive::Boolean(a), Primitive::Boolean(b)) => a.partial_cmp(b),
             _ => None
         }
     }
 }
 
-impl Hash for Value {
+impl Hash for Primitive {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Value::Null => 0.hash(state),
-            Value::U8(n) => {
+            Primitive::Null => 0.hash(state),
+            Primitive::U8(n) => {
                 1u8.hash(state);
                 n.hash(state);
             },
-            Value::U16(n) => {
+            Primitive::U16(n) => {
                 2u8.hash(state);
                 n.hash(state);
             },
-            Value::U32(n) => {
+            Primitive::U32(n) => {
                 3u8.hash(state);
                 n.hash(state);
             },
-            Value::U64(n) => {
+            Primitive::U64(n) => {
                 4u8.hash(state);
                 n.hash(state);
             },
-            Value::U128(n) => {
+            Primitive::U128(n) => {
                 5u8.hash(state);
                 n.hash(state);
             },
-            Value::U256(n) => {
+            Primitive::U256(n) => {
                 6u8.hash(state);
                 n.hash(state);
             },
-            Value::String(n) => {
+            Primitive::String(n) => {
                 7u8.hash(state);
                 n.hash(state);
             },
-            Value::Boolean(n) => {
+            Primitive::Boolean(n) => {
                 8u8.hash(state);
                 n.hash(state);
             },
-            Value::Range(start, end, range_type) => {
+            Primitive::Range(b) => {
                 9u8.hash(state);
-                start.hash(state);
-                end.hash(state);
-                range_type.hash(state);
+                b.hash(state);
             },
-            Value::Blob(n) => {
+            Primitive::Opaque(n) => {
                 10u8.hash(state);
-                n.hash(state);
-            },
-            Value::Opaque(n) => {
-                11u8.hash(state);
                 n.hash(state);
             }
         }
     }
 }
 
-impl Default for Value {
+impl Default for Primitive {
     fn default() -> Self {
-        Value::Null
+        Primitive::Null
     }
 }
 
-impl Value {
+impl Primitive {
     pub fn get_memory_usage(&self) -> usize {
         match self {
-            Value::Null => 1,
-            Value::U8(_) => 1,
-            Value::U16(_) => 2,
-            Value::U32(_) => 4,
-            Value::U64(_) => 8,
-            Value::U128(_) => 16,
-            Value::U256(_) => 32,
-            Value::String(s) => s.len(),
-            Value::Boolean(_) => 1,
-            Value::Range(start, end, _) => start.get_memory_usage() + end.get_memory_usage(),
-            Value::Blob(b) => b.len(),
-            Value::Opaque(_) => 8
+            Primitive::Null => 1,
+            Primitive::U8(_) => 1,
+            Primitive::U16(_) => 2,
+            Primitive::U32(_) => 4,
+            Primitive::U64(_) => 8,
+            Primitive::U128(_) => 16,
+            Primitive::U256(_) => 32,
+            Primitive::String(s) => 8 + s.len(),
+            Primitive::Boolean(_) => 1,
+            Primitive::Range(b) => 16 + b.0.get_memory_usage() + b.1.get_memory_usage(),
+            Primitive::Opaque(_) => 8
         }
     }
 
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
-            Value::Null => true,
+            Primitive::Null => true,
             _ => false
         }
     }
@@ -183,7 +171,7 @@ impl Value {
     #[inline]
     pub fn is_string(&self) -> bool {
         match &self {
-            Value::String(_) => true,
+            Primitive::String(_) => true,
             _ => false
         }
     }
@@ -191,7 +179,7 @@ impl Value {
     #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Value::U8(n) => Ok(*n),
+            Primitive::U8(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U8))
         }
     }
@@ -199,7 +187,7 @@ impl Value {
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Value::U16(n) => Ok(*n),
+            Primitive::U16(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U16))
         }
     }
@@ -207,7 +195,7 @@ impl Value {
     #[inline]
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Value::U32(n) => Ok(*n),
+            Primitive::U32(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U32))
         }
     }
@@ -215,7 +203,7 @@ impl Value {
     #[inline]
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Value::U64(n) => Ok(*n),
+            Primitive::U64(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U64))
         }
     }
@@ -223,7 +211,7 @@ impl Value {
     #[inline]
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Value::U128(n) => Ok(*n),
+            Primitive::U128(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U128))
         }
     }
@@ -231,7 +219,7 @@ impl Value {
     #[inline]
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Value::U256(n) => Ok(*n),
+            Primitive::U256(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U256))
         }
     }
@@ -239,7 +227,7 @@ impl Value {
     #[inline]
     pub fn as_string(&self) -> Result<&String, ValueError> {
         match self {
-            Value::String(n) => Ok(n),
+            Primitive::String(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::String))
         }
     }
@@ -247,7 +235,7 @@ impl Value {
     #[inline]
     pub fn as_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Value::Boolean(n) => Ok(*n),
+            Primitive::Boolean(n) => Ok(*n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Bool))
         }
     }
@@ -255,7 +243,7 @@ impl Value {
     #[inline]
     pub fn to_u8(self) -> Result<u8, ValueError> {
         match self {
-            Value::U8(n) => Ok(n),
+            Primitive::U8(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U8))
         }
     }
@@ -263,7 +251,7 @@ impl Value {
     #[inline]
     pub fn to_u16(self) -> Result<u16, ValueError> {
         match self {
-            Value::U16(n) => Ok(n),
+            Primitive::U16(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U16))
         }
     }
@@ -271,7 +259,7 @@ impl Value {
     #[inline]
     pub fn to_u32(self) -> Result<u32, ValueError> {
         match self {
-            Value::U32(n) => Ok(n),
+            Primitive::U32(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U32))
         }
     }
@@ -279,7 +267,7 @@ impl Value {
     #[inline]
     pub fn to_u64(self) -> Result<u64, ValueError> {
         match self {
-            Value::U64(n) => Ok(n),
+            Primitive::U64(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U64))
         }
     }
@@ -287,7 +275,7 @@ impl Value {
     #[inline]
     pub fn to_u128(self) -> Result<u128, ValueError> {
         match self {
-            Value::U128(n) => Ok(n),
+            Primitive::U128(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U128))
         }
     }
@@ -295,7 +283,7 @@ impl Value {
     #[inline]
     pub fn to_u256(self) -> Result<U256, ValueError> {
         match self {
-            Value::U256(n) => Ok(n),
+            Primitive::U256(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::U256))
         }
     }
@@ -303,7 +291,7 @@ impl Value {
     #[inline]
     pub fn to_string(self) -> Result<String, ValueError> {
         match self {
-            Value::String(n) => Ok(n),
+            Primitive::String(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::String))
         }
     }
@@ -311,23 +299,23 @@ impl Value {
     #[inline]
     pub fn to_bool(self) -> Result<bool, ValueError> {
         match self {
-            Value::Boolean(n) => Ok(n),
+            Primitive::Boolean(n) => Ok(n),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Bool))
         }
     }
 
     #[inline]
-    pub fn as_range(&self) -> Result<(&Value, &Value, &Type), ValueError> {
+    pub fn as_range(&self) -> Result<(&Primitive, &Primitive), ValueError> {
         match self {
-            Value::Range(start, end, _type) => Ok((start, end, _type)),
+            Primitive::Range(range) => Ok((&range.0, &range.1)),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
         }
     }
 
     #[inline]
-    pub fn to_range(self) -> Result<(Value, Value, Type), ValueError> {
+    pub fn to_range(self) -> Result<(Primitive, Primitive), ValueError> {
         match self {
-            Value::Range(start, end, _type) => Ok((*start, *end, _type)),
+            Primitive::Range(range) => Ok((range.0, range.1)),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any))))
         }
     }
@@ -336,28 +324,28 @@ impl Value {
     #[inline]
     pub fn is_number(&self) -> bool {
         match self {
-            Value::U8(_) | Value::U16(_) | Value::U32(_) | Value::U64(_) | Value::U128(_) | Value::U256(_) => true,
+            Primitive::U8(_) | Primitive::U16(_) | Primitive::U32(_) | Primitive::U64(_) | Primitive::U128(_) | Primitive::U256(_) => true,
             _ => false
         }
     }
 
     pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
         match self {
-            Value::Opaque(opaque) => Ok(opaque),
+            Primitive::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
 
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
-            Value::Opaque(opaque) => Ok(opaque),
+            Primitive::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
 
     pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
         match self {
-            Value::Opaque(opaque) => Ok(opaque),
+            Primitive::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -365,12 +353,12 @@ impl Value {
     // Increment the value
     pub fn increment(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Value::U8(n) => *n += 1,
-            Value::U16(n) => *n += 1,
-            Value::U32(n) => *n += 1,
-            Value::U64(n) => *n += 1,
-            Value::U128(n) => *n += 1,
-            Value::U256(n) => *n += U256::ONE,
+            Primitive::U8(n) => *n += 1,
+            Primitive::U16(n) => *n += 1,
+            Primitive::U32(n) => *n += 1,
+            Primitive::U64(n) => *n += 1,
+            Primitive::U128(n) => *n += 1,
+            Primitive::U256(n) => *n += U256::ONE,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -378,12 +366,12 @@ impl Value {
     // Decrement the value
     pub fn decrement(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Value::U8(n) => *n -= 1,
-            Value::U16(n) => *n -= 1,
-            Value::U32(n) => *n -= 1,
-            Value::U64(n) => *n -= 1,
-            Value::U128(n) => *n -= 1,
-            Value::U256(n) => *n -= U256::ONE,
+            Primitive::U8(n) => *n -= 1,
+            Primitive::U16(n) => *n -= 1,
+            Primitive::U32(n) => *n -= 1,
+            Primitive::U64(n) => *n -= 1,
+            Primitive::U128(n) => *n -= 1,
+            Primitive::U256(n) => *n -= U256::ONE,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -392,14 +380,14 @@ impl Value {
     #[inline]
     pub fn cast_to_string(self) -> Result<String, ValueError> {
         match self {
-            Value::U8(n) => Ok(n.to_string()),
-            Value::U16(n) => Ok(n.to_string()),
-            Value::U32(n) => Ok(n.to_string()),
-            Value::U64(n) => Ok(n.to_string()),
-            Value::U128(n) => Ok(n.to_string()),
-            Value::U256(n) => Ok(n.to_string()),
-            Value::String(s) => Ok(s),
-            Value::Boolean(b) => Ok(b.to_string()),
+            Primitive::U8(n) => Ok(n.to_string()),
+            Primitive::U16(n) => Ok(n.to_string()),
+            Primitive::U32(n) => Ok(n.to_string()),
+            Primitive::U64(n) => Ok(n.to_string()),
+            Primitive::U128(n) => Ok(n.to_string()),
+            Primitive::U256(n) => Ok(n.to_string()),
+            Primitive::String(s) => Ok(s),
+            Primitive::Boolean(b) => Ok(b.to_string()),
             _ => Err(ValueError::InvalidCastType(Type::String))
         }
     }
@@ -407,14 +395,14 @@ impl Value {
     // transform the value into as string
     pub fn as_string_formatted<'a>(&'a self) -> Result<Cow<'a, str>, ValueError> {
         match self {
-            Value::String(s) => Ok(Cow::Borrowed(s)),
-            Value::U8(n) => Ok(Cow::Owned(n.to_string())),
-            Value::U16(n) => Ok(Cow::Owned(n.to_string())),
-            Value::U32(n) => Ok(Cow::Owned(n.to_string())),
-            Value::U64(n) => Ok(Cow::Owned(n.to_string())),
-            Value::U128(n) => Ok(Cow::Owned(n.to_string())),
-            Value::U256(n) => Ok(Cow::Owned(n.to_string())),
-            Value::Boolean(b) => Ok(Cow::Owned(b.to_string())),
+            Primitive::String(s) => Ok(Cow::Borrowed(s)),
+            Primitive::U8(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::U16(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::U32(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::U64(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::U128(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::U256(n) => Ok(Cow::Owned(n.to_string())),
+            Primitive::Boolean(b) => Ok(Cow::Owned(b.to_string())),
             _ => Err(ValueError::InvalidCastType(Type::String))
         }
     }
@@ -429,21 +417,21 @@ impl Value {
 
     // Cast without loss in the expected type
     #[inline]
-    pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Value, ValueError> {
+    pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Primitive, ValueError> {
         match expected {
-            Type::U8 => self.checked_cast_to_u8().map(Value::U8),
-            Type::U16 => self.checked_cast_to_u16().map(Value::U16),
-            Type::U32 => self.checked_cast_to_u32().map(Value::U32),
-            Type::U64 => self.checked_cast_to_u64().map(Value::U64),
-            Type::U128 => self.checked_cast_to_u128().map(Value::U128),
-            Type::U256 => self.checked_cast_to_u256().map(Value::U256),
-            Type::String => self.cast_to_string().map(Value::String),
-            Type::Bool => self.cast_to_bool().map(Value::Boolean),
+            Type::U8 => self.checked_cast_to_u8().map(Primitive::U8),
+            Type::U16 => self.checked_cast_to_u16().map(Primitive::U16),
+            Type::U32 => self.checked_cast_to_u32().map(Primitive::U32),
+            Type::U64 => self.checked_cast_to_u64().map(Primitive::U64),
+            Type::U128 => self.checked_cast_to_u128().map(Primitive::U128),
+            Type::U256 => self.checked_cast_to_u256().map(Primitive::U256),
+            Type::String => self.cast_to_string().map(Primitive::String),
+            Type::Bool => self.cast_to_bool().map(Primitive::Boolean),
             Type::Range(inner) => {
-                let (start, end, _) = self.to_range()?;
+                let (start, end) = self.to_range()?;
                 let start = start.checked_cast_to_primitive_type(inner)?;
                 let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Value::Range(Box::new(start), Box::new(end), *inner.clone()))
+                Ok(Primitive::Range(Box::new((start, end))))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }
@@ -489,13 +477,13 @@ impl Value {
     #[inline]
     pub fn cast_to_bool(self) -> Result<bool, ValueError> {
         match self {
-            Value::U8(n) => Ok(n != 0),
-            Value::U16(n) => Ok(n != 0),
-            Value::U32(n) => Ok(n != 0),
-            Value::U64(n) => Ok(n != 0),
-            Value::U128(n) => Ok(n != 0),
-            Value::U256(n) => Ok(!n.is_zero()),
-            Value::Boolean(b) => Ok(b),
+            Primitive::U8(n) => Ok(n != 0),
+            Primitive::U16(n) => Ok(n != 0),
+            Primitive::U32(n) => Ok(n != 0),
+            Primitive::U64(n) => Ok(n != 0),
+            Primitive::U128(n) => Ok(n != 0),
+            Primitive::U256(n) => Ok(!n.is_zero()),
+            Primitive::Boolean(b) => Ok(b),
             _ => Err(ValueError::InvalidCastType(Type::Bool))
         }
     }
@@ -504,13 +492,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u8(self) -> Result<u8, ValueError> {
         match self {
-            Value::U8(n) => Ok(n),
-            Value::U16(n) => Ok(n as u8),
-            Value::U32(n) => Ok(n as u8),
-            Value::U64(n) => Ok(n as u8),
-            Value::U128(n) => Ok(n as u8),
-            Value::U256(n) => Ok(n.low_u64() as u8),
-            Value::Boolean(b) => Ok(b as u8),
+            Primitive::U8(n) => Ok(n),
+            Primitive::U16(n) => Ok(n as u8),
+            Primitive::U32(n) => Ok(n as u8),
+            Primitive::U64(n) => Ok(n as u8),
+            Primitive::U128(n) => Ok(n as u8),
+            Primitive::U256(n) => Ok(n.low_u64() as u8),
+            Primitive::Boolean(b) => Ok(b as u8),
             _ => Err(ValueError::InvalidCastType(Type::U8))
         }
     }
@@ -519,13 +507,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u16(self) -> Result<u16, ValueError> {
         match self {
-            Value::U8(n) => Ok(n as u16),
-            Value::U16(n) => Ok(n),
-            Value::U32(n) => Ok(n as u16),
-            Value::U64(n) => Ok(n as u16),
-            Value::U128(n) => Ok(n as u16),
-            Value::U256(n) => Ok(n.low_u64() as u16),
-            Value::Boolean(b) => Ok(b as u16),
+            Primitive::U8(n) => Ok(n as u16),
+            Primitive::U16(n) => Ok(n),
+            Primitive::U32(n) => Ok(n as u16),
+            Primitive::U64(n) => Ok(n as u16),
+            Primitive::U128(n) => Ok(n as u16),
+            Primitive::U256(n) => Ok(n.low_u64() as u16),
+            Primitive::Boolean(b) => Ok(b as u16),
             _ => Err(ValueError::InvalidCastType(Type::U16))
         }
     }
@@ -534,13 +522,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u32(self) -> Result<u32, ValueError> {
         match self {
-            Value::U8(n) => Ok(n as u32),
-            Value::U16(n) => Ok(n as u32),
-            Value::U32(n) => Ok(n),
-            Value::U64(n) => Ok(n as u32),
-            Value::U128(n) => Ok(n as u32),
-            Value::U256(n) => Ok(n.low_u64() as u32),
-            Value::Boolean(b) => Ok(b as u32),
+            Primitive::U8(n) => Ok(n as u32),
+            Primitive::U16(n) => Ok(n as u32),
+            Primitive::U32(n) => Ok(n),
+            Primitive::U64(n) => Ok(n as u32),
+            Primitive::U128(n) => Ok(n as u32),
+            Primitive::U256(n) => Ok(n.low_u64() as u32),
+            Primitive::Boolean(b) => Ok(b as u32),
             _ => Err(ValueError::InvalidCastType(Type::U16))
         }
     }
@@ -549,13 +537,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u64(self) -> Result<u64, ValueError> {
         match self {
-            Value::U8(n) => Ok(n as u64),
-            Value::U16(n) => Ok(n as u64),
-            Value::U32(n) => Ok(n as u64),
-            Value::U64(n) => Ok(n),
-            Value::U128(n) => Ok(n as u64),
-            Value::U256(n) => Ok(n.low_u64()),
-            Value::Boolean(b) => Ok(b as u64),
+            Primitive::U8(n) => Ok(n as u64),
+            Primitive::U16(n) => Ok(n as u64),
+            Primitive::U32(n) => Ok(n as u64),
+            Primitive::U64(n) => Ok(n),
+            Primitive::U128(n) => Ok(n as u64),
+            Primitive::U256(n) => Ok(n.low_u64()),
+            Primitive::Boolean(b) => Ok(b as u64),
             _ => Err(ValueError::InvalidCastType(Type::U64))
         }
     }
@@ -564,13 +552,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u128(self) -> Result<u128, ValueError> {
         match self {
-            Value::U8(n) => Ok(n as u128),
-            Value::U16(n) => Ok(n as u128),
-            Value::U32(n) => Ok(n as u128),
-            Value::U64(n) => Ok(n as u128),
-            Value::U128(n) => Ok(n),
-            Value::U256(n) => Ok(n.low_u128()),
-            Value::Boolean(b) => Ok(b as u128),
+            Primitive::U8(n) => Ok(n as u128),
+            Primitive::U16(n) => Ok(n as u128),
+            Primitive::U32(n) => Ok(n as u128),
+            Primitive::U64(n) => Ok(n as u128),
+            Primitive::U128(n) => Ok(n),
+            Primitive::U256(n) => Ok(n.low_u128()),
+            Primitive::Boolean(b) => Ok(b as u128),
             _ => Err(ValueError::InvalidCastType(Type::U128))
         }
     }
@@ -579,13 +567,13 @@ impl Value {
     #[inline]
     pub fn cast_to_u256(self) -> Result<U256, ValueError> {
         match self {
-            Value::U8(n) => Ok(U256::from(n)),
-            Value::U16(n) => Ok(U256::from(n)),
-            Value::U32(n) => Ok(U256::from(n)),
-            Value::U64(n) => Ok(U256::from(n)),
-            Value::U128(n) => Ok(U256::from(n)),
-            Value::U256(n) => Ok(n),
-            Value::Boolean(b) => Ok(U256::from(b as u8)),
+            Primitive::U8(n) => Ok(U256::from(n)),
+            Primitive::U16(n) => Ok(U256::from(n)),
+            Primitive::U32(n) => Ok(U256::from(n)),
+            Primitive::U64(n) => Ok(U256::from(n)),
+            Primitive::U128(n) => Ok(U256::from(n)),
+            Primitive::U256(n) => Ok(n),
+            Primitive::Boolean(b) => Ok(U256::from(b as u8)),
             _ => Err(ValueError::InvalidCastType(Type::U256))
         }
     }
@@ -598,21 +586,20 @@ impl Value {
     }
 }
 
-impl std::fmt::Display for Value {
+impl std::fmt::Display for Primitive {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Null => write!(f, "null"),
-            Value::U8(v) => write!(f, "{}", v),
-            Value::U16(v) => write!(f, "{}", v),
-            Value::U32(v) => write!(f, "{}", v),
-            Value::U64(v) => write!(f, "{}", v),
-            Value::U128(v) => write!(f, "{}", v),
-            Value::U256(v) => write!(f, "{}", v),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::Range(start, end, _) => write!(f, "{}..{}", start, end),
-            Value::Blob(b) => write!(f, "{:?}", b),
-            Value::Opaque(o) => write!(f, "{}", o)
+            Primitive::Null => write!(f, "null"),
+            Primitive::U8(v) => write!(f, "{}", v),
+            Primitive::U16(v) => write!(f, "{}", v),
+            Primitive::U32(v) => write!(f, "{}", v),
+            Primitive::U64(v) => write!(f, "{}", v),
+            Primitive::U128(v) => write!(f, "{}", v),
+            Primitive::U256(v) => write!(f, "{}", v),
+            Primitive::String(s) => write!(f, "{}", s),
+            Primitive::Boolean(b) => write!(f, "{}", b),
+            Primitive::Range(range) => write!(f, "{}..{}", range.0, range.1),
+            Primitive::Opaque(o) => write!(f, "{}", o)
         }
     }
 }

@@ -1,4 +1,4 @@
-use xelis_types::{Path, Type, ValueCell};
+use xelis_types::{StackValue, Type, ValueCell};
 use crate::Context;
 
 use super::EnvironmentError;
@@ -7,7 +7,7 @@ use super::EnvironmentError;
 // second is the list of all parameters for this function call
 pub type FnReturnType = Result<Option<ValueCell>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
-pub type FnParams<'a> = Vec<Path<'a>>;
+pub type FnParams = Vec<StackValue>;
 pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 
 // Native function that is implemented in Rust
@@ -39,7 +39,7 @@ impl NativeFunction {
     // Execute the function
     pub fn call_function(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context) -> Result<Option<ValueCell>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
-            return Err(EnvironmentError::InvalidFnCall)
+            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.for_type.is_some()));
         }
 
         let instance = match instance_value {

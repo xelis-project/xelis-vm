@@ -1,32 +1,40 @@
 use crate::{
-    iterator::PathIterator,
+    iterator::ValueIterator,
     stack::Stack,
     Backend,
     ChunkManager,
     Context,
     VMError
 };
-use xelis_types::{Path, Value, ValueCell};
+use xelis_types::Primitive;
 
 use super::InstructionResult;
 
-pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    let len = value.as_ref().as_vec()?.len();
-    stack.push_stack_unchecked(Path::Owned(ValueCell::Default(Value::U32(len as u32))));
+    let len = Primitive::U32(value.as_ref()?.as_vec()?.len() as u32);
+
+    let memory_usage = len.get_memory_usage();
+    context.increase_memory_usage(memory_usage)?;
+
+    stack.push_stack_unchecked(len.into());
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
-    let iterator = PathIterator::new(value)?;
+    let iterator = ValueIterator::new(value)?;
     manager.add_iterator(iterator);
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     if let Some(value) = manager.next_iterator()? {
+        let memory_usage = value.as_ref()?
+            .calculate_memory_usage(context.memory_left())?;
+        context.increase_memory_usage_unchecked(memory_usage)?;
+
         stack.push_stack(value)?;
     } else {
         manager.set_index(addr as usize)?;
@@ -34,7 +42,7 @@ pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut C
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     manager.pop_iterator()?;
     Ok(InstructionResult::Nothing)
 }

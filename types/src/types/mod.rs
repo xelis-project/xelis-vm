@@ -10,7 +10,7 @@ pub use r#enum::*;
 pub use r#namespace::*;
 use opaque::OpaqueType;
 
-use crate::{values::Value, Constant};
+use crate::{values::Primitive, Constant};
 use std::{fmt, hash::{Hash, Hasher}};
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ pub enum Type {
     String,
     Bool,
 
-    Blob,
+    Bytes,
 
     Array(Box<Type>),
     Optional(Box<Type>),
@@ -43,6 +43,12 @@ pub enum Type {
     Enum(EnumType),
     Namespace(NamespaceType),
     Opaque(OpaqueType),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinedType {
+    Struct(StructType),
+    Enum(EnumValueType)
 }
 
 impl Type {
@@ -90,20 +96,19 @@ impl Type {
     }
 
     // Get a type from a value
-    pub fn from_value(value: &Value) -> Option<Self> {
+    pub fn from_value(value: &Primitive) -> Option<Self> {
         Some(match value {
-            Value::Null => return None,
-            Value::U8(_) => Type::U8,
-            Value::U16(_) => Type::U16,
-            Value::U32(_) => Type::U32,
-            Value::U64(_) => Type::U64,
-            Value::U128(_) => Type::U128,
-            Value::U256(_) => Type::U256,
-            Value::String(_) => Type::String,
-            Value::Boolean(_) => Type::Bool,
-            Value::Blob(_type) => Type::Blob,
-            Value::Range(_, _, _type) => Type::Range(Box::new(_type.clone())),
-            Value::Opaque(_) => return None,
+            Primitive::Null => return None,
+            Primitive::U8(_) => Type::U8,
+            Primitive::U16(_) => Type::U16,
+            Primitive::U32(_) => Type::U32,
+            Primitive::U64(_) => Type::U64,
+            Primitive::U128(_) => Type::U128,
+            Primitive::U256(_) => Type::U256,
+            Primitive::String(_) => Type::String,
+            Primitive::Boolean(_) => Type::Bool,
+            Primitive::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
+            Primitive::Opaque(_) => return None,
         })
     }
 
@@ -111,16 +116,18 @@ impl Type {
     pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
             Constant::Default(v) => Self::from_value(v)?,
-            Constant::Optional(value) => Type::Optional(Box::new(Type::from_value_type(value.as_ref()?)?)),
             Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
-            Constant::Struct(_, _type) => Type::Struct(_type.clone()),
             Constant::Map(map) => {
                 let (key, value) = map.iter().next()?;
                 let key = Type::from_value_type(&key)?;
                 let value = Type::from_value_type(&value)?;
                 Type::Map(Box::new(key), Box::new(value))
             },
-            Constant::Enum(_, enum_type) => Type::Enum(enum_type.enum_type().clone()),
+            Constant::Bytes(_) => Type::Bytes,
+            Constant::Typed(_, ty) => match ty {
+                DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
+                DefinedType::Struct(ty) => Type::Struct(ty.clone())
+            }
         })
     }
 
@@ -205,6 +212,10 @@ impl Type {
 
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
+        self.is_compatible_with_internal(other, true)
+    }
+
+    fn is_compatible_with_internal(&self, other: &Type, reverse: bool) -> bool {
         match other {
             Type::Range(inner) => match self {
                 Type::Range(inner2) => inner.is_compatible_with(inner2),
@@ -213,25 +224,33 @@ impl Type {
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
-                _ => self.is_generic(),
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
+            },
+            Type::Struct(a) => match self {
+                Type::Struct(b) => a == b,
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
+            },
+            Type::Opaque(a) => match self {
+                Type::Opaque(b) => a == b,
+                _ => self.is_generic() || other.is_compatible_with_internal(self, false)
             },
             Type::Any | Type::T(_) => true,
             Type::Array(sub_type) => match self {
-                Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                Type::Array(sub) => sub.is_compatible_with_internal(sub_type.as_ref(), false),
                 Type::Any => true,
-                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
+                _ => *self == *other || self.is_compatible_with_internal(sub_type.as_ref(), false),
             },
             Type::Optional(sub_type) => match self {
-                Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
+                Type::Optional(sub) => sub.is_compatible_with_internal(sub_type.as_ref(), false),
                 Type::Any => true,
-                _ => *self == *other,
+                _ => *self == *other || self.is_compatible_with_internal(&sub_type, false),
             },
             Type::Map(k, v) => match self {
-                Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
+                Type::Map(k2, v2) => k.is_compatible_with_internal(k2, false) && v.is_compatible_with_internal(v2, false),
                 Type::Any => true,
                 _ => false
             },
-            o => *o == *self || self.is_generic(),
+            _ => *self == *other || self.is_generic() || (reverse && other.is_compatible_with_internal(self, false)),
         }
     }
 
@@ -309,13 +328,15 @@ impl Type {
         match self {
             Type::Array(_) => true,
             Type::Range(_) => true,
+            Type::Bytes => true,
             _ => false
         }
     }
 
-    pub fn is_array(&self) -> bool {
+    pub fn support_array_call(&self) -> bool {
         match &self {
             Type::Array(_) => true,
+            Type::Bytes => true,
             _ => false
         }
     }
@@ -362,7 +383,7 @@ impl fmt::Display for Type {
             Type::U256 => write!(f, "u256"),
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
-            Type::Blob => write!(f, "blob"),
+            Type::Bytes => write!(f, "bytes"),
             Type::Struct(id) => write!(f, "struct({:?})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),
@@ -409,6 +430,14 @@ impl Equivalent<NamespaceType> for TypeId {
 mod tests {
     use std::hash::{DefaultHasher, Hash, Hasher};
     use super::*;
+
+    #[test]
+    fn test_compatibility_between_types() {
+        assert!(Type::Optional(Box::new(Type::Bool)).is_compatible_with(&Type::Bool));
+
+        let struct_type = StructType::new(0, Vec::new());
+        assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_compatible_with(&Type::Struct(struct_type.clone())));
+    }
 
     #[test]
     fn test_type_id_equivalent() {

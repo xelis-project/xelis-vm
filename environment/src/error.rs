@@ -7,8 +7,8 @@ pub enum EnvironmentError {
     InvalidParameter,
     #[error("Assertion failed")]
     AssertionFailed,
-    #[error("Invalid function call")]
-    InvalidFnCall,
+    #[error("Invalid function call, expected {} parameters got {}, expected {} got {} for instance", _0, _1, _2, _3)]
+    InvalidFnCall(usize, usize, bool, bool),
     #[error("Invalid function call: expected instance")]
     FnExpectedInstance,
     #[error("Panic: {0}")]
@@ -42,4 +42,13 @@ pub enum EnvironmentError {
     Expect(String),
     #[error("Invalid expect message, require alphanumeric chars only")]
     InvalidExpect,
+    #[error("{0}")]
+    Static(&'static str)
+}
+
+
+impl From<&'static str> for EnvironmentError {
+    fn from(value: &'static str) -> Self {
+        EnvironmentError::Static(value)
+    }
 }

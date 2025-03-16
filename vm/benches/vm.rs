@@ -15,6 +15,7 @@ macro_rules! bench {
             b.iter(|| {
                 vm.invoke_entry_chunk($id).unwrap();
                 vm.run().unwrap();
+                vm.context_mut().reset_usage();
             });
         });
     };

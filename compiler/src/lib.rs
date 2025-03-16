@@ -1,6 +1,6 @@
 mod error;
 
-use std::iter;
+use std::{collections::HashSet, iter};
 use log::{trace, warn};
 use xelis_ast::{
     Expression,
@@ -36,6 +36,9 @@ pub struct Compiler<'a> {
     // and prevent any dangling values
     // Each element is a scope, where its elements are the index of each
     values_on_stack: Vec<Vec<usize>>,
+    // We must track function parameters
+    // and clone them on first assignation
+    parameters_ids: HashSet<u16>,
 }
 
 impl<'a> Compiler<'a> {
@@ -49,6 +52,7 @@ impl<'a> Compiler<'a> {
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
             values_on_stack: Vec::new(),
+            parameters_ids: HashSet::new()
         }
     }
 
@@ -151,21 +155,20 @@ impl<'a> Compiler<'a> {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
-                chunk.emit_opcode(OpCode::NewArray);
+                chunk.emit_opcode(OpCode::NewObject);
                 chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::StructConstructor(exprs, _type) => {
+            Expression::StructConstructor(exprs, _) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
 
                 // We don't verify the struct ID, the parser should have done it
-                chunk.emit_opcode(OpCode::NewStruct);
-                // Because we write the type ID, we know how many expressions to read
-                chunk.write_u16(_type.id());
+                chunk.emit_opcode(OpCode::NewObject);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -196,15 +199,13 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::EnumConstructor(exprs, enum_type) => {
+            Expression::EnumConstructor(exprs, _) => {
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
 
-                chunk.emit_opcode(OpCode::NewEnum);
-                // Because we write the type ID, we know how many expressions to read
-                chunk.write_u16(enum_type.id());
-                chunk.write_u8(enum_type.variant_id());
+                chunk.emit_opcode(OpCode::NewObject);
+                chunk.write_u8(exprs.len() as u8);
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -335,7 +336,9 @@ impl<'a> Compiler<'a> {
             Expression::Operator(op, left, right) => {
                 match op {
                     Operator::Assign(None) => {
+                        self.function_param_copy_on_assign(chunk, left);
                         self.compile_expr(chunk, left)?;
+
                         self.compile_expr(chunk, right)?;
                         chunk.emit_opcode(OpCode::Assign);
 
@@ -397,7 +400,11 @@ impl<'a> Compiler<'a> {
                         self.add_value_on_stack(chunk.last_index())?;
                     },
                     _ => {
+                        if op.is_assignation() {
+                            self.function_param_copy_on_assign(chunk, left);
+                        }
                         self.compile_expr(chunk, left)?;
+
                         self.compile_expr(chunk, right)?;
                         let opcode = Self::map_operator_to_opcode(op)?;
                         chunk.emit_opcode(opcode);
@@ -413,6 +420,18 @@ impl<'a> Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    // To prevent any change in function caller variables
+    // Because VM allow us to changes values from one to another chunk invoke
+    fn function_param_copy_on_assign(&mut self, chunk: &mut Chunk, expr: &Expression) {
+        if let Expression::Variable(id) = expr {
+            if self.parameters_ids.remove(id) {
+                trace!("Copying function param {} for assignation", id);
+                chunk.emit_opcode(OpCode::MemoryToOwned);
+                chunk.write_u16(*id);
+            }
+        }
     }
 
     // Push the next register store id
@@ -705,9 +724,12 @@ impl<'a> Compiler<'a> {
         }
 
         // Store the parameters
+        self.parameters_ids.clear();
         for param in function.get_parameters() {
             trace!("Adding parameter: {:?}", param);
             self.memstore(&mut chunk)?;
+
+            self.parameters_ids.insert(*param.get_name());
         }
 
         self.compile_statements(&mut chunk, function.get_statements())?;
@@ -727,21 +749,6 @@ impl<'a> Compiler<'a> {
 
     // Compile the program
     pub fn compile(mut self) -> Result<Module, CompilerError> {
-        // Include the structs created
-        for struct_type in self.program.structures() {
-            trace!("Adding struct: {:?}", struct_type);
-            if !self.module.add_struct(struct_type.clone()) {
-                return Err(CompilerError::DuplicatedStruct(struct_type.id()));
-            }
-        }
-
-        for enum_type in self.program.enums() {
-            trace!("Adding enum: {:?}", enum_type);
-            if !self.module.add_enum(enum_type.clone()) {
-                return Err(CompilerError::DuplicatedEnum(enum_type.id()));
-            }
-        }
-
         // Compile the program
         for function in self.program.functions() {
             self.compile_function(function)?;
@@ -774,7 +781,7 @@ mod tests {
     use xelis_builder::EnvironmentBuilder;
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
-    use xelis_types::Value;
+    use xelis_types::Primitive;
 
     use super::*;
 
@@ -820,7 +827,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(3).into())
+            Some(&Primitive::U64(3).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -855,7 +862,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(0).into())
+            Some(&Primitive::U64(0).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -887,12 +894,12 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(1).into())
+            Some(&Primitive::U64(1).into())
         );
 
         assert_eq!(
             module.get_constant_at(1),
-            Some(&Value::U64(2).into())
+            Some(&Primitive::U64(2).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -990,7 +997,7 @@ mod tests {
                 // 3
                 OpCode::Constant.as_byte(), 2, 0,
                 // [1, 2, 3]
-                OpCode::NewArray.as_byte(), 3,
+                OpCode::NewObject.as_byte(), 3,
                 OpCode::IteratorBegin.as_byte(),
                 OpCode::IteratorNext.as_byte(), 29, 0, 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
@@ -1044,7 +1051,7 @@ mod tests {
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
-                OpCode::NewStruct.as_byte(), 0, 0,
+                OpCode::NewObject.as_byte(), 2,
                 OpCode::MemorySet.as_byte(), 0, 0,
                 OpCode::MemoryLoad.as_byte(), 0, 0,
                 OpCode::SubLoad.as_byte(), 0,
@@ -1158,7 +1165,7 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::NewEnum.as_byte(), 0, 0, 0,
+                OpCode::NewObject.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1175,7 +1182,7 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::NewEnum.as_byte(), 0, 0, 1,
+                OpCode::NewObject.as_byte(), 1,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1213,7 +1220,7 @@ mod tests {
                 // 10
                 OpCode::Constant.as_byte(), 1, 0,
                 // insert
-                OpCode::SysCall.as_byte(), 80, 0, 1, 2,
+                OpCode::SysCall.as_byte(), 89, 0, 1, 2,
                 // Expected POP
                 OpCode::Pop.as_byte(),
                 // x.get("a")
@@ -1222,9 +1229,9 @@ mod tests {
                 // a
                 OpCode::Constant.as_byte(), 0, 0,
                 // get
-                OpCode::SysCall.as_byte(), 79, 0, 1, 1,
+                OpCode::SysCall.as_byte(), 88, 0, 1, 1,
                 // unwrap (u16 id, on type bool, params u8)
-                OpCode::SysCall.as_byte(), 11, 0, 1, 0,
+                OpCode::SysCall.as_byte(), 20, 0, 1, 0,
                 // let dummy: u64 = x.get("a").unwrap();
                 OpCode::MemorySet.as_byte(), 1, 0,
                 // x.insert("b", dummy);
@@ -1235,7 +1242,7 @@ mod tests {
                 // Load dummy
                 OpCode::MemoryLoad.as_byte(), 1, 0,
                 // insert (u16 id, on type map, params u8)
-                OpCode::SysCall.as_byte(), 80, 0, 1, 2,
+                OpCode::SysCall.as_byte(), 89, 0, 1, 2,
                 // Expected POP
                 OpCode::Pop.as_byte(),
 
@@ -1268,7 +1275,7 @@ mod tests {
         assert_eq!(module.constants().len(), 1);
         assert_eq!(
             module.get_constant_at(0),
-            Some(&Value::U64(0).into())
+            Some(&Primitive::U64(0).into())
         );
     }
 }

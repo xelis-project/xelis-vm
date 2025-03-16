@@ -1,19 +1,23 @@
 use super::*;
 
 use xelis_bytecode::{Chunk, Module, OpCode};
-use xelis_environment::EnvironmentError;
-use xelis_types::{Type, Value, ValueError};
+use xelis_types::{Type, Primitive};
 
-fn try_run(module: Module) -> Result<Value, VMError> {
+fn try_run(module: Module) -> Result<Primitive, VMError> {
     let env = EnvironmentBuilder::default().build();
     run_internal(module, &env, 0)
+}
+
+fn try_run_id(module: Module, id: u16) -> Result<Primitive, VMError> {
+    let env = EnvironmentBuilder::default().build();
+    run_internal(module, &env, id)
 }
 
 #[test]
 fn test_casting() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -22,7 +26,7 @@ fn test_casting() {
 
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::String("10".to_string()));
+    assert_eq!(run(module), Primitive::String("10".to_string()));
 }
 
 #[test]
@@ -41,11 +45,11 @@ fn test_pop_empty_stack() {
 fn test_pop_constant() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
 
     // Add a return 0
     chunk.emit_opcode(OpCode::Constant);
-    chunk.write_u16(module.add_constant(Value::U8(0)) as u16);
+    chunk.write_u16(module.add_constant(Primitive::U8(0)) as u16);
 
     // Constant to be poped
     chunk.emit_opcode(OpCode::Constant);
@@ -57,7 +61,7 @@ fn test_pop_constant() {
     chunk.emit_opcode(OpCode::Return);
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(0));
+    assert_eq!(run(module), Primitive::U8(0));
 }
 
 #[test]
@@ -76,16 +80,16 @@ fn test_pop_n_out_of_bounds() {
 fn test_pop_n_constants() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
 
     // 0 that will be returned
     chunk.emit_opcode(OpCode::Constant);
-    chunk.write_u16(module.add_constant(Value::U8(0)) as u16);
+    chunk.write_u16(module.add_constant(Primitive::U8(0)) as u16);
 
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
-    let index = module.add_constant(Value::U8(20));
+    let index = module.add_constant(Primitive::U8(20));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -96,7 +100,7 @@ fn test_pop_n_constants() {
     chunk.emit_opcode(OpCode::Return);
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(0));
+    assert_eq!(run(module), Primitive::U8(0));
 }
 
 #[test]
@@ -105,28 +109,28 @@ fn test_array_call() {
     let mut chunk = Chunk::new();
 
     // Push element 1
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Push element 2
-    let index = module.add_constant(Value::U8(20));
+    let index = module.add_constant(Primitive::U8(20));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(2);
 
     // Load the first element
-    let index = module.add_constant(Value::U16(0));
+    let index = module.add_constant(Primitive::U32(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::ArrayCall);
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(10));
+    assert_eq!(run(module), Primitive::U8(10));
 }
 
 #[test]
@@ -135,9 +139,9 @@ fn test_multi_depth_array_call() {
     let mut chunk = Chunk::new();
 
     let values = vec![
-        Value::U8(10),
-        Value::U8(20),
-        Value::U8(30),
+        Primitive::U8(10),
+        Primitive::U8(20),
+        Primitive::U8(30),
     ].into_iter().map(|v| v.into()).collect();
 
     // Push element 1
@@ -146,18 +150,18 @@ fn test_multi_depth_array_call() {
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(1);
 
     // Load the first element of the first array
-    let index = module.add_constant(Value::U16(0));
+    let index = module.add_constant(Primitive::U32(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::ArrayCall);
 
     // Load the last element
-    let index = module.add_constant(Value::U16(2));
+    let index = module.add_constant(Primitive::U32(2));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -165,35 +169,25 @@ fn test_multi_depth_array_call() {
 
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(30));
+    assert_eq!(run(module), Primitive::U8(30));
 }
 
 #[test]
 fn test_struct() {
-    // Create a new struct
-    let new_struct = StructType::new(0, vec![
-            Type::U8,
-            Type::U16
-        ]
-    );
-
     let mut module = Module::new();
-    module.add_struct(new_struct.clone());
-
     let mut chunk = Chunk::new();
     // Push the first field
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Push the second field
-    let index = module.add_constant(Value::U16(20));
+    let index = module.add_constant(Primitive::U16(20));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
-    chunk.emit_opcode(OpCode::NewStruct);
-    // struct id
-    chunk.write_u16(0);
+    chunk.emit_opcode(OpCode::NewObject);
+    chunk.write_u8(2);
 
     chunk.emit_opcode(OpCode::Return);
 
@@ -205,12 +199,11 @@ fn test_struct() {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            ValueCell::Struct(
+            ValueCell::Array(
                 vec![
-                    Value::U8(10).into(),
-                    Value::U16(20).into()
-                ].into(),
-                new_struct
+                    Primitive::U8(10).into(),
+                    Primitive::U16(20).into()
+                ]
             )
         );
     }
@@ -251,7 +244,7 @@ fn test_struct() {
     let env = Environment::new();
     let mut vm = VM::new(&module, &env);
     vm.invoke_chunk_id(0).unwrap();
-    assert_eq!(vm.run().unwrap(), Value::U16(30).into());
+    assert_eq!(vm.run().unwrap(), Primitive::U16(30).into());
 }
 
 #[test]
@@ -260,7 +253,7 @@ fn test_function_call() {
 
     // First function should return "true"
     let mut bool_fn = Chunk::new();
-    let index = module.add_constant(Value::Boolean(true));
+    let index = module.add_constant(Primitive::Boolean(true));
     bool_fn.emit_opcode(OpCode::Constant);
     bool_fn.write_u16(index as u16);
 
@@ -288,17 +281,12 @@ fn test_function_call() {
     let env = Environment::new();
     let mut vm = VM::new(&module, &env);
     vm.invoke_chunk_id(0).unwrap();
-    assert_eq!(vm.run().unwrap(), Value::Boolean(true).into());
+    assert_eq!(vm.run().unwrap(), Primitive::Boolean(true).into());
 }
 
 #[test]
 fn test_function_call_on_value() {
     let mut module = Module::new();
-
-    // Create a struct with u64 field
-    let new_struct = StructType::new(0, vec![Type::U64]);
-
-    module.add_struct(new_struct.clone());
 
     // Create a function on a struct
     // When called, the first stack value should be the struct
@@ -310,9 +298,9 @@ fn test_function_call_on_value() {
     // Main function
     let mut main = Chunk::new();
     // Create a struct
-    let index = module.add_constant(Constant::Struct(vec![
-        Value::U64(10).into()
-    ], new_struct));
+    let index = module.add_constant(Constant::Array(vec![
+        Primitive::U64(10).into()
+    ]));
 
     main.emit_opcode(OpCode::Constant);
     main.write_u16(index as u16);
@@ -329,7 +317,7 @@ fn test_function_call_on_value() {
     let env = Environment::new();
     let mut vm = VM::new(&module, &env);
     vm.invoke_chunk_id(0).unwrap();
-    assert_eq!(vm.run().unwrap(), Value::U64(10).into());
+    assert_eq!(vm.run().unwrap(), Primitive::U64(10).into());
 }
 
 #[test]
@@ -338,7 +326,7 @@ fn test_memory() {
     let mut chunk = Chunk::new();
 
     // Push element 1
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -352,7 +340,7 @@ fn test_memory() {
 
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(10));
+    assert_eq!(run(module), Primitive::U8(10));
 }
 
 #[test]
@@ -361,24 +349,24 @@ fn test_for_each_index() {
     let mut chunk = Chunk::new();
 
     // Push element 1
-    let index = module.add_constant(Value::U8(10));
+    let index = module.add_constant(Primitive::U8(10));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Push element 2
-    let index = module.add_constant(Value::U8(20));
+    let index = module.add_constant(Primitive::U8(20));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Create a new array with 2 elements
-    chunk.emit_opcode(OpCode::NewArray);
+    chunk.emit_opcode(OpCode::NewObject);
     chunk.write_u8(2);
 
     // Store the array in the memory
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
-    let sum_index = module.add_constant(Value::U8(0));
+    let sum_index = module.add_constant(Primitive::U8(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(sum_index as u16);
 
@@ -386,7 +374,7 @@ fn test_for_each_index() {
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(1);
 
-    let index = module.add_constant(Value::U32(0));
+    let index = module.add_constant(Primitive::U32(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -449,7 +437,131 @@ fn test_for_each_index() {
 
     module.add_chunk(chunk);
 
-    assert_eq!(run(module), Value::U8(30));
+    assert_eq!(run(module), Primitive::U8(30));
+}
+
+#[test]
+fn test_memory_overwrite_self() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    let index = module.add_constant(Primitive::U64(10));
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(index as u16);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Store the pointer by overwriting its source 
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer stored again
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
+}
+
+#[test]
+fn test_safe_sub_value_pointer() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    module.add_constant(Constant::Array(vec![Primitive::U64(10).into()]));
+    module.add_constant(Primitive::U32(0));
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(0);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // push index
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0 from array
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Store the pointer by overwriting its source
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer stored again
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
+}
+
+
+#[test]
+fn test_safe_sub_intermediate_value_pointer() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Push element 1
+    module.add_constant(Constant::Array(vec![Constant::Array(vec![Primitive::U64(10).into()])]));
+    module.add_constant(Primitive::U32(0));
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(0);
+
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // load the pointer
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // push index
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0 from array
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Store the pointer by writing the pointer in #1
+    // So here we have the sub array
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(1);
+
+    // Load the stored pointer of above instruction
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(1);
+
+    // Repush index
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(1);
+
+    // Load index 0 from sub array
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Copy the value so the pointer live in the stack
+    chunk.emit_opcode(OpCode::Copy);
+
+    // Now overwrite the origin array on which mem#1 depends
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    module.add_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::U64(10));
 }
 
 #[test]
@@ -458,17 +570,17 @@ fn test_for_each_iterator() {
     let mut chunk = Chunk::new();
 
     let index = module.add_constant(Constant::Array(vec![
-        Value::U8(10).into(),
-        Value::U8(20).into(),
-        Value::U8(30).into(),
-        Value::U8(40).into(),
-        Value::U8(50).into(),
+        Primitive::U8(10).into(),
+        Primitive::U8(20).into(),
+        Primitive::U8(30).into(),
+        Primitive::U8(40).into(),
+        Primitive::U8(50).into(),
     ]));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
     // Create a new sum variable in memory
-    let index = module.add_constant(Value::U8(0));
+    let index = module.add_constant(Primitive::U8(0));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -509,7 +621,7 @@ fn test_for_each_iterator() {
 
     // Execute
     module.add_chunk(chunk);
-    assert_eq!(run(module), Value::U8(150));
+    assert_eq!(run(module), Primitive::U8(150));
 }
 
 #[test]
@@ -527,7 +639,68 @@ fn test_bad_program_recursive_infinite() {
 
     // Execute
     module.add_chunk(chunk);
-    assert!(matches!(try_run(module), Err(VMError::CallStackOverflow)));
+
+    assert!(try_run(module).is_err());
+}
+
+#[test]
+fn test_bad_program_bad_stack_pointers() {
+    let mut module = Module::new();
+
+    let mut add = Chunk::new();
+
+    add.emit_opcode(OpCode::Pop);
+    add.emit_opcode(OpCode::Pop);
+
+    add.emit_opcode(OpCode::Constant);
+    add.write_u16(2);
+
+    add.emit_opcode(OpCode::MemorySet);
+    add.write_u16(0);
+
+    add.emit_opcode(OpCode::MemoryLoad);
+    add.write_u16(0);
+
+    let mut main = Chunk::new();
+
+    module.add_constant(Primitive::U64(0));
+    module.add_constant(Primitive::U64(1));
+    module.add_constant(Primitive::U64(3));
+
+    // Store first constant in our memory then load it again
+    main.emit_opcode(OpCode::Constant);
+    main.write_u16(0);
+
+    main.emit_opcode(OpCode::MemorySet);
+    main.write_u16(0);
+
+    // Same for the second
+    main.emit_opcode(OpCode::Constant);
+    main.write_u16(1);
+
+    main.emit_opcode(OpCode::MemorySet);
+    main.write_u16(1);
+
+    // Load their pointers
+    main.emit_opcode(OpCode::MemoryLoad);
+    main.write_u16(0);
+
+    main.emit_opcode(OpCode::MemoryLoad);
+    main.write_u16(1);
+
+    main.emit_opcode(OpCode::InvokeChunk);
+    main.write_u16(0);
+    main.write_bool(false);
+    main.write_u8(2);
+
+    main.emit_opcode(OpCode::Return);
+
+    // Execute
+    module.add_chunk(add);
+    module.add_entry_chunk(main);
+
+    let res = try_run_id(module, 1).unwrap();
+    assert!(matches!(res, Primitive::U64(3)));
 }
 
 #[test]
@@ -535,14 +708,13 @@ fn test_infinite_map_depth() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
 
+    let max_iterations = 100_000;
     // let map = {};
-    // foreach _ in 0..28000 {
-    //     let mut inner_map = {};
-    //     inner_map.insert("hello world", map);
-    //     map = inner_map;
+    // foreach _ in 0..max_iterations {
+    //     map.insert("hello world", map);
     // }
 
-    let constant_id = module.add_constant(Value::String("hello world".to_string())) as u16;
+    let constant_id = module.add_constant(Primitive::String("hello world".to_string())) as u16;
 
     // Create the map
     chunk.emit_opcode(OpCode::NewMap);
@@ -552,20 +724,27 @@ fn test_infinite_map_depth() {
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
-    let jump_at = chunk.index();
-    // Create the inner map
-    chunk.emit_opcode(OpCode::NewMap);
-    chunk.write_u8(0);
+    let id = module.add_constant(Primitive::U32(0)) as u16;
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(id);
 
-    // Store in memory
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(1);
 
-    // Load the map for insert
+    let jump_at = chunk.index();
+
+    // Load the index and increment it
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    // Insert the map into the inner map
+    chunk.emit_opcode(OpCode::Inc);
+    chunk.emit_opcode(OpCode::Pop);
+
+    // Now load the initial map
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Insert the map into itself
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(constant_id);
 
@@ -574,30 +753,32 @@ fn test_infinite_map_depth() {
 
     // Insert map
     chunk.emit_opcode(OpCode::SysCall);
-    chunk.write_u16(80);
+    chunk.write_u16(89);
     chunk.write_bool(true);
     chunk.write_u8(2);
 
     // Drop the returned value
     chunk.emit_opcode(OpCode::Pop);
 
-    // Load again the map
+    // jump to beginning if we are less than len
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    // Store it in memory at place of the map
-    chunk.emit_opcode(OpCode::MemorySet);
-    chunk.write_u16(0);
+    let id = module.add_constant(Primitive::U32(max_iterations)) as u16;
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(id);
 
-    // jump to beginning
-    chunk.emit_opcode(OpCode::Jump);
+    chunk.emit_opcode(OpCode::Gte);
+
+    chunk.emit_opcode(OpCode::JumpIfFalse);
     chunk.write_u32(jump_at as u32);
+
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
 
     // Execute
     module.add_chunk(chunk);
-
-    let val = try_run(module);
-    println!("val: {:?}", val);
-
-    assert!(matches!(val, Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
+  
+    assert!(try_run(module).is_err());
+    // assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
 }

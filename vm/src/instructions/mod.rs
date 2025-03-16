@@ -2,11 +2,13 @@ mod operator;
 mod r#impl;
 mod iterator;
 mod constructor;
+mod memory;
 
 use operator::*;
 use r#impl::*;
 use iterator::*;
 use constructor::*;
+use memory::*;
 
 use xelis_bytecode::OpCode;
 
@@ -23,7 +25,7 @@ pub enum InstructionResult {
 
 // A handler is a function pointer to an instruction
 // With its associated cost
-pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack<'a>, &mut ChunkManager<'a>, &mut Context<'a, '_>) -> Result<InstructionResult, VMError>, u64);
+pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'a, '_>) -> Result<InstructionResult, VMError>, u64);
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
@@ -47,11 +49,17 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Constant.as_usize()] = (constant, 1);
         instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
         instructions[OpCode::MemorySet.as_usize()] = (memory_set, 5);
+        instructions[OpCode::MemoryPop.as_usize()] = (memory_pop, 3);
+        instructions[OpCode::MemoryLen.as_usize()] = (memory_len, 1);
+        instructions[OpCode::MemoryToOwned.as_usize()] = (memory_to_owned, 5);
+
         instructions[OpCode::SubLoad.as_usize()] = (subload, 5);
+
         instructions[OpCode::Pop.as_usize()] = (pop, 1);
         instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
         instructions[OpCode::Copy.as_usize()] = (copy, 1);
         instructions[OpCode::CopyN.as_usize()] = (copy_n, 1);
+        instructions[OpCode::ToOwned.as_usize()] = (to_owned, 1);
 
         instructions[OpCode::Swap.as_usize()] = (swap, 1);
         instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
@@ -69,11 +77,9 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Cast.as_usize()] = (cast, 1);
         instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
         instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
-        instructions[OpCode::NewArray.as_usize()] = (new_array, 1);
-        instructions[OpCode::NewStruct.as_usize()] = (new_struct, 1);
+        instructions[OpCode::NewObject.as_usize()] = (new_array, 1);
         instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
         instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
-        instructions[OpCode::NewEnum.as_usize()] = (new_enum, 1);
 
         instructions[OpCode::Add.as_usize()] = (add, 1);
         instructions[OpCode::Sub.as_usize()] = (sub, 1);
@@ -128,7 +134,7 @@ impl<'a> InstructionTable<'a> {
     }
 
     // Execute an instruction
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack<'a>, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
@@ -138,21 +144,21 @@ impl<'a> InstructionTable<'a> {
     }
 }
 
-fn unimplemented<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+fn unimplemented<'a>(_: &Backend<'a>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     Err(VMError::InvalidOpCode)
 }
 
-fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack<'a>, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a>(_: &Backend<'a>, _: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+fn jump<'a>(_: &Backend<'a>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     manager.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack<'a>, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let addr = manager.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {

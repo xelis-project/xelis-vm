@@ -216,8 +216,10 @@ mod tests {
 
     #[test]
     fn test_opaque_serde() {
-        let mut registry = JSON_REGISTRY.write().unwrap();
-        register_opaque_json!(registry, "CustomOpaque", CustomOpaque);
+        {
+            let mut registry = JSON_REGISTRY.write().unwrap();
+            register_opaque_json!(registry, "CustomOpaque", CustomOpaque);
+        }
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let json = serde_json::to_string(&opaque).unwrap();

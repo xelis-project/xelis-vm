@@ -12,14 +12,19 @@ mod full;
 
 
 #[track_caller]
-fn run_internal(module: Module, environment: &Environment, id: u16) -> Result<Value, VMError> {
+fn run_internal(module: Module, environment: &Environment, id: u16) -> Result<Primitive, VMError> {
+    // Verify the module using validator
+    let validator = ModuleValidator::new(&module, environment);
+    validator.verify().unwrap();
+
     let mut vm = VM::new(&module, environment);
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     vm.invoke_chunk_id(id).unwrap();
-    vm.run().map(|v| v.into_value().unwrap())
+    vm.run().map(|mut v| v.into_value().unwrap())
 }
 
 #[track_caller]
-fn run(module: Module) -> Value {
+fn run(module: Module) -> Primitive {
     let environment = EnvironmentBuilder::default().build();
     run_internal(module, &environment, 0).unwrap()
 }

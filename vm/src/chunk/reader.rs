@@ -72,6 +72,10 @@ impl<'a> ChunkReader<'a> {
         }
     }
 
+    pub fn has_next(&self) -> bool {
+        self.ip <= self.chunk.last_index()
+    }
+
     // Read a u8 from the instructions
     #[inline]
     pub fn read_u8(&mut self) -> Result<u8, VMError> {
@@ -112,5 +116,16 @@ impl<'a> ChunkReader<'a> {
     pub fn read_type(&mut self) -> Result<Type, VMError> {
         let type_id = self.read_u8()?;
         Type::primitive_type_from_byte(type_id).ok_or(VMError::InvalidPrimitiveType)
+    }
+
+    // Check if we have another instruction to execute
+    // Return OpCode is exempted
+    // This function is used for the call stack optimization
+    #[inline]
+    pub fn has_next_instruction(&self) -> bool {
+        match self.chunk.get_instruction_at(self.ip) {
+            Some(byte) => *byte != OpCode::Return.as_byte(),
+            None => false
+        }
     }
 }

@@ -4,8 +4,11 @@ mod string;
 mod integer;
 mod range;
 mod map;
+mod bytes;
 
-use xelis_types::{Type, Value};
+use std::ptr;
+
+use xelis_types::{Primitive, Type};
 use xelis_environment::{
     EnvironmentError,
     FnInstance,
@@ -17,6 +20,7 @@ use super::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
     array::register(env);
+    bytes::register(env);
     optional::register(env);
     string::register(env);
     integer::register(env);
@@ -33,14 +37,14 @@ pub fn register(env: &mut EnvironmentBuilder) {
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    println!("{}", param.as_ref().as_value());
+    println!("{}", param.as_ref()?);
 
     Ok(None)
 }
 
 fn debug(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    println!("{:?}", param.as_ref().as_value());
+    println!("{:?}", param);
 
     Ok(None)
 }
@@ -54,7 +58,7 @@ fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnTy
 
 fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
     let param = &parameters[0];
-    let value = param.as_ref().as_bool()?;
+    let value = param.as_bool()?;
 
     if value {
         Ok(None)
@@ -64,21 +68,24 @@ fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType 
 }
 
 fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let same = parameters[0].is_same_ptr(&parameters[1]);
-    Ok(Some(Value::Boolean(same).into()))
+    let left = parameters[0].as_ref()?;
+    let right = parameters[1].as_ref()?;
+    let same = ptr::from_ref(left) == ptr::from_ref(right);
+
+    Ok(Some(Primitive::Boolean(same).into()))
 }
 
 fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
     let msg = parameters.remove(1)
         .into_owned()?
-        .to_string()?;
+        .into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);
     }
 
     let param = &parameters[0];
-    let value = param.as_ref().as_bool()?;
+    let value = param.as_bool()?;
 
     if value {
         Ok(None)

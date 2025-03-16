@@ -1,6 +1,6 @@
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, StructType, Type, Value, ValueError, Constant};
+use xelis_types::{EnumType, EnumVariant, Primitive, StructType, ValueCell, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
@@ -42,8 +42,8 @@ pub enum ValidatorError<'a> {
     IncorrectVariant,
     #[error("invalid op code")]
     InvalidOpCode,
-    #[error("invalid opcode arguments")]
-    InvalidOpCodeArguments,
+    #[error("invalid opcode {0:?} arguments, expected {1}")]
+    InvalidOpCodeArguments(OpCode, usize),
     #[error("invalid range")]
     InvalidRange,
     #[error("invalid range type")]
@@ -75,61 +75,20 @@ pub struct ModuleValidator<'a> {
 
 impl<'a> ModuleValidator<'a> {
     pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
-        Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 }
+        Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 * 1024 }
     }
 
     // Verify a constant and return the memory usage
-    pub fn verify_constant(&self, constant: &Constant) -> Result<usize, ValidatorError<'a>> {
+    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError<'a>> {
         let mut stack = vec![(constant, 0)];
-        let mut memory_usage = 0;
 
         while let Some((value, depth)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
             }
 
-            // Increase by one for the byte type of the value
-            memory_usage += 1;
-            if memory_usage > self.constant_max_memory {
-                return Err(ValidatorError::TooMuchMemoryUsage);
-            }
-
             match value {
-                Constant::Struct(fields, t) => {
-                    if fields.len() != t.fields().len() {
-                        return Err(ValidatorError::IncorrectFields);
-                    }
-        
-                    if !self.module.structs().contains(t) && !self.environment.get_structures().contains(t) {
-                        return Err(ValidatorError::UnknownStruct);
-                    }
-
-                    for field in fields {
-                        stack.push((field, depth + 1));
-                    }
-                    memory_usage += 8;
-                },
-                Constant::Enum(fields, t) => {
-                    let variant = t.enum_type()
-                        .variants()
-                        .get(t.variant_id() as usize)
-                        .ok_or(ValidatorError::IncorrectVariant)?;
-
-                    if fields.len() != variant.fields().len() {
-                        return Err(ValidatorError::IncorrectFields);
-                    }
-
-                    if !self.module.enums().contains(t.enum_type()) && !self.environment.get_enums().contains(t.enum_type()) {
-                        return Err(ValidatorError::UnknownEnum);
-                    }
-
-                    for field in fields {
-                        stack.push((field, depth + 1));
-                    }
-
-                    memory_usage += 10;
-                },
-                Constant::Array(elements) => {
+                ValueCell::Array(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
@@ -137,14 +96,18 @@ impl<'a> ModuleValidator<'a> {
                     for element in elements {
                         stack.push((element, depth + 1));
                     }
-                    memory_usage += 4;
                 },
-                Constant::Map(map) => {
+                ValueCell::Bytes(values) => {
+                    if values.len() > u32::MAX as usize {
+                        return Err(ValidatorError::TooManyConstants);
+                    }
+                }
+                ValueCell::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
-                    for (key, value) in map {
+                    for (key, value) in map.iter() {
                         if key.is_map() {
                             return Err(ValidatorError::MapAsKeyNotAllowed);
                         }
@@ -152,74 +115,44 @@ impl<'a> ModuleValidator<'a> {
                         stack.push((key, depth + 1));
                         stack.push((value, depth + 1));
                     }
-                    memory_usage += 16;
                 },
-                Constant::Optional(opt) => {
-                    if let Some(value) = opt {
-                        memory_usage += 1;
-                        stack.push((value, depth + 1));
-                    }
-                },
-                Constant::Default(v) => match v {
-                    Value::Range(left, right, _type) => {
-                        if !left.is_number() || !right.is_number() {
+                ValueCell::Default(v) => match v {
+                    Primitive::Range(range) => {
+                        if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);
                         }
     
-                        let left_type = left.get_type()?;
-                        if left_type != right.get_type()? {
+                        let left_type = range.0.get_type()?;
+                        if left_type != range.1.get_type()? {
                             return Err(ValidatorError::InvalidRange);
                         }
-    
-                        if left_type != *_type {
-                            return Err(ValidatorError::InvalidRangeType);
-                        }
-
-                        memory_usage += 8;
                     },
-                    Value::Null => memory_usage += 1,
-                    Value::Boolean(_) => memory_usage += 1,
-                    Value::String(str) => {
+                    Primitive::String(str) => {
                         if str.len() > u32::MAX as usize {
                             return Err(ValidatorError::StringTooBig);
                         }
-
-                        memory_usage += 8 + str.len();
                     },
-                    Value::U8(_) => memory_usage += 1,
-                    Value::U16(_) => memory_usage += 2,
-                    Value::U32(_) => memory_usage += 4,
-                    Value::U64(_) => memory_usage += 8,
-                    Value::U128(_) => memory_usage += 16,
-                    Value::U256(_) => memory_usage += 32,
-                    Value::Blob(blob) => {
-                        if blob.len() > u32::MAX as usize {
-                            return Err(ValidatorError::TooManyConstants);
-                        }
-
-                        memory_usage += blob.len();
-                    },
-                    Value::Opaque(opaque) => {
+                    Primitive::Opaque(opaque) => {
                         if !self.environment.get_opaques()
                             .contains(&opaque.get_type_id()) {
                             return Err(ValidatorError::InvalidOpaque);
                         }
-
-                        memory_usage += opaque.get_size();
-                    }
-                },
+                    },
+                    _ => {}
+                }
             }
         }
 
-        Ok(memory_usage)
+        Ok(())
     }
 
     // Verify all the declared constants in the module
-    pub fn verify_constants<'b, I: Iterator<Item = &'b Constant>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
         let mut memory_usage = 0;
         for c in constants {
-            memory_usage += self.verify_constant(&c)?;
+            self.verify_constant(&c)?;
 
+            memory_usage += c.calculate_memory_usage(self.constant_max_memory)?;
             if memory_usage > self.constant_max_memory {
                 return Err(ValidatorError::TooManyConstants);
             }
@@ -243,8 +176,9 @@ impl<'a> ModuleValidator<'a> {
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
 
-                reader.advance(op.arguments_bytes())
-                    .map_err(|_| ValidatorError::InvalidOpCodeArguments)?;
+                let count = op.arguments_bytes();
+                reader.advance(count)
+                    .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
             }
         }
 
@@ -255,52 +189,6 @@ impl<'a> ModuleValidator<'a> {
             }
         }
 
-        Ok(())
-    }
-
-    // Verify the enums integrity
-    fn verify_enums(&self) -> Result<(), ValidatorError<'a>> {
-        // No need to check the ids, they are already checked by the Module
-        for e in self.module.enums() {
-            // Verify the variants
-            if e.variants().len() > u8::MAX as usize {
-                return Err(ValidatorError::TooManyEnumsVariants);
-            }
-
-            for variant in e.variants() {
-                if variant.fields().len() > u8::MAX as usize {
-                    return Err(ValidatorError::TooManyEnumsVariantsFields(variant));
-                }
-
-                for field in variant.fields() {
-                    if let Type::Enum(inner) = field {
-                        if e == inner {
-                            return Err(ValidatorError::RecursiveEnum(e));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    // Verify the structs integrity
-    fn verify_structs(&self) -> Result<(), ValidatorError<'a>> {
-        // No need to check the ids, they are already checked by the Module
-        for s in self.module.structs() {
-            if s.fields().len() > u8::MAX as usize {
-                return Err(ValidatorError::TooManyStructFields(s));
-            }
-
-            for field in s.fields() {
-                if let Type::Struct(inner) = field {
-                    if s == inner {
-                        return Err(ValidatorError::RecursiveStruct(s));
-                    }
-                }
-            }
-        }
         Ok(())
     }
 
@@ -317,23 +205,7 @@ impl<'a> ModuleValidator<'a> {
             return Err(ValidatorError::TooManyChunks);
         }
 
-        if self.module.structs().len() >= max {
-            return Err(ValidatorError::TooManyStructs);
-        }
-
-        if self.module.enums().len() >= max {
-            return Err(ValidatorError::TooManyEnums);
-        }
-
-        // Maximum of 65535 types
-        let max_types = self.module.structs().len() + self.module.enums().len();
-        if max_types >= max {
-            return Err(ValidatorError::TooManyTypes);
-        }
-
-        self.verify_enums()?;
-        self.verify_structs()?;
-        self.verify_constants(self.module.constants().iter().map(|v| &v.0))?;
+        self.verify_constants(self.module.constants().iter())?;
         self.verify_chunks()?;
 
         Ok(())

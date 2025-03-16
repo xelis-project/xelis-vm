@@ -1,45 +1,79 @@
-mod path;
+mod stack_value;
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
-    ptr
+    mem
 };
-use crate::{opaque::OpaqueWrapper, EnumValueType, Opaque, StructType, Type, U256};
-use super::{Constant, SubValue, Value, ValueError};
+use indexmap::IndexMap;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
+use super::{Constant, Primitive, ValueError};
 
-pub use path::*;
+pub use stack_value::*;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Eq, Serialize, Deserialize)]
+#[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
-    Default(Value),
-    Struct(Vec<SubValue>, StructType),
-    Array(Vec<SubValue>),
-    Optional(Option<SubValue>),
-
+    Default(Primitive),
+    Bytes(Vec<u8>),
+    Array(Vec<ValueCell>),
     // Map cannot be used as a key in another map
-    Map(HashMap<ValueCell, SubValue>),
-    Enum(Vec<SubValue>, EnumValueType),
+    // Key must be immutable also!
+    Map(IndexMap<ValueCell, ValueCell>),
+}
+
+#[cfg(feature = "infinite-cell-depth")]
+impl Drop for ValueCell {
+    fn drop(&mut self) {
+        if matches!(self, Self::Default(_) | Self::Bytes(_)) {
+            return;
+        }
+
+        let mut stack = Vec::new();
+        match self {
+            ValueCell::Array(values) => {
+                stack.reserve(values.len());
+                stack.append(values);
+            },
+            ValueCell::Map(map) => {
+                stack.reserve(map.len() * 2);
+                stack.extend(map.drain().flat_map(|(k, v)| [k, v]));
+            },
+            _ => unreachable!()
+        };
+
+        while let Some(mut value) = stack.pop() {
+            match &mut value {
+                ValueCell::Array(values) => {
+                    stack.reserve(values.len());
+                    stack.append(values);
+                },
+                ValueCell::Map(map) => {
+                    stack.reserve(map.len() * 2);
+                    stack.extend(
+                        map.drain()
+                            .flat_map(|(k, v)| [k, v])
+                    );
+                }
+                _ => {}
+            };
+        }
+    }
 }
 
 impl PartialEq for ValueCell {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Default(a), Self::Default(b)) => a == b,
-            (Self::Struct(a, _), Self::Struct(b, _)) => a == b,
+            (Self::Bytes(a), Self::Bytes(b)) => a == b,
             (Self::Array(a), Self::Array(b)) => a == b,
-            (Self::Optional(a), Self::Optional(b)) => a == b,
-
-            // Support null comparison
-            (Self::Optional(a), Self::Default(Value::Null)) => a.is_none(),
-            (Self::Default(Value::Null), Self::Optional(b)) => b.is_none(),
-
             (Self::Map(a), Self::Map(b)) => a == b,
-            (Self::Enum(a, _), Self::Enum(b, _)) => a == b,
             _ => false
         }
     }
@@ -47,7 +81,30 @@ impl PartialEq for ValueCell {
 
 impl Hash for ValueCell {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash_with_pointers(state, &mut HashSet::new());
+        // Fast path
+        if let Self::Default(v) = self {
+            v.hash(state);
+            return;
+        }
+
+        let mut stack = vec![self];
+        while let Some(value) = stack.pop() {
+            match value {
+                Self::Default(v) => v.hash(state),
+                Self::Array(values) => {
+                    12u8.hash(state);
+                    stack.extend(values);
+                },
+                Self::Bytes(values) => {
+                    13u8.hash(state);
+                    values.hash(state);
+                }
+                Self::Map(map) => {
+                    14u8.hash(state);
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]))
+                }
+            }
+        }
     }
 }
 
@@ -57,8 +114,8 @@ impl Default for ValueCell {
     }
 }
 
-impl From<Value> for ValueCell {
-    fn from(value: Value) -> Self {
+impl From<Primitive> for ValueCell {
+    fn from(value: Primitive) -> Self {
         Self::Default(value)
     }
 }
@@ -67,76 +124,33 @@ impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
             Constant::Default(v) => Self::Default(v),
-            Constant::Struct(fields, _type) => Self::Struct(fields.into_iter().map(|v| v.into()).collect(), _type),
             Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
-            Constant::Optional(value) => Self::Optional(value.map(|v| (*v).into())),
+            Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Enum(fields, _type) => Self::Enum(fields.into_iter().map(|v| v.into()).collect(), _type),
+            Constant::Typed(values, _) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
         }
     }
 }
 
 impl ValueCell {
-    pub(crate) fn hash_with_pointers<H: Hasher>(&self, state: &mut H, tracked_pointers: &mut HashSet<*const Self>) {
-        if !tracked_pointers.insert(ptr::from_ref(self)) {
-            // Cyclic reference detected
-            return;
-        }
-
+    // Check if our type contains any sub values
+    // that could be used to get a pointer from
+    pub fn has_sub_values(&self) -> bool {
         match self {
-            ValueCell::Default(v) => {
-                v.hash(state);
-            },
-            ValueCell::Struct(fields, _) => {
-                12u8.hash(state);
-                fields.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
-            ValueCell::Array(array) => {
-                13u8.hash(state);
-                array.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
-            ValueCell::Optional(v) => {
-                14u8.hash(state);
-                if let Some(v) = v {
-                    v.borrow()
-                        .hash_with_pointers(state, tracked_pointers);
-                } else {
-                    Self::Default(Value::Null).hash(state);
-                }
-            },
-            ValueCell::Map(map) => {
-                15u8.hash(state);
-                map.iter()
-                    .for_each(|(k, v)| {
-                        k.hash(state);
-                        v.borrow()
-                            .hash_with_pointers(state, tracked_pointers);
-                    });
-            },
-            ValueCell::Enum(fields, _) => {
-                16u8.hash(state);
-                fields.iter()
-                    .for_each(|field| field.borrow()
-                        .hash_with_pointers(state, tracked_pointers)
-                    );
-            },
+            Self::Array(_)
+            | Self::Map(_) => true,
+            _ => false,
         }
     }
 
     // Calculate the depth of the value
-    pub fn calculate_depth(&self, max_depth: usize) -> Result<usize, ValueError> {
+    pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
         if matches!(self, Self::Default(_)) {
             return Ok(0);
         }
 
-        let mut stack = vec![(Path::Borrowed(self), 0)];
+        let mut stack = vec![(self, 0)];
         let mut biggest_depth = 0;
 
         while let Some((next, depth)) = stack.pop() {
@@ -148,81 +162,58 @@ impl ValueCell {
                 biggest_depth = depth;
             }
 
-            let handle = next.as_ref();
-            let value = handle.as_value();
-            match value {
+            match next {
                 ValueCell::Default(_) => {},
+                ValueCell::Bytes(_) => {},
                 ValueCell::Array(values) => {
                     for value in values {
-                        stack.push((Path::Wrapper(value.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Struct(fields, _) => {
-                    for field in fields {
-                        stack.push((Path::Wrapper(field.clone()), depth + 1));
-                    }
-                },
-                ValueCell::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push((Path::Wrapper(value.clone()), depth + 1));
+                        stack.push((value, depth + 1));
                     }
                 },
                 ValueCell::Map(map) => {
-                    for (k, v) in map {
-                        stack.push((Path::Owned(k.clone()), depth + 1));
-                        stack.push((Path::Wrapper(v.clone()), depth + 1));
+                    for (_, v) in map.iter() {
+                        stack.push((v, depth + 1));
                     }
-                },
-                ValueCell::Enum(fields, _) => {
-                    for field in fields {
-                        stack.push((Path::Wrapper(field.clone()), depth + 1));
-                    }
-                },
+                }
             };
         }
 
         Ok(biggest_depth)
     }
 
-    pub fn get_memory_usage(&self, max_memory: usize) -> Result<usize, ValueError> {
+    // Calculate the depth of the value
+    pub fn calculate_memory_usage<'a>(&'a self, max_memory: usize) -> Result<usize, ValueError> {
+        // Prevent allocation if the value is a default value
+        if let Self::Default(v) = self {
+            return Ok(v.get_memory_usage());
+        }
+
+        let mut stack = vec![self];
         let mut memory = 0;
-        let mut stack = vec![Path::Borrowed(self)];
+
         while let Some(next) = stack.pop() {
-            let handle = next.as_ref();
-            let value = handle.as_value();
-            match value {
-                ValueCell::Default(v) => memory += v.get_memory_usage(),
+            if memory > max_memory {
+                return Err(ValueError::MaxMemoryReached(memory, max_memory));
+            }
+
+            match next {
+                ValueCell::Default(v) => {
+                    memory += 1;
+                    memory += v.get_memory_usage();
+                },
+                ValueCell::Bytes(bytes) => {
+                    memory += 32;
+                    memory += bytes.len();
+                },
                 ValueCell::Array(values) => {
-                    for value in values {
-                        stack.push(Path::Wrapper(value.clone()));
-                    }
-                },
-                ValueCell::Struct(fields, _) => {
-                    for field in fields {
-                        stack.push(Path::Wrapper(field.clone()));
-                    }
-                },
-                ValueCell::Optional(opt) => {
-                    if let Some(value) = opt {
-                        stack.push(Path::Wrapper(value.clone()));
-                    }
+                    memory += 32;
+                    stack.extend(values);
                 },
                 ValueCell::Map(map) => {
-                    for (k, v) in map {
-                        stack.push(Path::Owned(k.clone()));
-                        stack.push(Path::Wrapper(v.clone()));
-                    }
-                },
-                ValueCell::Enum(fields, _) => {
-                    for field in fields {
-                        stack.push(Path::Wrapper(field.clone()));
-                    }
-                },
+                    memory += 64;
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
+                }
             };
-
-            if memory > max_memory {
-                return Err(ValueError::MaxMemoryReached);
-            }
         }
 
         Ok(memory)
@@ -231,8 +222,7 @@ impl ValueCell {
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
-            Self::Default(Value::Null) => true,
-            Self::Optional(opt) => opt.is_none(),
+            Self::Default(Primitive::Null) => true,
             _ => false
         }
     }
@@ -240,7 +230,7 @@ impl ValueCell {
     #[inline]
     pub fn is_string(&self) -> bool {
         match &self {
-            Self::Default(Value::String(_)) => true,
+            Self::Default(Primitive::String(_)) => true,
             _ => false
         }
     }
@@ -256,7 +246,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Default(Value::U8(n)) => Ok(*n),
+            Self::Default(Primitive::U8(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
@@ -264,7 +254,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Default(Value::U16(n)) => Ok(*n),
+            Self::Default(Primitive::U16(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
@@ -272,7 +262,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Default(Value::U32(n)) => Ok(*n),
+            Self::Default(Primitive::U32(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
@@ -280,7 +270,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Default(Value::U64(n)) => Ok(*n),
+            Self::Default(Primitive::U64(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
@@ -288,7 +278,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Default(Value::U128(n)) => Ok(*n),
+            Self::Default(Primitive::U128(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
@@ -296,7 +286,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Default(Value::U256(n)) => Ok(*n),
+            Self::Default(Primitive::U256(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
@@ -304,7 +294,7 @@ impl ValueCell {
     #[inline]
     pub fn as_string(&self) -> Result<&str, ValueError> {
         match self {
-            Self::Default(Value::String(n)) => Ok(n),
+            Self::Default(Primitive::String(n)) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
@@ -312,13 +302,13 @@ impl ValueCell {
     #[inline]
     pub fn as_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Self::Default(Value::Boolean(n)) => Ok(*n),
+            Self::Default(Primitive::Boolean(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&HashMap<Self, SubValue>, ValueError> {
+    pub fn as_map(&self) -> Result<&IndexMap<ValueCell, ValueCell>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -326,7 +316,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut HashMap<Self, SubValue>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<ValueCell, ValueCell>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct),
@@ -334,7 +324,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<SubValue>, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValueCell>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -342,18 +332,34 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<SubValue>, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValueCell>, ValueError> {
         match self {
             Self::Array(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+        }
+    }
+
+    #[inline]
+    pub fn as_bytes<'a>(&'a self) -> Result<&'a Vec<u8>, ValueError> {
+        match self {
+            Self::Bytes(bytes) => Ok(bytes),
+            _ => Err(ValueError::ExpectedBytes)
+        }
+    }
+
+
+    #[inline]
+    pub fn as_bytes_mut<'a>(&'a mut self) -> Result<&'a mut Vec<u8>, ValueError> {
+        match self {
+            Self::Bytes(bytes) => Ok(bytes),
+            _ => Err(ValueError::ExpectedBytes)
         }
     }
 
     #[inline]
     pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
-            Self::Default(Value::Null) => Ok(None),
-            Self::Optional(opt) => opt.take().map(SubValue::into_owned).transpose(),
+            Self::Default(Primitive::Null) => Ok(None),
             v => {
                 let value = std::mem::take(v);
                 Ok(Some(value))
@@ -362,106 +368,73 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_u8(self) -> Result<u8, ValueError> {
+    pub fn to_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Default(Value::U8(n)) => Ok(n),
+            Self::Default(Primitive::U8(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
 
     #[inline]
-    pub fn to_u16(self) -> Result<u16, ValueError> {
+    pub fn to_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Default(Value::U16(n)) => Ok(n),
+            Self::Default(Primitive::U16(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
 
     #[inline]
-    pub fn to_u32(self) -> Result<u32, ValueError> {
+    pub fn to_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Default(Value::U32(n)) => Ok(n),
+            Self::Default(Primitive::U32(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
 
     #[inline]
-    pub fn to_u64(self) -> Result<u64, ValueError> {
+    pub fn to_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Default(Value::U64(n)) => Ok(n),
+            Self::Default(Primitive::U64(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
 
     #[inline]
-    pub fn to_u128(self) -> Result<u128, ValueError> {
+    pub fn to_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Default(Value::U128(n)) => Ok(n),
+            Self::Default(Primitive::U128(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
 
     #[inline]
-    pub fn to_u256(self) -> Result<U256, ValueError> {
+    pub fn to_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Default(Value::U256(n)) => Ok(n),
+            Self::Default(Primitive::U256(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
 
     #[inline]
-    pub fn to_string(self) -> Result<String, ValueError> {
+    pub fn to_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Self::Default(Value::String(n)) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::String))
-        }
-    }
-
-    #[inline]
-    pub fn to_bool(self) -> Result<bool, ValueError> {
-        match self {
-            Self::Default(Value::Boolean(n)) => Ok(n),
+            Self::Default(Primitive::Boolean(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
     #[inline]
-    pub fn to_map(self) -> Result<Vec<SubValue>, ValueError> {
+    pub fn into_string(&mut self) -> Result<String, ValueError> {
         match self {
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::ExpectedStruct)
-        }
-    }
-
-    #[inline]
-    pub fn to_vec(self) -> Result<Vec<SubValue>, ValueError> {
-        match self {
-            Self::Array(n) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
-        }
-    }
-
-    #[inline]
-    pub fn to_sub_vec(self) -> Result<Vec<SubValue>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn to_opaque(self) -> Result<OpaqueWrapper, ValueError> {
-        match self {
-            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
-            _ => Err(ValueError::ExpectedOpaque)
+            Self::Default(Primitive::String(v)) => Ok(mem::take(v)),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
 
     #[inline]
     pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
         match self {
-            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            Self::Default(Primitive::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -469,7 +442,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
-            Self::Default(Value::Opaque(opaque)) => Ok(opaque),
+            Self::Default(Primitive::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -477,7 +450,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
         match self {
-            Self::Default(Value::Opaque(opaque)) => opaque.as_ref::<T>(),
+            Self::Default(Primitive::Opaque(opaque)) => opaque.as_ref::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -485,14 +458,15 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
         match self {
-            Self::Default(Value::Opaque(opaque)) => opaque.as_mut::<T>(),
+            Self::Default(Primitive::Opaque(opaque)) => opaque.as_mut::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
 
-    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
-        match self {
-            Self::Default(Value::Opaque(opaque)) => opaque.into_inner::<T>(),
+    #[inline]
+    pub fn into_opaque_type<T: Opaque>(&mut self) -> Result<T, ValueError> {
+        match mem::take(self) {
+            Self::Default(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -500,37 +474,19 @@ impl ValueCell {
     #[inline]
     pub fn is_serializable(&self) -> bool {
         match self {
-            Self::Default(Value::Opaque(op)) => op.is_serializable(),
+            Self::Default(Primitive::Opaque(op)) => op.is_serializable(),
             _ => true
         }
     }
 
     #[inline]
-    pub fn as_sub_vec(&self) -> Result<&Vec<SubValue>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
+    pub fn as_range(&self) -> Result<(&Primitive, &Primitive), ValueError> {
+        self.as_value().and_then(Primitive::as_range)
     }
 
     #[inline]
-    pub fn as_mut_sub_vec(&mut self) -> Result<&mut Vec<SubValue>, ValueError> {
-        match self {
-            Self::Array(values) => Ok(values),
-            Self::Struct(fields, _) => Ok(fields),
-            _ => Err(ValueError::SubValue)
-        }
-    }
-
-    #[inline]
-    pub fn as_range(&self) -> Result<(&Value, &Value, &Type), ValueError> {
-        self.as_value().and_then(Value::as_range)
-    }
-
-    #[inline]
-    pub fn to_range(self) -> Result<(Value, Value, Type), ValueError> {
-        self.into_value().and_then(Value::to_range)
+    pub fn to_range(&mut self) -> Result<(Primitive, Primitive), ValueError> {
+        self.into_value().and_then(Primitive::to_range)
     }
 
     // Check if the value is a number
@@ -560,11 +516,8 @@ impl ValueCell {
 
     // Cast value to string
     #[inline]
-    pub fn cast_to_string(self) -> Result<String, ValueError> {
-        match self {
-            Self::Default(v) => v.cast_to_string(),
-            _ => Err(ValueError::InvalidCastType(Type::String))
-        }
+    pub fn cast_to_string(&mut self) -> Result<String, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_string)
     }
 
     // Transform a value to a string
@@ -578,36 +531,35 @@ impl ValueCell {
 
     // Cast the value to the expected type
     pub fn mut_checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<(), ValueError> {
-        let take = std::mem::take(self);
-        let value = take.checked_cast_to_primitive_type(expected)?;
+        let value = self.checked_cast_to_primitive_type(expected)?;
         *self = value;
         Ok(())
     }
 
     // Cast without loss in the expected type
     #[inline]
-    pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Self, ValueError> {
+    pub fn checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<Self, ValueError> {
         match expected {
-            Type::U8 => self.checked_cast_to_u8().map(Value::U8),
-            Type::U16 => self.checked_cast_to_u16().map(Value::U16),
-            Type::U32 => self.checked_cast_to_u32().map(Value::U32),
-            Type::U64 => self.checked_cast_to_u64().map(Value::U64),
-            Type::U128 => self.checked_cast_to_u128().map(Value::U128),
-            Type::U256 => self.checked_cast_to_u256().map(Value::U256),
-            Type::String => self.cast_to_string().map(Value::String),
-            Type::Bool => self.cast_to_bool().map(Value::Boolean),
+            Type::U8 => self.checked_cast_to_u8().map(Primitive::U8),
+            Type::U16 => self.checked_cast_to_u16().map(Primitive::U16),
+            Type::U32 => self.checked_cast_to_u32().map(Primitive::U32),
+            Type::U64 => self.checked_cast_to_u64().map(Primitive::U64),
+            Type::U128 => self.checked_cast_to_u128().map(Primitive::U128),
+            Type::U256 => self.checked_cast_to_u256().map(Primitive::U256),
+            Type::String => self.cast_to_string().map(Primitive::String),
+            Type::Bool => self.cast_to_bool().map(Primitive::Boolean),
             Type::Optional(inner) => {
                 if self.is_null() {
-                    return Ok(Self::Optional(None))
+                    return Ok(Default::default())
                 } else {
                     return self.checked_cast_to_primitive_type(inner)
                 }
             },
             Type::Range(inner) => {
-                let (start, end, _) = self.to_range()?;
+                let (start, end) = self.to_range()?;
                 let start = start.checked_cast_to_primitive_type(inner)?;
                 let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Value::Range(Box::new(start), Box::new(end), *inner.clone()))
+                Ok(Primitive::Range(Box::new((start, end))))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }.map(Self::Default)
@@ -615,84 +567,84 @@ impl ValueCell {
 
     // Cast to u8, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u8(self) -> Result<u8, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u8)
+    pub fn checked_cast_to_u8(&mut self) -> Result<u8, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u8)
     }
 
     // Cast to u16, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u16(self) -> Result<u16, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u16)
+    pub fn checked_cast_to_u16(&mut self) -> Result<u16, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u16)
     }
 
     // Cast to u32, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u32(self) -> Result<u32, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u32)
+    pub fn checked_cast_to_u32(&mut self) -> Result<u32, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u32)
     }
 
     // Cast to u64, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u64(self) -> Result<u64, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u64)
+    pub fn checked_cast_to_u64(&mut self) -> Result<u64, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u64)
     }
 
     // Cast to u128, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u128(self) -> Result<u128, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u128)
+    pub fn checked_cast_to_u128(&mut self) -> Result<u128, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u128)
     }
 
     // Cast to u256, return an error if value is too big
     #[inline]
-    pub fn checked_cast_to_u256(self) -> Result<U256, ValueError> {
-        self.into_value().and_then(Value::checked_cast_to_u256)
+    pub fn checked_cast_to_u256(&mut self) -> Result<U256, ValueError> {
+        self.into_value().and_then(Primitive::checked_cast_to_u256)
     }
 
     // Cast value to bool
     #[inline]
-    pub fn cast_to_bool(self) -> Result<bool, ValueError> {
-        self.into_value().and_then(Value::cast_to_bool)
+    pub fn cast_to_bool(&mut self) -> Result<bool, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_bool)
     }
 
     // Cast value to u8
     #[inline]
-    pub fn cast_to_u8(self) -> Result<u8, ValueError> {
-        self.into_value().and_then(Value::cast_to_u8)
+    pub fn cast_to_u8(&mut self) -> Result<u8, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u8)
     }
 
     // Cast value to u16
     #[inline]
-    pub fn cast_to_u16(self) -> Result<u16, ValueError> {
-        self.into_value().and_then(Value::cast_to_u16)
+    pub fn cast_to_u16(&mut self) -> Result<u16, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u16)
     }
 
     // Cast value to u32
     #[inline]
-    pub fn cast_to_u32(self) -> Result<u32, ValueError> {
-        self.into_value().and_then(Value::cast_to_u32)
+    pub fn cast_to_u32(&mut self) -> Result<u32, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u32)
     }
 
     // Cast value to u64
     #[inline]
-    pub fn cast_to_u64(self) -> Result<u64, ValueError> {
-        self.into_value().and_then(Value::cast_to_u64)
+    pub fn cast_to_u64(&mut self) -> Result<u64, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u64)
     }
 
     // Cast value to u128
     #[inline]
-    pub fn cast_to_u128(self) -> Result<u128, ValueError> {
-        self.into_value().and_then(Value::cast_to_u128)
+    pub fn cast_to_u128(&mut self) -> Result<u128, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u128)
     }
 
     // Cast value to u256
     #[inline]
-    pub fn cast_to_u256(self) -> Result<U256, ValueError> {
-        self.into_value().and_then(Value::cast_to_u256)
+    pub fn cast_to_u256(&mut self) -> Result<U256, ValueError> {
+        self.into_value().and_then(Primitive::cast_to_u256)
     }
 
     #[inline(always)]
-    pub fn as_value(&self) -> Result<&Value, ValueError> {
+    pub fn as_value(&self) -> Result<&Primitive, ValueError> {
         match self {
             Self::Default(v) => Ok(v),
             _ => Err(ValueError::ExpectedValueOfType(Type::Any))
@@ -700,149 +652,83 @@ impl ValueCell {
     }
 
     #[inline(always)]
-    pub fn into_value(self) -> Result<Value, ValueError> {
+    pub fn into_value(&mut self) -> Result<Primitive, ValueError> {
         match self {
-            Self::Default(v) => Ok(v),
+            Self::Default(v) => Ok(mem::take(v)),
             _ => Err(ValueError::ExpectedValueOfType(Type::Any))
         }
     }
 
-    // Clone all the SubValue into a new ValueCell
-    // We need to do it in iterative way to prevent any stackoverflow
-    pub fn into_owned(self) -> Result<Self, ValueError> {
-        if matches!(self, Self::Default(_)) {
-            return Ok(self)
-        }
+    // Create a clone in a iterative way
+    pub fn deep_clone(&self) -> Self {
+        match self {
+            Self::Bytes(v) => return Self::Bytes(v.clone()),
+            Self::Default(v) => return Self::Default(v.clone()),
+            _ => {}
+        };
 
         #[derive(Debug)]
         enum QueueItem {
-            Value(Value),
+            Primitive(Primitive),
             Array {
                 len: usize,
             },
             Map {
                 len: usize,
             },
-            Optional(bool),
-            Struct {
-                ty: StructType,
-                len: usize,
-            },
-            Enum {
-                ty: EnumValueType,
-                len: usize,
-            }
+            Bytes(Vec<u8>)
         }
 
         let mut stack = vec![self];
         let mut queue = Vec::new();
-        let mut pointers = HashSet::new();
 
         // Disassemble
         while let Some(value) = stack.pop() {
             match value {
-                Self::Default(v) => queue.push(QueueItem::Value(v)),
+                Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
                 Self::Array(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
-                    for value in values.into_iter().rev() {
-                        if !pointers.insert(value.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-                        stack.push(value.into_inner());
-                    }
+                    stack.reserve(values.len());
+                    stack.extend(values);
                 },
+                Self::Bytes(bytes) => {
+                    queue.push(QueueItem::Bytes(bytes.clone()));
+                }
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
-                    for (k, v) in map.into_iter() {
-                        if !pointers.insert(v.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(k);
-                        stack.push(v.into_inner());
-                    }
-                },
-                Self::Optional(opt) => {
-                    queue.push(QueueItem::Optional(opt.is_some()));
-                    if let Some(value) = opt {
-                        if !pointers.insert(value.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(value.into_inner());
-                    }
-                },
-                Self::Struct(fields, ty) => {
-                    queue.push(QueueItem::Struct { ty, len: fields.len() });
-                    for field in fields.into_iter().rev() {
-                        if !pointers.insert(field.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(field.into_inner());
-                    }
-                },
-                Self::Enum(fields, ty) => {
-                    queue.push(QueueItem::Enum { ty, len: fields.len() });
-                    for field in fields.into_iter().rev() {
-                        if !pointers.insert(field.ptr()) {
-                            return Err(ValueError::CyclicError);
-                        }
-
-                        stack.push(field.into_inner());
-                    }
+                    stack.reserve(map.len() * 2);
+                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
                 }
             }
         };
 
+        let mut stack = Vec::with_capacity(queue.len());
         // Assemble back
         while let Some(item) = queue.pop() {
             match item {
-                QueueItem::Value(v) => {
+                QueueItem::Primitive(v) => {
                     stack.push(ValueCell::Default(v));
                 },
                 QueueItem::Array { len } => {
-                    let mut values = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        values.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
-                    }
+                    let values = stack.split_off(stack.len() - len);
                     stack.push(ValueCell::Array(values));
                 },
+                QueueItem::Bytes(bytes) => {
+                    stack.push(ValueCell::Bytes(bytes));
+                }
                 QueueItem::Map { len } => {
-                    let mut map = HashMap::with_capacity(len);
-                    for _ in 0..len {
-                        let value = stack.pop().ok_or(ValueError::ExpectedValue)?;
-                        let key = stack.pop().ok_or(ValueError::ExpectedValue)?;
-                        map.insert(key, SubValue::new(value));
-                    }
+                    let map = stack.split_off(stack.len() - len * 2)
+                        .into_iter()
+                        .tuples()
+                        .collect();
+
                     stack.push(ValueCell::Map(map));
-                },
-                QueueItem::Optional(is_some) => {
-                    let value = if is_some {
-                        Some(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?))
-                    } else {
-                        None
-                    };
-                    stack.push(ValueCell::Optional(value));
-                },
-                QueueItem::Struct { ty, len } => {
-                    let mut fields = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
-                    }
-                    stack.push(ValueCell::Struct(fields, ty));
-                },
-                QueueItem::Enum { ty, len } => {
-                    let mut fields = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        fields.push(SubValue::new(stack.pop().ok_or(ValueError::ExpectedValue)?));
-                    }
-                    stack.push(ValueCell::Enum(fields, ty));
                 }
             }
         }
 
-        stack.pop().ok_or(ValueError::ExpectedValue)
+        debug_assert!(stack.len() == 1);
+        stack.remove(0)
     }
 }
 
@@ -850,44 +736,69 @@ impl fmt::Display for ValueCell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Default(v) => write!(f, "{}", v),
-            Self::Struct(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
-                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
-            },
             Self::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.borrow())).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
             },
-            Self::Optional(value) => match value.as_ref() {
-                Some(value) => write!(f, "optional<{}>", value.borrow().to_string()),
-                None => write!(f, "optional<null>")
+            Self::Bytes(bytes) => {
+                write!(f, "bytes[{:?}]", bytes)
             },
             Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
-            },
-            Self::Enum(fields, enum_type) => {
-                let s: Vec<String> = fields.iter()
-                    .map(|v| format!("{}", v.borrow()))
-                    .collect();
-                write!(f, "enum[{}:{}] {} {} {}", enum_type.id(), enum_type.variant_id(), "{", s.join(", "), "}")
             }
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::SubValue;
+#[cfg(feature = "infinite-cell-depth")]
+impl Clone for ValueCell {
+    fn clone(&self) -> Self {
+        self.deep_clone()
+    }
+}
 
+#[cfg(all(feature = "infinite-cell-depth", test))]
+mod tests {
     use super::*;
+
+    #[test]
+    fn test_drop_and_clone() {
+        let v = ValueCell::default();
+        drop(v.clone());
+        drop(v);
+
+        let v = ValueCell::Array(vec![ValueCell::default()]);
+        drop(v.clone());
+        drop(v);
+
+        // Create a array with a huge depth of 100000
+        let mut v = ValueCell::Array(vec![ValueCell::default()]);
+        for _ in 0..100_000 {
+            v = ValueCell::Array(vec![v]);
+        }
+
+        drop(v.clone());
+        drop(v);
+
+        // Create a map with a huge depth of 100000
+        let mut v = ValueCell::Map(HashMap::new());
+        for _ in 0..100_000 {
+            let mut inner_map = HashMap::new();
+            inner_map.insert(Primitive::U8(10).into(), v);
+            v = ValueCell::Map(inner_map);
+        }
+
+        drop(v.clone());
+        drop(v);
+    }
 
     #[test]
     fn test_max_depth() {
         let mut map = ValueCell::Map(HashMap::new());
         for _ in 0..100 {
             let mut inner_map = HashMap::new();
-            inner_map.insert(Value::U8(10).into(), SubValue::new(map));
+            inner_map.insert(Primitive::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
 
@@ -896,40 +807,12 @@ mod tests {
     }
 
     #[test]
-    fn test_recursive_cycle() {
-        // Create a map that contains itself
-        let map = SubValue::new(ValueCell::Map(HashMap::new()));
-        {
-            let mut m = map.borrow_mut();
-            m.as_mut_map()
-                .unwrap()
-                .insert(Value::U8(10).into(), map.reference());
-        }
-
-        let owned = map.into_inner();
-        assert!(
-            matches!(owned.into_owned(), Err(ValueError::CyclicError))
-        );
-    }
-
-    #[test]
-    fn test_into_owned() {
-        let array = ValueCell::Array(vec![
-            SubValue::new(ValueCell::Default(Value::U8(10))),
-            SubValue::new(ValueCell::Default(Value::U8(20))),
-            SubValue::new(ValueCell::Default(Value::U8(30))),
-        ]);
-
-        assert_eq!(array, array.clone().into_owned().unwrap());
-    }
-
-    #[test]
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
         let mut map = ValueCell::Map(HashMap::new());
-        for _ in 0..100000 {
+        for _ in 0..100_000 {
             let mut inner_map = HashMap::new();
-            inner_map.insert(Value::U8(10).into(), map.into());
+            inner_map.insert(Primitive::U8(10).into(), map.into());
             map = ValueCell::Map(inner_map);
         }
 

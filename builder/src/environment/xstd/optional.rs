@@ -1,4 +1,4 @@
-use xelis_types::{Type, Value, ValueError};
+use xelis_types::{Type, Primitive, ValueError};
 use xelis_environment::{
     Context,
     EnvironmentError,
@@ -17,11 +17,11 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 fn is_none(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(zelf?.is_null()).into()))
+    Ok(Some(Primitive::Boolean(zelf?.is_null()).into()))
 }
 
 fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Value::Boolean(!zelf?.is_null()).into()))
+    Ok(Some(Primitive::Boolean(!zelf?.is_null()).into()))
 }
 
 fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
@@ -39,9 +39,9 @@ fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
 }
 
 fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
-    let param = parameters.remove(0)
+    let mut param = parameters.remove(0)
         .into_owned()?;
-    let msg = param.to_string()?;
+    let msg = param.into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
         return Err(EnvironmentError::InvalidExpect);

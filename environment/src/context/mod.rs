@@ -63,7 +63,7 @@ impl<'ty, 'r> Context<'ty, 'r> {
             current_gas: 0,
             memory_price_per_byte: 1,
             max_value_depth: 16,
-            max_memory_usage: 1024 * 1024 * 128, // 128MB
+            max_memory_usage: 1024 * 1024 * 128, // 128 MB
             current_memory: 0,
         }
     }
@@ -130,13 +130,31 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.max_memory_usage
     }
 
+    // Get the memory left
+    #[inline(always)]
+    pub fn memory_left(&self) -> usize {
+        self.max_memory_usage.saturating_sub(self.current_memory)
+    }
+
     // Increase the memory usage by a specific amount
     #[inline]
     pub fn increase_memory_usage(&mut self, memory: usize) -> Result<(), EnvironmentError> {
         self.current_memory = self.current_memory.checked_add(memory)
             .ok_or(EnvironmentError::OutOfMemory)?;
 
-        Ok(())
+        if self.current_memory > self.max_memory_usage {
+            return Err(EnvironmentError::OutOfMemory);
+        }
+
+        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
+    }
+
+    // Increase the memory usage by a specific amount
+    // The memory added is unchecked but we still check for the gas price of the memory
+    #[inline]
+    pub fn increase_memory_usage_unchecked(&mut self, memory: usize) -> Result<(), EnvironmentError> {
+        self.current_memory += memory;
+        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
     }
 
     // Decrease the memory usage by a specific amount
@@ -245,10 +263,11 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.data.clear();
     }
 
-    // Reset the gas usage
+    // Reset the gas & memory usage
     #[inline]
-    pub fn reset_gas_usage(&mut self) {
+    pub fn reset_usage(&mut self) {
         self.current_gas = 0;
+        self.current_memory = 0;
     }
 }
 
