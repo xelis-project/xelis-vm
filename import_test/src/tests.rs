@@ -5,19 +5,19 @@ use std::env;
 use xelis_vm::*;
 
 #[track_caller]
-fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Value, VMError> {
+fn try_run_code(silex: &Silex, module: &Module, id: u16) -> Result<Primitive, VMError> {
     let mut vm = VM::new(module, silex.environment.environment());
     vm.invoke_entry_chunk(id).unwrap();
-    vm.run().map(|v| v.into_value().unwrap())
+    vm.run().map(|mut v| v.into_value().unwrap())
 }
 
 #[track_caller]
-fn run_code_id(silex: &Silex, module: &Module, id: u16) -> Value {
+fn run_code_id(silex: &Silex, module: &Module, id: u16) -> Primitive {
     try_run_code(silex, module, id).unwrap()
 }
 
 #[track_caller]
-fn run_code(silex: &Silex, module: &Module, ) -> Value {
+fn run_code(silex: &Silex, module: &Module, ) -> Primitive {
     run_code_id(silex, module, 0)
 }
 
@@ -31,7 +31,7 @@ fn test_import_basic() {
     match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 1);
-            assert_eq!(res, Value::U64(255));
+            assert_eq!(res, Primitive::U64(255));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -49,7 +49,7 @@ fn test_import_main() {
     match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code(&silex, &program.module);
-            assert_eq!(res, Value::U64(0));
+            assert_eq!(res, Primitive::U64(0));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -67,7 +67,7 @@ fn test_import_duplicate() {
     match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 2);
-            assert_eq!(res, Value::U64(u64::MAX));
+            assert_eq!(res, Primitive::U64(u64::MAX));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -85,7 +85,7 @@ fn test_import_implied() {
     match silex.compile(test_file_path.to_str().expect("Invaid utf-8")) {
         Ok(program) => {
             let res = run_code_id(&silex, &program.module, 2);
-            assert_eq!(res, Value::U64(u64::MAX));
+            assert_eq!(res, Primitive::U64(u64::MAX));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -104,7 +104,7 @@ fn test_import_common() {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
             let res = run_code_id(&silex, &program.module, 3);
-            assert_eq!(res, Value::U64(0));
+            assert_eq!(res, Primitive::U64(0));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);
@@ -123,7 +123,7 @@ fn test_import_as() {
         Ok(program) => {
             println!("Generated ABI:\n{}", program.abi());
             let res = run_code_id(&silex, &program.module, 6);
-            assert_eq!(res, Value::U64(52));
+            assert_eq!(res, Primitive::U64(52));
         }
         Err(err) => {
             panic!("Compilation failed: {}", err);

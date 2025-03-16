@@ -21,7 +21,7 @@ use xelis_common::{
 use xelis_compiler::Compiler;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
-use xelis_types::{Type, Value};
+use xelis_types::{Type, Primitive};
 use xelis_vm::VM;
 use xelis_abi::abi_from_parse;
 
@@ -186,7 +186,7 @@ impl Silex {
           .get_mut_function("println", None, vec![Type::Any])
           .set_on_call(move |_, args, _| -> _ {
               let param = &args[0];
-              println!("{}", param.as_ref().as_value());
+              println!("{:?}", param.as_ref()?.as_value());
               Ok(None)
           });
 
@@ -318,38 +318,38 @@ impl Silex {
       let mut values = Vec::with_capacity(params.len());
       for (value, param) in params.into_iter().zip(entry.parameters.iter()) {
           let v = match param._type {
-              Type::U8 => Value::U8(
+              Type::U8 => Primitive::U8(
                   value
                       .parse::<u8>()
                       .map_err(|_| format!("Expected a valid u8 type, got '{}'", value))?,
               ),
-              Type::U16 => Value::U16(
+              Type::U16 => Primitive::U16(
                   value
                       .parse::<u16>()
                       .map_err(|_| format!("Expected a valid u16 type, got '{}'", value))?,
               ),
-              Type::U32 => Value::U32(
+              Type::U32 => Primitive::U32(
                   value
                       .parse::<u32>()
                       .map_err(|_| format!("Expected a valid u32 type, got '{}'", value))?,
               ),
-              Type::U64 => Value::U64(
+              Type::U64 => Primitive::U64(
                   value
                       .parse::<u64>()
                       .map_err(|_| format!("Expected a valid u64 type, got '{}'", value))?,
               ),
-              Type::U128 => Value::U128(
+              Type::U128 => Primitive::U128(
                   value
                       .parse::<u128>()
                       .map_err(|_| format!("Expected a valid u128 type, got '{}'", value))?,
               ),
-              Type::U256 => Value::U256(
+              Type::U256 => Primitive::U256(
                   value
                       .parse::<u128>() // Use u128 to parse, then convert to U256
                       .map(|v| v.into())
                       .map_err(|_| format!("Expected a valid u256 type, got '{}'", value))?,
               ),
-              Type::String => Value::String(value.clone()), // Strings are directly used
+              Type::String => Primitive::String(value.clone()), // Strings are directly used
               _ => {
                   return Err(format!(
                       "Unsupported parameter type: {}",
