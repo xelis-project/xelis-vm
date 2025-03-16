@@ -17,6 +17,8 @@ xelis-lexer ={ path = "../lexer" }
 xelis-parser = { path = "../parser" }
 xelis-compiler = { path = "../compiler" }
 criterion = "0.5.1"
+anyhow = "*"
+serde_json = "*"
 
 [[bench]]
 name = "vm"

@@ -172,6 +172,11 @@ impl Type {
         }
     }
 
+    // Is generic type "any"
+    pub fn is_any(&self) -> bool {
+        matches!(self, Type::Any)
+    }
+
     // Our current self type may be a generic type
     // We have an instance of this type to know the real types instead of the "generic" types
     // We have to verify that they are exactly the same as other

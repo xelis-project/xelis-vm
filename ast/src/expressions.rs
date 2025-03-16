@@ -25,6 +25,7 @@ pub enum Expression {
     IsNot(Box<Expression>), // !expr (where expr is a bool)
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>), // bool expr, if true expr, else expr
     Cast(Box<Expression>, Type), // expr, type
+    ForceType(Box<Expression>, Type)
 }
 
 #[derive(Debug, Eq, PartialEq)]

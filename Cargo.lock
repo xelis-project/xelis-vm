@@ -800,9 +800,11 @@ dependencies = [
 name = "xelis-vm"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "criterion",
  "indexmap",
  "log",
+ "serde_json",
  "thiserror",
  "xelis-builder",
  "xelis-bytecode",

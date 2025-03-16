@@ -1307,22 +1307,64 @@ fn test_fn_params_immutable() {
 
 #[test]
 fn test_types_compatibility() {
-    let mut env = EnvironmentBuilder::default();
-    env.register_native_function("test", None, vec![], |_, _, _| todo!(), 0, Some(Type::Any)); 
+    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    struct DummyOpaque;
 
-    prepare_module_with("
-    struct Foo {}
+    impl JSONHelper for DummyOpaque {
+        fn is_json_supported(&self) -> bool {
+            false
+        }
+
+        fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
+            todo!()
+        }
+    }
+
+    impl Serializable for DummyOpaque {
+        fn get_size(&self) -> usize {
+            0
+        }
+
+        fn is_serializable(&self) -> bool {
+            false
+        }
+
+        fn serialize(&self, _: &mut Vec<u8>) -> usize {
+            0
+        }
+    }
+
+    impl_opaque!("Dummy", DummyOpaque);
+
+    let mut env = EnvironmentBuilder::default();
+    let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy"));
+    env.register_native_function("test", None, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
+    env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
+
+    let (module, env) = prepare_module_with("
+    struct Foo {
+        dummy: optional<Dummy>
+    }
 
     entry main() {
         let m: map<optional<optional<Foo>>, u64> = {
             null: 0
         };
         let _: map<optional<optional<Foo>>, u64> = {
-            Foo {}: 0
+            Foo {
+                dummy: null
+            }: 0
         };
 
-        let _: u64 = test() + 1u64;
+        let _: u64 = (test() as Dummy).a();
+
+        let foo: Foo = Foo {
+            dummy: test()
+        };
+        let dummy: Dummy = test();
+        foo.dummy = dummy;
 
         return 0
     }", env);
+    run_internal(module, &env, 0).unwrap();
 }

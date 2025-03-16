@@ -286,6 +286,9 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack()?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
+            Expression::ForceType(expr, _) => {
+                self.compile_expr(chunk, expr)?;
+            },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
                     self.compile_expr(chunk, expr_on)?;

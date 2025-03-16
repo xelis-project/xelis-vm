@@ -381,6 +381,7 @@ impl<'a> Parser<'a> {
                 Some(v) => Cow::Owned(Type::Array(Box::new(self.get_type_from_expression(on_type, v, context)?.into_owned()))),
                 None => return Err(err!(self, ParserErrorKind::EmptyArrayConstructor)) // cannot determine type from empty array
             },
+            Expression::ForceType(_, ty) => Cow::Borrowed(ty),
             Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
             Expression::EnumConstructor(_, _type) => Cow::Owned(Type::Enum(_type.enum_type().clone())),
             Expression::Variable(ref var_name) => match on_type {
@@ -1249,16 +1250,21 @@ impl<'a> Parser<'a> {
                     let left_type = self.get_type_from_expression(on_type, &prev_expr, context)?.into_owned();
                     let right_type = self.read_type()?;
 
-                    if !left_type.is_castable_to(&right_type) {
-                        return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
-                    }
-
-                    if !right_type.is_primitive() {
-                        return Err(err!(self, ParserErrorKind::CastPrimitiveError(left_type, right_type)))
-                    }
-
                     required_operator = !required_operator;
-                    Expression::Cast(Box::new(prev_expr), right_type)
+
+                    if left_type.is_any() {
+                        Expression::ForceType(Box::new(prev_expr), right_type)
+                    } else {
+                        if !left_type.is_castable_to(&right_type) {
+                            return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
+                        }
+    
+                        if !right_type.is_primitive() {
+                            return Err(err!(self, ParserErrorKind::CastPrimitiveError(left_type, right_type)))
+                        }
+        
+                        Expression::Cast(Box::new(prev_expr), right_type)
+                    }
                 },
                 Token::SemiColon => { // Force the parser to recognize a valid semicolon placement, or cut its losses and return an error
                     if !queue.is_empty() {
@@ -1422,7 +1428,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Operator::Assign(None) => {
-                if left_type != right_type {
+                if !left_type.is_compatible_with(&right_type) {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 
