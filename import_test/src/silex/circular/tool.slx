@@ -1,0 +1,9 @@
+import "meat.slx"
+
+fn doit() -> u64 {
+  return add(64, 128)
+}
+
+fn test() -> u64 {
+  return add(doit_wrap(), doit())
+}

@@ -1,0 +1,17 @@
+import "app.slx" as app
+
+entry main() {
+  let v: app::mint::Deep_struct = app::mint::Deep_struct { value: 10 };
+  println("struct result:")
+  println(v)
+
+  let d: app::mint::Deep_enum = app::mint::Deep_enum::First { value: 64 };
+  println("enum result:")
+  println(d)
+
+  return app::othermint::deep_test() + app::mint::CONSTANT
+}
+
+entry other(struct_param: app::mint::Deep_struct, enum_param: app::mint::Deep_enum) {
+  return 0
+}

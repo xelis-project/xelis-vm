@@ -778,7 +778,7 @@ fn test_infinite_map_depth() {
 
     // Execute
     module.add_chunk(chunk);
-
+  
     assert!(try_run(module).is_err());
     // assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
 }

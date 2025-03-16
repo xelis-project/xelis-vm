@@ -13,6 +13,7 @@ use super::Mapper;
 #[derive(Debug)]
 pub struct Function<'a> {
     pub name: &'a str,
+    pub namespace: Vec<&'a str>,
     pub on_type: Option<Type>,
     pub parameters: Vec<(&'a str, Type)>,
     pub require_instance: bool,
@@ -33,7 +34,7 @@ impl<'a> FunctionMapper<'a> {
         Self {
             mapper: Mapper::new(),
             parent: None,
-            mappings: NoHashMap::default()
+            mappings: NoHashMap::default(),
         }
     }
 
@@ -42,7 +43,7 @@ impl<'a> FunctionMapper<'a> {
         Self {
             mapper: Mapper::with_parent(&parent.mapper),
             parent: Some(parent),
-            mappings: NoHashMap::default()
+            mappings: NoHashMap::default(),
         }
     }
 
@@ -67,6 +68,35 @@ impl<'a> FunctionMapper<'a> {
         // Register the mappings
         self.mappings.insert(id.clone(), Function {
             name,
+            namespace: [""].to_vec(),
+            on_type,
+            parameters,
+            require_instance,
+            return_type
+        });
+
+        Ok(id)
+    }
+
+    // Register a function signature within a namespace
+    pub fn register_qualified(&mut self, name: &'a str, namespace: &Vec<&'a str>, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
+        let qualified_name = namespace.join("::") + "::" + name;
+
+        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
+        let ty = on_type.clone()
+          .map(|t| (Cow::Owned(t), require_instance));
+        let signature = Signature::new(Cow::Owned(qualified_name), ty, Cow::Owned(params));
+
+        if self.mapper.has_variable(&signature) {
+            return Err(BuilderError::SignatureAlreadyRegistered);
+        }
+
+        // Register the signature
+        let id = self.mapper.register(signature)?;
+        // Register the mappings
+        self.mappings.insert(id.clone(), Function {
+            name,
+            namespace: namespace.clone(),
             on_type,
             parameters,
             require_instance,
@@ -184,7 +214,7 @@ impl<'a> FunctionMapper<'a> {
         if let Some(parent) = self.parent {
             return parent.get_compatible(name, on_type, instance, types, expressions);
         }
-
+        
         Err(BuilderError::MappingNotFound)
     }
 

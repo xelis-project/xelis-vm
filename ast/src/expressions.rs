@@ -27,7 +27,7 @@ pub enum Expression {
     Cast(Box<Expression>, Type), // expr, type
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Statement {
     If(Expression, Vec<Statement>, Option<Vec<Statement>>),
     While(Expression, Vec<Statement>),
@@ -41,14 +41,14 @@ pub enum Statement {
     Variable(DeclarationStatement),
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct DeclarationStatement {
     pub id: IdentifierType,
     pub value_type: Type,
     pub value: Expression,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct ConstantDeclaration {
     pub value: Constant,
     pub value_type: Type,

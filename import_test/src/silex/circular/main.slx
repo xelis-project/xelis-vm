@@ -1,0 +1,5 @@
+import "tool.slx"
+
+entry main() {
+  return test()
+}

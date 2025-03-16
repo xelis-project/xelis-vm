@@ -4,6 +4,9 @@ use log::{debug, trace};
 use xelis_ast::{Literal, NumberType, Token, TokenResult};
 use xelis_types::U256;
 
+mod flatten;
+pub use flatten::*;
+
 macro_rules! parse_number {
     ($self: expr, $t: ident, $l: ident, $s: expr, $radix: expr) => {
         match $t::from_str_radix($s, $radix) {
@@ -58,7 +61,7 @@ pub struct Lexer<'a> {
     // Used to keep track of the depth of the generics <...>
     generic_depth: usize,
     // Track if the last parsed token was an identifier
-    accept_generic: bool
+    accept_generic: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -71,7 +74,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             column: 0,
             generic_depth: 0,
-            accept_generic: false
+            accept_generic: false,
         }
     }
 
@@ -351,11 +354,38 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    fn handle_escaped_space(&mut self, c: char) -> Result<(), LexerError> {
+        match c {
+          '\r' => {
+                debug!("Skipping whitespace");
+                if self.peek()? == '\n' {
+                    self.next_char();
+                }
+                self.line += 1;
+                self.column = 0;
+                self.accept_generic = false;
+            },
+            '\n' => {
+                debug!("Skipping whitespace");
+                self.line += 1;
+                self.column = 0;
+                self.accept_generic = false;
+            },
+            '\t' => {
+                self.accept_generic = false;
+            },
+            _ => {}
+        }
+        Ok(())
+    }
+
     // read a multi-line comment
     // expected format is /* ... */
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
             let c = self.advance()?;
+            self.handle_escaped_space(c)?;
+
             if c == '*' && self.peek()? == '/' {
                 self.advance()?;
                 break;
@@ -390,17 +420,13 @@ impl<'a> Lexer<'a> {
     fn next_token(&mut self) -> Result<Option<TokenResult<'a>>, LexerError> {
         while let Some(c) = self.next_char() {
             let token: TokenResult<'a> = match c {
-                '\n' | '\r' | '\t' => {
-                    debug!("Skipping whitespace");
-                    self.line += 1;
-                    self.column = 0;
-                    self.accept_generic = false;
+                '\r' | '\n' | '\t'  => {
+                    self.handle_escaped_space(c)?;
                     continue;
                 },
                 // skipped characters
                 ' ' | ';' => {
                     debug!("Skipping character: {}", c);
-                    // we just skip these characters
                     self.accept_generic = false;
                     continue;
                 },
@@ -426,6 +452,8 @@ impl<'a> Lexer<'a> {
                     let v = self.advance()?;
                     if v == '/' {
                         self.skip_until(|c| *c == '\n')?;
+                        self.line += 1;
+                        self.column = 0;
                     } else {
                         self.skip_multi_line_comment()?;
                     }
@@ -947,34 +975,6 @@ mod tests {
             Token::Value(Literal::Number(10)),
             Token::As,
             Token::Number(NumberType::U8)
-        ]);
-    }
-
-    #[test]
-    fn test_import() {
-        let code = "from \"file\" import TestStruct;";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.get().unwrap();
-        assert_eq!(tokens, vec![
-            Token::From,
-            Token::Value(Literal::String(Cow::Borrowed("file"))),
-            Token::Import,
-            Token::Identifier("TestStruct"),
-        ]);
-    }
-
-    #[test]
-    fn test_import_as() {
-        let code = "from \"file\" import TestStruct as Test;";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.get().unwrap();
-        assert_eq!(tokens, vec![
-            Token::From,
-            Token::Value(Literal::String(Cow::Borrowed("file"))),
-            Token::Import,
-            Token::Identifier("TestStruct"),
-            Token::As,
-            Token::Identifier("Test")
         ]);
     }
 
