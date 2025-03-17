@@ -148,12 +148,6 @@ impl<'a, 'r> VM<'a, 'r> {
         Ok(())
     }
 
-    // Invoke a chunk using its id and arguments
-    pub fn invoke_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
-        self.stack.extend_stack(args.map(Into::into))?;
-        self.invoke_chunk_id(id)
-    }
-
     // Invoke an entry chunk using its id
     pub fn invoke_entry_chunk(&mut self, id: u16) -> Result<(), VMError> {
         if !self.backend.module.is_entry_chunk(id as usize) {
@@ -162,16 +156,26 @@ impl<'a, 'r> VM<'a, 'r> {
         self.invoke_chunk_id(id)
     }
 
-    // Push a value to the stack
-    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
-        self.stack.push_stack(value.into())
-    }
-
     // Invoke an entry chunk using its id
     pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
         self.stack.extend_stack(args.map(Into::into))?;
         Ok(())
+    }
+
+    // Invoke a hook
+    // Return true if the Module has an implementation for the hook
+    // Return false if the hook isn't supported
+    pub fn invoke_hook_id(&mut self, hook_id: u8) -> Result<bool, VMError> {
+        match self.backend.module.get_chunk_id_of_hook(hook_id) {
+            Some(id) => self.invoke_chunk_id(id as _).map(|_| true),
+            None => Ok(false)
+        }
+    }
+
+    // Push a value to the stack
+    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
+        self.stack.push_stack(value.into())
     }
 
     // Run the VM

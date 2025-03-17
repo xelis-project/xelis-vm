@@ -1,4 +1,4 @@
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use xelis_types::ValueCell;
 
@@ -13,7 +13,9 @@ pub struct Module {
     // Available chunks
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
-    entry_chunk_ids: IndexSet<usize>
+    entry_chunk_ids: IndexSet<usize>,
+    // Hook id => chunk id
+    hook_chunk_ids: IndexMap<u8, usize>,
 }
 
 impl Module {
@@ -22,7 +24,8 @@ impl Module {
         Self {
             constants: IndexSet::new(),
             chunks: Vec::new(),
-            entry_chunk_ids: IndexSet::new()
+            entry_chunk_ids: IndexSet::new(),
+            hook_chunk_ids: IndexMap::new()
         }
     }
 
@@ -30,12 +33,14 @@ impl Module {
     pub fn with(
         constants: IndexSet<ValueCell>,
         chunks: Vec<Chunk>,
-        entry_chunk_ids: IndexSet<usize>
+        entry_chunk_ids: IndexSet<usize>,
+        hook_chunk_ids: IndexMap<u8, usize>
     ) -> Self {
         Self {
             constants,
             chunks,
-            entry_chunk_ids
+            entry_chunk_ids,
+            hook_chunk_ids,
         }
     }
 
@@ -99,6 +104,26 @@ impl Module {
     #[inline]
     pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
         self.chunks.get_mut(index)
+    }
+
+    // Get the hook chunks ids called during an event
+    pub fn hook_chunk_ids(&self) -> &IndexMap<u8, usize> {
+        &self.hook_chunk_ids
+    }
+
+    // Get the chunk id linked for the hook
+    pub fn get_chunk_id_of_hook(&self, id: u8) -> Option<usize> {
+        self.hook_chunk_ids.get(&id).copied()
+    }
+
+
+    // Add a chunk to the module
+    // and mark it as the requested hook id
+    #[inline]
+    pub fn add_hook_chunk(&mut self, id: u8, chunk: Chunk) -> Option<usize> {
+        let index = self.chunks.len();
+        self.chunks.push(chunk);
+        self.hook_chunk_ids.insert(id, index)
     }
 }
 

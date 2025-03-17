@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use thiserror::Error;
 use xelis_environment::Environment;
 use xelis_types::{EnumType, EnumVariant, Primitive, StructType, ValueCell, ValueError};
@@ -56,6 +58,10 @@ pub enum ValidatorError<'a> {
     EmptyModule,
     #[error("invalid entry id {0}")]
     InvalidEntryId(usize),
+    #[error("invalid hook id {0} with chunk id {1}")]
+    InvalidHookId(u8, usize),
+    #[error("chunk id {0} is already used")]
+    ChunkIdAlreadyUsed(usize),
     #[error(transparent)]
     ValueError(#[from] ValueError),
     #[error("unknown struct")]
@@ -183,9 +189,31 @@ impl<'a> ModuleValidator<'a> {
         }
 
         // Verify that the entry ids are valid
+        let mut used_ids = HashSet::new();
         for entry_id in self.module.chunks_entry_ids() {
             if *entry_id >= len {
                 return Err(ValidatorError::InvalidEntryId(*entry_id));
+            }
+
+            if !used_ids.insert(*entry_id) {
+                return Err(ValidatorError::ChunkIdAlreadyUsed(*entry_id))
+            }
+        }
+
+        // Verify all the chunks marked as hook
+        for (hook_id, chunk_id) in self.module.hook_chunk_ids() {
+            // Verify:
+            // - chunk id
+            // - the hook id
+            // - chunk id not an entry
+            if *chunk_id >= len
+                || *hook_id >= self.environment.hooks()
+                ||  !self.module.chunks_entry_ids().contains(chunk_id) {
+                return Err(ValidatorError::InvalidHookId(*hook_id, *chunk_id));
+            }
+
+            if !used_ids.insert(*chunk_id) {
+                return Err(ValidatorError::ChunkIdAlreadyUsed(*chunk_id))
             }
         }
 

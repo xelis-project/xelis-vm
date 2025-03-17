@@ -25,6 +25,8 @@ pub struct Environment {
     enums: IndexSet<EnumType>,
     // All opaques types provided by the Environment
     opaques: IndexSet<TypeId>,
+    // Number of hooks registered
+    hooks: u8
 }
 
 tid!(Environment);
@@ -36,6 +38,7 @@ impl Default for Environment {
             structures: IndexSet::new(),
             enums: IndexSet::new(),
             opaques: IndexSet::new(),
+            hooks: 0
         }
     }
 }
@@ -104,5 +107,15 @@ impl Environment {
         if let Some(function) = self.functions.get_mut(index) {
             function.set_cost(cost);
         }
+    }
+
+    // Increase the hook count
+    pub fn register_hook(&mut self) {
+        self.hooks += 1;
+    }
+
+    // Get the total of hooks registered
+    pub fn hooks(&self) -> u8 {
+        self.hooks
     }
 }
