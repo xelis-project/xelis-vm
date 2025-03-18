@@ -36,6 +36,9 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("first", Some(Type::Array(Box::new(Type::T(0)))), vec![], first, 1, Some(Type::Optional(Box::new(Type::T(0)))));
     env.register_native_function("last", Some(Type::Array(Box::new(Type::T(0)))), vec![], last, 1, Some(Type::Optional(Box::new(Type::T(0)))));
 
+    env.register_native_function("extend", Some(Type::Array(Box::new(Type::T(0)))), vec![("other", Type::Array(Box::new(Type::T(0))))], extend, 5, None);
+    env.register_native_function("concat", Some(Type::Array(Box::new(Type::Array(Box::new(Type::T(0)))))), vec![], concat, 5, Some(Type::Array(Box::new(Type::T(0)))));
+
     // Constant function
     env.register_const_function("with", Type::Array(Box::new(Type::T(0))), vec![("size", Type::U32), ("default", Type::T(0))], const_with);
 
@@ -163,6 +166,42 @@ fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     } else {
         Ok(Some(Primitive::Null.into()))
     }
+}
+
+fn extend(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+    let other = parameters.remove(0)
+        .into_owned()?
+        .to_vec()?;
+
+    context.increase_gas_usage(other.len() as _)?;
+
+    let vec = zelf?.as_mut_vec()?;
+    if other.len() as u64 + vec.len() as u64 > u32::MAX as u64 {
+        return Err(EnvironmentError::OutOfMemory)
+    }
+
+    vec.extend(other);
+
+    Ok(None)
+}
+
+fn concat(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+    let vec = zelf?.as_vec()?;
+    context.increase_gas_usage(vec.len() as u64 * 3)?;
+
+    let mut result = Vec::new();
+    for el in vec.iter() {
+        let v = el.as_vec()?;
+
+        // Check len is <= u32::MAX
+        if result.len() as u64 + v.len() as u64 > u32::MAX as u64 {
+            return Err(EnvironmentError::OutOfMemory)
+        }
+
+        result.extend(v.iter().cloned());
+    }
+
+    Ok(Some(ValueCell::Array(result)))
 }
 
 fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {

@@ -340,6 +340,15 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn to_vec<'a>(&'a mut self) -> Result<Vec<ValueCell>, ValueError> {
+        match mem::take(self) {
+            Self::Array(n) => Ok(n),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+        }
+    }
+
+
+    #[inline]
     pub fn as_bytes<'a>(&'a self) -> Result<&'a Vec<u8>, ValueError> {
         match self {
             Self::Bytes(bytes) => Ok(bytes),
