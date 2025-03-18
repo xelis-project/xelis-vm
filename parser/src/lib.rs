@@ -138,6 +138,9 @@ pub struct Parser<'a> {
     // This check that the variable name is not already declared
     // in the same scope or by a parent scope
     disable_shadowing_variables: bool,
+    // Disable the behavior of entry having a u64 return type
+    // This let the user customize its return
+    disable_entry_forced_return_type: bool,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
     // Used for errors, we track the line and column
@@ -167,6 +170,7 @@ impl<'a> Parser<'a> {
             environment,
             disable_const_upgrading: false,
             disable_shadowing_variables: false,
+            disable_entry_forced_return_type: false,
             line: 0,
             column_start: 0,
             column_end: 0,
@@ -181,6 +185,11 @@ impl<'a> Parser<'a> {
     // Set the shadowing variables to true or false
     pub fn set_shadowing_variables(&mut self, value: bool) {
         self.disable_shadowing_variables = value;
+    }
+
+    // Set the entry function return type forced to u64 to true or false
+    pub fn set_entry_forced_return_type(&mut self, value: bool) {
+        self.disable_entry_forced_return_type = value;
     }
 
     // Consume the next token
@@ -1871,7 +1880,7 @@ impl<'a> Parser<'a> {
         }
 
         // all entries must return a u64 value without being specified
-        let return_type: Option<Type> = if kind.is_entry() {
+        let return_type: Option<Type> = if kind.is_entry() && !self.disable_entry_forced_return_type {
             // an entrypoint cannot be a method
             if for_type.is_some() {
                 return Err(err!(self, ParserErrorKind::EntryFunctionCannotHaveForType))
