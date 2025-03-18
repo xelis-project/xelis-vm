@@ -1,6 +1,7 @@
 mod environment;
 mod manager;
 mod mapper;
+mod hook;
 
 use thiserror::Error;
 use xelis_types::ValueError;
@@ -8,6 +9,7 @@ use xelis_types::ValueError;
 pub use environment::*;
 pub use manager::*;
 pub use mapper::*;
+pub use hook::Hook;
 
 #[derive(Debug, Error)]
 pub enum BuilderError {

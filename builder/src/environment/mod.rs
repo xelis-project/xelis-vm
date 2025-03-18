@@ -4,7 +4,17 @@ use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
-use crate::{ConstFnCall, ConstFunction, ConstFunctionMapper, EnumManager, EnumVariantBuilder, FunctionMapper, OpaqueManager, StructManager};
+use crate::{
+    ConstFnCall,
+    ConstFunction,
+    ConstFunctionMapper,
+    EnumManager,
+    EnumVariantBuilder,
+    FunctionMapper,
+    Hook,
+    OpaqueManager,
+    StructManager
+};
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -19,6 +29,8 @@ pub struct EnvironmentBuilder<'a> {
     // All types constants functions
     // Example: u64::MAX()
     types_constants_functions: ConstFunctionMapper<'a>,
+    // Hooks functions registered in the environment
+    hooks: HashMap<&'a str, Hook<'a>>,
     env: Environment
 }
 
@@ -32,6 +44,7 @@ impl<'a> EnvironmentBuilder<'a> {
             opaque_manager: OpaqueManager::new(),
             types_constants: HashMap::new(),
             types_constants_functions: ConstFunctionMapper::new(),
+            hooks: HashMap::new(),
             env: Environment::new(),
         }
     }
@@ -148,6 +161,18 @@ impl<'a> EnvironmentBuilder<'a> {
     // all registered functions
     pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.env.get_functions()
+    }
+
+    // all hooks registered
+    pub fn get_hooks(&self) -> &HashMap<&'a str, Hook<'a>> {
+        &self.hooks
+    }
+
+    // Register a hook
+    pub fn register_hook(&mut self, name: &'a str, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) {
+        let hook_id = self.hooks.len() as _;
+        self.hooks.insert(name, Hook { parameters, return_type, hook_id });
+        self.env.register_hook();
     }
 
     // Get the environment for the interpreter
