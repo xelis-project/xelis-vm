@@ -1,4 +1,5 @@
 mod declared;
+mod hook;
 
 use std::borrow::Cow;
 
@@ -6,6 +7,7 @@ use xelis_types::{Type, IdentifierType};
 use super::Statement;
 
 pub use declared::{DeclaredFunction, EntryFunction};
+pub use hook::*;
 
 // The return type of the entry function
 // This is hardcoded to u64 so people can't return anything else
@@ -89,7 +91,29 @@ impl<'a> Signature<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum FunctionType {
     Declared(DeclaredFunction),
+    Hook(HookFunction),
     Entry(EntryFunction)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FunctionKind {
+    Declared,
+    Hook,
+    Entry
+}
+
+impl FunctionKind {
+    pub fn is_entry(&self) -> bool {
+        matches!(self, Self::Entry)
+    }
+
+    pub fn is_hook(&self) -> bool {
+        matches!(self, Self::Hook)
+    }
+
+    pub fn is_normal(&self) -> bool {
+        matches!(self, Self::Declared)
+    }
 }
 
 impl FunctionType {
@@ -107,6 +131,7 @@ impl FunctionType {
     pub fn return_type(&self) -> &Option<Type> {
         match &self {
             FunctionType::Declared(f) => f.get_return_type(),
+            FunctionType::Hook(h) => h.get_return_type(),
             FunctionType::Entry(_) => &Some(ENTRY_FN_RETURN_TYPE)
         }
     }
@@ -125,6 +150,7 @@ impl FunctionType {
     pub fn get_parameters(&self) -> &Vec<Parameter> {
         match self {
             FunctionType::Declared(f) => f.get_parameters(),
+            FunctionType::Hook(h) => h.get_parameters(),
             FunctionType::Entry(f) => f.get_parameters()
         }
     }
@@ -134,6 +160,7 @@ impl FunctionType {
     pub fn get_statements(&self) -> &Vec<Statement> {
         match self {
             FunctionType::Declared(f) => f.get_statements(),
+            FunctionType::Hook(h) => h.get_statements(),
             FunctionType::Entry(f) => f.get_statements()
         }
     }
@@ -142,6 +169,7 @@ impl FunctionType {
     pub fn get_variables_count(&self) -> u16 {
         match self {
             FunctionType::Declared(f) => f.get_variables_count(),
+            FunctionType::Hook(h) => h.get_variables_count(),
             FunctionType::Entry(f) => f.get_variables_count()
         }
     }
@@ -150,6 +178,7 @@ impl FunctionType {
     pub fn set_statements(&mut self, statements: Vec<Statement>) {
         match self {
             FunctionType::Declared(f) => f.set_statements(statements),
+            FunctionType::Hook(h) => h.set_statements(statements),
             FunctionType::Entry(f) => f.set_statements(statements)
         }
     }
@@ -158,6 +187,7 @@ impl FunctionType {
     pub fn set_max_variables_count(&mut self, count: u16) {
         match self {
             FunctionType::Declared(f) => f.set_max_variables_count(count),
+            FunctionType::Hook(h) => h.set_max_variables_count(count),
             FunctionType::Entry(f) => f.set_max_variables_count(count)
         }
     }

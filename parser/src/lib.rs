@@ -1836,12 +1836,12 @@ impl<'a> Parser<'a> {
      * - Signature is based on function name, and parameters
      * - Entry function is a "public callable" function and must return a u64 value
      */
-    fn read_function(&mut self, entry: bool, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
+    fn read_function(&mut self, kind: FunctionKind, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
         trace!("Read function");
         context.begin_scope();
 
         let token = self.advance()?;
-        let (instance_name, for_type, name) = if !entry && token == Token::ParenthesisOpen {
+        let (instance_name, for_type, name) = if kind.is_normal() && token == Token::ParenthesisOpen {
             let instance_name = self.next_identifier()?;
             let for_type = self.read_type()?;
 
@@ -1871,7 +1871,7 @@ impl<'a> Parser<'a> {
         }
 
         // all entries must return a u64 value without being specified
-        let return_type: Option<Type> = if entry {
+        let return_type: Option<Type> = if kind.is_entry() {
             // an entrypoint cannot be a method
             if for_type.is_some() {
                 return Err(err!(self, ParserErrorKind::EntryFunctionCannotHaveForType))
@@ -1884,6 +1884,29 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
+
+        // Check that the function name is a known hook
+        if kind.is_hook() {
+            let hook = self.environment.get_hooks().get(name)
+                .ok_or_else(|| err!(self, ParserErrorKind::UnknownHook(name)))?;
+
+            // Verify that the params len are correct
+            if parameters.len() != hook.parameters.len() {
+                return Err(err!(self, ParserErrorKind::InvalidHookParameters(name, parameters.len(), hook.parameters.len())));
+            }
+
+            // Verify their types
+            for ((_, got), (_, expected)) in parameters.iter().zip(hook.parameters.iter()) {
+                if got != expected {
+                    return Err(err!(self, ParserErrorKind::InvalidHookParameter(name, got.clone(), expected.clone())));
+                }
+            }
+
+            // Verify the return type
+            if return_type != hook.return_type {
+                return Err(err!(self, ParserErrorKind::InvalidHookReturnType(name, return_type, hook.return_type.clone())));
+            }
+        }
 
         let id = self.global_mapper
             .functions_mut()
@@ -1903,11 +1926,17 @@ impl<'a> Parser<'a> {
         }
 
 
-        let function = match entry {
-            true => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
-            false => FunctionType::Declared(DeclaredFunction::new(
+        let function = match kind {
+            FunctionKind::Entry => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
+            FunctionKind::Declared => FunctionType::Declared(DeclaredFunction::new(
                 for_type,
                 instance_name,
+                new_params,
+                Vec::new(),
+                return_type.clone(),
+                0
+            )),
+            FunctionKind::Hook => FunctionType::Hook(HookFunction::new(
                 new_params,
                 Vec::new(),
                 return_type.clone(),
@@ -2117,8 +2146,9 @@ impl<'a> Parser<'a> {
                     continue;
                 }
                 Token::Const => self.read_const(&mut context)?,
-                Token::Function => self.read_function(false, &mut context)?,
-                Token::Entry => self.read_function(true, &mut context)?,
+                Token::Function => self.read_function(FunctionKind::Declared, &mut context)?,
+                Token::Entry => self.read_function(FunctionKind::Entry, &mut context)?,
+                Token::Hook => self.read_function(FunctionKind::Hook, &mut context)?,
                 Token::Struct => self.read_struct()?,
                 Token::Enum => self.read_enum()?,
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
@@ -2798,6 +2828,32 @@ mod tests {
         ];
 
         let program = test_parser(tokens);
+        assert_eq!(program.functions().len(), 1);
+    }
+
+
+    #[test]
+    fn test_hook_function() {
+        let tokens = vec![
+            Token::Hook,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::Identifier("data"),
+            Token::Colon,
+            Token::Number(NumberType::U8),
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::Bool(false)),
+            Token::BraceClose
+        ];
+
+        let mut env = EnvironmentBuilder::new();
+        env.register_hook("foo", vec![("data", Type::U8)], Some(Type::Bool));
+
+        let program = test_parser_with_env(tokens, &env);
         assert_eq!(program.functions().len(), 1);
     }
 

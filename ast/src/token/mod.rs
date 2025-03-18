@@ -110,6 +110,7 @@ impl<'a> fmt::Display for Token<'a> {
           Const => "const",
           Entry => "entry",
           Function => "fn",
+          Hook => "hook",
           Return => "return",
           If => "if",
           Else => "else",
@@ -184,6 +185,7 @@ pub enum Token<'a> {
     Let,
     Entry,
     Function,
+    Hook,
     Dot,
     Comma,
     Colon,
@@ -317,6 +319,7 @@ impl Token<'_> {
             "const" => Const,
             "entry" => Entry,
             "fn" => Function,
+            "hook" => Hook,
 
             "return" => Return,
             "if" => If,

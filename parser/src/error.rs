@@ -84,6 +84,14 @@ pub enum ParserErrorKind<'a> {
     VariableMustStartWithAlphabetic(&'a str),
     #[error("expected identifier token got '{0:?}'")]
     ExpectedIdentifierToken(Token<'a>),
+    #[error("Unknown hook name '{0}'")]
+    UnknownHook(&'a str),
+    #[error("Invalid parameter type for hook '{0}': got '{1}' but expected '{2}'")]
+    InvalidHookParameter(&'a str, Type, Type),
+    #[error("Invalid parameters len for hook '{0}': got '{1}' but expected '{2}'")]
+    InvalidHookParameters(&'a str, usize, usize),
+    #[error("Invalid return type for hook '{0}': got '{1:?}' but expected '{2:?}'")]
+    InvalidHookReturnType(&'a str, Option<Type>, Option<Type>),
     #[error("unexpected token '{0:?}'")]
     UnexpectedToken(Token<'a>),
     #[error("unexpected token in postfix expresion '{0:?}'")]
