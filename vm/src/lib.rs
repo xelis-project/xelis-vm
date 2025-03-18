@@ -173,6 +173,20 @@ impl<'a, 'r> VM<'a, 'r> {
         }
     }
 
+    // Invoke a hook with args
+    // Return true if the Module has an implementation for the hook
+    // Return false if the hook isn't supported
+    pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
+        match self.backend.module.get_chunk_id_of_hook(hook_id) {
+            Some(id) => {
+                self.invoke_chunk_id(id as _)?;
+                self.stack.extend_stack(args.map(Into::into))?;
+                Ok(true)
+            },
+            None => Ok(false)
+        }
+    }
+
     // Push a value to the stack
     pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         self.stack.push_stack(value.into())
