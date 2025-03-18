@@ -187,12 +187,13 @@ fn extend(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
 
 fn concat(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
     let vec = zelf?.as_vec()?;
-    context.increase_gas_usage(vec.len() as u64 * 3)?;
+    context.increase_gas_usage(vec.len() as u64)?;
 
     let mut result = Vec::new();
     for el in vec.iter() {
         let v = el.as_vec()?;
 
+        context.increase_gas_usage(v.len() as u64)?;
         // Check len is <= u32::MAX
         if result.len() as u64 + v.len() as u64 > u32::MAX as u64 {
             return Err(EnvironmentError::OutOfMemory)
