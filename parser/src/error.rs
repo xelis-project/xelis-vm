@@ -92,6 +92,8 @@ pub enum ParserErrorKind<'a> {
     InvalidHookParameters(&'a str, usize, usize),
     #[error("Invalid return type for hook '{0}': got '{1:?}' but expected '{2:?}'")]
     InvalidHookReturnType(&'a str, Option<Type>, Option<Type>),
+    #[error("Hook '{0}' (id {1}) is already registered")]
+    DuplicatedHook(&'a str, u8),
     #[error("unexpected token '{0:?}'")]
     UnexpectedToken(Token<'a>),
     #[error("unexpected token in postfix expresion '{0:?}'")]

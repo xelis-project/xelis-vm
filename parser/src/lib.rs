@@ -1886,6 +1886,7 @@ impl<'a> Parser<'a> {
         };
 
         // Check that the function name is a known hook
+        let mut hook_id = None;
         if kind.is_hook() {
             let hook = self.environment.get_hooks().get(name)
                 .ok_or_else(|| err!(self, ParserErrorKind::UnknownHook(name)))?;
@@ -1906,6 +1907,17 @@ impl<'a> Parser<'a> {
             if return_type != hook.return_type {
                 return Err(err!(self, ParserErrorKind::InvalidHookReturnType(name, return_type, hook.return_type.clone())));
             }
+
+            // Check that this hook isn't already registered
+            for f in self.functions.iter() {
+                if let FunctionType::Hook(h) = f {
+                    if h.hook_id() == hook.hook_id {
+                        return Err(err!(self, ParserErrorKind::DuplicatedHook(name, hook.hook_id)))
+                    }
+                }
+            }
+
+            hook_id = Some(hook.hook_id);
         }
 
         let id = self.global_mapper
@@ -1925,7 +1937,6 @@ impl<'a> Parser<'a> {
             new_params.push(Parameter::new(id, param_type));
         }
 
-
         let function = match kind {
             FunctionKind::Entry => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
             FunctionKind::Declared => FunctionType::Declared(DeclaredFunction::new(
@@ -1940,7 +1951,8 @@ impl<'a> Parser<'a> {
                 new_params,
                 Vec::new(),
                 return_type.clone(),
-                0
+                0,
+                hook_id.unwrap()
             ))
         };
 

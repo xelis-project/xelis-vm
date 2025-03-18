@@ -43,4 +43,6 @@ pub enum CompilerError {
     TooMuchDanglingValueOnStack,
     #[error("expected a memory scope")]
     ExpectedMemoryScope,
+    #[error("Hook {0} is already registered")]
+    HookAlreadyRegistered(u8),
 }

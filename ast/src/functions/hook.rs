@@ -8,15 +8,17 @@ pub struct HookFunction {
     statements: Vec<Statement>,
     return_type: Option<Type>,
     variables_count: u16,
+    hook_id: u8
 }
 
 impl HookFunction {
-    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
+    pub fn new(parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16, hook_id: u8) -> Self {
         Self {
             parameters,
             statements,
             return_type,
-            variables_count
+            variables_count,
+            hook_id
         }
     }
 
@@ -42,5 +44,9 @@ impl HookFunction {
 
     pub fn set_max_variables_count(&mut self, variables_count: u16) {
         self.variables_count = variables_count;
+    }
+
+    pub fn hook_id(&self) -> u8 {
+        self.hook_id
     }
 }

@@ -9,12 +9,16 @@ use super::Chunk;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     // Set of constants used by the program
+    #[serde(default)]
     constants: IndexSet<ValueCell>,
     // Available chunks
+    #[serde(default)]
     chunks: Vec<Chunk>,
     // Chunks callable from external programs
+    #[serde(default)]
     entry_chunk_ids: IndexSet<usize>,
     // Hook id => chunk id
+    #[serde(default)]
     hook_chunk_ids: IndexMap<u8, usize>,
 }
 

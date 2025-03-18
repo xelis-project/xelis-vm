@@ -191,4 +191,12 @@ impl FunctionType {
             FunctionType::Entry(f) => f.set_max_variables_count(count)
         }
     }
+
+    pub const fn kind(&self) -> FunctionKind {
+        match self {
+            Self::Declared(_) => FunctionKind::Declared,
+            Self::Entry(_) => FunctionKind::Entry,
+            Self::Hook(_) => FunctionKind::Hook
+        }
+    }
 }

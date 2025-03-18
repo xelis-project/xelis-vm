@@ -6,8 +6,8 @@ use xelis_ast::{
     Expression,
     FunctionType,
     Operator,
-    Statement,
-    Program
+    Program,
+    Statement
 };
 use xelis_environment::Environment;
 use xelis_bytecode::{Chunk, Module, OpCode};
@@ -740,11 +740,15 @@ impl<'a> Compiler<'a> {
         self.pop_mem_scope(&mut chunk)?;
 
         // Add the chunk to the module
-        if function.is_entry() {
-            self.module.add_entry_chunk(chunk);
-        } else {
-            self.module.add_chunk(chunk);
-        }
+        match function {
+            FunctionType::Declared(_) => self.module.add_chunk(chunk),
+            FunctionType::Entry(_) => self.module.add_entry_chunk(chunk),
+            FunctionType::Hook(h) => {
+                if self.module.add_hook_chunk(h.hook_id(), chunk).is_some() {
+                    return Err(CompilerError::HookAlreadyRegistered(h.hook_id()));
+                }
+            }
+        };
 
         Ok(())
     }
