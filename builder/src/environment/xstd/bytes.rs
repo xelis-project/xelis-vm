@@ -14,6 +14,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("get", Some(Type::Bytes), vec![("index", Type::U32)], get, 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("first", Some(Type::Bytes), vec![], first, 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("last", Some(Type::Bytes), vec![], last, 1, Some(Type::Optional(Box::new(Type::U8))));
+    env.register_native_function("to_array", Some(Type::Bytes), vec![], to_array, 1, Some(Type::Array(Box::new(Type::U8))));
 
     env.register_const_function("new", Type::Bytes, vec![], |_| Ok(Constant::Bytes(Vec::new())));
     env.register_const_function("from", Type::Bytes, vec![("values", Type::Array(Box::new(Type::U8)))], |values| {
@@ -127,4 +128,16 @@ fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
     } else {
         Ok(Some(Primitive::Null.into()))
     }
+}
+
+fn to_array(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+    let vec = zelf?.as_bytes()?;
+
+    context.increase_gas_usage(vec.len() as _)?;
+
+    let values = vec.iter()
+        .map(|v| Primitive::U8(*v).into())
+        .collect();
+
+    Ok(Some(ValueCell::Array(values)))
 }
