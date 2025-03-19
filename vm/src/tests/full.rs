@@ -1340,6 +1340,7 @@ fn test_types_compatibility() {
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy"));
     env.register_native_function("test", None, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
     env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
+    env.register_static_function("static", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {
@@ -1363,6 +1364,8 @@ fn test_types_compatibility() {
         };
         let dummy: Dummy = test();
         foo.dummy = dummy;
+
+        let _: optional<bool> = bool::static();
 
         return 0
     }", env);

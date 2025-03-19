@@ -787,7 +787,7 @@ mod tests {
     use xelis_builder::EnvironmentBuilder;
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
-    use xelis_types::Primitive;
+    use xelis_types::{Primitive, Type, ValueCell};
 
     use super::*;
 
@@ -803,14 +803,21 @@ mod tests {
 
     #[track_caller]
     fn prepare_program(code: &str) -> (Program, Environment) {
-        let tokens = Lexer::new(code).get().unwrap();
         let environment = EnvironmentBuilder::default();
+        prepare_program_with_env(code, environment)
+    }
+
+
+    #[track_caller]
+    fn prepare_program_with_env(code: &str, environment: EnvironmentBuilder) -> (Program, Environment) {
+        let tokens = Lexer::new(code).get().unwrap();
         let mut parser = Parser::new(tokens, &environment);
-        parser.set_const_upgrading(true);
+        parser.set_const_upgrading_disabled(true);
 
         let (program, _) = parser.parse().unwrap();
         (program, environment.build())
     }
+
 
     #[track_caller]
     fn prepare_program_with_const_enabled(code: &str) -> (Program, Environment) {
@@ -1178,6 +1185,24 @@ mod tests {
     }
 
     #[test]
+    fn test_static_function_call() {
+        let mut env = EnvironmentBuilder::new();
+        env.register_static_function("test", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Bool));
+
+        let (program, environment) = prepare_program_with_env("fn main() -> bool { return bool::test() }", env);
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        assert_eq!(
+            chunk.get_instructions(),
+            &[
+                OpCode::SysCall.as_byte(), 0, 0, 0, 0, 20
+            ]
+        );
+    }
+
+    #[test]
     fn test_enum_with_fields() {
         let (program, environment) = prepare_program("enum Test { A, B { value: u64 } } fn main() -> Test { return Test::B { value: 1 } }");
         let compiler = Compiler::new(&program, &environment);
@@ -1226,7 +1251,7 @@ mod tests {
                 // 10
                 OpCode::Constant.as_byte(), 1, 0,
                 // insert
-                OpCode::SysCall.as_byte(), 91, 0, 1, 2,
+                OpCode::SysCall.as_byte(), 92, 0, 1, 2,
                 // Expected POP
                 OpCode::Pop.as_byte(),
                 // x.get("a")
@@ -1235,9 +1260,9 @@ mod tests {
                 // a
                 OpCode::Constant.as_byte(), 0, 0,
                 // get
-                OpCode::SysCall.as_byte(), 90, 0, 1, 1,
+                OpCode::SysCall.as_byte(), 91, 0, 1, 1,
                 // unwrap (u16 id, on type bool, params u8)
-                OpCode::SysCall.as_byte(), 22, 0, 1, 0,
+                OpCode::SysCall.as_byte(), 23, 0, 1, 0,
                 // let dummy: u64 = x.get("a").unwrap();
                 OpCode::MemorySet.as_byte(), 1, 0,
                 // x.insert("b", dummy);
@@ -1248,7 +1273,7 @@ mod tests {
                 // Load dummy
                 OpCode::MemoryLoad.as_byte(), 1, 0,
                 // insert (u16 id, on type map, params u8)
-                OpCode::SysCall.as_byte(), 91, 0, 1, 2,
+                OpCode::SysCall.as_byte(), 92, 0, 1, 2,
                 // Expected POP
                 OpCode::Pop.as_byte(),
 

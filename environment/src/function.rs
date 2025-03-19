@@ -15,7 +15,7 @@ pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 #[derive(Debug, Clone)]
 pub struct NativeFunction {
     // function on type
-    for_type: Option<Type>,
+    require_instance: bool,
     parameters: Vec<Type>,
     on_call: OnCallFn,
     // cost for each call
@@ -26,9 +26,9 @@ pub struct NativeFunction {
 
 impl NativeFunction {
     // Create a new instance of the NativeFunction
-    pub fn new(for_type: Option<Type>, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
+    pub fn new(require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
-            for_type,
+            require_instance,
             parameters,
             on_call,
             cost,
@@ -38,8 +38,8 @@ impl NativeFunction {
 
     // Execute the function
     pub fn call_function(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context) -> Result<Option<ValueCell>, EnvironmentError> {
-        if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.for_type.is_some()) {
-            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.for_type.is_some()));
+        if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.require_instance) {
+            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.require_instance));
         }
 
         let instance = match instance_value {

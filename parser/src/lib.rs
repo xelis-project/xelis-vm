@@ -179,7 +179,7 @@ impl<'a> Parser<'a> {
     }
 
     // Set the const upgrading to true or false
-    pub fn set_const_upgrading(&mut self, value: bool) {
+    pub fn set_const_upgrading_disabled(&mut self, value: bool) {
         self.disable_const_upgrading = value;
     }
 
