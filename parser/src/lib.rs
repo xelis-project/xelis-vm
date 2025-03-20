@@ -578,13 +578,13 @@ impl<'a> Parser<'a> {
     }
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
-    fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>) -> Result<(), ParserError<'a>> {
+    fn verify_type_of(&self, expr: &mut Expression, expected_type: &Type, context: &Context<'a>, is_assign: bool) -> Result<(), ParserError<'a>> {
         let ty = self.get_type_from_expression_internal(None, &expr, context)?
             .map(Cow::into_owned);
-        self.is_type_compatible(expr, ty.as_ref(), expected_type)
+        self.verify_type_compatibility(expr, ty.as_ref(), expected_type, is_assign)
     }
 
-    fn is_type_compatible(&self, expr: &mut Expression, got: Option<&Type>, expected_type: &Type) -> Result<(), ParserError<'a>> {
+    fn verify_type_compatibility(&self, expr: &mut Expression, got: Option<&Type>, expected_type: &Type, is_assign: bool) -> Result<(), ParserError<'a>> {
         let _type = match got {
             Some(v) => v,
             None => {
@@ -596,7 +596,13 @@ impl<'a> Parser<'a> {
             }
         };
 
-        if !_type.is_compatible_with(expected_type) {
+        let is_valid = if is_assign {
+            expected_type.is_assign_compatible_with(_type)
+        } else {
+            expected_type.is_compatible_with(_type)
+        };
+
+        if !is_valid {
             match expr {
                 Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
                     .map_err(|e| err!(self, e.into()))?,
@@ -629,7 +635,7 @@ impl<'a> Parser<'a> {
                 return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected)))
             }
 
-            self.verify_type_of(&mut field_expr, field_type, context)?;
+            self.verify_type_of(&mut field_expr, field_type, context, true)?;
 
             fields_expressions.push(field_expr);
         }
@@ -676,7 +682,7 @@ impl<'a> Parser<'a> {
                     return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
                 }
 
-                self.verify_type_of(&mut field_expr, expected_type, context)?;
+                self.verify_type_of(&mut field_expr, expected_type, context, true)?;
 
                 fields_expressions.push(field_expr);
             }
@@ -1441,7 +1447,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Operator::Assign(None) => {
-                if !left_type.is_compatible_with(&right_type) {
+                if !left_type.is_assign_compatible_with(&right_type) {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 
@@ -1470,7 +1476,7 @@ impl<'a> Parser<'a> {
                 .map(Cow::into_owned);
 
             if let Some(ty) = &key_type {
-                self.is_type_compatible(&mut key, expr_type.as_ref(), ty)?;
+                self.verify_type_compatibility(&mut key, expr_type.as_ref(), ty, true)?;
             } else {
                 key_type = expr_type;
             }
@@ -1481,7 +1487,7 @@ impl<'a> Parser<'a> {
                 .map(Cow::into_owned);
 
             if let Some(ty) = &value_type {
-                self.is_type_compatible(&mut value, expr_type.as_ref(), ty)?;
+                self.verify_type_compatibility(&mut value, expr_type.as_ref(), ty, true)?;
             } else {
                 value_type = expr_type;
             }
@@ -1556,15 +1562,10 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            if !expr_type.is_compatible_with(&value_type) {
-                // If its an optional type, we can assign a value of the inner type
-                if let Type::Optional(inner) = &value_type {
-                    if !expr_type.is_compatible_with(inner) {
-                        return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
-                    }
-                } else {
-                    return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
-                }
+            // Don't allow the reverse to prevent that example:
+            // let _: bool = <optional bool>
+            if !value_type.is_assign_compatible_with(&expr_type) {
+                return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
             }
 
             expr
@@ -3749,5 +3750,30 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_assign_optional_to_type() {
+        let mut env = EnvironmentBuilder::default();
+        // env.register_structure("Message", vec![("message_id", Type::Optional(Box::new(Type::U64)))]);
+        env.register_native_function("test", None, vec![], |_, _, _| todo!(), 0, Some(Type::Optional(Box::new(Type::Bool))));
+
+        // let _: bool = test();
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("_"),
+            Token::Colon,
+            Token::Bool,
+            Token::OperatorAssign,
+            Token::Identifier("test"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let mut parser = Parser::new(VecDeque::from(tokens), &env);
+        let mut context = Context::new();
+        context.begin_scope();
+
+        assert!(parser.read_statements(&mut context, &None).is_err());
     }
 }
