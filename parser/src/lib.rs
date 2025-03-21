@@ -1015,6 +1015,9 @@ impl<'a> Parser<'a> {
         // Queued items, draining the above two vectors
         let mut queue: Vec<QueueItem> = Vec::new();
 
+        let mut last_assign_queue_size: usize = 0;
+        let mut last_assign_operator_stack_size: usize = 0;
+
         let mut required_operator = false;
         while self.peek()
             .ok()
@@ -1229,16 +1232,19 @@ impl<'a> Parser<'a> {
                 Token::OperatorTernary => {
                     if queue.is_empty() {
                         return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression));
-
                     }
 
-                    let queue = queue.drain(..)
-                        .chain(operator_stack.drain(..)
-                        .rev()
-                        .map(|v| QueueItem::Operator(v)));
+                    let queue_limit = last_assign_queue_size;
+                    let operator_stack_limit = last_assign_operator_stack_size;
+
+                    let ternary_queue = queue.drain(last_assign_queue_size..)
+                        .chain(operator_stack.drain(last_assign_operator_stack_size..)
+                            .rev()
+                            .map(|v| QueueItem::Operator(v))
+                        );
 
                     let collapsed_expr = self.try_postfix_collapse(
-                        queue,
+                        ternary_queue,
                         context,
                     )?;
 
@@ -1325,6 +1331,12 @@ impl<'a> Parser<'a> {
                         }
 
                         operator_stack.push(op);
+
+                        if token == Token::OperatorAssign {
+                            last_assign_queue_size = queue.len();
+                            last_assign_operator_stack_size = operator_stack.len();
+                        }
+
                         queue.push(QueueItem::Separator);
                         required_operator = false;
                         continue;
