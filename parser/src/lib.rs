@@ -1234,9 +1234,6 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression));
                     }
 
-                    let queue_limit = last_assign_queue_size;
-                    let operator_stack_limit = last_assign_operator_stack_size;
-
                     let ternary_queue = queue.drain(last_assign_queue_size..)
                         .chain(operator_stack.drain(last_assign_operator_stack_size..)
                             .rev()
