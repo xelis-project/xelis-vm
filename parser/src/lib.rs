@@ -226,7 +226,16 @@ impl<'a> Parser<'a> {
     // Peek the next token without consuming it
     #[inline(always)]
     fn peek(&self) -> Result<&Token<'a>, ParserError<'a>> {
-        self.tokens.front().map(|t| &t.token)
+        self.tokens.front()
+            .map(|t| &t.token)
+            .ok_or(err!(self, ParserErrorKind::ExpectedToken))
+    }
+
+    // Peek the next token without consuming it
+    #[inline(always)]
+    fn peek_n(&self, n: usize) -> Result<&Token<'a>, ParserError<'a>> {
+        self.tokens.get(n)
+            .map(|t| &t.token)
             .ok_or(err!(self, ParserErrorKind::ExpectedToken))
     }
 
@@ -320,7 +329,8 @@ impl<'a> Parser<'a> {
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                     Type::Opaque(ty.clone())
                 } else {
-                    return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
+                    todo!()
+                    // return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
             },
             token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
@@ -1124,7 +1134,7 @@ impl<'a> Parser<'a> {
                             };
                             self.read_function_call(prev_expr, on_type.is_some(), on_type, id, context)?
                         },
-                        Ok(Token::Colon) => self.read_type_constant(Token::Identifier(id), context)?,
+                        Ok(Token::Colon) if matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field

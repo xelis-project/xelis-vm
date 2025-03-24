@@ -525,6 +525,24 @@ fn test_map_inline() {
 }
 
 #[test]
+fn test_map_inline_with_vars() {
+    let code = r#"
+        entry main() {
+            let a: string = "a";
+            let b: u8 = 10;
+            return {
+                a: b
+            }.get("a").unwrap() as u64
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(10)
+    );
+}
+
+#[test]
 fn test_self_reference_2d() {
     let code = r#"
         entry main() {
