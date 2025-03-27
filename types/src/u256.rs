@@ -485,7 +485,7 @@ impl Shr for U256 {
     type Output = Self;
 
     fn shr(self, shift: Self) -> Self {
-        if shift >= 256u64.into() {
+        if shift >= U256::from(256u64) {
             return U256([0; 4]);
         }
 
@@ -510,7 +510,7 @@ impl Shl for U256 {
     type Output = Self;
 
     fn shl(self, shift: Self) -> Self {
-        if shift >= 256u64.into() {
+        if shift >= U256::from(256u64) {
             return U256([0; 4]);
         }
 
@@ -710,6 +710,20 @@ impl fmt::Display for U256 {
         }
 
         write!(f, "{}", result.chars().rev().collect::<String>())
+    }
+}
+
+impl PartialEq<u64> for U256 {
+    fn eq(&self, other: &u64) -> bool {
+        self.as_u64()
+            .map(|v| v.eq(other))
+            .unwrap_or(false)
+    }
+}
+
+impl PartialOrd<u64> for U256 {
+    fn partial_cmp(&self, other: &u64) -> Option<Ordering> {
+        self.as_u64().map(|v| v.cmp(other))
     }
 }
 
