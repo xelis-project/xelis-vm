@@ -633,6 +633,11 @@ impl From<bool> for U256 {
     }
 }
 
+impl From<i32> for U256 {
+    fn from(value: i32) -> Self {
+        U256([value as u64, 0, 0, 0])
+    }
+}
 impl From<u8> for U256 {
     fn from(value: u8) -> Self {
         U256([value as u64, 0, 0, 0])
