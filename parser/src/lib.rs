@@ -329,8 +329,7 @@ impl<'a> Parser<'a> {
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
                     Type::Opaque(ty.clone())
                 } else {
-                    todo!()
-                    // return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
+                    return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
             },
             token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
