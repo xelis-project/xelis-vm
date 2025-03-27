@@ -1126,7 +1126,7 @@ fn test_self_reference() {
     let code = r#"
         entry main() {
             let a: u8 = 100;
-            let b: u64 = a.overflowing_add(a).unwrap() as u64;
+            let b: u64 = a.checked_add(a).unwrap() as u64;
             return b
         }
     "#;
@@ -1141,13 +1141,13 @@ fn test_self_reference_declared() {
             a: u8
         }
 
-        fn (t Test) overflowing_add(v: Test) -> u64 {
+        fn (t Test) checked_add(v: Test) -> u64 {
             return (t.a + v.a) as u64
         }
 
         entry main() {
             let t: Test = Test { a: 100 };
-            return t.overflowing_add(t)
+            return t.checked_add(t)
         }
     "#;
 
@@ -1181,8 +1181,8 @@ fn test_self_reference_owned_with_inner_ref() {
             a: u8
         }
 
-        fn (t Test) overflowing_add(v: Test) -> u64 {
-            return t.a.overflowing_add(v.a).unwrap() as u64
+        fn (t Test) checked_add(v: Test) -> u64 {
+            return t.a.checked_add(v.a).unwrap() as u64
         }
 
         entry main() {
@@ -1190,7 +1190,7 @@ fn test_self_reference_owned_with_inner_ref() {
             let t: Test = Test { a: b[0] };
             t.a = 50;
             assert(b[0] == 100);
-            return t.overflowing_add(t)
+            return t.checked_add(t)
         }
     "#;
 
