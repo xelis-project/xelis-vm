@@ -1390,3 +1390,65 @@ fn test_types_compatibility() {
     }", env);
     run_internal(module, &env, 0).unwrap();
 }
+
+#[test]
+fn test_sqrt() {
+    fn check_sqrt(val: &str, expected: Primitive) {
+        let code = format!("entry main() {{ return {}; }}", val);
+        test_code_expect_return(&code, expected);
+    }
+
+    // Test u64 cases - more comprehensive as it's the most common type
+    let u64_cases = vec![
+        ("0u64.sqrt()", Primitive::U64(0)),
+        ("1u64.sqrt()", Primitive::U64(1)),
+        ("4u64.sqrt()", Primitive::U64(2)),
+        ("9u64.sqrt()", Primitive::U64(3)),
+        // Non-perfect squares
+        ("2u64.sqrt()", Primitive::U64(1)),
+        ("3u64.sqrt()", Primitive::U64(1)),
+        ("10u64.sqrt()", Primitive::U64(3)),
+        ("99u64.sqrt()", Primitive::U64(9)),
+        // Edge cases around powers of 2
+        ("255u64.sqrt()", Primitive::U64(15)),
+        ("256u64.sqrt()", Primitive::U64(16)),
+        ("257u64.sqrt()", Primitive::U64(16)),
+        // Larger numbers
+        ("65535u64.sqrt()", Primitive::U64(255)),
+        ("1000000u64.sqrt()", Primitive::U64(1000)),
+    ];
+
+    for (expr, expected) in u64_cases {
+        check_sqrt(expr, expected);
+    }
+
+    // Test with other integer types - fewer cases per type, but check their MAX values
+    // u8 tests - always cast to u64 for return
+    check_sqrt("0u8.sqrt() as u64", Primitive::U64(0));
+    check_sqrt("7u8.sqrt() as u64", Primitive::U64(2));
+    check_sqrt("u8::MAX.sqrt() as u64", Primitive::U64(15)); // sqrt(255) = 15.96... -> 15
+
+    // u16 tests - always cast to u64 for return
+    check_sqrt("12u16.sqrt() as u64", Primitive::U64(3));
+    check_sqrt("u16::MAX.sqrt() as u64", Primitive::U64(255)); // sqrt(65535) = 255.99... -> 255
+
+    // u32 tests - always cast to u64 for return
+    check_sqrt("17u32.sqrt() as u64", Primitive::U64(4));
+    check_sqrt("u32::MAX.sqrt() as u64", Primitive::U64(65535)); // sqrt(2^32-1) = 65535.99... -> 65535
+    
+    // u128 tests - always cast to u64 for return
+    check_sqrt("31u128.sqrt() as u64", Primitive::U64(5));
+    check_sqrt("(u128::MAX.sqrt() > 0u128) as u64", Primitive::U64(1));
+
+    // U256 tests - focus on small cases and large values
+    check_sqrt("0u256.sqrt() as u64", Primitive::U64(0));
+    check_sqrt("9u256.sqrt() as u64", Primitive::U64(3));
+    check_sqrt("10000u256.sqrt() as u64", Primitive::U64(100));
+    check_sqrt("(u256::MAX.sqrt() > 0u256) as u64", Primitive::U64(1));
+    
+    // Test large powers
+    check_sqrt("(2u256 ** 64u32).sqrt() as u64", Primitive::U64(4294967296)); // 2^32
+    
+    // Test non-perfect squares with U256
+    check_sqrt("(2u256 ** 64u32 - 1u256).sqrt() as u64", Primitive::U64(4294967295)); // 2^32 - 1
+}

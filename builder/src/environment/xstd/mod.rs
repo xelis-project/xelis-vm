@@ -5,6 +5,7 @@ mod integer;
 mod range;
 mod map;
 mod bytes;
+mod math;
 
 use std::ptr;
 
@@ -26,6 +27,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
     integer::register(env);
     range::register(env);
     map::register(env);
+    math::register(env);
 
     env.register_native_function("println", None, vec![("value", Type::Any)], println, 1, None);
     env.register_native_function("debug", None, vec![("value", Type::Any)], debug, 1, None);
