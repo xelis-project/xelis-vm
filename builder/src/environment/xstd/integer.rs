@@ -9,33 +9,32 @@ use paste::paste;
 
 use crate::EnvironmentBuilder;
 
-macro_rules! overflow_fn {
+macro_rules! checked_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident) => {
         paste! {
-            fn [<overflowing_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<checked_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
                 // Extract and convert parameters
                 let other = parameters.remove(0).into_owned()?.[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
-                // Perform the operation with `overflowing_$op` as a method name
-                let (result, overflow) = value.[<overflowing_ $op>](other);
+                // Perform the operation with `checked_$op` as a method name
+                let result = value.[<checked_ $op>](other);
                 
-                Ok(Some(if overflow {
-                    Primitive::Null.into()
-                } else {
-                    let inner = Primitive::$t(result).into();
-                    inner
-                }))
+                Ok(Some(
+                    result.map(|v| Primitive::$t(v))
+                        .unwrap_or_default()
+                        .into()
+                ))
             }
 
             // Registering the generated function in the environment
             $env.register_native_function(
                 // Function name as a string
-                stringify!([<overflowing_ $op>]),
+                stringify!([<checked_ $op>]),
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 // The function identifier
-                [<overflowing_ $op _ $f>],
+                [<checked_ $op _ $f>],
                 2,
                 Some(Type::Optional(Box::new(Type::$t)))
             );
@@ -44,14 +43,14 @@ macro_rules! overflow_fn {
 }
 
 // macro to register multiple operations for a specific type
-macro_rules! register_overflows {
+macro_rules! register_checked_fns {
     ($env: expr, $t: ident, $f: ident) => {
         {
-            overflow_fn!($env, add, $t, $f);
-            overflow_fn!($env, sub, $t, $f);
-            overflow_fn!($env, mul, $t, $f);
-            overflow_fn!($env, div, $t, $f);
-            overflow_fn!($env, rem, $t, $f);
+            checked_fn!($env, add, $t, $f);
+            checked_fn!($env, sub, $t, $f);
+            checked_fn!($env, mul, $t, $f);
+            checked_fn!($env, div, $t, $f);
+            checked_fn!($env, rem, $t, $f);
         }
     };
 }
@@ -100,12 +99,12 @@ macro_rules! register_constants_min_max {
 
 pub fn register(env: &mut EnvironmentBuilder) {
     // Register all operations with overflow checking
-    register_overflows!(env, U8, u8);
-    register_overflows!(env, U16, u16);
-    register_overflows!(env, U32, u32);
-    register_overflows!(env, U64, u64);
-    register_overflows!(env, U128, u128);
-    register_overflows!(env, U256, u256);
+    register_checked_fns!(env, U8, u8);
+    register_checked_fns!(env, U16, u16);
+    register_checked_fns!(env, U32, u32);
+    register_checked_fns!(env, U64, u64);
+    register_checked_fns!(env, U128, u128);
+    register_checked_fns!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);
