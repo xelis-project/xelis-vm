@@ -1734,7 +1734,8 @@ impl<'a> Parser<'a> {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;
                         if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
-                            if !expr_type.is_compatible_with(return_type) {
+                            // Support the optional<T> by returning T
+                            if !expr_type.is_assign_compatible_with(return_type) {
                                 return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
                             }
                         }
