@@ -37,26 +37,64 @@ impl U256 {
     pub const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
 
     /// Returns true if the number is zero.
+    #[inline]
     pub fn is_zero(&self) -> bool {
         self.0.iter().all(|&x| x == 0)
     }
 
     /// Returns true if the number is one.
+    #[inline]
     pub fn is_one(&self) -> bool {
         self.0[0] == 1 && self.0.iter().skip(1).all(|&x| x == 0)
     }
 
     /// Create a new U256 from four u64 values (from least significant to most significant)
+    #[inline]
     pub fn new(lowest: u64, low: u64, high: u64, highest: u64) -> U256 {
         U256([lowest, low, high, highest])
     }
 
+    /// Returns the number of leading zeros in this U256 value
+    #[inline]
+    pub fn leading_zeros(&self) -> u32 {
+        for i in (0..4).rev() {
+            if self.0[i] != 0 {
+                return ((3 - i) as u32) * 64 + self.0[i].leading_zeros();
+            }
+        }
+        256
+    }
+
+    /// Returns the number of bits needed to represent this number
+    #[inline]
+    pub fn bits(&self) -> u32 {
+        256 - self.leading_zeros()
+    }
+
     /// Raises self to the power of exp, using exponentiation by squaring.
     pub fn pow(self, exp: u32) -> U256 {
-        let mut result = U256::ONE;
-        for _ in 0..exp {
-            result *= self;
+        if exp == 0 {
+            return U256::ONE;
         }
+        
+        let mut base = self;
+        let mut result = U256::ONE;
+        let mut exp_remaining = exp;
+        
+        // Square and multiply algorithm
+        while exp_remaining > 0 {
+            // If current exponent bit is 1, multiply result by the current base
+            if exp_remaining & 1 == 1 {
+                result *= base;
+            }
+            
+            // Square the base
+            base *= base;
+            
+            // Move to next bit
+            exp_remaining >>= 1;
+        }
+        
         result
     }
 
@@ -75,6 +113,7 @@ impl U256 {
     }
 
     /// Addition with overflow handling
+    #[inline]
     pub fn overflowing_add(self, other: U256) -> (U256, bool) {
         let mut result = [0u64; 4];
         let mut carry = 0u64;
@@ -90,6 +129,7 @@ impl U256 {
     }
 
     /// Subtraction with overflow handling
+    #[inline]
     pub fn overflowing_sub(self, other: U256) -> (U256, bool) {
         let mut result = [0u64; 4];
         let mut borrow = 0u64;
@@ -105,6 +145,7 @@ impl U256 {
     }
 
     /// Multiplication with overflow handling
+    #[inline]
     pub fn overflowing_mul(self, other: U256) -> (U256, bool) {
         let mut result = [0u64; 4];
         let mut overflow = false;
@@ -119,13 +160,9 @@ impl U256 {
                 result[i + j] = product as u64;
                 carry = product >> 64;
             }
-            // If there's any carry left and we're outside the 256-bit bounds, we have overflow.
+            // If there's any carry left, we have overflow since we've used all 256 bits
             if carry > 0 {
-                if i + 4 < 4 {
-                    result[i + 4] = carry as u64;
-                } else {
-                    overflow = true;
-                }
+                overflow = true;
             }
         }
 
@@ -134,6 +171,7 @@ impl U256 {
 
     /// Division with overflow handling
     /// Panics if the divisor is zero
+    #[inline]
     pub fn overflowing_div(self, divisor: U256) -> (U256, bool) {
         assert!(!divisor.is_zero(), "U256 division by zero");
 
@@ -147,27 +185,33 @@ impl U256 {
             return (self, false);
         }
 
+        // Short-circuit if divisor fits in a single u64
+        if let Some(small_divisor) = divisor.as_u64() {
+            let (quotient, _) = self.div_rem_u64(small_divisor);
+            return (quotient, false);
+        }
+
         // Initialize quotient and remainder
         let mut quotient = U256([0; 4]);
         let mut remainder = self;
 
-        // We start by aligning the divisor with the most significant bit of `self`
-        let mut shift = 0;
-        let mut divisor_shifted = divisor;
-        while remainder >= divisor_shifted {
-            divisor_shifted = divisor_shifted << 1;
-            shift += 1;
-        }
-
-        // Perform the division bit by bit
-        while shift > 0 {
-            divisor_shifted = divisor_shifted >> 1;
-            shift -= 1;
-
-            // If the remainder is greater than or equal to divisor_shifted, subtract and update quotient
-            if remainder >= divisor_shifted {
-                remainder = remainder - divisor_shifted;
-                quotient = quotient | (U256::ONE << shift);
+        // Calculate the number of bits needed to represent each number
+        let dividend_bits = remainder.bits();
+        let divisor_bits = divisor.bits();
+        
+        // Only shift if dividend has enough bits
+        if dividend_bits >= divisor_bits {
+            // Compute the initial shift
+            let shift = dividend_bits - divisor_bits;
+            
+            // Perform division bit by bit
+            for i in (0..=shift).rev() {
+                let divisor_shifted = divisor << i;
+                
+                if remainder >= divisor_shifted {
+                    remainder = remainder - divisor_shifted;
+                    quotient = quotient | (U256::ONE << i);
+                }
             }
         }
 
@@ -176,6 +220,7 @@ impl U256 {
 
     /// Remainder with overflow handling
     /// Panics if the divisor is zero
+    #[inline]
     pub fn overflowing_rem(self, divisor: U256) -> (U256, bool) {
         assert!(!divisor.is_zero(), "U256 division by zero");
 
@@ -189,25 +234,31 @@ impl U256 {
             return (U256::ZERO, false);
         }
 
+        // Short-circuit if divisor fits in a single u64
+        if let Some(small_divisor) = divisor.as_u64() {
+            let (_, remainder) = self.div_rem_u64(small_divisor);
+            return (U256::from(remainder), false);
+        }
+
         // Initialize remainder
         let mut remainder = self;
 
-        // We start by aligning the divisor with the most significant bit of `self`
-        let mut shift = 0;
-        let mut divisor_shifted = divisor;
-        while remainder >= divisor_shifted {
-            divisor_shifted = divisor_shifted << 1;
-            shift += 1;
-        }
-
-        // Perform the division bit by bit
-        while shift > 0 {
-            divisor_shifted = divisor_shifted >> 1;
-            shift -= 1;
-
-            // If the remainder is greater than or equal to divisor_shifted, subtract
-            if remainder >= divisor_shifted {
-                remainder = remainder - divisor_shifted;
+        // Calculate the number of bits needed to represent each number
+        let dividend_bits = remainder.bits();
+        let divisor_bits = divisor.bits();
+        
+        // Only process if dividend has enough bits
+        if dividend_bits >= divisor_bits {
+            // Compute the initial shift
+            let shift = dividend_bits - divisor_bits;
+            
+            // Perform division bit by bit to calculate the remainder
+            for i in (0..=shift).rev() {
+                let divisor_shifted = divisor << i;
+                
+                if remainder >= divisor_shifted {
+                    remainder = remainder - divisor_shifted;
+                }
             }
         }
 
@@ -215,6 +266,7 @@ impl U256 {
     }
 
     /// Checked subtraction with overflow handling
+    #[inline]
     pub fn checked_sub(self, other: U256) -> Option<U256> {
         let (result, overflow) = self.overflowing_sub(other);
         if overflow {
@@ -225,6 +277,7 @@ impl U256 {
     }
 
     /// Checked addition with overflow handling
+    #[inline]
     pub fn checked_add(self, other: U256) -> Option<U256> {
         let (result, overflow) = self.overflowing_add(other);
         if overflow {
@@ -236,6 +289,7 @@ impl U256 {
 
     /// Checked multiplication with overflow handling
     /// Returns None if the multiplication overflows
+    #[inline]
     pub fn checked_mul(self, other: U256) -> Option<U256> {
         let (result, overflow) = self.overflowing_mul(other);
         if overflow {
@@ -247,6 +301,7 @@ impl U256 {
 
     /// Checked division with overflow handling
     /// Returns None if the divisor is zero or the division overflows
+    #[inline]
     pub fn checked_div(self, divisor: U256) -> Option<U256> {
         if divisor.is_zero() {
             None
@@ -262,6 +317,7 @@ impl U256 {
 
     /// Checked remainder with overflow handling
     /// Returns None if the divisor is zero or the remainder overflows
+    #[inline]
     pub fn checked_rem(self, divisor: U256) -> Option<U256> {
         if divisor.is_zero() {
             None
@@ -276,6 +332,7 @@ impl U256 {
     }
 
     /// Export the data as a big-endian byte array
+    #[inline]
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let mut result = [0u8; 32];
         for (i, part) in self.0.iter().enumerate() {
@@ -286,6 +343,7 @@ impl U256 {
     }
 
     /// Import the data from a big-endian byte array
+    #[inline]
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let mut data = [0u64; 4];
         for i in 0..4 {
@@ -296,6 +354,7 @@ impl U256 {
     }
 
     /// Export the data as a little-endian byte array
+    #[inline]
     pub fn to_le_bytes(&self) -> [u8; 32] {
         let mut result = [0u8; 32];
         for (i, part) in self.0.iter().enumerate() {
@@ -306,6 +365,7 @@ impl U256 {
     }
 
     /// Import the data from a little-endian byte array
+    #[inline]
     pub fn from_le_bytes(bytes: [u8; 32]) -> Self {
         let mut data = [0u64; 4];
         for i in 0..4 {
@@ -316,6 +376,7 @@ impl U256 {
     }
 
     // Helper method to perform division and remainder with a u64 divisor
+    #[inline]
     fn div_rem_u64(self, divisor: u64) -> (U256, u64) {
         let mut result = [0u64; 4];
         let mut remainder = 0u128;
@@ -331,11 +392,13 @@ impl U256 {
     }
 
     /// Get the low u64 value
+    #[inline]
     pub fn low_u64(&self) -> u64 {
         self.0[0]
     }
 
     /// Try to get a u64 value
+    #[inline]
     pub fn as_u64(&self) -> Option<u64> {
         for i in 1..4 {
             if self.0[i] != 0 {
@@ -347,11 +410,13 @@ impl U256 {
     }
 
     // Get the high u64 value
+    #[inline]
     pub fn high_u64(&self) -> u64 {
         self.0[3]
     }
 
     /// Get the low u128 value
+    #[inline]
     pub fn low_u128(&self) -> u128 {
         (self.0[0] as u128) | ((self.0[1] as u128) << 64)
     }
@@ -368,6 +433,7 @@ impl FromStr for U256 {
 impl Add for U256 {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_add(rhs);
         debug_assert!(!overflow, "U256 addition overflow");
@@ -378,6 +444,7 @@ impl Add for U256 {
 impl Sub for U256 {
     type Output = Self;
 
+    #[inline]
     fn sub(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_sub(rhs);
         debug_assert!(!overflow, "U256 subtraction overflow");
@@ -388,6 +455,7 @@ impl Sub for U256 {
 impl Mul for U256 {
     type Output = Self;
 
+    #[inline]
     fn mul(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_mul(rhs);
         debug_assert!(!overflow, "U256 multiplication overflow");
@@ -398,6 +466,7 @@ impl Mul for U256 {
 impl Div for U256 {
     type Output = Self;
 
+    #[inline]
     fn div(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_div(rhs);
         debug_assert!(!overflow, "U256 division overflow");
@@ -408,6 +477,7 @@ impl Div for U256 {
 impl Rem for U256 {
     type Output = Self;
 
+    #[inline]
     fn rem(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_rem(rhs);
         debug_assert!(!overflow, "U256 remainder overflow");
@@ -416,12 +486,14 @@ impl Rem for U256 {
 }
 
 impl PartialEq for U256 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
 impl PartialOrd for U256 {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // Compare from the most significant part to the least significant
         for i in (0..4).rev() {
@@ -438,6 +510,7 @@ impl PartialOrd for U256 {
 impl Shr<u32> for U256 {
     type Output = Self;
 
+    #[inline]
     fn shr(self, shift: u32) -> Self {
         if shift >= 256 {
             return U256([0; 4]);
@@ -461,6 +534,7 @@ impl Shr<u32> for U256 {
 impl Shl<u32> for U256 {
     type Output = Self;
 
+    #[inline]
     fn shl(self, shift: u32) -> Self {
         if shift >= 256 {
             return U256([0; 4]);
@@ -484,6 +558,7 @@ impl Shl<u32> for U256 {
 impl Shr for U256 {
     type Output = Self;
 
+    #[inline]
     fn shr(self, shift: Self) -> Self {
         if shift >= U256::from(256u64) {
             return U256([0; 4]);
@@ -509,6 +584,7 @@ impl Shr for U256 {
 impl Shl for U256 {
     type Output = Self;
 
+    #[inline]
     fn shl(self, shift: Self) -> Self {
         if shift >= U256::from(256u64) {
             return U256([0; 4]);
@@ -534,6 +610,7 @@ impl Shl for U256 {
 impl BitXor for U256 {
     type Output = Self;
 
+    #[inline]
     fn bitxor(self, rhs: Self) -> Self {
         let mut result = [0u64; 4];
         for i in 0..4 {
@@ -546,6 +623,7 @@ impl BitXor for U256 {
 impl BitOr for U256 {
     type Output = Self;
 
+    #[inline]
     fn bitor(self, rhs: Self) -> Self {
         let mut result = [0u64; 4];
         for i in 0..4 {
@@ -558,6 +636,7 @@ impl BitOr for U256 {
 impl BitAnd for U256 {
     type Output = Self;
 
+    #[inline]
     fn bitand(self, rhs: Self) -> Self {
         let mut result = [0u64; 4];
         for i in 0..4 {
@@ -568,131 +647,154 @@ impl BitAnd for U256 {
 }
 
 impl AddAssign for U256 {
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
 impl SubAssign for U256 {
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
 
 impl MulAssign for U256 {
+    #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
 }
 
 impl DivAssign for U256 {
+    #[inline]
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
     }
 }
 
 impl RemAssign for U256 {
+    #[inline]
     fn rem_assign(&mut self, rhs: Self) {
         *self = *self % rhs;
     }
 }
 
 impl BitXorAssign for U256 {
+    #[inline]
     fn bitxor_assign(&mut self, rhs: Self) {
         *self = *self ^ rhs;
     }
 }
 
 impl BitOrAssign for U256 {
+    #[inline]
     fn bitor_assign(&mut self, rhs: Self) {
         *self = *self | rhs;
     }
 }
 
 impl BitAndAssign for U256 {
+    #[inline]
     fn bitand_assign(&mut self, rhs: Self) {
         *self = *self & rhs;
     }
 }
 
 impl ShlAssign<u32> for U256 {
+    #[inline]
     fn shl_assign(&mut self, shift: u32) {
         *self = *self << shift;
     }
 }
 
 impl ShrAssign<u32> for U256 {
+    #[inline]
     fn shr_assign(&mut self, shift: u32) {
         *self = *self >> shift;
     }
 }
 
 impl From<bool> for U256 {
+    #[inline]
     fn from(value: bool) -> Self {
         U256([value as u64, 0, 0, 0])
     }
 }
 
 impl From<i32> for U256 {
+    #[inline]
     fn from(value: i32) -> Self {
         U256([value as u64, 0, 0, 0])
     }
 }
+
 impl From<u8> for U256 {
+    #[inline]
     fn from(value: u8) -> Self {
         U256([value as u64, 0, 0, 0])
     }
 }
 
 impl From<u16> for U256 {
+    #[inline]
     fn from(value: u16) -> Self {
         U256([value as u64, 0, 0, 0])
     }
 }
 
 impl From<u32> for U256 {
+    #[inline]
     fn from(value: u32) -> Self {
         U256([value as u64, 0, 0, 0])
     }
 }
 
 impl From<u64> for U256 {
+    #[inline]
     fn from(value: u64) -> Self {
         U256([value, 0, 0, 0])
     }
 }
 
 impl From<u128> for U256 {
+    #[inline]
     fn from(value: u128) -> Self {
         U256([value as u64, (value >> 64) as u64, 0, 0])
     }
 }
 
 impl Into<u8> for U256 {
+    #[inline]
     fn into(self) -> u8 {
         self.0[0] as u8
     }
 }
 
 impl Into<u16> for U256 {
+    #[inline]
     fn into(self) -> u16 {
         self.0[0] as u16
     }
 }
 
 impl Into<u32> for U256 {
+    #[inline]
     fn into(self) -> u32 {
         self.0[0] as u32
     }
 }
 
 impl Into<u64> for U256 {
+    #[inline]
     fn into(self) -> u64 {
         self.0[0]
     }
 }
 
 impl Into<u128> for U256 {
+    #[inline]
     fn into(self) -> u128 {
         (self.0[0] as u128) | ((self.0[1] as u128) << 64)
     }
@@ -719,6 +821,7 @@ impl fmt::Display for U256 {
 }
 
 impl PartialEq<u64> for U256 {
+    #[inline]
     fn eq(&self, other: &u64) -> bool {
         self.as_u64()
             .map(|v| v.eq(other))
@@ -727,6 +830,7 @@ impl PartialEq<u64> for U256 {
 }
 
 impl PartialOrd<u64> for U256 {
+    #[inline]
     fn partial_cmp(&self, other: &u64) -> Option<Ordering> {
         self.as_u64().map(|v| v.cmp(other))
     }
@@ -882,5 +986,223 @@ mod tests {
     fn test_from_to_le() {
         let bytes = U256::ONE.to_le_bytes();
         assert_eq!(U256::ONE, U256::from_le_bytes(bytes));
+    }
+
+    #[test]
+    fn test_leading_zeros() {
+        // Test with values in different words
+        assert_eq!(U256::ZERO.leading_zeros(), 256);
+        assert_eq!(U256::ONE.leading_zeros(), 255);
+        assert_eq!(U256::from(2u64).leading_zeros(), 254);
+        assert_eq!(U256::from(u64::MAX).leading_zeros(), 256 - 64);
+        
+        // Test with values in second word
+        let a = U256([0, 1, 0, 0]);
+        assert_eq!(a.leading_zeros(), 256 - 65);
+        
+        // Test with values in third word
+        let b = U256([0, 0, 1, 0]);
+        assert_eq!(b.leading_zeros(), 256 - 129);
+        
+        // Test with values in fourth word
+        let c = U256([0, 0, 0, 1]);
+        assert_eq!(c.leading_zeros(), 256 - 193);
+        
+        // Test with max value
+        assert_eq!(U256::MAX.leading_zeros(), 0);
+    }
+
+    #[test]
+    fn test_bits() {
+        assert_eq!(U256::ZERO.bits(), 0);
+        assert_eq!(U256::ONE.bits(), 1);
+        assert_eq!(U256::from(2u64).bits(), 2);
+        assert_eq!(U256::from(3u64).bits(), 2);
+        assert_eq!(U256::from(4u64).bits(), 3);
+        assert_eq!(U256::from(u64::MAX).bits(), 64);
+        
+        // Test with values in second word
+        let a = U256([0, 1, 0, 0]);
+        assert_eq!(a.bits(), 65);
+        
+        // Test with max value
+        assert_eq!(U256::MAX.bits(), 256);
+    }
+
+    #[test]
+    fn test_division_edge_cases() {
+        // Test division with powers of 2
+        let a = U256::from(8u64);
+        let b = U256::from(2u64);
+        assert_eq!(a / b, U256::from(4u64));
+        
+        // Test division where dividend has same number of bits as divisor
+        let a = U256::from(7u64);  // 111 in binary
+        let b = U256::from(7u64);  // 111 in binary
+        assert_eq!(a / b, U256::ONE);
+        
+        // Test division where dividend has one more bit than divisor
+        let a = U256::from(14u64); // 1110 in binary
+        let b = U256::from(7u64);  // 111 in binary
+        assert_eq!(a / b, U256::from(2u64));
+        
+        // Test division with large difference in magnitude
+        let a = U256::from(u64::MAX);
+        let b = U256::from(1u64);
+        assert_eq!(a / b, U256::from(u64::MAX));
+        
+        // Test remainder
+        let a = U256::from(7u64);
+        let b = U256::from(4u64);
+        assert_eq!(a % b, U256::from(3u64));
+        
+        // Test division with large numbers
+        let a = U256([0, 0, 0, 1]); // 2^192
+        let b = U256([1, 0, 0, 0]); // 1
+        assert_eq!(a / b, U256([0, 0, 0, 1]));
+        
+        // Test division with numbers in different words
+        let a = U256([0, 0, 1, 0]); // 2^128
+        let b = U256([0, 1, 0, 0]); // 2^64
+        assert_eq!(a / b, U256([0, 1, 0, 0])); // 2^64
+    }
+
+    #[test]
+    fn test_full_width_shift() {
+        // Test shifting by exactly 256 bits
+        let a = U256::ONE;
+        assert_eq!(a << 256u32, U256::ZERO);
+        assert_eq!(a >> 256u32, U256::ZERO);
+        
+        let b = U256::MAX;
+        assert_eq!(b << 256u32, U256::ZERO);
+        assert_eq!(b >> 256u32, U256::ZERO);
+        
+        // Test shifting with U256 as shift amount
+        let shift_256 = U256::from(256u64);
+        assert_eq!(a << shift_256, U256::ZERO);
+        assert_eq!(a >> shift_256, U256::ZERO);
+        
+        // Test shifting by more than 256 bits
+        let c = U256::from(42u64);
+        assert_eq!(c << 300u32, U256::ZERO);
+        assert_eq!(c >> 300u32, U256::ZERO);
+        
+        let shift_300 = U256::from(300u64);
+        assert_eq!(c << shift_300, U256::ZERO);
+        assert_eq!(c >> shift_300, U256::ZERO);
+    }
+    
+    #[test]
+    fn test_division_power_of_two() {
+        // Test division where divisor is 2^n
+        let a = U256::from(32u64);
+        
+        for i in 0..6 {
+            let b = U256::ONE << i;
+            let expected = U256::from(32u64 >> i);
+            assert_eq!(a / b, expected);
+        }
+        
+        // Test division where divisor is 2^n - 1 (Mersenne numbers)
+        let a = U256::from(32u64);
+        
+        // Test with divisor = 3 (2^2 - 1)
+        let b = U256::from(3u64);
+        assert_eq!(a / b, U256::from(10u64));
+        assert_eq!(a % b, U256::from(2u64));
+        
+        // Test with divisor = 7 (2^3 - 1)
+        let b = U256::from(7u64);
+        assert_eq!(a / b, U256::from(4u64));
+        assert_eq!(a % b, U256::from(4u64));
+        
+        // Test with divisor = 15 (2^4 - 1)
+        let b = U256::from(15u64);
+        assert_eq!(a / b, U256::from(2u64));
+        assert_eq!(a % b, U256::from(2u64));
+        
+        // Test with divisor = 2^n + 1
+        
+        // Test with divisor = 5 (2^2 + 1)
+        let b = U256::from(5u64);
+        assert_eq!(a / b, U256::from(6u64));
+        assert_eq!(a % b, U256::from(2u64));
+        
+        // Test with divisor = 9 (2^3 + 1)
+        let b = U256::from(9u64);
+        assert_eq!(a / b, U256::from(3u64));
+        assert_eq!(a % b, U256::from(5u64));
+        
+        // Test with divisor = 17 (2^4 + 1)
+        let b = U256::from(17u64);
+        assert_eq!(a / b, U256::from(1u64));
+        assert_eq!(a % b, U256::from(15u64));
+    }
+    
+    #[test]
+    fn test_byte_order() {
+        // Test big-endian byte order with specific values
+        let value = U256::from(0x0123456789ABCDEFu64);
+        let bytes = value.to_be_bytes();
+        
+        // In the current implementation, to_be_bytes puts each u64 section in big-endian order,
+        // but keeps the array in the order of least significant to most significant u64
+        
+        // First 8 bytes (u64[0]) should contain the value in big-endian order
+        assert_eq!(bytes[0], 0x01);
+        assert_eq!(bytes[1], 0x23);
+        assert_eq!(bytes[2], 0x45);
+        assert_eq!(bytes[3], 0x67);
+        assert_eq!(bytes[4], 0x89);
+        assert_eq!(bytes[5], 0xAB);
+        assert_eq!(bytes[6], 0xCD);
+        assert_eq!(bytes[7], 0xEF);
+        
+        // The remaining bytes should be zero
+        for i in 8..32 {
+            assert_eq!(bytes[i], 0);
+        }
+        
+        // Verify roundtrip
+        assert_eq!(U256::from_be_bytes(bytes), value);
+        
+        // Test little-endian byte order with the same value
+        let bytes = value.to_le_bytes();
+        
+        // In the current implementation, to_le_bytes puts each u64 section in little-endian order,
+        // and keeps the array in the order of least significant to most significant u64
+        assert_eq!(bytes[0], 0xEF);
+        assert_eq!(bytes[1], 0xCD);
+        assert_eq!(bytes[2], 0xAB);
+        assert_eq!(bytes[3], 0x89);
+        assert_eq!(bytes[4], 0x67);
+        assert_eq!(bytes[5], 0x45);
+        assert_eq!(bytes[6], 0x23);
+        assert_eq!(bytes[7], 0x01);
+        
+        // The remaining bytes should be zero
+        for i in 8..32 {
+            assert_eq!(bytes[i], 0);
+        }
+        
+        // Verify roundtrip
+        assert_eq!(U256::from_le_bytes(bytes), value);
+        
+        // Test with a value spanning multiple words
+        let value = U256([
+            0x0123456789ABCDEF,
+            0xFEDCBA9876543210,
+            0x0F1E2D3C4B5A6978,
+            0x8796A5B4C3D2E1F0
+        ]);
+        
+        // Test big-endian roundtrip
+        let bytes = value.to_be_bytes();
+        assert_eq!(U256::from_be_bytes(bytes), value);
+        
+        // Test little-endian roundtrip
+        let bytes = value.to_le_bytes();
+        assert_eq!(U256::from_le_bytes(bytes), value);
     }
 }

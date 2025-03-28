@@ -19,5 +19,9 @@ criterion = "0.5.1"
 name = "cell"
 harness = false
 
+[[bench]]
+name = "u256"
+harness = false
+
 [features]
 infinite-cell-depth = []
