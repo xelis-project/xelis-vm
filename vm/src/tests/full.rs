@@ -1452,3 +1452,18 @@ fn test_sqrt() {
     // Test non-perfect squares with U256
     check_sqrt("(2u256 ** 64u32 - 1u256).sqrt() as u64", Primitive::U64(4294967295)); // 2^32 - 1
 }
+
+#[test]
+fn test_hook() {
+    let code = r#"
+        hook constructor() -> u64 {
+            return 0;
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_hook("constructor", vec![], Some(Type::U64));
+
+    let (module, env) = prepare_module_with(code, env);
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+}

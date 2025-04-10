@@ -206,9 +206,7 @@ impl<'a> ModuleValidator<'a> {
             // - chunk id
             // - the hook id
             // - chunk id not an entry
-            if *chunk_id >= len
-                || *hook_id >= self.environment.hooks()
-                ||  !self.module.chunks_entry_ids().contains(chunk_id) {
+            if *chunk_id >= len || *hook_id >= self.environment.hooks() {
                 return Err(ValidatorError::InvalidHookId(*hook_id, *chunk_id));
             }
 
