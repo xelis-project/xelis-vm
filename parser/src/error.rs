@@ -30,8 +30,8 @@ pub enum ParserErrorKind<'a> {
     TooManyVariants,
     #[error("expected a value for variable '{0}' or an optional type")]
     NoValueForVariable(&'a str),
-    #[error("cannot call this function, its an entry function")]
-    FunctionIsEntry,
+    #[error("cannot call this function, its either an entry or hook function")]
+    FunctionIsNotCallable,
     #[error("invalid field name, got '{0}' but expected '{1}'")]
     InvalidFieldName(&'a str, &'a str),
     #[error("enum variant name '{0}' is already used")]

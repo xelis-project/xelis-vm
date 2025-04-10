@@ -114,9 +114,9 @@ impl<'a> Function<'a> {
         }
     }
 
-    fn is_entry(&self) -> bool {
+    fn is_normal(&self) -> bool {
         match self {
-            Function::Program(f) => f.is_entry(),
+            Function::Program(f) => f.kind().is_normal(),
             _ => false
         }
     }
@@ -552,8 +552,8 @@ impl<'a> Parser<'a> {
 
         // Entry are only callable by external
         let f = self.get_function(id)?;
-        if f.is_entry() {
-            return Err(err!(self, ParserErrorKind::FunctionIsEntry))
+        if !f.is_normal() {
+            return Err(err!(self, ParserErrorKind::FunctionIsNotCallable))
         }
 
         Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
