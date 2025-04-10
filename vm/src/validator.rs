@@ -175,19 +175,6 @@ impl<'a> ModuleValidator<'a> {
             return Err(ValidatorError::EmptyModule);
         }
 
-        // Verify all the chunks
-        for chunk in self.module.chunks() {
-            let mut reader = ChunkReader::new(chunk);
-            while let Some(instruction) = reader.next_u8() {
-                let op = OpCode::from_byte(instruction)
-                    .ok_or(ValidatorError::InvalidOpCode)?;
-
-                let count = op.arguments_bytes();
-                reader.advance(count)
-                    .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
-            }
-        }
-
         // Verify that the entry ids are valid
         let mut used_ids = HashSet::new();
         for entry_id in self.module.chunks_entry_ids() {
@@ -212,6 +199,32 @@ impl<'a> ModuleValidator<'a> {
 
             if !used_ids.insert(*chunk_id) {
                 return Err(ValidatorError::ChunkIdAlreadyUsed(*chunk_id))
+            }
+        }
+
+        // Verify all the chunks
+        for chunk in self.module.chunks() {
+            let mut reader = ChunkReader::new(chunk);
+            while let Some(instruction) = reader.next_u8() {
+                let op = OpCode::from_byte(instruction)
+                    .ok_or(ValidatorError::InvalidOpCode)?;
+
+                match op {
+                    OpCode::InvokeChunk => {
+                        let chunk_id = reader.read_u16()
+                            .map_err(|_| ValidatorError::InvalidOpCode)? as _;
+
+                        // Make sure the chunk id is valid
+                        if chunk_id >= self.module.chunks().len() || used_ids.contains(&chunk_id) {
+                            return Err(ValidatorError::InvalidEntryId(chunk_id as usize));
+                        }
+                    },
+                    _ => {
+                        let count = op.arguments_bytes();
+                        reader.advance(count)
+                            .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
+                    }
+                }
             }
         }
 

@@ -1459,6 +1459,10 @@ fn test_hook() {
         hook constructor() -> u64 {
             return 0;
         }
+
+        entry main() {
+            return 0;
+        }
     "#;
 
     let mut env = EnvironmentBuilder::default();
