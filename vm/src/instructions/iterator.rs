@@ -1,16 +1,13 @@
 use crate::{
-    iterator::ValueIterator,
-    stack::Stack,
-    Backend,
-    ChunkManager,
-    Context,
-    VMError
+    debug, iterator::ValueIterator, stack::Stack, Backend, ChunkManager, Context, VMError
 };
 use xelis_types::Primitive;
 
 use super::InstructionResult;
 
 pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("iterable length");
+
     let value = stack.pop_stack()?;
     let len = Primitive::U32(value.as_ref()?.as_vec()?.len() as u32);
 
@@ -22,6 +19,8 @@ pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkMana
 }
 
 pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("iterator begin");
+
     let value = stack.pop_stack()?;
     let iterator = ValueIterator::new(value)?;
     manager.add_iterator(iterator);
@@ -29,6 +28,8 @@ pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
 }
 
 pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("iterator next");
+
     let addr = manager.read_u32()?;
     if let Some(value) = manager.next_iterator()? {
         let memory_usage = value.as_ref()?
@@ -43,6 +44,8 @@ pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 }
 
 pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("iterator end");
+
     manager.pop_iterator()?;
     Ok(InstructionResult::Nothing)
 }

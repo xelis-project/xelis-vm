@@ -26,3 +26,4 @@ harness = false
 
 [features]
 infinite-cell-depth = ["xelis-types/infinite-cell-depth"]
+logging = []

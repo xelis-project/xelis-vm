@@ -16,6 +16,26 @@ use crate::Context;
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
+/// A macro to log debug messages
+/// It will only log if the feature "logging" is enabled
+#[macro_export]
+macro_rules! debug {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "logging")]
+        log::debug!($($arg)*);
+    };
+}
+
+/// A macro to log info messages
+/// It will only log if the feature "logging" is enabled
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "logging")]
+        log::trace!($($arg)*);
+    };
+}
+
+
 #[derive(Debug)]
 pub enum InstructionResult {
     Nothing,
@@ -135,6 +155,7 @@ impl<'a> InstructionTable<'a> {
 
     // Execute an instruction
     pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+        trace!("Executing opcode: {:?}", OpCode::from_byte(opcode));
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage

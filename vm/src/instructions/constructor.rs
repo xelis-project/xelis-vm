@@ -3,11 +3,13 @@ use indexmap::IndexMap;
 use xelis_environment::EnvironmentError;
 use xelis_types::{Primitive, ValueCell};
 
-use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
+use crate::{debug, stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
 
 pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let length = manager.read_u8()?;
+    debug!("new array with length {}", length);
+
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
@@ -23,6 +25,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
 }
 
 pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("new range");
     let mut end = stack.pop_stack()?.into_owned()?;
     let mut start = stack.pop_stack()?.into_owned()?;
 
@@ -45,6 +48,8 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
 
 pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let len = manager.read_u8()?;
+    debug!("new map with length {}", len);
+
     let mut map = IndexMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;

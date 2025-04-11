@@ -1,10 +1,12 @@
 use std::collections::VecDeque;
 
-use crate::{stack::Stack, Backend, ChunkManager, Context, VMError};
+use crate::{stack::Stack, Backend, ChunkManager, Context, VMError, debug};
 use super::InstructionResult;
 
 pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u16()? as usize;
+    debug!("constant load at {}", index);
+
     let constant = backend.get_constant_with_id(index)?;
 
     let memory_usage = constant.calculate_memory_usage(context.memory_left())?;
@@ -16,6 +18,8 @@ pub fn constant<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
 
 pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
+    debug!("subload at {}", index);
+
     let path = stack.pop_stack()?;
     let sub = path.get_at_index(index as usize)?;
     stack.push_stack_unchecked(sub);
@@ -24,6 +28,7 @@ pub fn subload<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManage
 }
 
 pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("copy");
     let value = stack.last_stack()?;
 
     let memory_usage = value.as_ref()?
@@ -37,6 +42,8 @@ pub fn copy<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, co
 
 pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
+    debug!("copy at {}", index);
+
     let value = stack.get_stack_at(index as usize)?;
 
     let memory_usage = value.as_ref()?
@@ -49,6 +56,8 @@ pub fn copy_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager
 }
 
 pub fn to_owned<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("to_owned");
+
     let value = stack.last_mut_stack()?;
     value.make_owned()?;
 
@@ -56,18 +65,24 @@ pub fn to_owned<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>
 }
 
 pub fn pop<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("pop");
+
     stack.pop_stack()?;
     Ok(InstructionResult::Nothing)
 }
 
 pub fn pop_n<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let n = manager.read_u8()?;
+        let n = manager.read_u8()?;
+    debug!("pop n {}", n);
+
     stack.pop_stack_n(n)?;
     Ok(InstructionResult::Nothing)
 }
 
 pub fn swap<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let index = manager.read_u8()?;
+    debug!("swap at {}", index);
+
     stack.swap_stack(index as usize)?;
     Ok(InstructionResult::Nothing)
 }
@@ -76,6 +91,8 @@ pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<
     let index_a = manager.read_u8()?;
     let index_b = manager.read_u8()?;
 
+    debug!("swap at {} {}", index_a, index_b);
+
     stack.swap_stack_both(index_a as usize, index_b as usize)?;
     Ok(InstructionResult::Nothing)
 }
@@ -83,6 +100,8 @@ pub fn swap2<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<
 pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let value = stack.pop_stack()?;
     let index = value.as_u32()?;
+    debug!("array call at {}", index);
+
     let value = stack.pop_stack()?;
     let sub = value.get_at_index(index as usize)?;
 
@@ -98,6 +117,8 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkM
     let id = manager.read_u16()?;
     let on_value = manager.read_bool()?;
     let mut args = manager.read_u8()? as usize;
+
+    debug!("invoke chunk: {}, args: {}, on value: {}", id, args, on_value);
     if on_value {
         args += 1;
     }
@@ -119,6 +140,8 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     let id = manager.read_u16()?;
     let on_value = manager.read_bool()?;
     let args = manager.read_u8()?;
+
+    debug!("syscall: {}, args: {}, on value: {}", id, args, on_value);
 
     let mut arguments = VecDeque::with_capacity(args as usize);
     for _ in 0..args {

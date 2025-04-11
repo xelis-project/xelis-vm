@@ -1,4 +1,5 @@
 use crate::{
+    debug,
     stack::Stack,
     Backend,
     ChunkManager,
@@ -187,6 +188,7 @@ macro_rules! opcode_op_assign {
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
         pub fn $fn<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+            debug!(stringify!($fn));
             $macro1!(stack, $macro2, $op);
             Ok(InstructionResult::Nothing)
         }
@@ -224,12 +226,16 @@ opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
 pub fn neg<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("neg");
+
     let value = stack.pop_stack()?;
     stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool()?).into());
     Ok(InstructionResult::Nothing)
 }
 
 pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("assign");
+
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let owned = right.into_owned()?;
@@ -245,6 +251,8 @@ pub fn assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, 
 }
 
 pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("pow");
+
     let right = stack.pop_stack()?.into_owned()?;
     let left = stack.pop_stack()?.into_owned()?;
     let result = match (&left, &right) {
@@ -267,6 +275,8 @@ pub fn pow<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
 }
 
 pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("pow_assign");
+
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let result = {
@@ -292,6 +302,8 @@ pub fn pow_assign<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 }
 
 pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("cast");
+
     let _type = manager.read_type()?;
     let mut current = stack.pop_stack()?
         .into_owned()?;
@@ -312,6 +324,8 @@ pub fn cast<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'
 }
 
 pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("and");
+
     let value = stack.pop_stack()?;
     let left = value.as_bool()?;
     let right = stack.pop_stack()?.as_bool()?;
@@ -321,6 +335,8 @@ pub fn and<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: 
 }
 
 pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("or");
+
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
     let value = left.as_bool()? || right.as_bool()?;
@@ -330,12 +346,16 @@ pub fn or<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &
 }
 
 pub fn increment<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("increment");
+
     let v = stack.last_mut_stack()?;
     v.as_mut()?.increment()?;
     Ok(InstructionResult::Nothing)
 }
 
 pub fn decrement<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    debug!("decrement");
+
     let v = stack.last_mut_stack()?;
     v.as_mut()?.decrement()?;
     Ok(InstructionResult::Nothing)
