@@ -209,6 +209,8 @@ impl<'a> ModuleValidator<'a> {
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
 
+                // How many bytes args available
+                let mut count = op.arguments_bytes();
                 match op {
                     OpCode::InvokeChunk => {
                         let chunk_id = reader.read_u16()
@@ -218,13 +220,15 @@ impl<'a> ModuleValidator<'a> {
                         if chunk_id >= self.module.chunks().len() || used_ids.contains(&chunk_id) {
                             return Err(ValidatorError::InvalidEntryId(chunk_id as usize));
                         }
+
+                        // Minus 2 
+                        count -= 2;
                     },
-                    _ => {
-                        let count = op.arguments_bytes();
-                        reader.advance(count)
-                            .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
-                    }
+                    _ => {}
                 }
+
+                reader.advance(count)
+                    .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
             }
         }
 
