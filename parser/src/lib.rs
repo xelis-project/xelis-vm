@@ -117,7 +117,7 @@ impl<'a> Function<'a> {
     fn is_normal(&self) -> bool {
         match self {
             Function::Program(f) => f.kind().is_normal(),
-            _ => false
+            Function::Native(_) => true,
         }
     }
 }
