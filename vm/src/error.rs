@@ -52,8 +52,8 @@ pub enum VMError {
     ConstantNotFound,
     #[error("unsupported cast type")]
     UnsupportedCastType,
-    #[error("unsupported syscall operation")]
-    UnknownSysCall,
+    #[error("unsupported syscall operation '{0}'")]
+    UnknownSysCall(u16),
     #[error("error from environment: {0}")]
     EnvironmentError(EnvironmentError),
     #[error("error from value: {0}")]

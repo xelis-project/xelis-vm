@@ -133,7 +133,7 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
 
     let f = backend.environment.get_functions()
         .get(id as usize)
-        .ok_or(VMError::UnknownSysCall)?;
+        .ok_or(VMError::UnknownSysCall(id))?;
 
     context.increase_gas_usage(f.get_cost())?;
 
