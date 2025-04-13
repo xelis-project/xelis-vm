@@ -215,6 +215,14 @@ impl Type {
         }
     }
 
+    // check if the type is a tuples
+    pub fn is_tuples(&self) -> bool {
+        match self {
+            Type::Tuples(_) => true,
+            _ => false
+        }
+    }
+
     // Same as is_compatible_with, but allow for null/value assignation with Optional types
     pub fn is_assign_compatible_with(&self, other: &Type) -> bool {
         if other.is_any() || self.is_any() {

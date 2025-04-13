@@ -8,7 +8,7 @@ use std::{
     mem
 };
 use error::ParserErrorKind;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use log::trace;
 use mapper::GlobalMapper;
 use xelis_builder::{Builder, EnvironmentBuilder};
@@ -1053,7 +1053,7 @@ impl<'a> Parser<'a> {
         expected_type: Option<&Type>, 
         context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
-        trace!("Read expression");
+        trace!("Read expression with peek {:?}", self.peek());
         // All expressions parsed
         let mut operator_stack: Vec<Operator> = Vec::new();
         // Queued items, draining the above two vectors
@@ -1149,6 +1149,7 @@ impl<'a> Parser<'a> {
                 Token::ParenthesisOpen => {
                     // Empty tuple
                     if self.peek_is(Token::ParenthesisClose) {
+                        trace!("empty tuple");
                         self.expect_token(Token::ParenthesisClose)?;
                         Expression::Constant(
                             Constant::Typed(
@@ -1157,9 +1158,11 @@ impl<'a> Parser<'a> {
                             )
                         )
                     } else {
+                        trace!("read parenthesis");
                         let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
                         // We are in a tuple
                         if self.peek_is(Token::Comma) {
+                            trace!("read tuple");
                             let mut elements = vec![expr];
                             loop {
                                 self.expect_token(Token::Comma)?;
@@ -1427,6 +1430,7 @@ impl<'a> Parser<'a> {
             required_operator = !required_operator;
         }
 
+        trace!("pre-final queue {:?}", queue);
         let queue = queue.into_iter()
             .chain(
                 operator_stack.drain(..)
@@ -1670,6 +1674,78 @@ impl<'a> Parser<'a> {
         Ok((name, value_type, value))
     }
 
+    /*
+     * Read a tuple deconstruction
+     * Example: let (a, b): (u64, u64) = (1, 2);
+     */
+    fn read_tuples_deconstruction(&mut self, context: &mut Context<'a>) -> Result<Statement, ParserError<'a>> {
+        self.expect_token(Token::ParenthesisOpen)?;
+
+        // Read the variables
+        let mut variables = IndexSet::new();
+        loop {
+            let name = self.next_identifier()?;
+            let ignored = name == "_";
+
+            // Variable name must start with a alphabetic character
+            if !ignored && !name.starts_with(char::is_alphabetic) {
+                return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)))
+            }
+
+            if !variables.insert(name) {
+                return Err(err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))
+            }
+
+            if self.peek_is(Token::ParenthesisClose) {
+                break;
+            } else {
+                self.expect_token(Token::Comma)?;
+            }
+        }
+
+        self.expect_token(Token::ParenthesisClose)?;
+
+        // Handle the type
+        self.expect_token(Token::Colon)?;
+        let expected_value_type = self.read_type()?;
+
+        self.expect_token(Token::OperatorAssign)?;
+        // Read the value to deconstruct
+        let value = self.read_expression(context)?;
+        let value_type = self.get_type_from_expression(None, &value, context)?;
+        if *value_type != expected_value_type {
+            return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_value_type)))
+        }
+
+        let Type::Tuples(tuples) = expected_value_type else {
+            return Err(err!(self, ParserErrorKind::InvalidTupleType))
+        };
+
+        if tuples.len() != variables.len() {
+            return Err(err!(self, ParserErrorKind::InvalidTupleDeconstruction))
+        }
+
+        let mut statements = Vec::new();
+
+        // NOTE: Tuples are deconstructed in reverse so OpCode::Flatten
+        // Can keep the same order as the original tuple
+        for (name, value_type) in variables.iter().zip(tuples).rev() {
+            let id = if self.disable_shadowing_variables {
+                context.register_variable(name, value_type.clone())
+                    .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+            } else {
+                context.register_variable_unchecked(name, value_type.clone())
+            };
+
+            statements.push(TupleDeconstruction {
+                id,
+                value_type,
+            });
+        }
+
+        Ok(Statement::TuplesDeconstruction(value, statements))
+    }
+
     /**
      * Example: let hello: string = "hello";
      * Rules:
@@ -1802,7 +1878,13 @@ impl<'a> Parser<'a> {
                     Statement::If(condition, body, else_statement)
                 },
                 Token::BraceOpen => Statement::Scope(self.read_body(context, return_type)?),
-                Token::Let => Statement::Variable(self.read_variable(context)?),
+                Token::Let => {
+                    if self.peek_is(Token::ParenthesisOpen) {
+                        self.read_tuples_deconstruction(context)?
+                    } else {
+                        Statement::Variable(self.read_variable(context)?)
+                    }
+                }
                 Token::Return => {
                     let opt: Option<Expression> = if let Some(return_type) = return_type {
                         let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;

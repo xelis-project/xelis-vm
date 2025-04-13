@@ -41,6 +41,13 @@ pub enum Statement {
     Break,
     Continue,
     Variable(DeclarationStatement),
+    TuplesDeconstruction(Expression, Vec<TupleDeconstruction>), // let (a, b): (u64, u64) = (1, 2)
+}
+
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct TupleDeconstruction {
+    pub id: IdentifierType,
+    pub value_type: Type
 }
 
 #[derive(Debug, Hash, Eq, PartialEq)]

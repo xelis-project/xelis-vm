@@ -141,6 +141,10 @@ pub enum OpCode {
     Inc,
     // --
     Dec,
+    // Take the top object/array
+    // and push its values
+    // into the stack
+    Flatten,
 }
 
 impl OpCode {
@@ -233,6 +237,7 @@ impl OpCode {
 
             59 => OpCode::Inc,
             60 => OpCode::Dec,
+            61 => OpCode::Flatten,
             _ => return None,
         })
     }

@@ -530,6 +530,21 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(chunk, &declaration.value)?;
                     self.memstore(chunk)?;
                 },
+                Statement::TuplesDeconstruction(value, declaration) => {
+                    // Compile the value
+                    self.compile_expr(chunk, value)?;
+
+                    // We need to pop the value
+                    self.decrease_values_on_stack()?;
+
+                    chunk.emit_opcode(OpCode::Flatten);
+
+                    // Store the values
+                    for el in declaration.iter() {
+                        chunk.emit_opcode(OpCode::MemorySet);
+                        chunk.write_u16(el.id);
+                    }
+                },
                 Statement::Scope(statements) => {
                     self.push_mem_scope();
                     self.compile_statements(chunk, statements)?;

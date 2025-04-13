@@ -139,6 +139,7 @@ impl<'a> InstructionTable<'a> {
 
         instructions[OpCode::Inc.as_usize()] = (increment, 1);
         instructions[OpCode::Dec.as_usize()] = (decrement, 1);
+        instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
 
         Self { instructions }
     }
@@ -185,5 +186,16 @@ fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
     if !value.as_bool()? {
         manager.set_index(addr as usize)?;
     }
+    Ok(InstructionResult::Nothing)
+}
+
+fn flatten<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let value = stack.pop_stack()?;
+    let values = value.into_owned()?
+        .to_vec()?;
+
+    context.increase_gas_usage(values.len() as _)?;
+    stack.extend_stack(values.into_iter().map(Into::into))?;
+
     Ok(InstructionResult::Nothing)
 }

@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("Invalid tuple deconstruction, expected same variables name as in the tuple")]
+    InvalidTupleDeconstruction,
     #[error("Invalid tuple, must have zero or at least 2 elements")]
     InvalidTupleType,
     #[error("invalid tuple index '{0}'")]
