@@ -179,6 +179,9 @@ pub enum OpCodeWithArgs {
     Inc,
     // --
     Dec,
+    // Take the last value of the stack and flatten it
+    // into the stack
+    Flatten,
 }
 
 impl OpCodeWithArgs {
@@ -250,6 +253,7 @@ impl OpCodeWithArgs {
 
             OpCodeWithArgs::Inc => OpCode::Inc,
             OpCodeWithArgs::Dec => OpCode::Dec,
+            OpCodeWithArgs::Flatten => OpCode::Flatten,
         }
     }
 
@@ -755,6 +759,13 @@ impl OpCodeWithArgs {
                 }
 
                 OpCodeWithArgs::Dec
+            },
+            "FLATTEN" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::Flatten
             },
             _ => return Err("Invalid OpCode")
         })
