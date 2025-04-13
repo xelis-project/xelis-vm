@@ -147,7 +147,7 @@ impl<'a> Compiler<'a> {
 
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::ArrayConstructor(exprs) => {
+            Expression::ArrayConstructor(exprs) | Expression::TuplesConstructor(exprs) => {
                 if exprs.len() > u8::MAX as usize {
                     return Err(CompilerError::TooManyArrayValues(exprs.len()));
                 }

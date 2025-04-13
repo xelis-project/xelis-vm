@@ -320,7 +320,7 @@ impl<'a> Parser<'a> {
                 self.expect_token(Token::OperatorGreaterThan)?;
 
                 Type::Map(Box::new(key), Box::new(value))
-            }
+            },
             Token::Identifier(id) => {
                 if let Ok(builder) = self.global_mapper.structs().get_by_name(id) {
                     Type::Struct(builder.get_type().clone())
@@ -331,6 +331,27 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
+            },
+            Token::ParenthesisOpen => {
+                // Most likely tuples
+                let mut tuples = Vec::new();
+                while self.peek_is_not(Token::ParenthesisClose) {
+                    let token = self.advance()?;
+                    let inner = self.get_type_from_token(token)?;
+                    tuples.push(inner);
+
+                    if self.peek_is(Token::Comma) {
+                        self.expect_token(Token::Comma)?;
+                    }
+                }
+
+                if tuples.len() == 1 {
+                    return Err(err!(self, ParserErrorKind::InvalidTupleType))
+                }
+
+                self.expect_token(Token::ParenthesisClose)?;
+
+                Type::Tuples(tuples)
             },
             token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
         })
@@ -403,21 +424,35 @@ impl<'a> Parser<'a> {
                 Some(v) => Cow::Owned(Type::Array(Box::new(self.get_type_from_expression(on_type, v, context)?.into_owned()))),
                 None => return Err(err!(self, ParserErrorKind::EmptyArrayConstructor)) // cannot determine type from empty array
             },
+            Expression::TuplesConstructor(ref values) => {
+                let mut types = Vec::with_capacity(values.len());
+                for v in values.iter() {
+                    types.push(self.get_type_from_expression(on_type, v, context)?.into_owned());
+                }
+                Cow::Owned(Type::Tuples(types))
+            },
             Expression::ForceType(_, ty) => Cow::Borrowed(ty),
             Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
             Expression::EnumConstructor(_, _type) => Cow::Owned(Type::Enum(_type.enum_type().clone())),
             Expression::Variable(ref var_name) => match on_type {
-                Some(t) => {
-                    if let Type::Struct(_type) = t {
+                Some(t) => match t {
+                    Type::Struct(_type) => {
                         let index = *var_name as usize;
                         if let Some(field_type) = _type.fields().get(index) {
                             Cow::Owned(field_type.clone())
                         } else {
                             return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
                         }
-                    } else {
-                        return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
-                    }
+                    },
+                    Type::Tuples(types) => {
+                        let index = *var_name as usize;
+                        if let Some(field_type) = types.get(index) {
+                            Cow::Owned(field_type.clone())
+                        } else {
+                            return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
+                        }
+                    },
+                    _ => return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
                 },
                 None => Cow::Borrowed(context.get_type_of_variable(var_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedMappedVariableId(*var_name)))?),
             },
@@ -1112,9 +1147,39 @@ impl<'a> Parser<'a> {
                     }
                 },
                 Token::ParenthesisOpen => {
-                    let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
-                    self.expect_token(Token::ParenthesisClose)?;
-                    Expression::SubExpression(Box::new(expr))
+                    // Empty tuple
+                    if self.peek_is(Token::ParenthesisClose) {
+                        self.expect_token(Token::ParenthesisClose)?;
+                        Expression::Constant(
+                            Constant::Typed(
+                                Vec::new(),
+                                DefinedType::Tuples(Vec::new())
+                            )
+                        )
+                    } else {
+                        let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                        // We are in a tuple
+                        if self.peek_is(Token::Comma) {
+                            let mut elements = vec![expr];
+                            loop {
+                                self.expect_token(Token::Comma)?;
+
+                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                                elements.push(expr);
+
+                                if self.peek_is(Token::ParenthesisClose) {
+                                    break;
+                                }
+                            }
+
+                            self.expect_token(Token::ParenthesisClose)?;
+                            Expression::TuplesConstructor(elements)
+                        } else {
+                            self.expect_token(Token::ParenthesisClose)?;
+                            Expression::SubExpression(Box::new(expr))
+                        }
+
+                    }
                 },
                 Token::ParenthesisClose => {
                     if delimiter == Some(&Token::Comma) {
@@ -1137,8 +1202,8 @@ impl<'a> Parser<'a> {
                         _ => {
                             match on_type {
                                 // mostly an access to a struct field
-                                Some(t) => {
-                                    if let Type::Struct(_type) = t {
+                                Some(t) => match t {
+                                    Type::Struct(_type) => {
                                         let builder = self.global_mapper.structs()
                                             .get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
@@ -1146,9 +1211,8 @@ impl<'a> Parser<'a> {
                                             .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?;
 
                                         Expression::Variable(id)
-                                    } else {
-                                        return Err(err!(self, ParserErrorKind::UnexpectedType(t.clone())))
-                                    }
+                                    },
+                                    _ => return Err(err!(self, ParserErrorKind::UnexpectedType(t.clone())))
                                 },
                                 None => {
                                     if let Some(num_id) = context.get_variable_id(id) {
@@ -1167,28 +1231,38 @@ impl<'a> Parser<'a> {
                         }
                     }
                 },
-                Token::Value(value) => Expression::Constant(
-                    Constant::Default(match value {
-                        Literal::U8(n) => Primitive::U8(n),
-                        Literal::U16(n) => Primitive::U16(n),
-                        Literal::U32(n) => Primitive::U32(n),
-                        Literal::U64(n) => Primitive::U64(n),
-                        Literal::U128(n) => Primitive::U128(n),
-                        Literal::U256(n) => Primitive::U256(n),
-                        Literal::Number(n) => match expected_type {
-                            Some(Type::U8) => Primitive::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
-                            Some(Type::U16) => Primitive::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
-                            Some(Type::U32) => Primitive::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
-                            Some(Type::U64) => Primitive::U64(n),
-                            Some(Type::U128) => Primitive::U128(n as u128),
-                            Some(Type::U256) => Primitive::U256(U256::from(n)),
-                            _ => Primitive::U64(n)
-                        },
-                        Literal::String(s) => Primitive::String(s.into_owned()),
-                        Literal::Bool(b) => Primitive::Boolean(b),
-                        Literal::Null => Primitive::Null
-                    })
-                ),
+                Token::Value(value) => match (on_type, value) {
+                     (Some(Type::Tuples(tuples)), Literal::Number(n)) => {
+                        let id = n as usize;
+                        if id < tuples.len() {
+                            Expression::Variable(id as _)
+                        } else {
+                            return Err(err!(self, ParserErrorKind::InvalidTupleIndex(id)))
+                        }
+                     },
+                     (_, value) => Expression::Constant(
+                        Constant::Default(match value {
+                            Literal::U8(n) => Primitive::U8(n),
+                            Literal::U16(n) => Primitive::U16(n),
+                            Literal::U32(n) => Primitive::U32(n),
+                            Literal::U64(n) => Primitive::U64(n),
+                            Literal::U128(n) => Primitive::U128(n),
+                            Literal::U256(n) => Primitive::U256(n),
+                            Literal::Number(n) => match expected_type {
+                                Some(Type::U8) => Primitive::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
+                                Some(Type::U16) => Primitive::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
+                                Some(Type::U32) => Primitive::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
+                                Some(Type::U64) => Primitive::U64(n),
+                                Some(Type::U128) => Primitive::U128(n as u128),
+                                Some(Type::U256) => Primitive::U256(U256::from(n)),
+                                _ => Primitive::U64(n)
+                            },
+                            Literal::String(s) => Primitive::String(s.into_owned()),
+                            Literal::Bool(b) => Primitive::Boolean(b),
+                            Literal::Null => Primitive::Null
+                        })
+                    )
+                }
                 Token::Dot => {
                     match queue.pop() {
                         Some(QueueItem::Expression(value)) => {
@@ -1198,7 +1272,7 @@ impl<'a> Parser<'a> {
                             // because we read operator DOT + right expression
                             required_operator = !required_operator;
 
-                            // Read a type constant
+                            // Read a range
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
                                 let end_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;

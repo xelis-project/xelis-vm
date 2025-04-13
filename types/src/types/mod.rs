@@ -32,6 +32,7 @@ pub enum Type {
 
     Bytes,
 
+    Tuples(Vec<Type>),
     Array(Box<Type>),
     Optional(Box<Type>),
     Range(Box<Type>),
@@ -45,7 +46,8 @@ pub enum Type {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DefinedType {
     Struct(StructType),
-    Enum(EnumValueType)
+    Enum(EnumValueType),
+    Tuples(Vec<Type>),
 }
 
 impl Type {
@@ -123,7 +125,8 @@ impl Type {
             Constant::Bytes(_) => Type::Bytes,
             Constant::Typed(_, ty) => match ty {
                 DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
-                DefinedType::Struct(ty) => Type::Struct(ty.clone())
+                DefinedType::Struct(ty) => Type::Struct(ty.clone()),
+                DefinedType::Tuples(ty) => Type::Tuples(ty.clone()),
             }
         })
     }
@@ -406,6 +409,16 @@ impl fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Bool => write!(f, "bool"),
             Type::Bytes => write!(f, "bytes"),
+            Type::Tuples(types) => {
+                write!(f, "(")?;
+                for (i, t) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
             Type::Struct(id) => write!(f, "struct({:?})", id),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),

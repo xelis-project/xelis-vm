@@ -13,6 +13,7 @@ pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
+    TuplesConstructor(Vec<Expression>),
     StructConstructor(Vec<Expression>, StructType),
     RangeConstructor(Box<Expression>, Box<Expression>), // start, end
     MapConstructor(Vec<(Expression, Expression)>, Type, Type),

@@ -1471,3 +1471,44 @@ fn test_hook() {
     let (module, env) = prepare_module_with(code, env);
     assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
 }
+
+#[test]
+fn test_tuples() {
+    let code = r#"
+        entry main() {
+            let a: () = ();
+            return 0;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+
+    let code = r#"
+        entry main() {
+            let a: (u64, u64) = (1, 2);
+            return a.0 + a.1;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+
+    let code = r#"
+        fn tuples() -> (u64, u64, u64) {
+            return (1, 2, 3);
+        }
+        entry main() {
+            let a: (u64, u64, u64) = tuples();
+            return a.0 + a.1 + a.2;
+        }
+    "#;
+    assert_eq!(run_code_id(code, 1), Primitive::U64(6));
+
+    let code = r#"
+        fn tuples() -> (u64, u64, u64) {
+            return (1, 2, 3);
+        }
+        entry main() {
+            let (a, b, c): (u64, u64, u64) = tuples();
+            return a + b + c;
+        }
+    "#;
+    assert_eq!(run_code_id(code, 1), Primitive::U64(6));
+}

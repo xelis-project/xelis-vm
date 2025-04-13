@@ -16,6 +16,10 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("Invalid tuple, must have zero or at least 2 elements")]
+    InvalidTupleType,
+    #[error("invalid tuple index '{0}'")]
+    InvalidTupleIndex(usize),
     #[error("cannot create a method on type '{0}'")]
     InvalidFunctionType(Type),
     #[error("number is too big for type '{0}'")]
