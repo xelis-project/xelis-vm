@@ -1484,6 +1484,14 @@ fn test_tuples() {
 
     let code = r#"
         entry main() {
+            let a: (u8, u16) = (44, 300);
+            return 0;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+
+    let code = r#"
+        entry main() {
             let a: (u64, u64) = (1, 2);
             return a.0 + a.1;
         }
@@ -1491,12 +1499,12 @@ fn test_tuples() {
     assert_eq!(run_code(code), Primitive::U64(3));
 
     let code = r#"
-        fn tuples() -> (u64, u64, u64) {
+        fn tuples() -> (u8, u64, u64) {
             return (1, 2, 3);
         }
         entry main() {
-            let a: (u64, u64, u64) = tuples();
-            return a.0 + a.1 + a.2;
+            let a: (u8, u64, u64) = tuples();
+            return a.0 as u64 + a.1 + a.2;
         }
     "#;
     assert_eq!(run_code_id(code, 1), Primitive::U64(6));

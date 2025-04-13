@@ -1159,29 +1159,27 @@ impl<'a> Parser<'a> {
                         )
                     } else {
                         trace!("read parenthesis");
-                        let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
-                        // We are in a tuple
-                        if self.peek_is(Token::Comma) {
-                            trace!("read tuple");
-                            let mut elements = vec![expr];
-                            loop {
-                                self.expect_token(Token::Comma)?;
+                        match expected_type {
+                            Some(Type::Tuples(tuples)) => {
+                                let mut elements = Vec::with_capacity(tuples.len());
+                                for tu in tuples {
+                                    let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, Some(tu), context)?;
+                                    elements.push(expr);
 
-                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
-                                elements.push(expr);
-
-                                if self.peek_is(Token::ParenthesisClose) {
-                                    break;
+                                    if self.peek_is(Token::Comma) {
+                                        self.expect_token(Token::Comma)?;
+                                    }
                                 }
+
+                                self.expect_token(Token::ParenthesisClose)?;
+                                Expression::TuplesConstructor(elements)
+                            },
+                            _ => {
+                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                                self.expect_token(Token::ParenthesisClose)?;
+                               Expression::SubExpression(Box::new(expr))
                             }
-
-                            self.expect_token(Token::ParenthesisClose)?;
-                            Expression::TuplesConstructor(elements)
-                        } else {
-                            self.expect_token(Token::ParenthesisClose)?;
-                            Expression::SubExpression(Box::new(expr))
                         }
-
                     }
                 },
                 Token::ParenthesisClose => {
@@ -1711,7 +1709,7 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::OperatorAssign)?;
         // Read the value to deconstruct
-        let value = self.read_expression(context)?;
+        let value = self.read_expr(None, None, true, true, Some(&expected_value_type), context)?;
         let value_type = self.get_type_from_expression(None, &value, context)?;
         if *value_type != expected_value_type {
             return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_value_type)))
