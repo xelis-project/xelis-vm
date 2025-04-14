@@ -215,7 +215,9 @@ impl<'a> FunctionMapper<'a> {
         functions
     }
 
-    pub fn get_declared_functions(&'a self) -> HashMap<Option<&'a Type>, Vec<&'a Function<'a>>> {
+    // Find all functions declared grouped per type
+    // Value contains also the syscall id
+    pub fn get_declared_functions(&'a self) -> HashMap<Option<&'a Type>, Vec<(&'a Function<'a>, u16)>> {
         let mut functions = HashMap::new();
         if let Some(parent) = self.parent {
             functions.extend(parent.get_declared_functions());
@@ -227,7 +229,7 @@ impl<'a> FunctionMapper<'a> {
                     .map(|t| t.as_ref());
                 functions.entry(on_type)
                     .or_insert_with(Vec::new)
-                    .push(function);
+                    .push((function, *id));
             }
         }
 
