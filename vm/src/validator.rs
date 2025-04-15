@@ -260,9 +260,7 @@ impl<'a> ModuleValidator<'a> {
 
                         // Make sure the constant id is valid
                         if constant_id as usize >= self.module.constants().len() {
-                            // TODO
-                            // println!("{} >= {}", constant_id, self.module.constants().len());
-                            // return Err(ValidatorError::InvalidConstantId(constant_id));
+                            return Err(ValidatorError::InvalidConstantId(constant_id));
                         }
 
                         // Minus 2
