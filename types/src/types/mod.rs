@@ -18,7 +18,8 @@ pub enum Type {
     // Any Type is accepted
     Any,
     // T is a generic type, inner byte is for its position
-    T(u8),
+    // if byte is None, it means the global type itself
+    T(Option<u8>),
 
     U8,
     U16,
@@ -185,7 +186,8 @@ impl Type {
     // We have to verify that they are exactly the same as other
     pub fn is_generic_compatible_with(&self, instance: &Type, other: &Type) -> bool {
         match self {
-            Type::T(id) => instance.get_generic_type(*id).map_or(false, |t| t == other),
+            Type::T(Some(id)) => instance.get_generic_type(*id).map_or(false, |t| t == other),
+            Type::T(None) => true,
             Type::Any => true,
             _ => false
         }
@@ -407,7 +409,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Any => write!(f, "any"),
-            Type::T(id) => write!(f, "T{}", id),
+            Type::T(id) => write!(f, "T({:?})", id),
             Type::U8 => write!(f, "u8"),
             Type::U16 => write!(f, "u16"),
             Type::U32 => write!(f, "u32"),

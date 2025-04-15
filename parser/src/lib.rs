@@ -397,11 +397,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn get_from_generic_type<'b>(&'b self, on_type: Option<&Type>, _type: &'b Type, path: Option<&Expression>, context: &'b Context<'a>) -> Result<Type, ParserError<'a>> {
+    fn get_from_generic_type(&self, on_type: Option<&Type>, _type: &Type, path: Option<&Expression>, context: &Context<'a>) -> Result<Type, ParserError<'a>> {
         trace!("Get from generic type: {:?}", _type);
         Ok(match _type {
             Type::T(id) => match on_type {
-                Some(t) => t.get_generic_type(*id).ok_or(err!(self, ParserErrorKind::InvalidTypeT))?.clone(),
+                Some(t) if id.is_some() => t.get_generic_type(id.unwrap())
+                    .cloned()
+                    .ok_or_else(|| err!(self, ParserErrorKind::InvalidTypeT))?,
+                Some(t) => t.clone(),
                 None => match path {
                     Some(v) => {
                         let on_type = self.get_type_from_expression(on_type, v, context)?;

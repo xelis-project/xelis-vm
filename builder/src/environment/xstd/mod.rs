@@ -35,6 +35,7 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("assert", None, vec![("value", Type::Bool)], assert, 1, None);
     env.register_native_function("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], is_same_ptr, 5, Some(Type::Bool));
     env.register_native_function("require", None, vec![("condition", Type::Bool), ("msg", Type::String)], require, 1, None);
+    env.register_native_function("clone", Some(Type::T(None)), vec![], clone, 5, Some(Type::T(None)));
 }
 
 fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -94,4 +95,15 @@ fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturn
     } else {
         Err(EnvironmentError::Expect(msg))
     }
+}
+
+fn clone(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+    let zelf = zelf?;
+
+    let memory = zelf.calculate_memory_usage(context.memory_left())?;
+    // Double cost: computation for cloning and memory allocation?
+    // context.increase_gas_usage(memory as _)?;
+    context.increase_memory_usage_unchecked(memory)?;
+
+    Ok(Some(zelf.clone()))
 }

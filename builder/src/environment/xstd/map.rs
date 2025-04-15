@@ -4,8 +4,8 @@ use xelis_types::{Type, Primitive, ValueCell};
 use crate::EnvironmentBuilder;
 
 pub fn register(env: &mut EnvironmentBuilder) {
-    let key_type = Type::T(0);
-    let value_type = Type::T(1);
+    let key_type = Type::T(Some(0));
+    let value_type = Type::T(Some(1));
     let _type = Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()));
     env.register_native_function("len", Some(_type.clone()), vec![], len, 1, Some(Type::U32));
     env.register_native_function("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], contains_key, 15, Some(Type::Bool));

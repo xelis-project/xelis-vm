@@ -1522,3 +1522,24 @@ fn test_tuples() {
     "#;
     assert_eq!(run_code(code), Primitive::U64(6));
 }
+
+#[test]
+fn test_clone() {
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = a.clone();
+            return b;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2, 3];
+            let b: u64[] = a.clone();
+            return b[0] + b[1] + b[2];
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(6));
+}
