@@ -58,6 +58,10 @@ pub enum ValidatorError<'a> {
     EmptyModule,
     #[error("invalid entry id {0}")]
     InvalidEntryId(usize),
+    #[error("invalid jump address at '{0:#x}' ({0})")]
+    InvalidJumpAddress(u32),
+    #[error("invalid constant id {0}")]
+    InvalidConstantId(u16),
     #[error("invalid syscall id {0}")]
     InvalidSysCall(u16),
     #[error("invalid hook id {0} with chunk id {1}")]
@@ -237,7 +241,33 @@ impl<'a> ModuleValidator<'a> {
 
                         // Minus 2
                         count -= 2;
-                    }
+                    },
+                    OpCode::Jump | OpCode::JumpIfFalse => {
+                        let addr = reader.read_u32()
+                            .map_err(|_| ValidatorError::InvalidOpCode)?;
+
+                        // Make sure the address is valid
+                        if addr as usize >= chunk.index() {
+                            return Err(ValidatorError::InvalidEntryId(addr as usize));
+                        }
+
+                        // Minus 4
+                        count -= 4;
+                    },
+                    OpCode::Constant => {
+                        let constant_id = reader.read_u16()
+                            .map_err(|_| ValidatorError::InvalidOpCode)?;
+
+                        // Make sure the constant id is valid
+                        if constant_id as usize >= self.module.constants().len() {
+                            // TODO
+                            // println!("{} >= {}", constant_id, self.module.constants().len());
+                            // return Err(ValidatorError::InvalidConstantId(constant_id));
+                        }
+
+                        // Minus 2
+                        count -= 2;
+                    },
                     _ => {}
                 }
 
