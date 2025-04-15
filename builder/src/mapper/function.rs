@@ -83,11 +83,7 @@ impl<'a> FunctionMapper<'a> {
 
     pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature
-        if types.iter().all(|t| t.is_some()) {
-            let types: Vec<Type> = types.iter()
-            .map(|t| t.clone().unwrap())
-            .collect();
-        
+        if let Some(types) = types.iter().cloned().collect() {        
             let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
             if let Ok(id) = self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Owned(types))) {
                 return Ok(id);

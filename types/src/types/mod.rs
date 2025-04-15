@@ -412,7 +412,8 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Any => write!(f, "any"),
-            Type::T(id) => write!(f, "T({:?})", id),
+            Type::T(None) => write!(f, "T"),
+            Type::T(Some(id)) => write!(f, "T{}", id),
             Type::U8 => write!(f, "u8"),
             Type::U16 => write!(f, "u16"),
             Type::U32 => write!(f, "u32"),

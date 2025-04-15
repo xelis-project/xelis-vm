@@ -583,12 +583,10 @@ impl<'a> Parser<'a> {
         trace!("read function call {}", name);
         let (mut parameters, types) = self.read_function_params(context)?;
 
-        println!("Function call: {} {:?}, params {:?}", name, types, parameters);
         let id = self.global_mapper
             .functions()
             .get_compatible(name, on_type, instance, &types, &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
-        println!("Function call 2: {} {:?}, params {:?}", name, types, parameters);
 
         // Entry are only callable by external
         let f = self.get_function(id)?;
