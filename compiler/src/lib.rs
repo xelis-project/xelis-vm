@@ -1323,4 +1323,28 @@ mod tests {
             Some(&Primitive::U64(0).into())
         );
     }
+
+    #[test]
+    fn test_constants() {
+        let code = r#"
+            entry main() {
+                let _: u64 = foo("test", 42);
+                return 0;
+            }
+        "#;
+
+        let mut env = EnvironmentBuilder::new();
+        env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], |_, _, _| { todo!() }, 0, Some(Type::U64));
+        let (program, environment) = prepare_program_with_env(code, env);
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+        assert_eq!(
+            module.constants().iter().cloned().collect::<Vec<_>>(),
+            vec![
+                Primitive::String("test".into()).into(),
+                Primitive::U8(42).into(),
+                Primitive::U64(0).into()
+            ]
+        );
+    }
 }

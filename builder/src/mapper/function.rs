@@ -159,7 +159,7 @@ impl<'a> FunctionMapper<'a> {
                         let cloned = value.clone();
                         match cloned.checked_cast_to_primitive_type(a) {
                             Ok(v) => {
-                                updated_expressions.push(Expression::Constant(v));
+                                updated_expressions.push((i, Expression::Constant(v)));
                                 continue;
                             },
                             Err(e) => {
@@ -174,7 +174,7 @@ impl<'a> FunctionMapper<'a> {
                 }
             }
 
-            for (i, expr) in updated_expressions.into_iter().enumerate() {
+            for (i, expr) in updated_expressions {
                 expressions[i] = expr;
             }
 
