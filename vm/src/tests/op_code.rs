@@ -3,11 +3,12 @@ use super::*;
 use xelis_bytecode::{Chunk, Module, OpCode};
 use xelis_types::{Type, Primitive};
 
+#[track_caller]
 fn try_run(module: Module) -> Result<Primitive, VMError> {
-    let env = EnvironmentBuilder::default().build();
-    run_internal(module, &env, 0)
+    try_run_id(module, 0)
 }
 
+#[track_caller]
 fn try_run_id(module: Module, id: u16) -> Result<Primitive, VMError> {
     let env = EnvironmentBuilder::default().build();
     run_internal(module, &env, id)
@@ -265,9 +266,6 @@ fn test_function_call() {
     // Call the bool_fn which is at index 1 in chunks list
     first.write_u16(1);
 
-    // not on a value
-    first.write_bool(false);
-
     // 0 args
     first.write_u8(0);
 
@@ -308,8 +306,7 @@ fn test_function_call_on_value() {
     // Call the struct_fn which is at index 1 in chunks list
     main.emit_opcode(OpCode::InvokeChunk);
     main.write_u16(1);
-    main.write_bool(true);
-    main.write_u8(0);
+    main.write_u8(1);
 
     module.add_chunk(main);
     module.add_chunk(struct_fn);
@@ -632,7 +629,6 @@ fn test_bad_program_recursive_infinite() {
     // Recursive call
     chunk.emit_opcode(OpCode::InvokeChunk);
     chunk.write_u16(0);
-    chunk.write_bool(false);
     chunk.write_u8(0);
 
     chunk.emit_opcode(OpCode::Return);
@@ -690,7 +686,6 @@ fn test_bad_program_bad_stack_pointers() {
 
     main.emit_opcode(OpCode::InvokeChunk);
     main.write_u16(0);
-    main.write_bool(false);
     main.write_u8(2);
 
     main.emit_opcode(OpCode::Return);

@@ -26,6 +26,7 @@ pub struct NativeFunction {
 
 impl NativeFunction {
     // Create a new instance of the NativeFunction
+    #[inline]
     pub fn new(require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
             require_instance,
@@ -34,6 +35,12 @@ impl NativeFunction {
             cost,
             return_type
         }
+    }
+
+    // Check if the function requires an instance
+    #[inline]
+    pub fn is_on_instance(&self) -> bool {
+        self.require_instance
     }
 
     // Execute the function
@@ -50,26 +57,31 @@ impl NativeFunction {
     }
 
     // Set the function on call
+    #[inline]
     pub fn set_on_call(&mut self, on_call: OnCallFn) {
         self.on_call = on_call;
     }
 
     // Get parameters of the function
+    #[inline]
     pub fn get_parameters(&self) -> &Vec<Type> {
         &self.parameters
     }
 
     // Get the expected type of the returned value
+    #[inline]
     pub fn return_type(&self) -> &Option<Type> {
         &self.return_type
     }
 
     // Get the cost of the function
+    #[inline]
     pub fn get_cost(&self) -> u64 {
         self.cost
     }
 
     // Set the cost of the function
+    #[inline]
     pub fn set_cost(&mut self, cost: u64) {
         self.cost = cost;
     }

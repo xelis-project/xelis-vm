@@ -80,19 +80,13 @@ pub enum OpCodeWithArgs {
     InvokeChunk {
         // Function id
         chunk_id: u16,
-        // On value
-        on_value: bool,
         // Args count
         args_count: u8
     },
     // Same as InvokeChunk, but for system calls
     SysCall {
         // System call id
-        sys_call_id: u16,
-        // On value
-        on_value: bool,
-        // Args count
-        args_count: u8
+        sys_call_id: u16
     },
     // pop length, pop N values => create object
     NewObject {
@@ -275,15 +269,12 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Jump { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::JumpIfFalse { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::Cast { primitive_type_id } => chunk.write_u8(*primitive_type_id),
-            OpCodeWithArgs::InvokeChunk { chunk_id, on_value, args_count } => {
+            OpCodeWithArgs::InvokeChunk { chunk_id, args_count } => {
                 chunk.write_u16(*chunk_id);
-                chunk.write_bool(*on_value);
                 chunk.write_u8(*args_count);
             },
-            OpCodeWithArgs::SysCall { sys_call_id, on_value, args_count } => {
+            OpCodeWithArgs::SysCall { sys_call_id } => {
                 chunk.write_u16(*sys_call_id);
-                chunk.write_bool(*on_value);
-                chunk.write_u8(*args_count);
             },
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::NewObject { length } => chunk.write_u8(*length),
@@ -475,7 +466,7 @@ impl OpCodeWithArgs {
                 }
             },
             "INVOKECHUNK" => {
-                if args.len() != 3 {
+                if args.len() != 2 {
                     return Err("Invalid args count");
                 }
 
@@ -489,19 +480,16 @@ impl OpCodeWithArgs {
                 
                 OpCodeWithArgs::InvokeChunk {
                     chunk_id,
-                    on_value: args[1].parse().map_err(|_| "Invalid on value bool")?,
-                    args_count: args[2].parse().map_err(|_| "Invalid args count")?
+                    args_count: args[1].parse().map_err(|_| "Invalid args count")?
                 }
             },
             "SYSCALL" => {
-                if args.len() != 3 {
+                if args.len() != 1 {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::SysCall {
-                    sys_call_id: args[0].parse().map_err(|_| "Invalid sys call id")?,
-                    on_value: args[1].parse().map_err(|_| "Invalid on value bool")?,
-                    args_count: args[2].parse().map_err(|_| "Invalid args count")?
+                    sys_call_id: args[0].parse().map_err(|_| "Invalid sys call id")?
                 }
             }
             "NEWOBJECT" => {

@@ -115,13 +115,8 @@ pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 
 pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
-    let on_value = manager.read_bool()?;
-    let mut args = manager.read_u8()? as usize;
-
-    debug!("invoke chunk: {}, args: {}, on value: {}", id, args, on_value);
-    if on_value {
-        args += 1;
-    }
+    let args = manager.read_u8()? as usize;
+    debug!("invoke chunk: {}, args: {}", id, args);
 
     // We need to reverse the order of the arguments
     let inner = stack.get_inner_mut();
@@ -138,25 +133,24 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkM
 
 pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
-    let on_value = manager.read_bool()?;
-    let args = manager.read_u8()?;
 
-    debug!("syscall: {}, args: {}, on value: {}", id, args, on_value);
-
-    let mut arguments = VecDeque::with_capacity(args as usize);
-    for _ in 0..args {
-        arguments.push_front(stack.pop_stack()?);
-    }
-
-    let mut on_value = if on_value {
-        Some(stack.pop_stack()?)
-    } else {
-        None
-    };
+    debug!("syscall: {}", id);
 
     let f = backend.environment.get_functions()
         .get(id as usize)
         .ok_or(VMError::UnknownSysCall(id))?;
+
+    let args = f.get_parameters().len();
+    let mut arguments = VecDeque::with_capacity(args);
+    for _ in 0..args {
+        arguments.push_front(stack.pop_stack()?);
+    }
+
+    let mut on_value = if f.is_on_instance() {
+        Some(stack.pop_stack()?)
+    } else {
+        None
+    };
 
     context.increase_gas_usage(f.get_cost())?;
 

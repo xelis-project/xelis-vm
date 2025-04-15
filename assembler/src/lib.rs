@@ -146,7 +146,7 @@ mod tests {
             ADD
 
             #main
-            INVOKECHUNK #other false 0
+            INVOKECHUNK #other 0
         "#;
 
         let assembler = Assembler::new(source);
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(module.chunks().len(), 2);
         assert_eq!(
             module.chunks().last().unwrap().get_instructions(),
-            &[OpCode::InvokeChunk.as_byte(), 0, 0, 0, 0]
+            &[OpCode::InvokeChunk.as_byte(), 0, 0, 0]
         );
     }
 

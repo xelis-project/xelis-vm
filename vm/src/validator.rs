@@ -58,6 +58,8 @@ pub enum ValidatorError<'a> {
     EmptyModule,
     #[error("invalid entry id {0}")]
     InvalidEntryId(usize),
+    #[error("invalid syscall id {0}")]
+    InvalidSysCall(u16),
     #[error("invalid hook id {0} with chunk id {1}")]
     InvalidHookId(u8, usize),
     #[error("chunk id {0} is already used")]
@@ -221,9 +223,21 @@ impl<'a> ModuleValidator<'a> {
                             return Err(ValidatorError::InvalidEntryId(chunk_id as usize));
                         }
 
-                        // Minus 2 
+                        // Minus 2
                         count -= 2;
                     },
+                    OpCode::SysCall => {
+                        let syscall_id = reader.read_u16()
+                            .map_err(|_| ValidatorError::InvalidOpCode)?;
+
+                        // Make sure the syscall id is valid
+                        if syscall_id as usize >= self.environment.get_functions().len() {
+                            return Err(ValidatorError::InvalidSysCall(syscall_id));
+                        }
+
+                        // Minus 2
+                        count -= 2;
+                    }
                     _ => {}
                 }
 

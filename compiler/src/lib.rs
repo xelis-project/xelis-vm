@@ -313,6 +313,7 @@ impl<'a> Compiler<'a> {
                     chunk.emit_opcode(OpCode::InvokeChunk);
                     let id = *id as usize - len;
                     chunk.write_u16(id as u16);
+                    chunk.write_u8(params.len() as u8 + expr_on.is_some() as u8);
 
                     self.program.functions()
                         .get(id)
@@ -320,9 +321,6 @@ impl<'a> Compiler<'a> {
                         .return_type()
                         .is_some()
                 };
-
-                chunk.write_bool(expr_on.is_some());
-                chunk.write_u8(params.len() as u8);
 
                 if expr_on.is_some() {
                     self.decrease_values_on_stack()?;
@@ -1126,7 +1124,7 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::InvokeChunk.as_byte(), 0, 0, 0, 0,
+                OpCode::InvokeChunk.as_byte(), 0, 0, 0,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1212,7 +1210,8 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::SysCall.as_byte(), 0, 0, 0, 0, 20
+                OpCode::SysCall.as_byte(), 0, 0,
+                OpCode::Return.as_byte()
             ]
         );
     }
@@ -1266,7 +1265,7 @@ mod tests {
                 // 10
                 OpCode::Constant.as_byte(), 1, 0,
                 // insert
-                OpCode::SysCall.as_byte(), 92, 0, 1, 2,
+                OpCode::SysCall.as_byte(), 92, 0,
                 // Expected POP
                 OpCode::Pop.as_byte(),
                 // x.get("a")
@@ -1275,9 +1274,9 @@ mod tests {
                 // a
                 OpCode::Constant.as_byte(), 0, 0,
                 // get
-                OpCode::SysCall.as_byte(), 91, 0, 1, 1,
-                // unwrap (u16 id, on type bool, params u8)
-                OpCode::SysCall.as_byte(), 23, 0, 1, 0,
+                OpCode::SysCall.as_byte(), 91, 0,
+                // unwrap (u16 id)
+                OpCode::SysCall.as_byte(), 23, 0,
                 // let dummy: u64 = x.get("a").unwrap();
                 OpCode::MemorySet.as_byte(), 1, 0,
                 // x.insert("b", dummy);
@@ -1287,8 +1286,8 @@ mod tests {
                 OpCode::Constant.as_byte(), 2, 0,
                 // Load dummy
                 OpCode::MemoryLoad.as_byte(), 1, 0,
-                // insert (u16 id, on type map, params u8)
-                OpCode::SysCall.as_byte(), 92, 0, 1, 2,
+                // insert (u16 id)
+                OpCode::SysCall.as_byte(), 92, 0,
                 // Expected POP
                 OpCode::Pop.as_byte(),
 

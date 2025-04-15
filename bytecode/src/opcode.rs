@@ -280,8 +280,8 @@ impl OpCode {
             OpCode::JumpIfFalse => 4, // u32 addr
             OpCode::IteratorNext => 4, // u32 addr
             OpCode::Cast => 1, // primitive type id u8
-            OpCode::InvokeChunk => 4, // id u16, on_value bool, args u8
-            OpCode::SysCall => 4, // id u16, on_value bool, args u8
+            OpCode::InvokeChunk => 3, // id u16, args u8
+            OpCode::SysCall => 2, // id u16
 
             OpCode::NewObject => 1, // u8 initial values
             OpCode::NewMap => 1, // u8 initial values
