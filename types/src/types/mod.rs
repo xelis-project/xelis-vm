@@ -187,9 +187,9 @@ impl Type {
     pub fn is_generic_compatible_with(&self, instance: &Type, other: &Type) -> bool {
         match self {
             Type::T(Some(id)) => instance.get_generic_type(*id).map_or(false, |t| t == other),
-            Type::T(None) => true,
+            Type::T(None) => instance == self,
             Type::Any => true,
-            _ => false
+            _ => other.is_compatible_with(instance)
         }
     }
 
@@ -248,7 +248,7 @@ impl Type {
                 Self::Map(k2, v2) => k.is_assign_compatible_with(k2) && v.is_assign_compatible_with(v2),
                 _ => self.is_compatible_with(other)
             }
-            _ => self.is_compatible_with(other)
+            _ => other.is_compatible_with(self)
         }
     }
 
@@ -260,8 +260,9 @@ impl Type {
 
         match other {
             Type::Range(inner) => match self {
-                Type::Range(inner2) => inner.is_compatible_with(inner2),
-                Type::Any => true,
+                Type::Range(inner2) => inner2.is_generic_compatible_with(other, inner),
+                Type::Any | Type::T(None) => true,
+                Type::T(Some(_)) => self.is_generic_compatible_with(other, inner),
                 _ => false
             },
             Type::Enum(e) => match self {
@@ -276,21 +277,23 @@ impl Type {
                 Type::Opaque(b) => a == b,
                 _ => self.is_generic() || other.is_compatible_with(self)
             },
-            Type::Any | Type::T(_) => true,
+            Type::Any | Type::T(None) => true,
             Type::Array(sub_type) => match self {
-                Type::Array(sub) => sub.is_compatible_with(sub_type.as_ref()),
-                Type::Any => true,
-                _ => *self == *other || self.is_compatible_with(sub_type.as_ref()),
+                Type::Array(sub) => sub.is_generic_compatible_with(other, sub_type.as_ref()),
+                Type::Any | Type::T(None) => true,
+                Type::T(Some(_)) => self.is_generic_compatible_with(other, sub_type.as_ref()),
+                _ => *self == *other
             },
             Type::Optional(sub_type) => match self {
-                Type::Optional(sub) => sub.is_compatible_with(sub_type.as_ref()),
-                Type::Any => true,
+                Type::Optional(sub) => sub.is_generic_compatible_with(other, sub_type.as_ref()),
+                Type::Any | Type::T(None) => true,
+                Type::T(Some(_)) => self.is_generic_compatible_with(other, sub_type.as_ref()),
                 _ => *self == *other
             },
             Type::Map(k, v) => match self {
-                Type::Map(k2, v2) => k.is_compatible_with(k2) && v.is_compatible_with(v2),
-                Type::Any => true,
-                _ => false
+                Type::Map(k2, v2) => k2.is_generic_compatible_with(other, k) && v2.is_generic_compatible_with(other, v),
+                Type::Any | Type::T(None) => true,
+                _ => *self == *other
             },
             _ => *self == *other || self.is_generic(),
         }

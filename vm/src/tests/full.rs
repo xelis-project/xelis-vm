@@ -1536,10 +1536,14 @@ fn test_clone() {
 
     let code = r#"
         entry main() {
-            let a: u64[] = [1, 2, 3];
-            let b: u64[] = a.clone();
-            return b[0] + b[1] + b[2];
+            let a: u64[][][][] = [[[[0]]]];
+            let b: u64[][][][] = a.clone();
+
+            a[0][0][0][0] = 2;
+            assert(a[0][0][0][0] == 2);
+
+            return b[0][0][0][0];
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(6));
+    assert_eq!(run_code(code), Primitive::U64(0));
 }
