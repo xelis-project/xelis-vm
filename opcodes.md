@@ -102,15 +102,12 @@ Errors occur if the argument count or format is invalid.
 - **Description**: Invokes a chunk of code with parameters.
 - **Arguments**:
   - `chunk_id` (integer or label): Identifier or label of the chunk.
-  - `on_value` (boolean): Whether the chunk operates on a value.
-  - `args_count` (integer): Number of arguments passed.
+  - `args_count` (integer): Number of arguments passed (including the on value).
 
 #### **SYSCALL**
 - **Description**: Invokes a system call.
 - **Arguments**:
   - `sys_call_id` (integer): Identifier of the system call.
-  - `on_value` (boolean): Whether the call operates on a value.
-  - `args_count` (integer): Number of arguments passed.
 
 #### **NEWOBJECT**
 - **Description**: Creates a new object with a specified length.
