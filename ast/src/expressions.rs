@@ -46,7 +46,8 @@ pub enum Statement {
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct TupleDeconstruction {
-    pub id: IdentifierType,
+    // If none, pop from stack
+    pub id: Option<IdentifierType>,
     pub value_type: Type
 }
 

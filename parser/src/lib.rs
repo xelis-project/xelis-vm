@@ -1693,7 +1693,13 @@ impl<'a> Parser<'a> {
                 return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)))
             }
 
-            if !variables.insert(name) {
+            let var_name = if ignored {
+                None
+            } else {
+                Some(name)
+            };
+
+            if !variables.insert(var_name) {
                 return Err(err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))
             }
 
@@ -1731,11 +1737,16 @@ impl<'a> Parser<'a> {
         // NOTE: Tuples are deconstructed in reverse so OpCode::Flatten
         // Can keep the same order as the original tuple
         for (name, value_type) in variables.iter().zip(tuples).rev() {
-            let id = if self.disable_shadowing_variables {
-                context.register_variable(name, value_type.clone())
-                    .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+            // handle the case of ignored fields
+            let id = if let Some(name) = name {
+                Some(if self.disable_shadowing_variables {
+                    context.register_variable(name, value_type.clone())
+                        .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+                } else {
+                    context.register_variable_unchecked(name, value_type.clone())
+                })
             } else {
-                context.register_variable_unchecked(name, value_type.clone())
+                None
             };
 
             statements.push(TupleDeconstruction {

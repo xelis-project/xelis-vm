@@ -539,8 +539,12 @@ impl<'a> Compiler<'a> {
 
                     // Store the values
                     for el in declaration.iter() {
-                        chunk.emit_opcode(OpCode::MemorySet);
-                        chunk.write_u16(el.id);
+                        if let Some(id) = el.id {
+                            chunk.emit_opcode(OpCode::MemorySet);
+                            chunk.write_u16(id);
+                        } else {
+                            chunk.emit_opcode(OpCode::Pop);
+                        }
                     }
                 },
                 Statement::Scope(statements) => {
@@ -1344,6 +1348,41 @@ mod tests {
                 Primitive::String("test".into()).into(),
                 Primitive::U8(42).into(),
                 Primitive::U64(0).into()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ignored_var_tuples() {
+        let code = r#"
+            entry main() {
+                let (a, _, c): (u64, u64, u64) = (0, 1, 2);
+                return a + c;
+            }
+        "#;
+
+        let (program, environment) = prepare_program(code);
+        let compiler = Compiler::new(&program, &environment);
+        let module = compiler.compile().unwrap();
+
+        assert_eq!(
+            module.get_chunk_at(0).unwrap().get_instructions(),
+            &[
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::Constant.as_byte(), 1, 0,
+                OpCode::Constant.as_byte(), 2, 0,
+                OpCode::NewObject.as_byte(), 3,
+                OpCode::Flatten.as_byte(),
+                // We store a
+                OpCode::MemorySet.as_byte(), 0, 0,
+                // We pop expected "b"
+                OpCode::Pop.as_byte(),
+                OpCode::MemorySet.as_byte(), 1, 0,
+                OpCode::MemoryLoad.as_byte(), 1, 0,
+                OpCode::MemoryLoad.as_byte(), 0, 0,
+                OpCode::Add.as_byte(),
+                OpCode::Return.as_byte()
+
             ]
         );
     }
