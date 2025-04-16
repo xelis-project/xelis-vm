@@ -122,6 +122,10 @@ impl<'a> Function<'a> {
     }
 }
 
+// Character to use to ignore a variable
+// its content will be dropped directly by VM
+const IGNORE_VARIABLE: &str = "_";
+
 pub struct Parser<'a> {
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
@@ -1618,7 +1622,7 @@ impl<'a> Parser<'a> {
     }
 
     // Read a variable declaration
-    fn read_variable_internal(&mut self, context: &mut Context<'a>, is_const: bool) -> Result<(&'a str, Type, Expression), ParserError<'a>> {
+    fn read_variable_internal(&mut self, context: &mut Context<'a>, is_const: bool) -> Result<(&'a str, Type, Expression, bool), ParserError<'a>> {
         let name: &'a str = self.next_identifier()?;
         trace!("Read variable: {}", name);
 
@@ -1627,7 +1631,7 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::ConstantNameNotUppercase(name)))
         }
 
-        let ignored = name == "_";
+        let ignored = name == IGNORE_VARIABLE;
 
         // Variable name must start with a alphabetic character
         if !ignored && !name.starts_with(char::is_alphabetic) {
@@ -1672,7 +1676,7 @@ impl<'a> Parser<'a> {
             return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
         };
 
-        Ok((name, value_type, value))
+        Ok((name, value_type, value, ignored))
     }
 
     /*
@@ -1686,7 +1690,7 @@ impl<'a> Parser<'a> {
         let mut variables = IndexSet::new();
         loop {
             let name = self.next_identifier()?;
-            let ignored = name == "_";
+            let ignored = name == IGNORE_VARIABLE;
 
             // Variable name must start with a alphabetic character
             if !ignored && !name.starts_with(char::is_alphabetic) {
@@ -1767,12 +1771,16 @@ impl<'a> Parser<'a> {
      * - If no value is set, Null is set by default
      */
     fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
-        let (name, value_type, value) = self.read_variable_internal(context, false)?;
-        let id = if self.disable_shadowing_variables {
-            context.register_variable(name, value_type.clone())
-                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+        let (name, value_type, value, ignored) = self.read_variable_internal(context, false)?;
+        let id = if !ignored {
+            Some(if self.disable_shadowing_variables {
+                context.register_variable(name, value_type.clone())
+                    .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+            } else {
+                context.register_variable_unchecked(name, value_type.clone())
+            })
         } else {
-            context.register_variable_unchecked(name, value_type.clone())
+            None
         };
 
         Ok(DeclarationStatement {
@@ -1784,7 +1792,7 @@ impl<'a> Parser<'a> {
 
     // Read a constant declaration
     fn read_const(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
-        let (name, value_type, mut value) = self.read_variable_internal(context, true)?;
+        let (name, value_type, mut value, _) = self.read_variable_internal(context, true)?;
 
         let const_value = self.try_convert_expr_to_value(&mut value)
                 .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?;
@@ -1817,7 +1825,10 @@ impl<'a> Parser<'a> {
                 Token::For => { // Example: for i: u64 = 0; i < 10; i += 1 {}
                     context.begin_scope();
                     let var = self.read_variable(context)?;
-                    
+                    if var.id.is_none() {
+                        return Err(err!(self, ParserErrorKind::ExpectedVariableDeclaration))
+                    }
+
                     let condition = self.read_expression_delimited(&Token::SemiColon, context)?;
                     let condition_type = self.get_type_from_expression(None, &condition, context)?;
                     if  *condition_type != Type::Bool {
@@ -2640,7 +2651,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Optional(Box::new(Type::Bool)),
                     value: Expression::Constant(Primitive::Null.into())
                 }
@@ -2670,7 +2681,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Optional(Box::new(Type::Bool)),
                     value: Expression::Constant(Primitive::Null.into())
                 }
@@ -2723,7 +2734,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Range(Box::new(Type::U64)),
                     value: Expression::Constant(
                         Primitive::Range(
@@ -2758,7 +2769,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Optional(Box::new(Type::Optional(Box::new(Type::U64)))),
                     value: Expression::Constant(Primitive::Null.into())
                 }
@@ -2789,7 +2800,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
                     value: Expression::Constant(Constant::Map(IndexMap::new()))
                 }
@@ -2827,7 +2838,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
                     value: Expression::Constant(Constant::Map(map))
                 }
@@ -2895,7 +2906,7 @@ mod tests {
             statements[0],
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
                     value: Expression::Constant(Constant::Map(IndexMap::new()))
                 }
@@ -2995,7 +3006,7 @@ mod tests {
         let statements = vec![
             Statement::Variable(
                 DeclarationStatement {
-                    id: 0,
+                    id: Some(0),
                     value_type: Type::Array(Box::new(Type::U64)),
                     value: Expression::Constant(
                         Constant::Array(
@@ -3948,7 +3959,7 @@ mod tests {
         // let _: bool = test();
         let tokens = vec![
             Token::Let,
-            Token::Identifier("_"),
+            Token::Identifier(IGNORE_VARIABLE),
             Token::Colon,
             Token::Bool,
             Token::OperatorAssign,

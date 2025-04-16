@@ -96,7 +96,8 @@ impl<'a> Compiler<'a> {
     fn memstore(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
         trace!("Emitting memory store");
         chunk.emit_opcode(OpCode::MemorySet);
-        let id = self.memstore_ids.last_mut().ok_or(CompilerError::ExpectedMemstoreId)?;
+        let id = self.memstore_ids.last_mut()
+            .ok_or(CompilerError::ExpectedMemstoreId)?;
         chunk.write_u16(*id);
         *id += 1;
 
@@ -526,7 +527,12 @@ impl<'a> Compiler<'a> {
                 },
                 Statement::Variable(declaration) => {
                     self.compile_expr(chunk, &declaration.value)?;
-                    self.memstore(chunk)?;
+                    if declaration.id.is_some() {
+                        self.memstore(chunk)?;
+                    } else {
+                        chunk.emit_opcode(OpCode::Pop);
+                        self.decrease_values_on_stack()?;
+                    }
                 },
                 Statement::TuplesDeconstruction(value, declaration) => {
                     // Compile the value

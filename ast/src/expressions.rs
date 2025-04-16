@@ -53,7 +53,7 @@ pub struct TupleDeconstruction {
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct DeclarationStatement {
-    pub id: IdentifierType,
+    pub id: Option<IdentifierType>,
     pub value_type: Type,
     pub value: Expression,
 }
