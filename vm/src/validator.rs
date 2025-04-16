@@ -2,13 +2,13 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{EnumType, EnumVariant, Primitive, StructType, ValueCell, ValueError};
+use xelis_types::{Primitive, ValueCell, ValueError};
 use xelis_bytecode::{Module, OpCode};
 
 use crate::ChunkReader;
 
 #[derive(Debug, Error)]
-pub enum ValidatorError<'a> {
+pub enum ValidatorError {
     #[error("too much memory usage in constants")]
     TooMuchMemoryUsage,
     #[error("too many constants")]
@@ -17,31 +17,8 @@ pub enum ValidatorError<'a> {
     ConstantTooDeep,
     #[error("too many chunks")]
     TooManyChunks,
-    #[error("too many types")]
-    TooManyTypes,
     #[error("invalid opaque")]
     InvalidOpaque,
-
-    #[error("too many structs")]
-    TooManyStructs,
-    #[error("too many struct fields")]
-    TooManyStructFields(&'a StructType),
-    #[error("recursive struct")]
-    RecursiveStruct(&'a StructType),
-
-    #[error("too many enums")]
-    TooManyEnums,
-    #[error("too many enums variants")]
-    TooManyEnumsVariants,
-    #[error("too many enums variants fields")]
-    TooManyEnumsVariantsFields(&'a EnumVariant),
-    #[error("recursive enum")]
-    RecursiveEnum(&'a EnumType),
-
-    #[error("incorrect fields")]
-    IncorrectFields,
-    #[error("incorrect variant")]
-    IncorrectVariant,
     #[error("invalid op code")]
     InvalidOpCode,
     #[error("invalid opcode {0:?} arguments, expected {1}")]
@@ -70,10 +47,6 @@ pub enum ValidatorError<'a> {
     ChunkIdAlreadyUsed(usize),
     #[error(transparent)]
     ValueError(#[from] ValueError),
-    #[error("unknown struct")]
-    UnknownStruct,
-    #[error("unknown enum")]
-    UnknownEnum,
     #[error("string is too big")]
     StringTooBig,
 }
@@ -91,7 +64,7 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify a constant and return the memory usage
-    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError<'a>> {
+    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError> {
         let mut stack = vec![(constant, 0)];
 
         while let Some((value, depth)) = stack.pop() {
@@ -159,14 +132,14 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify all the declared constants in the module
-    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError<'a>> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError> {
         let mut memory_usage = 0;
         for c in constants {
             self.verify_constant(&c)?;
 
             memory_usage += c.calculate_memory_usage(self.constant_max_memory)?;
             if memory_usage > self.constant_max_memory {
-                return Err(ValidatorError::TooManyConstants);
+                return Err(ValidatorError::TooMuchMemoryUsage);
             }
         }
 
@@ -175,7 +148,7 @@ impl<'a> ModuleValidator<'a> {
 
     // Verify all the declared chunks in the module
     // We verify that the opcodes are valid and that the count of arguments are correct
-    fn verify_chunks(&self) -> Result<(), ValidatorError<'a>> {
+    fn verify_chunks(&self) -> Result<(), ValidatorError> {
         let len = self.module.chunks().len();
         if len == 0 {
             return Err(ValidatorError::EmptyModule);
@@ -278,7 +251,7 @@ impl<'a> ModuleValidator<'a> {
     }
 
     // Verify the module integrity and return an error if it's invalid
-    pub fn verify(&self) -> Result<(), ValidatorError<'a>> {
+    pub fn verify(&self) -> Result<(), ValidatorError> {
         let max = u16::MAX as usize;
 
         // We support max of 65535 constants, chunks, structs and enums
