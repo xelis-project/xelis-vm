@@ -30,6 +30,10 @@ pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + Debug 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Opaque")
     }
+
+    fn is_external_input_allowed(&self) -> bool {
+        true
+    }
 }
 
 impl Hash for dyn Opaque {
@@ -62,6 +66,11 @@ impl OpaqueWrapper {
         Self {
             inner: Box::new(value)
         }
+    }
+
+    // Is it allowed to be passed as an external param
+    pub fn is_external_input_allowed(&self) -> bool {
+        self.inner.is_external_input_allowed()
     }
 
     /// Get the TypeId of the OpaqueWrapper

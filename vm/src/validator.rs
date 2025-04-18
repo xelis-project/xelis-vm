@@ -119,7 +119,7 @@ impl<'a> ModuleValidator<'a> {
                     },
                     Primitive::Opaque(opaque) => {
                         if !self.environment.get_opaques()
-                            .contains(&opaque.get_type_id()) {
+                            .contains(&opaque.get_type_id()) || !opaque.is_external_input_allowed() {
                             return Err(ValidatorError::InvalidOpaque);
                         }
                     },
