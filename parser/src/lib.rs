@@ -1774,8 +1774,6 @@ impl<'a> Parser<'a> {
 
         self.match_pattern_with_type(&pattern, &expected_type, context, self.disable_shadowing_variables, &mut statements)?;
 
-        // statements.reverse();
-
         Ok(Statement::TuplesDeconstruction(value, statements))
     }
 
