@@ -1928,7 +1928,7 @@ impl<'a> Parser<'a> {
                         let expr = self.read_expr(None, None, true, true, Some(return_type), context)?;
                         if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
                             // Support the optional<T> by returning T
-                            if !expr_type.is_assign_compatible_with(return_type) {
+                            if !return_type.is_assign_compatible_with(&expr_type) {
                                 return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), return_type.clone())))
                             }
                         }

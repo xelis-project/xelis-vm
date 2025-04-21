@@ -1577,3 +1577,20 @@ fn test_clone() {
     "#;
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_optional_assign() {
+    let code = r#"
+        fn test() -> optional<u64> {
+            return 0
+        }
+
+        entry main() {
+            let a: optional<u64> = test();
+            a = null;
+            a = 1;
+            return a.unwrap();
+        }
+    "#;
+    assert_eq!(run_code_id(code, 1), Primitive::U64(1));
+}
