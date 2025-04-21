@@ -8,7 +8,7 @@ use std::{
     mem
 };
 use error::ParserErrorKind;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use log::trace;
 use mapper::GlobalMapper;
 use xelis_builder::{Builder, EnvironmentBuilder};
@@ -152,6 +152,13 @@ pub struct Parser<'a> {
     line: usize,
     column_start: usize,
     column_end: usize
+}
+
+#[derive(Debug)]
+enum TuplePattern<'a> {
+    Ignore,
+    Variable(&'a str),
+    Tuple(Vec<TuplePattern<'a>>),
 }
 
 impl<'a> Parser<'a> {
@@ -1679,85 +1686,95 @@ impl<'a> Parser<'a> {
         Ok((name, value_type, value, ignored))
     }
 
+    fn read_tuple_pattern(&mut self) -> Result<TuplePattern<'a>, ParserError<'a>> {
+        if self.peek_is(Token::ParenthesisOpen) {
+            self.expect_token(Token::ParenthesisOpen)?;
+            let mut elements = Vec::new();
+            loop {
+                elements.push(self.read_tuple_pattern()?);
+    
+                if self.peek_is(Token::ParenthesisClose) {
+                    break;
+                } else {
+                    self.expect_token(Token::Comma)?;
+                }
+            }
+
+            self.expect_token(Token::ParenthesisClose)?;
+            Ok(TuplePattern::Tuple(elements))
+        } else {
+            let name = self.next_identifier()?;
+            if name == IGNORE_VARIABLE {
+                Ok(TuplePattern::Ignore)
+            } else {
+                if !name.starts_with(char::is_alphabetic) {
+                    return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)));
+                }
+                Ok(TuplePattern::Variable(name))
+            }
+        }
+    }
+
+    fn match_pattern_with_type(
+        &self,
+        pattern: &TuplePattern<'a>,
+        ty: &Type,
+        context: &mut Context<'a>,
+        disable_shadowing: bool,
+        statements: &mut Vec<TupleStatement>,
+    ) -> Result<(), ParserError<'a>> {
+        match (pattern, ty) {
+            (TuplePattern::Ignore, _) => {
+                statements.push(TupleStatement::Deconstruct(TupleDeconstruction { id: None, value_type: ty.clone() }));
+                Ok(())
+            }
+            (TuplePattern::Variable(name), _) => {
+                let id = if disable_shadowing {
+                    context.register_variable(name, ty.clone())
+                        .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
+                } else {
+                    context.register_variable_unchecked(name, ty.clone())
+                };
+                statements.push(TupleStatement::Deconstruct(TupleDeconstruction { id: Some(id), value_type: ty.clone() }));
+                Ok(())
+            }
+            (TuplePattern::Tuple(sub_patterns), Type::Tuples(sub_types)) => {
+                if sub_patterns.len() != sub_types.len() {
+                    return Err(err!(self, ParserErrorKind::InvalidTupleDeconstruction));
+                }
+
+                statements.push(TupleStatement::Depth);
+                for (p, t) in sub_patterns.iter().zip(sub_types).rev() {
+                    self.match_pattern_with_type(p, t, context, disable_shadowing, statements)?;
+                }
+                Ok(())
+            }
+            _ => Err(err!(self, ParserErrorKind::InvalidTupleType)),
+        }
+    }
+    
     /*
      * Read a tuple deconstruction
      * Example: let (a, b): (u64, u64) = (1, 2);
      */
     fn read_tuples_deconstruction(&mut self, context: &mut Context<'a>) -> Result<Statement, ParserError<'a>> {
-        self.expect_token(Token::ParenthesisOpen)?;
-
-        // Read the variables
-        let mut variables = IndexSet::new();
-        loop {
-            let name = self.next_identifier()?;
-            let ignored = name == IGNORE_VARIABLE;
-
-            // Variable name must start with a alphabetic character
-            if !ignored && !name.starts_with(char::is_alphabetic) {
-                return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)))
-            }
-
-            let var_name = if ignored {
-                None
-            } else {
-                Some(name)
-            };
-
-            if !variables.insert(var_name) {
-                return Err(err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))
-            }
-
-            if self.peek_is(Token::ParenthesisClose) {
-                break;
-            } else {
-                self.expect_token(Token::Comma)?;
-            }
-        }
-
-        self.expect_token(Token::ParenthesisClose)?;
-
-        // Handle the type
+        let pattern = self.read_tuple_pattern()?;
         self.expect_token(Token::Colon)?;
-        let expected_value_type = self.read_type()?;
+        let expected_type = self.read_type()?;
 
         self.expect_token(Token::OperatorAssign)?;
-        // Read the value to deconstruct
-        let value = self.read_expr(None, None, true, true, Some(&expected_value_type), context)?;
+        let value = self.read_expr(None, None, true, true, Some(&expected_type), context)?;
         let value_type = self.get_type_from_expression(None, &value, context)?;
-        if *value_type != expected_value_type {
-            return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_value_type)))
-        }
 
-        let Type::Tuples(tuples) = expected_value_type else {
-            return Err(err!(self, ParserErrorKind::InvalidTupleType))
-        };
-
-        if tuples.len() != variables.len() {
-            return Err(err!(self, ParserErrorKind::InvalidTupleDeconstruction))
+        if *value_type != expected_type {
+            return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_type)));
         }
 
         let mut statements = Vec::new();
 
-        // NOTE: Tuples are deconstructed in reverse so OpCode::Flatten
-        // Can keep the same order as the original tuple
-        for (name, value_type) in variables.iter().zip(tuples).rev() {
-            // handle the case of ignored fields
-            let id = if let Some(name) = name {
-                Some(if self.disable_shadowing_variables {
-                    context.register_variable(name, value_type.clone())
-                        .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
-                } else {
-                    context.register_variable_unchecked(name, value_type.clone())
-                })
-            } else {
-                None
-            };
+        self.match_pattern_with_type(&pattern, &expected_type, context, self.disable_shadowing_variables, &mut statements)?;
 
-            statements.push(TupleDeconstruction {
-                id,
-                value_type,
-            });
-        }
+        // statements.reverse();
 
         Ok(Statement::TuplesDeconstruction(value, statements))
     }

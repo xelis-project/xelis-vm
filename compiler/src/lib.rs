@@ -7,7 +7,8 @@ use xelis_ast::{
     FunctionType,
     Operator,
     Program,
-    Statement
+    Statement,
+    TupleStatement
 };
 use xelis_environment::Environment;
 use xelis_bytecode::{Chunk, Module, OpCode};
@@ -541,15 +542,20 @@ impl<'a> Compiler<'a> {
                     // We need to pop the value
                     self.decrease_values_on_stack()?;
 
-                    chunk.emit_opcode(OpCode::Flatten);
-
                     // Store the values
                     for el in declaration.iter() {
-                        if let Some(id) = el.id {
-                            chunk.emit_opcode(OpCode::MemorySet);
-                            chunk.write_u16(id);
-                        } else {
-                            chunk.emit_opcode(OpCode::Pop);
+                        match el {
+                            TupleStatement::Depth => {
+                                chunk.emit_opcode(OpCode::Flatten);
+                            },
+                            TupleStatement::Deconstruct(ty) => {
+                                if let Some(id) = ty.id {
+                                    chunk.emit_opcode(OpCode::MemorySet);
+                                    chunk.write_u16(id);
+                                } else {
+                                    chunk.emit_opcode(OpCode::Pop);
+                                }
+                            }
                         }
                     }
                 },
