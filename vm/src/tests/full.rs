@@ -1551,6 +1551,16 @@ fn test_tuples() {
         }
     "#;
     assert_eq!(run_code(code), Primitive::U64(0));
+
+    let code = r#"
+        entry main() {
+            let a: (u64, (u64, u64)) = (1, (2, 3));
+            assert(a.1.0 == 2);
+
+            return 0;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
 }
 
 #[test]
