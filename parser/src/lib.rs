@@ -4,7 +4,7 @@ mod mapper;
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     mem
 };
 use error::ParserErrorKind;
@@ -1686,12 +1686,12 @@ impl<'a> Parser<'a> {
         Ok((name, value_type, value, ignored))
     }
 
-    fn read_tuple_pattern(&mut self) -> Result<TuplePattern<'a>, ParserError<'a>> {
+    fn read_tuple_pattern(&mut self, variables: &mut HashSet<&'a str>) -> Result<TuplePattern<'a>, ParserError<'a>> {
         if self.peek_is(Token::ParenthesisOpen) {
             self.expect_token(Token::ParenthesisOpen)?;
             let mut elements = Vec::new();
             loop {
-                elements.push(self.read_tuple_pattern()?);
+                elements.push(self.read_tuple_pattern(variables)?);
     
                 if self.peek_is(Token::ParenthesisClose) {
                     break;
@@ -1710,6 +1710,11 @@ impl<'a> Parser<'a> {
                 if !name.starts_with(char::is_alphabetic) {
                     return Err(err!(self, ParserErrorKind::VariableMustStartWithAlphabetic(name)));
                 }
+
+                if !variables.insert(name) {
+                    return Err(err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)));
+                }
+
                 Ok(TuplePattern::Variable(name))
             }
         }
@@ -1758,7 +1763,7 @@ impl<'a> Parser<'a> {
      * Example: let (a, b): (u64, u64) = (1, 2);
      */
     fn read_tuples_deconstruction(&mut self, context: &mut Context<'a>) -> Result<Statement, ParserError<'a>> {
-        let pattern = self.read_tuple_pattern()?;
+        let pattern = self.read_tuple_pattern(&mut HashSet::new())?;
         self.expect_token(Token::Colon)?;
         let expected_type = self.read_type()?;
 
