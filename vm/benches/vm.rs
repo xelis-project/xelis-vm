@@ -310,24 +310,28 @@ fn prime_finder(c: &mut Criterion) {
     let mut group = c.benchmark_group("prime_finder");
     let code = r#"
         entry main() {
-            let n: u32 = N;
             let primes: u32[] = [];
             let count: u32 = 0;
+            let i: u32 = 2;
 
-            for i: u32 = 2; i < n; i += 1 {
+            while count < N {
                 let is_prime: bool = true;
+                let j: u32 = 2;
 
-                for j: u32 = 2; j < i; j += 1 {
+                while j * j <= i {
                     if (i % j) == 0 {
                         is_prime = false;
                         break;
                     }
+                    j += 1;
                 }
 
                 if is_prime {
                     primes.push(i);
                     count += 1;
                 }
+
+                i += 1;
             }
 
             return 0;
