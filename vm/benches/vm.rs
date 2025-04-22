@@ -316,13 +316,20 @@ fn prime_finder(c: &mut Criterion) {
 
             while count < N {
                 let is_prime: bool = true;
-                let j: u32 = 2;
+                let j: u32 = 0;
 
-                while j * j <= i {
-                    if (i % j) == 0 {
+                while j < count {
+                    let p: u32 = primes[j];
+
+                    if p * p > i {
+                        break;
+                    }
+
+                    if i % p == 0 {
                         is_prime = false;
                         break;
                     }
+
                     j += 1;
                 }
 
