@@ -622,9 +622,13 @@ impl<'a> Compiler<'a> {
                     // One is used for the jump if false
                     self.decrease_values_on_stack()?;
 
+                    self.push_mem_scope();
+
                     self.start_loop();
                     // Compile the valid condition
                     self.compile_statements(chunk, statements)?;
+
+                    self.pop_mem_scope(chunk)?;
 
                     // Jump back to the start
                     chunk.emit_opcode(OpCode::Jump);
