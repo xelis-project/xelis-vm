@@ -1604,3 +1604,26 @@ fn test_optional_assign() {
     "#;
     assert_eq!(run_code_id(code, 1), Primitive::U64(1));
 }
+
+#[test]
+fn test_map_assign() {
+    let code = r#"
+        struct Foo {
+            bar: map<string, u8>
+        }
+
+        entry main() {
+            let foo: Foo = Foo {
+                bar: {}
+            }
+            foo.bar = {}
+            foo.bar = {
+                "hello": 0
+            }
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0))
+}

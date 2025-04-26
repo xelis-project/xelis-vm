@@ -612,15 +612,16 @@ impl<'a> Parser<'a> {
     // { field1, field2, ... }
     // or with values
     // { field1: value1, field2: value2, ... }
-    fn read_constructor_fields(&mut self, context: &mut Context<'a>) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
+    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
         trace!("Read constructor fields");
 
         let mut fields = Vec::new();
-        while self.peek_is_not(Token::BraceClose) {
+        for ty in expected_types {
             let field_name = self.next_identifier()?;
+            trace!("field name: {}", field_name);
             let expr = match self.advance()? {
                 Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?),
-                Token::Colon => self.read_expression(context)?,
+                Token::Colon => self.read_expression_expected_type(context, ty)?,
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };
 
@@ -646,7 +647,8 @@ impl<'a> Parser<'a> {
         let _type = match got {
             Some(v) => v,
             None => {
-                if expected_type.allow_null() {
+                // Map is empty, so any type can be enforced
+                if expected_type.allow_null() || expected_type.is_map() {
                     return Ok(())
                 }
 
@@ -678,7 +680,7 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
-        let fields = self.read_constructor_fields(context)?;
+        let fields = self.read_constructor_fields(context, struct_type.fields())?;
 
         if struct_type.fields().len() != fields.len() {
             return Err(err!(self, ParserErrorKind::InvalidFieldCount))
@@ -688,7 +690,14 @@ impl<'a> Parser<'a> {
         let builder = self.global_mapper.structs().get_by_ref(&struct_type)
             .map_err(|e| err!(self, e.into()))?;
         let mut fields_expressions = Vec::with_capacity(fields.len());
-        for ((field_name, mut field_expr), (field_type, field_name_expected)) in fields.into_iter().zip(struct_type.fields().iter().zip(builder.names())) {
+        let iter = fields.into_iter()
+            .zip(
+                struct_type.fields()
+                    .iter()
+                    .zip(builder.names())
+            );
+
+        for ((field_name, mut field_expr), (field_type, field_name_expected)) in iter {
             if field_name != *field_name_expected {
                 return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected)))
             }
@@ -707,20 +716,20 @@ impl<'a> Parser<'a> {
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
 
-        let (variant_id, has_fields) = {
+        let (variant_id, fields) = {
             let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
             let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            (variant_id, !variant_fields.is_empty())
+            (variant_id, variant_fields.iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>())
         };
 
         // If its an enum variant with fields
-        let exprs = if has_fields {
+        let exprs = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
-            let fields = self.read_constructor_fields(context)?;
+            let fields = self.read_constructor_fields(context, &fields)?;
 
             // Now we verify that we have all fields needed
             let builder = self.global_mapper.enums()
@@ -1049,6 +1058,11 @@ impl<'a> Parser<'a> {
     // Read an expression with default parameters
     fn read_expression(&mut self, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         self.read_expr(None, None, true, true, None, context)
+    }
+
+    // Read an expression with default parameters
+    fn read_expression_expected_type(&mut self, context: &mut Context<'a>, ty: &Type) -> Result<Expression, ParserError<'a>> {
+        self.read_expr(None, None, true, true, Some(ty), context)
     }
 
     // Read an expression with a delimiter
@@ -1397,17 +1411,22 @@ impl<'a> Parser<'a> {
                     if token.is_type() {
                         self.read_type_constant(token, context)?
                     } else if token == Token::BraceOpen {
-                        if queue.is_empty() {
-                            let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
-                                (Some(*key.clone()), Some(*value.clone()))
-                            } else {
-                                (None, None)
-                            };
-
-                            self.read_map_constructor(key, value, context)?
+                        let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
+                            (Some(*key.clone()), Some(*value.clone()))
                         } else {
-                            return Err(err!(self, ParserErrorKind::InvalidOperation));
-                        }
+                            // If its an assignation
+                            // variable path is on first
+                            match queue.first() {
+                                Some(QueueItem::Expression(expr)) => match self.get_type_from_expression_internal(None, expr, context)?
+                                    .map(|v| v.into_owned()) {
+                                        Some(Type::Map(key, value)) => (Some(*key), Some(*value)),
+                                        _ => (None, None)
+                                }
+                                _ => (None, None)
+                            }
+                        };
+
+                        self.read_map_constructor(key, value, context)?
                     } else {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,
@@ -1575,7 +1594,7 @@ impl<'a> Parser<'a> {
     // The keys must be of the same type and the values must be of the same type
     // you can use direct values like { "hello": "world" }
     fn read_map_constructor(&mut self, mut key_type: Option<Type>, mut value_type: Option<Type>, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-        trace!("Read map constructor");
+        trace!("Read map constructor {:?} {:?}", key_type, value_type);
 
         let mut expressions: Vec<(Expression, Expression)> = Vec::new();
         while self.peek_is_not(Token::BraceClose) {
