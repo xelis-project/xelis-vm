@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::{values::ValueError, Constant, Primitive};
+use crate::{values::ValueError, Constant, Primitive, Type};
 use super::ValueCell;
 
 #[derive(Debug)]
@@ -33,29 +33,55 @@ impl StackValue {
     // Get the sub value at index requested
     pub fn get_at_index(self, index: usize) -> Result<StackValue, ValueError> {
         match self {
-            Self::Owned(mut v) => {
-                let values = v.as_mut_vec()?;
-                let len = values.len();
-                if index >= len {
-                    return Err(ValueError::OutOfBounds(index, len))
-                }
+            Self::Owned(v) => {
+                let at_index = match v {
+                    ValueCell::Array(mut values) => {
+                        let len = values.len();
+                        if index >= len {
+                            return Err(ValueError::OutOfBounds(index, len))
+                        }
 
-                let at_index = values.remove(index);
+                        values.swap_remove(index)
+                    },
+                    ValueCell::Bytes(mut bytes) => {
+                        let len = bytes.len();
+                        if index >= len {
+                            return Err(ValueError::OutOfBounds(index, len))
+                        }
+
+                        ValueCell::Default(Primitive::U8(bytes.swap_remove(index)))
+                    },
+                    _ => return Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+                };
+
                 Ok(Self::Owned(at_index))
             },
             Self::Pointer { origin, ptr, depth } => unsafe {
                 let cell = ptr.as_mut()
                     .ok_or(ValueError::InvalidPointer)?;
-                let values = cell.as_mut_vec()?;
-                let len = values.len();
-                let at_index = values
-                    .get_mut(index)
-                    .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
 
-                Ok(Self::Pointer {
-                    origin: origin.or(Some(ptr)),
-                    ptr: at_index as *mut ValueCell,
-                    depth: depth + 1
+                Ok(match cell {
+                    ValueCell::Array(values) => {
+                        let len = values.len();
+                        let at_index = values
+                            .get_mut(index)
+                            .ok_or_else(|| ValueError::OutOfBounds(index, len))?;
+
+                        Self::Pointer {
+                            origin: origin.or(Some(ptr)),
+                            ptr: at_index as *mut ValueCell,
+                            depth: depth + 1
+                        }
+                    },
+                    ValueCell::Bytes(bytes) => {
+                        let len = bytes.len();
+                        if index >= len {
+                            return Err(ValueError::OutOfBounds(index, len))
+                        }
+
+                        Self::Owned(ValueCell::Default(Primitive::U8(bytes.swap_remove(index))))
+                    },
+                    _ => return Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
                 })
             }
         }
