@@ -39,6 +39,9 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("extend", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("other", Type::Array(Box::new(Type::T(Some(0)))))], extend, 5, None);
     env.register_native_function("concat", Some(Type::Array(Box::new(Type::Array(Box::new(Type::T(Some(0))))))), vec![], concat, 5, Some(Type::Array(Box::new(Type::T(Some(0))))));
 
+    // Transform a Type::Array(U8) into bytes easily
+    env.register_native_function("to_bytes", Some(Type::Array(Box::new(Type::U8))), vec![], to_bytes, 1, Some(Type::Bytes));
+
     // Constant function
     env.register_const_function("with", Type::Array(Box::new(Type::T(Some(0)))), vec![("size", Type::U32), ("default", Type::T(Some(0)))], const_with);
 
@@ -210,4 +213,17 @@ fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
     let count = params[0].as_u32()? as usize;
     let values = vec![default; count];
     Ok(Constant::Array(values))
+}
+
+fn to_bytes(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+    let values = zelf?.as_vec()?;
+    let len = values.len();
+
+    context.increase_gas_usage(len as _)?;
+
+    let bytes = values.iter()
+        .map(|v| v.as_u8())
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Some(ValueCell::Bytes(bytes)))
 }

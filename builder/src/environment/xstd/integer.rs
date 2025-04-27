@@ -55,10 +55,10 @@ macro_rules! register_checked_fns {
     };
 }
 
-macro_rules! to_endian_bytes {
+macro_rules! to_endian_array {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<to_ $endian _array_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
@@ -66,12 +66,40 @@ macro_rules! to_endian_bytes {
             }
 
             $env.register_native_function(
+                stringify!([<to_ $endian _array>]),
+                Some(Type::$t),
+                vec![],
+                [<to_ $endian _array_ $f>],
+                15,
+                Some(Type::Array(Box::new(Type::U8)))
+            );
+        }
+    };
+}
+
+macro_rules! register_to_endian_array {
+    ($env: expr, $t: ident, $f: ident) => {
+        to_endian_array!($env, $t, $f, be);
+        to_endian_array!($env, $t, $f, le);
+    };
+}
+
+macro_rules! to_endian_bytes {
+    ($env: expr, $t: ident, $f: ident, $endian: ident) => {
+        paste! {
+            fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+                let value = zelf?.[<as_ $f>]()?;
+                let bytes = value.[<to_ $endian _bytes>]();
+                Ok(Some(ValueCell::Bytes(bytes.to_vec())))
+            }
+
+            $env.register_native_function(
                 stringify!([<to_ $endian _bytes>]),
                 Some(Type::$t),
                 vec![],
                 [<to_ $endian _bytes_ $f>],
-                15,
-                Some(Type::Array(Box::new(Type::U8)))
+                10,
+                Some(Type::Bytes)
             );
         }
     };
@@ -81,6 +109,60 @@ macro_rules! register_to_endian_bytes {
     ($env: expr, $t: ident, $f: ident) => {
         to_endian_bytes!($env, $t, $f, be);
         to_endian_bytes!($env, $t, $f, le);
+    };
+}
+
+macro_rules! min {
+    ($env: expr, $t: ident, $f: ident, $endian: ident) => {
+        paste! {
+            fn [<min_ $f>](zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType {
+                let value = zelf?.[<as_ $f>]()?;
+                let other = params[0].as_ref()?.[<as_ $f>]()?;
+
+                let min = value.min(other);
+                Ok(Some(Primitive::$t(min).into()))
+            }
+
+            $env.register_native_function(
+                "min",
+                Some(Type::$t),
+                vec![],
+                [<min_ $f>],
+                1,
+                Some(Type::Array(Box::new(Type::U8)))
+            );
+        }
+    };
+}
+
+
+macro_rules! max {
+    ($env: expr, $t: ident, $f: ident, $endian: ident) => {
+        paste! {
+            fn [<max_ $f>](zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType {
+                let value = zelf?.[<as_ $f>]()?;
+                let other = params[0].as_ref()?.[<as_ $f>]()?;
+
+                let min = value.max(other);
+                Ok(Some(Primitive::$t(min).into()))
+            }
+
+            $env.register_native_function(
+                "max",
+                Some(Type::$t),
+                vec![],
+                [<max_ $f>],
+                1,
+                Some(Type::Array(Box::new(Type::U8)))
+            );
+        }
+    };
+}
+
+macro_rules! register_min_max {
+    ($env: expr, $t: ident, $f: ident) => {
+        min!($env, $t, $f, be);
+        max!($env, $t, $f, be);
     };
 }
 
@@ -115,9 +197,25 @@ pub fn register(env: &mut EnvironmentBuilder) {
     register_constants_min_max!(env, U256, u256);
 
     // Register all 'to endian bytes' (be/le) functions for all types
+    // Returns a Type::Array(T)
+    register_to_endian_array!(env, U16, u16);
+    register_to_endian_array!(env, U32, u32);
+    register_to_endian_array!(env, U64, u64);
+    register_to_endian_array!(env, U128, u128);
+    register_to_endian_array!(env, U256, u256);
+
+    // Register all 'to endian bytes' (be/le) functions for all types
+    // Returns a Bytes type
     register_to_endian_bytes!(env, U16, u16);
     register_to_endian_bytes!(env, U32, u32);
     register_to_endian_bytes!(env, U64, u64);
     register_to_endian_bytes!(env, U128, u128);
     register_to_endian_bytes!(env, U256, u256);
+
+    register_min_max!(env, U8, u8);
+    register_min_max!(env, U16, u16);
+    register_min_max!(env, U32, u32);
+    register_min_max!(env, U64, u64);
+    register_min_max!(env, U128, u128);
+    register_min_max!(env, U256, u256);
 }
