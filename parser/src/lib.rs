@@ -487,6 +487,7 @@ impl<'a> Parser<'a> {
             Expression::ArrayCall(path, _) => {
                 match self.get_type_from_expression(on_type, path, context)?.into_owned() {
                     Type::Array(_type) => Cow::Owned(*_type),
+                    Type::Bytes => Cow::Owned(Type::U8),
                     _ => return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                 }
             },
