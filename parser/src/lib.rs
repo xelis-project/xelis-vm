@@ -319,6 +319,7 @@ impl<'a> Parser<'a> {
             Token::Bool => Type::Bool,
             Token::Optional => Type::Optional(Box::new(self.get_single_inner_type()?)),
             Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
+            Token::Bytes => Type::Bytes,
             Token::Map => {
                 let key = self.get_generic_type()?;
                 if key.is_map() {
