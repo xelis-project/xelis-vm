@@ -74,12 +74,11 @@ impl StackValue {
                         }
                     },
                     ValueCell::Bytes(bytes) => {
-                        let len = bytes.len();
-                        if index >= len {
-                            return Err(ValueError::OutOfBounds(index, len))
-                        }
+                        let at_index = bytes.get(index)
+                            .copied()
+                            .ok_or_else(|| ValueError::OutOfBounds(index, bytes.len()))?;
 
-                        Self::Owned(ValueCell::Default(Primitive::U8(bytes.swap_remove(index))))
+                        Self::Owned(ValueCell::Default(Primitive::U8(at_index)))
                     },
                     _ => return Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
                 })

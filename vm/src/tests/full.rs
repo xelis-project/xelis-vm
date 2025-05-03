@@ -1627,3 +1627,30 @@ fn test_map_assign() {
 
     assert_eq!(run_code(code), Primitive::U64(0))
 }
+
+#[test]
+fn test_for_array_immutable() {
+    let code = r#"
+        entry main() {
+            let a: u8[] = [0, 1, 2, 3, 4]
+            foreach v in a {}
+
+            return a.len() as u64
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(5));
+
+    let code = r#"
+        entry main() {
+            let a: u8[] = [0, 1, 2, 3, 4]
+            for i: u32 = 0; i < a.len(); i += 1 {
+                println(a[i] ^ a[i])
+            }
+
+            return a.len() as u64
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
