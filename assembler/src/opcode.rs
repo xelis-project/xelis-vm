@@ -176,6 +176,8 @@ pub enum OpCodeWithArgs {
     // Take the last value of the stack and flatten it
     // into the stack
     Flatten,
+    // Do a matching test
+    Match
 }
 
 impl OpCodeWithArgs {
@@ -248,6 +250,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Inc => OpCode::Inc,
             OpCodeWithArgs::Dec => OpCode::Dec,
             OpCodeWithArgs::Flatten => OpCode::Flatten,
+            OpCodeWithArgs::Match => OpCode::Match,
         }
     }
 
@@ -755,6 +758,13 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Flatten
             },
+            "MATCH" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::Match
+            }
             _ => return Err("Invalid OpCode")
         })
     }

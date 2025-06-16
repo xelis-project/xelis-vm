@@ -145,6 +145,10 @@ pub enum OpCode {
     // and push its values
     // into the stack
     Flatten,
+    // used for an optimized matching
+    // where we don't have to copy the value
+    // and provide a general usage for matching
+    Match,
 }
 
 impl OpCode {
@@ -238,6 +242,7 @@ impl OpCode {
             59 => OpCode::Inc,
             60 => OpCode::Dec,
             61 => OpCode::Flatten,
+            62 => OpCode::Match,
             _ => return None,
         })
     }

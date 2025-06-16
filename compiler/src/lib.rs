@@ -569,9 +569,8 @@ impl<'a> Compiler<'a> {
                 let mut jumps_end = Vec::new();
                 for (condition, statement) in patterns {
                     trace!("compiling pattern {:?} with {:?}", condition, statement);
-                    chunk.emit_opcode(OpCode::Copy);
                     self.compile_expr(chunk, condition)?;
-                    chunk.emit_opcode(OpCode::Eq);
+                    chunk.emit_opcode(OpCode::Match);
 
                     // We will overwrite the addr later
                     // to jump to the next condition

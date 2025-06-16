@@ -11,6 +11,7 @@ use constructor::*;
 use memory::*;
 
 use xelis_bytecode::OpCode;
+use xelis_types::Primitive;
 
 use crate::Context;
 
@@ -140,6 +141,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Inc.as_usize()] = (increment, 1);
         instructions[OpCode::Dec.as_usize()] = (decrement, 1);
         instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
+        instructions[OpCode::Match.as_usize()] = (match_, 2);
 
         Self { instructions }
     }
@@ -196,6 +198,18 @@ fn flatten<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, con
 
     context.increase_gas_usage(values.len() as _)?;
     stack.extend_stack(values.into_iter().map(Into::into))?;
+
+    Ok(InstructionResult::Nothing)
+}
+
+fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let expected = stack.pop_stack()?;
+    let actual = stack.last_stack()?
+        .as_ref()?;
+
+    let same = actual == expected.as_ref()?;
+
+    stack.push_stack_unchecked(Primitive::Boolean(same).into());
 
     Ok(InstructionResult::Nothing)
 }
