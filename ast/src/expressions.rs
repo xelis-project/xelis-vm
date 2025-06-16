@@ -26,7 +26,7 @@ pub enum Expression {
     IsNot(Box<Expression>), // !expr (where expr is a bool)
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>), // bool expr, if true expr, else expr
     Cast(Box<Expression>, Type), // expr, type
-    ForceType(Box<Expression>, Type)
+    ForceType(Box<Expression>, Type),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -42,6 +42,8 @@ pub enum Statement {
     Continue,
     Variable(DeclarationStatement),
     TuplesDeconstruction(Expression, Vec<TupleStatement>), // let (a, b): (u64, u64) = (1, 2)
+    // match expr { condition => statement }
+    Match(Box<Expression>, Vec<(Expression, Statement)>, Option<Box<Statement>>, Option<Type>),
 }
 
 #[derive(Debug, Eq, PartialEq)]

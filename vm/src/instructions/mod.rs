@@ -156,7 +156,7 @@ impl<'a> InstructionTable<'a> {
 
     // Execute an instruction
     pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-        trace!("Executing opcode: {:?}", OpCode::from_byte(opcode));
+        trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage

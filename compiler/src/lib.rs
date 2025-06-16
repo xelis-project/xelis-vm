@@ -511,229 +511,289 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
+    // Compile a single statement
+    fn compile_statement(&mut self, chunk: &mut Chunk, statement: &Statement) -> Result<(), CompilerError> {
+        trace!("compile statement {:?}", statement);
+        match statement {
+            Statement::Expression(expr) => self.compile_expr(chunk, expr)?,
+            Statement::Return(expr) => {
+                if let Some(expr) = expr {
+                    self.compile_expr(chunk, expr)?;
+                    self.decrease_values_on_stack()?;
+                }
+
+                chunk.emit_opcode(OpCode::Return);
+            },
+            Statement::Variable(declaration) => {
+                self.compile_expr(chunk, &declaration.value)?;
+                if declaration.id.is_some() {
+                    self.memstore(chunk)?;
+                } else {
+                    chunk.emit_opcode(OpCode::Pop);
+                    self.decrease_values_on_stack()?;
+                }
+            },
+            Statement::TuplesDeconstruction(value, declaration) => {
+                // Compile the value
+                self.compile_expr(chunk, value)?;
+
+                // We need to pop the value
+                self.decrease_values_on_stack()?;
+
+                // Store the values
+                for el in declaration.iter() {
+                    match el {
+                        TupleStatement::Depth => {
+                            chunk.emit_opcode(OpCode::Flatten);
+                        },
+                        TupleStatement::Deconstruct(ty) => {
+                            if let Some(id) = ty.id {
+                                chunk.emit_opcode(OpCode::MemorySet);
+                                chunk.write_u16(id);
+                            } else {
+                                chunk.emit_opcode(OpCode::Pop);
+                            }
+                        }
+                    }
+                }
+            },
+            Statement::Scope(statements) => {
+                self.push_mem_scope();
+                self.compile_statements(chunk, statements)?;
+                self.pop_mem_scope(chunk)?;
+            },
+            Statement::Match(expr, patterns, default, _) => {
+                self.push_mem_scope();
+                self.compile_expr(chunk, expr)?;
+
+                let mut jumps_end = Vec::new();
+                for (condition, statement) in patterns {
+                    trace!("compiling pattern {:?} with {:?}", condition, statement);
+                    chunk.emit_opcode(OpCode::Copy);
+                    self.compile_expr(chunk, condition)?;
+                    chunk.emit_opcode(OpCode::Eq);
+
+                    // We will overwrite the addr later
+                    // to jump to the next condition
+                    chunk.emit_opcode(OpCode::JumpIfFalse);
+                    chunk.write_u32(INVALID_ADDR);
+                    let jump_addr = chunk.last_index();
+
+                    chunk.emit_opcode(OpCode::Pop);
+                    // One is used for the jump if false
+                    self.decrease_values_on_stack()?;
+
+                    self.push_mem_scope();
+                    self.compile_statement(chunk, statement)?;
+                    self.pop_mem_scope(chunk)?;
+
+                    // Jump to the end of the match
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(INVALID_ADDR);
+                    jumps_end.push(chunk.last_index());
+
+                    // Patch it directly to jump to the next condition
+                    chunk.patch_jump(jump_addr, chunk.index() as _);
+                }
+
+                // Compile the default statement
+                if let Some(statement) = default {
+                    self.compile_statement(chunk, statement)?;
+                }
+
+                chunk.emit_opcode(OpCode::Pop);
+
+                // Patch every pattern in case of success
+                let jump_addr = chunk.index();
+
+                for index in jumps_end {
+                    chunk.patch_jump(index, jump_addr as u32);
+                }
+
+                // One is used for the jump if false
+                self.decrease_values_on_stack()?;
+                self.pop_mem_scope(chunk)?;
+            },
+            Statement::If(condition, statements, else_statements) => {
+                self.push_mem_scope();
+                self.compile_expr(chunk, condition)?;
+
+                // Emit the jump if false
+                // We will overwrite the addr later
+                chunk.emit_opcode(OpCode::JumpIfFalse);
+                chunk.write_u32(INVALID_ADDR);
+                let jump_addr = chunk.last_index();
+
+                // One is used for the jump if false
+                self.decrease_values_on_stack()?;
+
+                // Compile the valid condition
+                self.compile_statements(chunk, statements)?;
+
+                self.pop_mem_scope(chunk)?;
+
+                let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
+                // Once finished, we must jump the false condition
+                let jump_valid_index = if append_jump {
+                    chunk.emit_opcode(OpCode::Jump);
+                    chunk.write_u32(INVALID_ADDR);
+                    Some(chunk.last_index())
+                } else {
+                    None
+                };
+
+                // Patch the jump if false
+                let jump_false_addr = chunk.index();
+                chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                // Compile the else condition
+                if let Some(else_statements) = else_statements {
+                    self.push_mem_scope();
+                    self.compile_statements(chunk, else_statements)?;
+                    self.pop_mem_scope(chunk)?;
+                }
+
+                if let Some(jump_valid_index) = jump_valid_index {
+                    // Patch the jump if valid
+                    let jump_valid_addr = chunk.index();
+                    chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
+                }
+            },
+            Statement::While(expr, statements) => {
+                let start_index = chunk.index();
+                self.compile_expr(chunk, expr)?;
+
+                // Emit the jump if false
+                // We will overwrite the addr later
+                chunk.emit_opcode(OpCode::JumpIfFalse);
+                chunk.write_u32(INVALID_ADDR);
+                let jump_addr = chunk.last_index();
+
+                // One is used for the jump if false
+                self.decrease_values_on_stack()?;
+
+                self.push_mem_scope();
+
+                self.start_loop();
+                // Compile the valid condition
+                self.compile_statements(chunk, statements)?;
+
+                self.pop_mem_scope(chunk)?;
+
+                // Jump back to the start
+                chunk.emit_opcode(OpCode::Jump);
+                chunk.write_u32(start_index as u32);
+
+                // Patch the jump if false
+                let jump_false_addr = chunk.index();
+                chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                self.end_loop(chunk, start_index, jump_false_addr)?;
+            },
+            Statement::ForEach(_, expr_values, statements) => {
+                // Compile the expression
+                self.compile_expr(chunk, expr_values)?;
+                // It is used by the IteratorBegin
+                self.decrease_values_on_stack()?;
+
+                chunk.emit_opcode(OpCode::IteratorBegin);
+                let start_index = chunk.index();
+                chunk.emit_opcode(OpCode::IteratorNext);
+                chunk.write_u32(INVALID_ADDR);
+                let jump_end = chunk.last_index();
+
+                self.push_mem_scope();
+
+                // OpCode IteratorNext will push a value, mark it
+                self.add_value_on_stack(chunk.last_index())?;
+
+                // Store the value
+                self.memstore(chunk)?;
+
+                self.start_loop();
+                // Compile the valid condition
+                self.compile_statements(chunk, statements)?;
+
+                self.pop_mem_scope(chunk)?;
+
+                // Jump back to the start
+                chunk.emit_opcode(OpCode::Jump);
+                chunk.write_u32(start_index as u32);
+
+                // End of the iterator
+                chunk.emit_opcode(OpCode::IteratorEnd);
+                let end_index = chunk.last_index();
+
+                // Patch the IterableNext to jump on IteratorEnd
+                chunk.patch_jump(jump_end, end_index as u32);
+
+                self.end_loop(chunk, start_index, end_index)?;
+            }
+            Statement::For(var, expr_condition, expr_op, statements) => {
+                self.push_mem_scope();
+                // Compile the variable
+                self.compile_expr(chunk, &var.value)?;
+                self.memstore(chunk)?;
+
+                // Compile the condition
+                let start_index = chunk.index();
+                self.compile_expr(chunk, expr_condition)?;
+
+                // Emit the jump if false
+                // We will overwrite the addr later
+                chunk.emit_opcode(OpCode::JumpIfFalse);
+                chunk.write_u32(INVALID_ADDR);
+                let jump_addr = chunk.last_index();
+
+                // One is used for the jump if false
+                self.decrease_values_on_stack()?;
+
+                self.start_loop();
+                // Compile the valid condition
+                self.compile_statements(chunk, statements)?;
+
+                // Compile the operation
+                let continue_index = chunk.index();
+                self.compile_expr(chunk, expr_op)?;
+                self.pop_mem_scope(chunk)?;
+
+                // Jump back to the start
+                chunk.emit_opcode(OpCode::Jump);
+                chunk.write_u32(start_index as u32);
+
+                // Patch the jump if false
+                let jump_false_addr = chunk.index();
+                chunk.patch_jump(jump_addr, jump_false_addr as u32);
+
+                self.end_loop(chunk, continue_index, jump_false_addr)?;
+            },
+            Statement::Break => {
+                chunk.emit_opcode(OpCode::Jump);
+                chunk.write_u32(INVALID_ADDR);
+
+                let last = self.loop_break_patch.last_mut()
+                    .ok_or(CompilerError::ExpectedBreak)?;
+                last.push(chunk.last_index());
+            },
+            Statement::Continue => {
+                chunk.emit_opcode(OpCode::Jump);
+                chunk.write_u32(INVALID_ADDR);
+
+                let last = self.loop_continue_patch.last_mut()
+                    .ok_or(CompilerError::ExpectedContinue)?;
+                last.push(chunk.last_index());
+            }
+        };
+
+        Ok(())
+    }
+
     // Compile the statements
     fn compile_statements(&mut self, chunk: &mut Chunk, statements: &[Statement]) -> Result<(), CompilerError> {
         trace!("Compiling statements: {:?}", statements);
         // Compile the statements
         for statement in statements {
-            match statement {
-                Statement::Expression(expr) => self.compile_expr(chunk, expr)?,
-                Statement::Return(expr) => {
-                    if let Some(expr) = expr {
-                        self.compile_expr(chunk, expr)?;
-                        self.decrease_values_on_stack()?;
-                    }
-
-                    chunk.emit_opcode(OpCode::Return);
-                },
-                Statement::Variable(declaration) => {
-                    self.compile_expr(chunk, &declaration.value)?;
-                    if declaration.id.is_some() {
-                        self.memstore(chunk)?;
-                    } else {
-                        chunk.emit_opcode(OpCode::Pop);
-                        self.decrease_values_on_stack()?;
-                    }
-                },
-                Statement::TuplesDeconstruction(value, declaration) => {
-                    // Compile the value
-                    self.compile_expr(chunk, value)?;
-
-                    // We need to pop the value
-                    self.decrease_values_on_stack()?;
-
-                    // Store the values
-                    for el in declaration.iter() {
-                        match el {
-                            TupleStatement::Depth => {
-                                chunk.emit_opcode(OpCode::Flatten);
-                            },
-                            TupleStatement::Deconstruct(ty) => {
-                                if let Some(id) = ty.id {
-                                    chunk.emit_opcode(OpCode::MemorySet);
-                                    chunk.write_u16(id);
-                                } else {
-                                    chunk.emit_opcode(OpCode::Pop);
-                                }
-                            }
-                        }
-                    }
-                },
-                Statement::Scope(statements) => {
-                    self.push_mem_scope();
-                    self.compile_statements(chunk, statements)?;
-                    self.pop_mem_scope(chunk)?;
-                },
-                Statement::If(condition, statements, else_statements) => {
-                    self.push_mem_scope();
-                    self.compile_expr(chunk, condition)?;
-
-                    // Emit the jump if false
-                    // We will overwrite the addr later
-                    chunk.emit_opcode(OpCode::JumpIfFalse);
-                    chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.last_index();
-
-                    // One is used for the jump if false
-                    self.decrease_values_on_stack()?;
-
-                    // Compile the valid condition
-                    self.compile_statements(chunk, statements)?;
-
-                    self.pop_mem_scope(chunk)?;
-
-                    let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
-                    // Once finished, we must jump the false condition
-                    let jump_valid_index = if append_jump {
-                        chunk.emit_opcode(OpCode::Jump);
-                        chunk.write_u32(INVALID_ADDR);
-                        Some(chunk.last_index())
-                    } else {
-                        None
-                    };
-
-                    // Patch the jump if false
-                    let jump_false_addr = chunk.index();
-                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
-
-                    // Compile the else condition
-                    if let Some(else_statements) = else_statements {
-                        self.push_mem_scope();
-                        self.compile_statements(chunk, else_statements)?;
-                        self.pop_mem_scope(chunk)?;
-                    }
-
-                    if let Some(jump_valid_index) = jump_valid_index {
-                        // Patch the jump if valid
-                        let jump_valid_addr = chunk.index();
-                        chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
-                    }
-                },
-                Statement::While(expr, statements) => {
-                    let start_index = chunk.index();
-                    self.compile_expr(chunk, expr)?;
-
-                    // Emit the jump if false
-                    // We will overwrite the addr later
-                    chunk.emit_opcode(OpCode::JumpIfFalse);
-                    chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.last_index();
-
-                    // One is used for the jump if false
-                    self.decrease_values_on_stack()?;
-
-                    self.push_mem_scope();
-
-                    self.start_loop();
-                    // Compile the valid condition
-                    self.compile_statements(chunk, statements)?;
-
-                    self.pop_mem_scope(chunk)?;
-
-                    // Jump back to the start
-                    chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(start_index as u32);
-
-                    // Patch the jump if false
-                    let jump_false_addr = chunk.index();
-                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
-
-                    self.end_loop(chunk, start_index, jump_false_addr)?;
-                },
-                Statement::ForEach(_, expr_values, statements) => {
-                    // Compile the expression
-                    self.compile_expr(chunk, expr_values)?;
-                    // It is used by the IteratorBegin
-                    self.decrease_values_on_stack()?;
-
-                    chunk.emit_opcode(OpCode::IteratorBegin);
-                    let start_index = chunk.index();
-                    chunk.emit_opcode(OpCode::IteratorNext);
-                    chunk.write_u32(INVALID_ADDR);
-                    let jump_end = chunk.last_index();
-
-                    self.push_mem_scope();
-
-                    // OpCode IteratorNext will push a value, mark it
-                    self.add_value_on_stack(chunk.last_index())?;
-
-                    // Store the value
-                    self.memstore(chunk)?;
-
-                    self.start_loop();
-                    // Compile the valid condition
-                    self.compile_statements(chunk, statements)?;
-
-                    self.pop_mem_scope(chunk)?;
-
-                    // Jump back to the start
-                    chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(start_index as u32);
-
-                    // End of the iterator
-                    chunk.emit_opcode(OpCode::IteratorEnd);
-                    let end_index = chunk.last_index();
-
-                    // Patch the IterableNext to jump on IteratorEnd
-                    chunk.patch_jump(jump_end, end_index as u32);
-
-                    self.end_loop(chunk, start_index, end_index)?;
-                }
-                Statement::For(var, expr_condition, expr_op, statements) => {
-                    self.push_mem_scope();
-                    // Compile the variable
-                    self.compile_expr(chunk, &var.value)?;
-                    self.memstore(chunk)?;
-
-                    // Compile the condition
-                    let start_index = chunk.index();
-                    self.compile_expr(chunk, expr_condition)?;
-
-                    // Emit the jump if false
-                    // We will overwrite the addr later
-                    chunk.emit_opcode(OpCode::JumpIfFalse);
-                    chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.last_index();
-
-                    // One is used for the jump if false
-                    self.decrease_values_on_stack()?;
-
-                    self.start_loop();
-                    // Compile the valid condition
-                    self.compile_statements(chunk, statements)?;
-
-                    // Compile the operation
-                    let continue_index = chunk.index();
-                    self.compile_expr(chunk, expr_op)?;
-                    self.pop_mem_scope(chunk)?;
-
-                    // Jump back to the start
-                    chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(start_index as u32);
-
-                    // Patch the jump if false
-                    let jump_false_addr = chunk.index();
-                    chunk.patch_jump(jump_addr, jump_false_addr as u32);
-
-                    self.end_loop(chunk, continue_index, jump_false_addr)?;
-                },
-                Statement::Break => {
-                    chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(INVALID_ADDR);
-
-                    let last = self.loop_break_patch.last_mut()
-                        .ok_or(CompilerError::ExpectedBreak)?;
-                    last.push(chunk.last_index());
-                },
-                Statement::Continue => {
-                    chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(INVALID_ADDR);
-
-                    let last = self.loop_continue_patch.last_mut()
-                        .ok_or(CompilerError::ExpectedContinue)?;
-                    last.push(chunk.last_index());
-                }
-            };
+            self.compile_statement(chunk, statement)?;
         }
 
         Ok(())

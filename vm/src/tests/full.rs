@@ -1654,3 +1654,62 @@ fn test_for_array_immutable() {
 
     assert_eq!(run_code(code), Primitive::U64(5));
 }
+
+#[test]
+fn test_match() {
+    let code = r#"
+        entry main() {
+            match 99 {
+                0 => panic("not 0"),
+                1 => panic("not 1")
+            };
+
+            match 0 {
+                0 => return 0,
+                1 => panic("should not match")
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+
+    let code = r#"
+        enum Foo {
+            A,
+            B
+        }  
+
+        entry main() {
+            match Foo::A {
+                Foo::A => return 0,
+                Foo::B => panic("should not match")
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+
+
+    let code = r#"
+        enum Foo {
+            A { value: u64 },
+            B,
+            C
+        }  
+
+        entry main() {
+            match Foo::A { value: 50 } {
+                Foo::A { value } => return 0,
+                Foo::B => panic("should not match")
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}

@@ -1140,4 +1140,32 @@ mod tests {
             Token::Identifier("b")
         ]);
     }
+
+    #[test]
+    fn test_match() {
+        let code = r#"
+            match a {
+                true => {},
+                false => {}
+            }
+        "#;
+
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Match,
+            Token::Identifier("a"),
+            Token::BraceOpen,
+            Token::Value(Literal::Bool(true)),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Comma,
+            Token::Value(Literal::Bool(false)),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+        ]);
+    }
 }

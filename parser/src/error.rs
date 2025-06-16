@@ -16,6 +16,12 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("invalid type for match, only primitive and enum are supported")]
+    InvalidTypeMatch,
+    #[error("expected a body for pattern in match")]
+    ExpectedBodyPatternMatch, 
+    #[error("expected a matching type")]
+    ExpectedMatchingType,
     #[error("expected valid variable name declaration")]
     ExpectedVariableDeclaration,
     #[error("invalid tuple deconstruction, expected same variables name as in the tuple")]
@@ -144,8 +150,12 @@ pub enum ParserErrorKind<'a> {
     InvalidOperation,
     #[error("invalid ternary: no previous expression")]
     InvalidTernaryNoPreviousExpression,
-    #[error("dead code not allowed")]
-    DeadCodeNotAllowed,
+    #[error("code after a return is not possible")]
+    NoCodeAfterReturn,
+    #[error("code after a continue is not possible")]
+    NoCodeAfterContinue,
+    #[error("code after a break is not possible")]
+    NoCodeAfterBreak,
     #[error("invalid for expression '{0:?}'")]
     InvalidForExpression(Expression),
     #[error("operator not found for token '{0:?}'")]

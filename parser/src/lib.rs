@@ -1965,8 +1965,8 @@ impl<'a> Parser<'a> {
                     };
 
                     // we can't have anything after a return
-                    if self.peek_is_not(Token::BraceClose) {
-                        return Err(err!(self, ParserErrorKind::DeadCodeNotAllowed));
+                    if self.peek_is_not(Token::BraceClose) && self.peek_is_not(Token::Comma) {
+                        return Err(err!(self, ParserErrorKind::NoCodeAfterReturn));
                     }
 
                     Statement::Return(opt)
@@ -1977,8 +1977,8 @@ impl<'a> Parser<'a> {
                     }
 
                     // we can't have anything after a continue
-                    if self.peek_is_not(Token::BraceClose) {
-                        return Err(err!(self, ParserErrorKind::DeadCodeNotAllowed));
+                    if self.peek_is_not(Token::BraceClose) && self.peek_is_not(Token::Comma) {
+                        return Err(err!(self, ParserErrorKind::NoCodeAfterContinue));
                     }
 
                     Statement::Continue
@@ -1989,11 +1989,46 @@ impl<'a> Parser<'a> {
                     }
 
                     // we can't have anything after a break
-                    if self.peek_is_not(Token::BraceClose) {
-                        return Err(err!(self, ParserErrorKind::DeadCodeNotAllowed));
+                    if self.peek_is_not(Token::BraceClose) && self.peek_is_not(Token::Comma) {
+                        return Err(err!(self, ParserErrorKind::NoCodeAfterBreak));
                     }
 
                     Statement::Break
+                },
+                Token::Match => {
+                    let expr = self.read_expression(context)?;
+                    let expr_ty = self.get_type_from_expression(None, &expr, context)?
+                        .into_owned();
+
+                    if !expr_ty.is_enum() && !expr_ty.is_primitive() {
+                        return Err(err!(self, ParserErrorKind::InvalidTypeMatch))
+                    }
+
+                    self.expect_token(Token::BraceOpen)?;
+                    let mut patterns = Vec::new();
+                    loop {
+                        let pattern = self.read_expression(context)?;
+                        let ty = self.get_type_from_expression(None, &pattern, context)?;
+                        if *ty != expr_ty {
+                            return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
+                        }
+
+                        self.expect_token(Token::FatArrow)?;
+                        let body = self.read_statement(context, &return_type)?
+                            .ok_or_else(|| err!(self, ParserErrorKind::ExpectedBodyPatternMatch))?;
+
+                        patterns.push((pattern, body));
+
+                        if self.peek_is(Token::Comma) {
+                            self.expect_token(Token::Comma)?;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    self.expect_token(Token::BraceClose)?;
+
+                    Statement::Match(Box::new(expr), patterns, None, None)
                 },
                 token => {
                     self.push_back(token);
@@ -4014,5 +4049,27 @@ mod tests {
         context.begin_scope();
 
         assert!(parser.read_statements(&mut context, &None).is_err());
+    }
+
+    #[test]
+    fn test_match() {
+        let tokens = vec![
+            Token::Match,
+            Token::Value(Literal::Bool(true)),
+            Token::BraceOpen,
+            Token::Value(Literal::Bool(true)),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Comma,
+            Token::Value(Literal::Bool(false)),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
     }
 }
