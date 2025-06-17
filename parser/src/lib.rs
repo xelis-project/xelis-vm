@@ -2014,6 +2014,7 @@ impl<'a> Parser<'a> {
                     }
 
                     self.expect_token(Token::BraceOpen)?;
+                    let mut unique_patterns = HashSet::new();
                     let mut patterns = Vec::new();
                     let mut default_case = None;
                     loop {
@@ -2040,7 +2041,10 @@ impl<'a> Parser<'a> {
                         if is_consumed {
                             default_case = Some(Box::new(body));
                         } else {
-                            patterns.push((pattern, body));
+                            patterns.push((pattern.clone(), body));
+                            if !unique_patterns.insert(pattern) {
+                                return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                            }
                         }
 
                         if self.peek_is(Token::Comma) {

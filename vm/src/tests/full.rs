@@ -1709,12 +1709,15 @@ fn test_match() {
             A { value: u64 },
             B,
             C
-        }  
+        }
 
         entry main() {
-            match Foo::A { value: 50 } {
-                Foo::A { value } => return 0,
-                Foo::B => panic("should not match")
+            let v: Foo = Foo::A { value: 50 };
+            match v {
+                Foo::A { value: 0 } => panic("should not match"),
+                Foo::A { value: 50 } => return 0,
+                Foo::B => panic("should not match"),
+                _ => panic("should not match default")
             };
 
             return 1

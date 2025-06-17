@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("duplicated match pattern")]
+    MatchPatternDuplicated,
     #[error("invalid type for match, only primitive and enum are supported")]
     InvalidTypeMatch,
     #[error("expected a body for pattern in match")]
