@@ -122,6 +122,8 @@ pub enum ParserErrorKind<'a> {
     FunctionSignatureAlreadyExist,
     #[error("unexpected variable name '{0}'")]
     UnexpectedVariable(&'a str),
+    #[error("unexpected attribute name '{0}' on '{1}'")]
+    UnexpectedAttributeOnType(&'a str, Type),
     #[error("unexpected mapped variable id '{0}'")]
     UnexpectedMappedVariableId(IdentifierType),
     #[error("unexpected type '{0}'")]

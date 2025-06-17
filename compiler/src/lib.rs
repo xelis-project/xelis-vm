@@ -566,7 +566,7 @@ impl<'a> Compiler<'a> {
                 self.push_mem_scope();
                 self.compile_expr(chunk, expr)?;
 
-                let mut jumps_end = Vec::new();
+                let mut jumps_end = Vec::with_capacity(patterns.len());
                 for (condition, statement) in patterns {
                     trace!("compiling pattern {:?} with {:?}", condition, statement);
                     self.compile_expr(chunk, condition)?;
@@ -597,10 +597,20 @@ impl<'a> Compiler<'a> {
 
                 // Compile the default statement
                 if let Some(statement) = default {
+                    trace!("compiling default case {:?}", statement);
+
+                    self.memstore(chunk)?;
+
+                    self.push_mem_scope();
                     self.compile_statement(chunk, statement)?;
+                    self.pop_mem_scope(chunk)?;
+
+                } else {
+                    // This pop only occurs if NO condition was matched
+                    chunk.emit_opcode(OpCode::Pop);
+                    self.decrease_values_on_stack()?;
                 }
 
-                chunk.emit_opcode(OpCode::Pop);
 
                 // Patch every pattern in case of success
                 let jump_addr = chunk.index();
@@ -609,8 +619,6 @@ impl<'a> Compiler<'a> {
                     chunk.patch_jump(index, jump_addr as u32);
                 }
 
-                // One is used for the jump if false
-                self.decrease_values_on_stack()?;
                 self.pop_mem_scope(chunk)?;
             },
             Statement::If(condition, statements, else_statements) => {

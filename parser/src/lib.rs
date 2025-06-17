@@ -622,7 +622,9 @@ impl<'a> Parser<'a> {
             let field_name = self.next_identifier()?;
             trace!("field name: {}", field_name);
             let expr = match self.advance()? {
-                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?),
+                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name)
+                    .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?
+                ),
                 Token::Colon => self.read_expression_expected_type(context, ty)?,
                 token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
             };
@@ -1239,7 +1241,7 @@ impl<'a> Parser<'a> {
                                             .get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
                                         let id = builder.get_id_for_field(id)
-                                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?;
+                                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedAttributeOnType(id, t.clone())))?;
 
                                         Expression::Variable(id)
                                     },
@@ -1254,6 +1256,9 @@ impl<'a> Parser<'a> {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
+                                    } else if let Some(ty) = context.get_match_on_type() {
+                                        let id = self.register_variable(context, id, ty)?;
+                                        Expression::Variable(id)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }
@@ -1746,7 +1751,6 @@ impl<'a> Parser<'a> {
         pattern: &TuplePattern<'a>,
         ty: &Type,
         context: &mut Context<'a>,
-        disable_shadowing: bool,
         statements: &mut Vec<TupleStatement>,
     ) -> Result<(), ParserError<'a>> {
         match (pattern, ty) {
@@ -1755,7 +1759,7 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             (TuplePattern::Variable(name), _) => {
-                let id = if disable_shadowing {
+                let id = if self.disable_shadowing_variables {
                     context.register_variable(name, ty.clone())
                         .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
                 } else {
@@ -1771,7 +1775,7 @@ impl<'a> Parser<'a> {
 
                 statements.push(TupleStatement::Depth);
                 for (p, t) in sub_patterns.iter().zip(sub_types).rev() {
-                    self.match_pattern_with_type(p, t, context, disable_shadowing, statements)?;
+                    self.match_pattern_with_type(p, t, context, statements)?;
                 }
                 Ok(())
             }
@@ -1798,9 +1802,19 @@ impl<'a> Parser<'a> {
 
         let mut statements = Vec::new();
 
-        self.match_pattern_with_type(&pattern, &expected_type, context, self.disable_shadowing_variables, &mut statements)?;
+        self.match_pattern_with_type(&pattern, &expected_type, context, &mut statements)?;
 
         Ok(Statement::TuplesDeconstruction(value, statements))
+    }
+
+    // Register a variable based on the shadow config
+    fn register_variable(&self, context: &mut Context<'a>, name: &'a str, value_type: Type) -> Result<IdentifierType, ParserError<'a>> {
+        if self.disable_shadowing_variables {
+            context.register_variable(name, value_type)
+                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))
+        } else {
+            Ok(context.register_variable_unchecked(name, value_type))
+        }
     }
 
     /**
@@ -1814,12 +1828,7 @@ impl<'a> Parser<'a> {
     fn read_variable(&mut self, context: &mut Context<'a>) -> Result<DeclarationStatement, ParserError<'a>> {
         let (name, value_type, value, ignored) = self.read_variable_internal(context, false)?;
         let id = if !ignored {
-            Some(if self.disable_shadowing_variables {
-                context.register_variable(name, value_type.clone())
-                    .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
-            } else {
-                context.register_variable_unchecked(name, value_type.clone())
-            })
+            Some(self.register_variable(context, name, value_type.clone())?)
         } else {
             None
         };
@@ -1899,8 +1908,7 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::NotIterable(expr_type.into_owned())))
                     }
 
-                    let id = context.register_variable(variable, expr_type.get_inner_type().clone())
-                        .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(variable)))?;
+                    let id = self.register_variable(context, variable, expr_type.get_inner_type().clone())?;
                     let statements = self.read_loop_body(context, return_type)?;
                     context.end_scope();
 
@@ -1996,6 +2004,7 @@ impl<'a> Parser<'a> {
                     Statement::Break
                 },
                 Token::Match => {
+                    context.begin_scope();
                     let expr = self.read_expression(context)?;
                     let expr_ty = self.get_type_from_expression(None, &expr, context)?
                         .into_owned();
@@ -2006,8 +2015,19 @@ impl<'a> Parser<'a> {
 
                     self.expect_token(Token::BraceOpen)?;
                     let mut patterns = Vec::new();
+                    let mut default_case = None;
                     loop {
+                        if default_case.is_none() {
+                            context.set_in_a_match(Some(expr_ty.clone()));
+                        }
+
                         let pattern = self.read_expression(context)?;
+
+                        let is_consumed = default_case.is_none() && context.get_match_on_type().is_none();
+                        if !is_consumed {
+                            context.set_in_a_match(None);
+                        }
+
                         let ty = self.get_type_from_expression(None, &pattern, context)?;
                         if *ty != expr_ty {
                             return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
@@ -2017,7 +2037,11 @@ impl<'a> Parser<'a> {
                         let body = self.read_statement(context, &return_type)?
                             .ok_or_else(|| err!(self, ParserErrorKind::ExpectedBodyPatternMatch))?;
 
-                        patterns.push((pattern, body));
+                        if is_consumed {
+                            default_case = Some(Box::new(body));
+                        } else {
+                            patterns.push((pattern, body));
+                        }
 
                         if self.peek_is(Token::Comma) {
                             self.expect_token(Token::Comma)?;
@@ -2028,7 +2052,9 @@ impl<'a> Parser<'a> {
 
                     self.expect_token(Token::BraceClose)?;
 
-                    Statement::Match(Box::new(expr), patterns, None, None)
+                    context.end_scope();
+
+                    Statement::Match(Box::new(expr), patterns, default_case, None)
                 },
                 token => {
                     self.push_back(token);

@@ -1659,12 +1659,8 @@ fn test_for_array_immutable() {
 fn test_match() {
     let code = r#"
         entry main() {
-            match 99 {
-                0 => panic("not 0"),
-                1 => panic("not 1")
-            };
-
             match 0 {
+                n => panic("should not match default"),
                 0 => return 0,
                 1 => panic("should not match")
             };
@@ -1674,6 +1670,20 @@ fn test_match() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(0));
+
+    let code = r#"
+        entry main() {
+            match 99 {
+                0 => panic("not 0"),
+                1 => panic("not 1"),
+                n => return n
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(99));
 
     let code = r#"
         enum Foo {
