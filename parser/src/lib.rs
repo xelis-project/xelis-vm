@@ -2022,7 +2022,7 @@ impl<'a> Parser<'a> {
                             context.set_in_a_match(Some(expr_ty.clone()));
                         }
 
-                        let pattern = self.read_expression(context)?;
+                        let pattern = self.read_expression_expected_type(context, &expr_ty)?;
 
                         let is_consumed = default_case.is_none() && context.get_match_on_type().is_none();
                         if !is_consumed {
