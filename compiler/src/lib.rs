@@ -14,6 +14,7 @@ use xelis_environment::Environment;
 use xelis_bytecode::{Chunk, Module, OpCode};
 
 pub use error::CompilerError;
+use xelis_types::{Constant, Primitive};
 
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
@@ -206,7 +207,10 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len() * 2)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::EnumConstructor(exprs, _) => {
+            Expression::EnumConstructor(exprs, ty) => {
+                // Inject the variant id
+                self.compile_expr(chunk, &Expression::Constant(Constant::Default(Primitive::U8(ty.variant_id()))))?;
+
                 for expr in exprs {
                     self.compile_expr(chunk, expr)?;
                 }
@@ -217,9 +221,14 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::Deconstruction(exprs, _) => {
+            Expression::Deconstruction(exprs, ty) => {
                 chunk.emit_opcode(OpCode::Flatten);
                 self.add_values_on_stack(chunk.last_index(), exprs.len())?;
+
+                // Pop the variant id from enum
+                if ty.is_enum() {
+                    chunk.emit_opcode(OpCode::Pop);
+                }
 
                 for _ in exprs {
                     self.memstore(chunk)?;

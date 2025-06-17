@@ -1707,16 +1707,15 @@ fn test_match() {
     let code = r#"
         enum Foo {
             A { value: u64 },
-            B,
+            B { value: u64 },
             C
         }
 
         entry main() {
             let v: Foo = Foo::A { value: 50 };
             match v {
-                Foo::A { value: 0 } => panic("should not match"),
+                Foo::B { value: 50 } => panic("should not match"),
                 Foo::A { value: 50 } => return 0,
-                Foo::B => panic("should not match"),
                 _ => panic("should not match default")
             };
 

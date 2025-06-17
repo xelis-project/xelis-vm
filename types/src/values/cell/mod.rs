@@ -9,7 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use crate::{opaque::OpaqueWrapper, Opaque, Type, U256};
+use crate::{opaque::OpaqueWrapper, DefinedType, Opaque, Type, U256};
 use super::{Constant, Primitive, ValueError};
 
 pub use stack_value::*;
@@ -127,7 +127,18 @@ impl From<Constant> for ValueCell {
             Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Typed(values, _) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
+            Constant::Typed(values, ty) => {
+                let mut cells = Vec::with_capacity(values.len());
+
+                // We inject the variant id
+                if let DefinedType::Enum(ty) = ty {
+                    cells.push(Primitive::U8(ty.variant_id()).into());
+                }
+
+                cells.extend(values.into_iter().map(|v| v.into()));
+
+                Self::Object(cells)
+            },
         }
     }
 }
