@@ -2031,7 +2031,13 @@ impl<'a> Parser<'a> {
 
                         let ty = self.get_type_from_expression(None, &pattern, context)?;
                         if *ty != expr_ty {
-                            return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
+                            if let Type::Range(inner) = ty.as_ref() {
+                                if **inner != expr_ty {
+                                    return Err(err!(self, ParserErrorKind::ExpectedMatchingType))        
+                                }
+                            } else {
+                                return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
+                            }
                         }
 
                         self.expect_token(Token::FatArrow)?;

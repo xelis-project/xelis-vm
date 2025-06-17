@@ -1661,7 +1661,7 @@ fn test_match() {
         entry main() {
             match 0 {
                 n => panic("should not match default"),
-                0 => return 0,
+                0..5 => return 0,
                 1 => panic("should not match")
             };
 

@@ -11,7 +11,7 @@ use constructor::*;
 use memory::*;
 
 use xelis_bytecode::OpCode;
-use xelis_types::Primitive;
+use xelis_types::{Primitive, ValueCell};
 
 use crate::Context;
 
@@ -202,12 +202,56 @@ fn flatten<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, con
     Ok(InstructionResult::Nothing)
 }
 
+fn is_value_in_range<T: PartialOrd>(
+    value: T,
+    expected_ref: &ValueCell,
+    range_matcher: fn(&Box<(Primitive, Primitive)>) -> Option<(T, T)>
+) -> bool {
+    match expected_ref {
+        ValueCell::Default(Primitive::Range(range)) => {
+            if let Some((min, max)) = range_matcher(range) {
+                value >= min && value <= max
+            } else {
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
 fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let expected = stack.pop_stack()?;
     let actual = stack.last_stack()?
         .as_ref()?;
 
-    let same = actual == expected.as_ref()?;
+    let expected_ref = expected.as_ref()?;
+    let same = if actual.is_number() {
+        let ValueCell::Default(v) = actual else {
+            return Err(VMError::UnexpectedType);
+        };
+
+        macro_rules! match_range {
+            ($prim:ident, $val:ident) => {
+                is_value_in_range(*$val, expected_ref, |range| {
+                    match &**range {
+                        (Primitive::$prim(min), Primitive::$prim(max)) => Some((*min, *max)),
+                        _ => None
+                    }
+                })
+            };
+        }
+
+        match v {
+            Primitive::U8(v)   => match_range!(U8, v),
+            Primitive::U16(v)  => match_range!(U16, v),
+            Primitive::U32(v)  => match_range!(U32, v),
+            Primitive::U64(v)  => match_range!(U64, v),
+            Primitive::U128(v) => match_range!(U128, v),
+            _ => actual == expected_ref
+        }
+    } else {
+        actual == expected_ref
+    };
 
     stack.push_stack_unchecked(Primitive::Boolean(same).into());
 
