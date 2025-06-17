@@ -137,7 +137,7 @@ fn keys(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
         .map(|key| key.clone().into())
         .collect::<Vec<_>>();
 
-    Ok(Some(ValueCell::Array(keys)))
+    Ok(Some(ValueCell::Object(keys)))
 }
 
 fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
@@ -150,5 +150,5 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
         .map(|v| v.clone())
         .collect::<Vec<_>>();
 
-    Ok(Some(ValueCell::Array(values)))
+    Ok(Some(ValueCell::Object(values)))
 }

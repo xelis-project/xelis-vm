@@ -200,7 +200,7 @@ fn test_struct() {
         vm.invoke_chunk_id(0).unwrap();
         assert_eq!(
             vm.run().unwrap(),
-            ValueCell::Array(
+            ValueCell::Object(
                 vec![
                     Primitive::U8(10).into(),
                     Primitive::U16(20).into()

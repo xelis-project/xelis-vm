@@ -20,7 +20,7 @@ macro_rules! collect {
         paste! {
             {
                 if $start >= $end {
-                    ValueCell::Array(Vec::new())
+                    ValueCell::Object(Vec::new())
                 } else {
                     let diff = $end - $start;
                     if diff > u32::MAX as _ {
@@ -30,7 +30,7 @@ macro_rules! collect {
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
                     let vec = (*$start..*$end).map(|i| Primitive::$t(i).into()).collect();
-                    ValueCell::Array(vec)
+                    ValueCell::Object(vec)
                 }
             }
         }
@@ -100,7 +100,7 @@ fn collect(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
                 }
             }
 
-            ValueCell::Array(vec)
+            ValueCell::Object(vec)
         }
         _ => return Err(EnvironmentError::InvalidType)
     }))

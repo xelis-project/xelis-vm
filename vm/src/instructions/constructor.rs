@@ -16,7 +16,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
         array.push_front(pop.into_owned()?);
     }
 
-    let value = ValueCell::Array(array.into());
+    let value = ValueCell::Object(array.into());
     let memory_usage = value.calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 

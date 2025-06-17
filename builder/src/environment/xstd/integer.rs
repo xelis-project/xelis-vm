@@ -62,7 +62,7 @@ macro_rules! to_endian_array {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
-                Ok(Some(ValueCell::Array(vec)))
+                Ok(Some(ValueCell::Object(vec)))
             }
 
             $env.register_native_function(

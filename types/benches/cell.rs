@@ -26,7 +26,7 @@ fn bench_drop(c: &mut Criterion) {
 
     group.bench_function("array", |bench| {
         bench.iter(|| {
-            let cell = ValueCell::Array(vec![
+            let cell = ValueCell::Object(vec![
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42))
@@ -39,18 +39,18 @@ fn bench_drop(c: &mut Criterion) {
     group.bench_function("array double depth", |bench| {
         bench.iter(|| {
             // We don't use clone as we bench it too
-            let cell = ValueCell::Array(vec![
-                ValueCell::Array(vec![
+            let cell = ValueCell::Object(vec![
+                ValueCell::Object(vec![
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42))
                 ]),
-                ValueCell::Array(vec![
+                ValueCell::Object(vec![
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42))
                 ]),
-                ValueCell::Array(vec![
+                ValueCell::Object(vec![
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42)),
                     ValueCell::Default(Primitive::U64(42))
@@ -87,7 +87,7 @@ fn bench_clone(c: &mut Criterion) {
     });
 
     group.bench_function("array", |bench| {
-        let cell = ValueCell::Array(vec![
+        let cell = ValueCell::Object(vec![
             ValueCell::Default(Primitive::U64(42)),
             ValueCell::Default(Primitive::U64(42)),
             ValueCell::Default(Primitive::U64(42))
@@ -99,18 +99,18 @@ fn bench_clone(c: &mut Criterion) {
     });
 
     group.bench_function("array double depth", |bench| {
-        let cell = ValueCell::Array(vec![
-            ValueCell::Array(vec![
+        let cell = ValueCell::Object(vec![
+            ValueCell::Object(vec![
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42))
             ]),
-            ValueCell::Array(vec![
+            ValueCell::Object(vec![
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42))
             ]),
-            ValueCell::Array(vec![
+            ValueCell::Object(vec![
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42)),
                 ValueCell::Default(Primitive::U64(42))

@@ -227,11 +227,7 @@ fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>
         .as_ref()?;
 
     let expected_ref = expected.as_ref()?;
-    let same = if actual.is_number() {
-        let ValueCell::Default(v) = actual else {
-            return Err(VMError::UnexpectedType);
-        };
-
+    let same = if let ValueCell::Default(v) = actual {
         macro_rules! match_range {
             ($prim:ident, $val:ident) => {
                 is_value_in_range(*$val, expected_ref, |range| {

@@ -73,7 +73,7 @@ impl<'a> ModuleValidator<'a> {
             }
 
             match value {
-                ValueCell::Array(elements) => {
+                ValueCell::Object(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }

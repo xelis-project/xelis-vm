@@ -22,7 +22,7 @@ impl ValueIterator {
 
         let value = self.inner.as_ref()?;
         Ok(match value {
-            ValueCell::Array(v) => {
+            ValueCell::Object(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
                 .map(|v| v.clone().into())

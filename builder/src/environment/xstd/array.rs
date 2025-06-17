@@ -129,7 +129,7 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
         slice.push(value);
     }
 
-    Ok(Some(ValueCell::Array(slice)))
+    Ok(Some(ValueCell::Object(slice)))
 }
 
 fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
@@ -205,7 +205,7 @@ fn concat(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
         result.extend(v.iter().cloned());
     }
 
-    Ok(Some(ValueCell::Array(result)))
+    Ok(Some(ValueCell::Object(result)))
 }
 
 fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {

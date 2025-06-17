@@ -35,7 +35,7 @@ impl StackValue {
         match self {
             Self::Owned(v) => {
                 let at_index = match v {
-                    ValueCell::Array(mut values) => {
+                    ValueCell::Object(mut values) => {
                         let len = values.len();
                         if index >= len {
                             return Err(ValueError::OutOfBounds(index, len))
@@ -61,7 +61,7 @@ impl StackValue {
                     .ok_or(ValueError::InvalidPointer)?;
 
                 Ok(match cell {
-                    ValueCell::Array(values) => {
+                    ValueCell::Object(values) => {
                         let len = values.len();
                         let at_index = values
                             .get_mut(index)

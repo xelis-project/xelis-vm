@@ -74,7 +74,7 @@ fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
         bytes.push(Primitive::U8(*b).into());
     }
 
-    Ok(Some(ValueCell::Array(bytes)))
+    Ok(Some(ValueCell::Object(bytes)))
 }
 
 fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -140,7 +140,7 @@ fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetur
         .map(|s| Primitive::String(s.to_string()).into())
         .collect();
 
-    Ok(Some(ValueCell::Array(values)))
+    Ok(Some(ValueCell::Object(values)))
 }
 
 fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
@@ -166,7 +166,7 @@ fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let m = s.matches(value);
-    Ok(Some(ValueCell::Array(m.map(|s| Primitive::String(s.to_string()).into()).collect())))
+    Ok(Some(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect())))
 }
 
 fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {

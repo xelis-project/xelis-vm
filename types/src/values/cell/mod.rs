@@ -22,7 +22,7 @@ pub use stack_value::*;
 pub enum ValueCell {
     Default(Primitive),
     Bytes(Vec<u8>),
-    Array(Vec<ValueCell>),
+    Object(Vec<ValueCell>),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
     Map(IndexMap<ValueCell, ValueCell>),
@@ -37,7 +37,7 @@ impl Drop for ValueCell {
 
         let mut stack = Vec::new();
         match self {
-            ValueCell::Array(values) => {
+            ValueCell::Object(values) => {
                 stack.reserve(values.len());
                 stack.append(values);
             },
@@ -50,7 +50,7 @@ impl Drop for ValueCell {
 
         while let Some(mut value) = stack.pop() {
             match &mut value {
-                ValueCell::Array(values) => {
+                ValueCell::Object(values) => {
                     stack.reserve(values.len());
                     stack.append(values);
                 },
@@ -72,7 +72,7 @@ impl PartialEq for ValueCell {
         match (self, other) {
             (Self::Default(a), Self::Default(b)) => a == b,
             (Self::Bytes(a), Self::Bytes(b)) => a == b,
-            (Self::Array(a), Self::Array(b)) => a == b,
+            (Self::Object(a), Self::Object(b)) => a == b,
             (Self::Map(a), Self::Map(b)) => a == b,
             _ => false
         }
@@ -91,7 +91,7 @@ impl Hash for ValueCell {
         while let Some(value) = stack.pop() {
             match value {
                 Self::Default(v) => v.hash(state),
-                Self::Array(values) => {
+                Self::Object(values) => {
                     12u8.hash(state);
                     stack.extend(values);
                 },
@@ -124,10 +124,10 @@ impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
             Constant::Default(v) => Self::Default(v),
-            Constant::Array(values) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
+            Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
-            Constant::Typed(values, _) => Self::Array(values.into_iter().map(|v| v.into()).collect()),
+            Constant::Typed(values, _) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
         }
     }
 }
@@ -137,7 +137,7 @@ impl ValueCell {
     // that could be used to get a pointer from
     pub fn has_sub_values(&self) -> bool {
         match self {
-            Self::Array(_)
+            Self::Object(_)
             | Self::Map(_) => true,
             _ => false,
         }
@@ -165,7 +165,7 @@ impl ValueCell {
             match next {
                 ValueCell::Default(_) => {},
                 ValueCell::Bytes(_) => {},
-                ValueCell::Array(values) => {
+                ValueCell::Object(values) => {
                     for value in values {
                         stack.push((value, depth + 1));
                     }
@@ -205,7 +205,7 @@ impl ValueCell {
                     memory += 32;
                     memory += bytes.len();
                 },
-                ValueCell::Array(values) => {
+                ValueCell::Object(values) => {
                     memory += 32;
                     stack.extend(values);
                 },
@@ -326,7 +326,7 @@ impl ValueCell {
     #[inline]
     pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValueCell>, ValueError> {
         match self {
-            Self::Array(n) => Ok(n),
+            Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
@@ -334,7 +334,7 @@ impl ValueCell {
     #[inline]
     pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValueCell>, ValueError> {
         match self {
-            Self::Array(n) => Ok(n),
+            Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
@@ -342,7 +342,7 @@ impl ValueCell {
     #[inline]
     pub fn to_vec<'a>(&'a mut self) -> Result<Vec<ValueCell>, ValueError> {
         match mem::take(self) {
-            Self::Array(n) => Ok(n),
+            Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
         }
     }
@@ -695,7 +695,7 @@ impl ValueCell {
         while let Some(value) = stack.pop() {
             match value {
                 Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
-                Self::Array(values) => {
+                Self::Object(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
                     stack.reserve(values.len());
                     stack.extend(values);
@@ -720,7 +720,7 @@ impl ValueCell {
                 },
                 QueueItem::Array { len } => {
                     let values = stack.split_off(stack.len() - len);
-                    stack.push(ValueCell::Array(values));
+                    stack.push(ValueCell::Object(values));
                 },
                 QueueItem::Bytes(bytes) => {
                     stack.push(ValueCell::Bytes(bytes));
@@ -745,7 +745,7 @@ impl fmt::Display for ValueCell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Default(v) => write!(f, "{}", v),
-            Self::Array(values) => {
+            Self::Object(values) => {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", s.join(", "))
             },
@@ -777,14 +777,14 @@ mod tests {
         drop(v.clone());
         drop(v);
 
-        let v = ValueCell::Array(vec![ValueCell::default()]);
+        let v = ValueCell::Object(vec![ValueCell::default()]);
         drop(v.clone());
         drop(v);
 
         // Create a array with a huge depth of 100000
-        let mut v = ValueCell::Array(vec![ValueCell::default()]);
+        let mut v = ValueCell::Object(vec![ValueCell::default()]);
         for _ in 0..100_000 {
-            v = ValueCell::Array(vec![v]);
+            v = ValueCell::Object(vec![v]);
         }
 
         drop(v.clone());

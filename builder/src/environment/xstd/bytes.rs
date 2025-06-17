@@ -139,5 +139,5 @@ fn to_array(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTyp
         .map(|v| Primitive::U8(*v).into())
         .collect();
 
-    Ok(Some(ValueCell::Array(values)))
+    Ok(Some(ValueCell::Object(values)))
 }
