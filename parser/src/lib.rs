@@ -449,6 +449,7 @@ impl<'a> Parser<'a> {
             Expression::ForceType(_, ty) => Cow::Borrowed(ty),
             Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
             Expression::EnumConstructor(_, _type) => Cow::Owned(Type::Enum(_type.enum_type().clone())),
+            Expression::Deconstruction(_, ty) => Cow::Borrowed(ty),
             Expression::Variable(ref var_name) => match on_type {
                 Some(t) => match t {
                     Type::Struct(_type) => {
@@ -614,19 +615,35 @@ impl<'a> Parser<'a> {
     // { field1, field2, ... }
     // or with values
     // { field1: value1, field2: value2, ... }
-    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
+    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<(Vec<(&'a str, Expression)>, bool), ParserError<'a>> {
         trace!("Read constructor fields");
 
-        let mut fields = Vec::new();
+        // bool to determine if we can register the variable
+        let in_match = context.is_in_a_match();
+        let mut registered_as_var = false;
+        let mut fields = Vec::with_capacity(expected_types.len());
         for ty in expected_types {
             let field_name = self.next_identifier()?;
             trace!("field name: {}", field_name);
-            let expr = match self.advance()? {
-                Token::Comma | Token::BraceClose => Expression::Variable(context.get_variable_id(field_name)
-                    .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?
-                ),
-                Token::Colon => self.read_expression_expected_type(context, ty)?,
-                token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
+            let expr = match self.peek()? {
+                Token::Comma | Token::BraceClose => {
+                    // If we are in a match, register the variable
+                    // So we can use it in the body
+                    let id = if in_match {
+                        registered_as_var = true;
+                        self.register_variable(context, field_name, ty.clone())?
+                    } else {
+                        context.get_variable_id(field_name)
+                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?
+                    };
+
+                    Expression::Variable(id)
+                },
+                Token::Colon => {
+                    self.expect_token(Token::Colon)?;
+                    self.read_expression_expected_type(context, ty)?
+                },
+                token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token.clone())))
             };
 
             fields.push((field_name, expr));
@@ -637,7 +654,7 @@ impl<'a> Parser<'a> {
         }
         self.expect_token(Token::BraceClose)?;
 
-        Ok(fields)
+        Ok((fields, registered_as_var))
     }
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
@@ -684,7 +701,7 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
-        let fields = self.read_constructor_fields(context, struct_type.fields())?;
+        let (fields, deconstruct) = self.read_constructor_fields(context, struct_type.fields())?;
 
         if struct_type.fields().len() != fields.len() {
             return Err(err!(self, ParserErrorKind::InvalidFieldCount))
@@ -711,7 +728,11 @@ impl<'a> Parser<'a> {
             fields_expressions.push(field_expr);
         }
 
-        Ok(Expression::StructConstructor(fields_expressions, struct_type))
+        Ok(if deconstruct {
+            Expression::Deconstruction(fields_expressions, Type::Struct(struct_type))
+        } else {
+            Expression::StructConstructor(fields_expressions, struct_type)
+        })
     }
 
     // Read an enum variant constructor with the following syntax:
@@ -731,9 +752,9 @@ impl<'a> Parser<'a> {
         };
 
         // If its an enum variant with fields
-        let exprs = if !fields.is_empty() {
+        let (exprs, deconstruct) = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
-            let fields = self.read_constructor_fields(context, &fields)?;
+            let (fields, deconstruct) = self.read_constructor_fields(context, &fields)?;
 
             // Now we verify that we have all fields needed
             let builder = self.global_mapper.enums()
@@ -758,12 +779,16 @@ impl<'a> Parser<'a> {
                 fields_expressions.push(field_expr);
             }
 
-            fields_expressions
+            (fields_expressions, deconstruct)
         } else {
-            Vec::new()
+            (Vec::new(), false)
         };
 
-        Ok(Expression::EnumConstructor(exprs, EnumValueType::new(enum_type, variant_id)))
+        Ok(if deconstruct {
+            Expression::Deconstruction(exprs, Type::Enum(enum_type))
+        } else {
+            Expression::EnumConstructor(exprs, EnumValueType::new(enum_type, variant_id))
+        })
     }
 
     // Read a constant from the environment

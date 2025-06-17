@@ -291,6 +291,7 @@ impl OpCode {
 
             OpCode::NewObject => 1, // u8 initial values
             OpCode::NewMap => 1, // u8 initial values
+            OpCode::Match => 4, // u32 addr
 
             _ => 0,
         }

@@ -108,13 +108,18 @@ impl<'a> Compiler<'a> {
     }
 
     #[inline(always)]
-    fn add_value_on_stack(&mut self, index: usize) -> Result<(), CompilerError> {
-        trace!("Adding value on stack at instruction {}", index);
+    fn add_values_on_stack(&mut self, index: usize, count: usize) -> Result<(), CompilerError> {
+        trace!("Adding {} values on stack at instruction {}", count, index);
         let on_stack = self.values_on_stack.last_mut()
-        .ok_or(CompilerError::ExpectedStackScope)?;
-        on_stack.push(index);
+            .ok_or(CompilerError::ExpectedStackScope)?;
+        on_stack.extend(iter::repeat(index).take(count));
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn add_value_on_stack(&mut self, index: usize) -> Result<(), CompilerError> {
+        self.add_values_on_stack(index, 1)
     }
 
     #[inline(always)]
@@ -211,7 +216,15 @@ impl<'a> Compiler<'a> {
 
                 self.decrease_values_on_stack_by(exprs.len())?;
                 self.add_value_on_stack(chunk.last_index())?;
-            }
+            },
+            Expression::Deconstruction(exprs, _) => {
+                chunk.emit_opcode(OpCode::Flatten);
+                self.add_values_on_stack(chunk.last_index(), exprs.len())?;
+
+                for _ in exprs {
+                    self.memstore(chunk)?;
+                }
+            },
             Expression::Path(left, right) => {
                 // Compile the path
                 self.compile_expr(chunk, left)?;
@@ -574,7 +587,6 @@ impl<'a> Compiler<'a> {
 
                     // We will overwrite the addr later
                     // to jump to the next condition
-                    chunk.emit_opcode(OpCode::JumpIfFalse);
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
 

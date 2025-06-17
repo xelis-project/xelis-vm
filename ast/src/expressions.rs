@@ -27,6 +27,8 @@ pub enum Expression {
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>), // bool expr, if true expr, else expr
     Cast(Box<Expression>, Type), // expr, type
     ForceType(Box<Expression>, Type),
+    // Each sub variable/attribute of the enum, its type
+    Deconstruction(Vec<Expression>, Type),
 }
 
 #[derive(Debug, Eq, PartialEq)]

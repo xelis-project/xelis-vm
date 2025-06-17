@@ -99,6 +99,10 @@ impl<'a> Context<'a> {
         self.is_in_loop = is_in_loop;
     }
 
+    // returns if the Context is in a match
+    pub fn is_in_a_match(&self) -> bool {
+        self.match_on_type.is_some()
+    }
 
     // returns the type if the Context is in match
     pub fn get_match_on_type(&mut self) -> Option<Type> {

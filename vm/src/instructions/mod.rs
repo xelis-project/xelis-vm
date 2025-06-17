@@ -219,7 +219,9 @@ fn is_value_in_range<T: PartialOrd>(
     }
 }
 
-fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let addr = manager.read_u32()?;
+
     let expected = stack.pop_stack()?;
     let actual = stack.last_stack()?
         .as_ref()?;
@@ -253,7 +255,10 @@ fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &
         actual == expected_ref
     };
 
-    stack.push_stack_unchecked(Primitive::Boolean(same).into());
+    // Do the jump to the next condition
+    if !same {
+        manager.set_index(addr as usize)?;
+    }
 
     Ok(InstructionResult::Nothing)
 }
