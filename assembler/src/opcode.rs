@@ -177,7 +177,10 @@ pub enum OpCodeWithArgs {
     // into the stack
     Flatten,
     // Do a matching test
-    Match
+    Match {
+        magic_byte: u8,
+        addr: u32,
+    }
 }
 
 impl OpCodeWithArgs {
@@ -250,7 +253,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Inc => OpCode::Inc,
             OpCodeWithArgs::Dec => OpCode::Dec,
             OpCodeWithArgs::Flatten => OpCode::Flatten,
-            OpCodeWithArgs::Match => OpCode::Match,
+            OpCodeWithArgs::Match { .. } => OpCode::Match,
         }
     }
 
@@ -282,6 +285,10 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::IteratorNext { addr } => chunk.write_u32(*addr),
             OpCodeWithArgs::NewObject { length } => chunk.write_u8(*length),
             OpCodeWithArgs::NewMap { length } => chunk.write_u8(*length),
+            OpCodeWithArgs::Match { magic_byte, addr } => {
+                chunk.write_u8(*magic_byte);
+                chunk.write_u32(*addr);
+            }
             _ => {}
         }
     }
@@ -759,11 +766,14 @@ impl OpCodeWithArgs {
                 OpCodeWithArgs::Flatten
             },
             "MATCH" => {
-                if !args.is_empty() {
-                    return Err("Invalid args count");
+                if args.len() != 2 {
+                    return Err("invalid args count");
                 }
 
-                OpCodeWithArgs::Match
+                OpCodeWithArgs::Match {
+                    magic_byte: args[0].parse().map_err(|_| "Invalid magic byte")?,
+                    addr: args[0].parse().map_err(|_| "Invalid jump address")?
+                }
             }
             _ => return Err("Invalid OpCode")
         })
