@@ -1725,3 +1725,26 @@ fn test_match() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+
+#[test]
+fn test_match_variant() {
+    let code = r#"
+        enum Foo {
+            A { value: u64, second: u64 },
+            B { value: u64 },
+            C
+        }
+
+        entry main() {
+            match Foo::A { value: 50, second: 3 } {
+                Foo::A { value, second } => return value,
+                _ => panic("should not match default")
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(50));
+}

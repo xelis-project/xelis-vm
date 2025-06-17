@@ -3,12 +3,7 @@ mod error;
 use std::{collections::HashSet, iter};
 use log::{trace, warn};
 use xelis_ast::{
-    Expression,
-    FunctionType,
-    Operator,
-    Program,
-    Statement,
-    TupleStatement
+    Expression, FunctionType, MatchStatement, Operator, Program, Statement, TupleStatement
 };
 use xelis_environment::Environment;
 use xelis_bytecode::{Chunk, Module, OpCode};
@@ -221,18 +216,16 @@ impl<'a> Compiler<'a> {
                 self.decrease_values_on_stack_by(exprs.len() + 1)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
-            Expression::Deconstruction(exprs, ty) => {
+            Expression::EnumPattern(exprs, _) => {
                 chunk.emit_opcode(OpCode::Flatten);
                 self.add_values_on_stack(chunk.last_index(), exprs.len())?;
-
-                // Pop the variant id from enum
-                if ty.is_enum() {
-                    chunk.emit_opcode(OpCode::Pop);
-                }
 
                 for _ in exprs {
                     self.memstore(chunk)?;
                 }
+
+                // Pop the variant id from enum
+                chunk.emit_opcode(OpCode::Pop);
             },
             Expression::Path(left, right) => {
                 // Compile the path
@@ -591,13 +584,35 @@ impl<'a> Compiler<'a> {
                 let mut jumps_end = Vec::with_capacity(patterns.len());
                 for (condition, statement) in patterns {
                     trace!("compiling pattern {:?} with {:?}", condition, statement);
-                    self.compile_expr(chunk, condition)?;
-                    chunk.emit_opcode(OpCode::Match);
+                    match condition {
+                        MatchStatement::Cond(expr) => {
+                            self.compile_expr(chunk, expr)?;
+                            chunk.emit_opcode(OpCode::Match);
+                            chunk.write_u8(0);
+                        },
+                        MatchStatement::Variant(_, ty) => {
+                            chunk.emit_opcode(OpCode::Match);
+                            chunk.write_u8(ty.variant_id() + 1);
+                        }
+                    }
 
                     // We will overwrite the addr later
                     // to jump to the next condition
                     chunk.write_u32(INVALID_ADDR);
                     let jump_addr = chunk.last_index();
+
+                    if let MatchStatement::Variant(exprs, _) = condition {
+                        trace!("storing {} values for variant match", exprs.len());
+
+                        // Match OpCode add N values on stack + the magic byte
+                        self.add_values_on_stack(chunk.last_index(), exprs.len() + 1)?;
+                        for _ in exprs {
+                            self.memstore(chunk)?;
+                        }
+
+                        // pop the magic byte is also popped with following
+                        // opcode
+                    }
 
                     chunk.emit_opcode(OpCode::Pop);
                     // One is used for the jump if false

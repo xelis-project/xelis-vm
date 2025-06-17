@@ -219,37 +219,53 @@ fn is_value_in_range<T: PartialOrd>(
     }
 }
 
-fn match_<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
-    let addr = manager.read_u32()?;
+fn match_<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let magic_byte = manager.read_u8()?;
+    let same = if magic_byte > 0 {
+        let actual = stack.last_stack()?
+            .as_ref()?;
 
-    let expected = stack.pop_stack()?;
-    let actual = stack.last_stack()?
-        .as_ref()?;
+        // Check if the magic byte is the same
+        let same = actual.as_vec()?.get(0) == Some(&Primitive::U8(magic_byte - 1).into());
 
-    let expected_ref = expected.as_ref()?;
-    let same = if let ValueCell::Default(v) = actual {
-        macro_rules! match_range {
-            ($prim:ident, $val:ident) => {
-                is_value_in_range(*$val, expected_ref, |range| {
-                    match &**range {
-                        (Primitive::$prim(min), Primitive::$prim(max)) => Some((*min, *max)),
-                        _ => None
-                    }
-                })
-            };
+        // if its the same, flatten it
+        if same {
+            flatten(backend, stack, manager, context)?;
         }
 
-        match v {
-            Primitive::U8(v)   => match_range!(U8, v),
-            Primitive::U16(v)  => match_range!(U16, v),
-            Primitive::U32(v)  => match_range!(U32, v),
-            Primitive::U64(v)  => match_range!(U64, v),
-            Primitive::U128(v) => match_range!(U128, v),
-            _ => actual == expected_ref
-        }
+        same
     } else {
-        actual == expected_ref
+        let expected = stack.pop_stack()?;
+        let actual = stack.last_stack()?
+            .as_ref()?;
+    
+        let expected_ref = expected.as_ref()?;
+        if let ValueCell::Default(v) = actual {
+            macro_rules! match_range {
+                ($prim:ident, $val:ident) => {
+                    is_value_in_range(*$val, expected_ref, |range| {
+                        match &**range {
+                            (Primitive::$prim(min), Primitive::$prim(max)) => Some((*min, *max)),
+                            _ => None
+                        }
+                    })
+                };
+            }
+    
+            match v {
+                Primitive::U8(v)   => match_range!(U8, v),
+                Primitive::U16(v)  => match_range!(U16, v),
+                Primitive::U32(v)  => match_range!(U32, v),
+                Primitive::U64(v)  => match_range!(U64, v),
+                Primitive::U128(v) => match_range!(U128, v),
+                _ => actual == expected_ref
+            }
+        } else {
+            actual == expected_ref
+        }
     };
+
+    let addr = manager.read_u32()?;
 
     // Do the jump to the next condition
     if !same {

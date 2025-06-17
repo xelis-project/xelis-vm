@@ -148,6 +148,11 @@ pub enum OpCode {
     // used for an optimized matching
     // where we don't have to copy the value
     // and provide a general usage for matching
+    // Params:
+    // magic_byte: variant id > 0
+    // address: u32
+    // If first_byte match is true, it will pop it and flatten
+    // the object itself
     Match,
 }
 
@@ -291,7 +296,7 @@ impl OpCode {
 
             OpCode::NewObject => 1, // u8 initial values
             OpCode::NewMap => 1, // u8 initial values
-            OpCode::Match => 4, // u32 addr
+            OpCode::Match => 5, // magic byte + u32 addr
 
             _ => 0,
         }

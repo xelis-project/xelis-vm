@@ -449,7 +449,7 @@ impl<'a> Parser<'a> {
             Expression::ForceType(_, ty) => Cow::Borrowed(ty),
             Expression::MapConstructor(_, key_type, value_type) => Cow::Owned(Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))),
             Expression::EnumConstructor(_, _type) => Cow::Owned(Type::Enum(_type.enum_type().clone())),
-            Expression::Deconstruction(_, ty) => Cow::Borrowed(ty),
+            Expression::EnumPattern(_, ty) => Cow::Owned(Type::Enum(ty.enum_type().clone())),
             Expression::Variable(ref var_name) => match on_type {
                 Some(t) => match t {
                     Type::Struct(_type) => {
@@ -701,7 +701,7 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
-        let (fields, deconstruct) = self.read_constructor_fields(context, struct_type.fields())?;
+        let (fields, _) = self.read_constructor_fields(context, struct_type.fields())?;
 
         if struct_type.fields().len() != fields.len() {
             return Err(err!(self, ParserErrorKind::InvalidFieldCount))
@@ -728,11 +728,7 @@ impl<'a> Parser<'a> {
             fields_expressions.push(field_expr);
         }
 
-        Ok(if deconstruct {
-            Expression::Deconstruction(fields_expressions, Type::Struct(struct_type))
-        } else {
-            Expression::StructConstructor(fields_expressions, struct_type)
-        })
+        Ok(Expression::StructConstructor(fields_expressions, struct_type))
     }
 
     // Read an enum variant constructor with the following syntax:
@@ -784,10 +780,11 @@ impl<'a> Parser<'a> {
             (Vec::new(), false)
         };
 
+        let variant = EnumValueType::new(enum_type, variant_id);
         Ok(if deconstruct {
-            Expression::Deconstruction(exprs, Type::Enum(enum_type))
+            Expression::EnumPattern(exprs, variant)
         } else {
-            Expression::EnumConstructor(exprs, EnumValueType::new(enum_type, variant_id))
+            Expression::EnumConstructor(exprs, variant)
         })
     }
 
@@ -2039,7 +2036,6 @@ impl<'a> Parser<'a> {
                     }
 
                     self.expect_token(Token::BraceOpen)?;
-                    let mut unique_patterns = HashSet::new();
                     let mut patterns = Vec::new();
                     let mut default_case = None;
                     loop {
@@ -2072,10 +2068,13 @@ impl<'a> Parser<'a> {
                         if is_consumed {
                             default_case = Some(Box::new(body));
                         } else {
-                            patterns.push((pattern.clone(), body));
-                            if !unique_patterns.insert(pattern) {
-                                return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
-                            }
+                            let item = if let Expression::EnumPattern(exprs, ty) = pattern {
+                                (MatchStatement::Variant(exprs, ty), body)
+                            } else {
+                                (MatchStatement::Cond(pattern), body)
+                            };
+
+                            patterns.push(item);
                         }
 
                         if self.peek_is(Token::Comma) {

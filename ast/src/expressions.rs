@@ -28,7 +28,7 @@ pub enum Expression {
     Cast(Box<Expression>, Type), // expr, type
     ForceType(Box<Expression>, Type),
     // Each sub variable/attribute of the enum, its type
-    Deconstruction(Vec<Expression>, Type),
+    EnumPattern(Vec<Expression>, EnumValueType),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -45,7 +45,15 @@ pub enum Statement {
     Variable(DeclarationStatement),
     TuplesDeconstruction(Expression, Vec<TupleStatement>), // let (a, b): (u64, u64) = (1, 2)
     // match expr { condition => statement }
-    Match(Box<Expression>, Vec<(Expression, Statement)>, Option<Box<Statement>>, Option<Type>),
+    Match(Box<Expression>, Vec<(MatchStatement, Statement)>, Option<Box<Statement>>, Option<Type>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MatchStatement {
+    // match the variant and flatten it
+    Variant(Vec<Expression>, EnumValueType),
+    Cond(Expression)
+
 }
 
 #[derive(Debug, Eq, PartialEq)]
