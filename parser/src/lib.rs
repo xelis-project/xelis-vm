@@ -1781,12 +1781,7 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             (TuplePattern::Variable(name), _) => {
-                let id = if self.disable_shadowing_variables {
-                    context.register_variable(name, ty.clone())
-                        .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?
-                } else {
-                    context.register_variable_unchecked(name, ty.clone())
-                };
+                let id = self.register_variable(context, name, ty.clone())?;
                 statements.push(TupleStatement::Deconstruct(TupleDeconstruction { id: Some(id), value_type: ty.clone() }));
                 Ok(())
             }
