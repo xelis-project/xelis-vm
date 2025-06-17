@@ -216,9 +216,9 @@ impl<'a> Compiler<'a> {
                 }
 
                 chunk.emit_opcode(OpCode::NewObject);
-                chunk.write_u8(exprs.len() as u8);
+                chunk.write_u8(exprs.len() as u8 + 1);
 
-                self.decrease_values_on_stack_by(exprs.len())?;
+                self.decrease_values_on_stack_by(exprs.len() + 1)?;
                 self.add_value_on_stack(chunk.last_index())?;
             },
             Expression::Deconstruction(exprs, ty) => {
@@ -1299,7 +1299,8 @@ mod tests {
         assert_eq!(
             chunk.get_instructions(),
             &[
-                OpCode::NewObject.as_byte(), 0,
+                OpCode::Constant.as_byte(), 0, 0,
+                OpCode::NewObject.as_byte(), 1,
                 OpCode::Return.as_byte()
             ]
         );
@@ -1335,7 +1336,8 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::NewObject.as_byte(), 1,
+                OpCode::Constant.as_byte(), 1, 0,
+                OpCode::NewObject.as_byte(), 2,
                 OpCode::Return.as_byte()
             ]
         );
