@@ -2,14 +2,13 @@ pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_ast::Signature;
-use xelis_types::{Constant, EnumType, OpaqueType, Opaque, StructType, Type};
+use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{
     ConstFnCall,
     ConstFunction,
     ConstFunctionMapper,
     EnumManager,
-    EnumVariantBuilder,
     FunctionMapper,
     Hook,
     OpaqueManager,
@@ -89,16 +88,23 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a structure in the environment
     // Panic if the structure name is already used
-    pub fn register_structure(&mut self, name: &'a str, fields: Vec<(&'a str, Type)>) -> StructType {
-        let _type = self.struct_manager.build(Cow::Borrowed(name), fields).unwrap();
+    pub fn register_structure<const N: usize>(&mut self, name: impl Into<Cow<'static, str>>, fields: [(impl Into<Cow<'static, str>>, Type); N]) -> StructType {
+        let data = fields.into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect();
+        let _type = self.struct_manager.build(name.into(), data).expect("Failed to build struct");
         self.env.add_structure(_type.clone());
         _type
     }
 
     // Register an enum in the environment
     // Panic if the enum name is already used
-    pub fn register_enum(&mut self, name: &'a str, variants: Vec<(&'a str, EnumVariantBuilder<'a>)>) -> EnumType {
-        let _type = self.enum_manager.build(Cow::Borrowed(name), variants).unwrap();
+    pub fn register_enum<const N: usize>(&mut self, name: impl Into<Cow<'static, str>>, variants: [(impl Into<Cow<'static, str>>, impl Into<EnumVariant>); N]) -> EnumType {
+        let data = variants.into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+
+        let _type = self.enum_manager.build(name, data).expect("Failed to build enum");
         self.env.add_enum(_type.clone());
         _type
     }
@@ -215,9 +221,9 @@ mod tests {
             B { b: u64 }
         }
          */
-        builder.register_enum("Test", vec![
-            ("A", vec![("a", Type::U32)]),
-            ("B", vec![("b", Type::U64)])
+        builder.register_enum("Test", [
+            ("A", EnumVariant::new(vec![(Cow::Borrowed("a"), Type::U32)])),
+            ("B", EnumVariant::new(vec![(Cow::Borrowed("b"), Type::U64)])),
         ]);
 
         let env = builder.build();

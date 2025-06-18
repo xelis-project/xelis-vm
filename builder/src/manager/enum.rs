@@ -1,89 +1,54 @@
-use xelis_types::{EnumType, EnumVariant, IdentifierType, Type};
-use super::{Builder, BuilderType, TypeManager};
+use std::borrow::Cow;
+
+use xelis_types::{EnumType, EnumVariant, IdentifierType};
+use super::{Builder, TypeManager};
 
 #[derive(Debug)]
-pub struct EnumBuilder<'a> {
-    inner: EnumTypeBuilder<'a>,
-    variants_names: Vec<&'a str>
+pub struct EnumBuilder {
+    inner: EnumType
 }
 
-#[derive(Debug)]
-pub struct EnumTypeBuilder<'a> {
-    inner: EnumType,
-    variants: Vec<EnumVariantBuilder<'a>>
-}
-
-impl<'a> EnumBuilder<'a> {
-
+impl EnumBuilder {
     // This function is used to get the variant by its id
-    pub fn get_variant_by_id(&'a self, id: u8) -> Option<&'a EnumVariantBuilder<'a>> {
-        self.inner.variants.get(id as usize)
+    pub fn get_variant_by_id<'a>(&'a self, id: u8) -> Option<&'a (Cow<'static, str>, EnumVariant)> {
+        self.inner.get_variant(id)
     }
 
-    // This function is used to get the variant and its id by its name
-    pub fn get_variant_by_name(&'a self, name: &str) -> Option<(u8, &'a EnumVariantBuilder<'a>)> {
-        self.variants_names.iter()
-            .position(|n| n == &name)
-            .map(|i| (i as u8, &self.inner.variants[i]))
+    pub fn get_variant_by_name(&self, name: &str) -> Option<(u8, &EnumVariant)> {
+        self.inner.variants()
+            .iter()
+            .enumerate()
+            .find(|(_, (k, _))| k == name)
+            .map(|(index, (_, v))| (index as u8, v))
+    }
+
+    pub fn variants(&self) -> &Vec<(Cow<'static, str>, EnumVariant)> {
+        &self.inner.variants()
     }
 }
 
-impl EnumTypeBuilder<'_> {
-    pub fn variants(&self) -> &Vec<EnumVariantBuilder> {
-        &self.variants
-    }
-}
+pub type EnumManager<'a> = TypeManager<'a, EnumBuilder>;
 
-pub type EnumVariantBuilder<'a> = Vec<(&'a str, Type)>;
-
-pub type EnumManager<'a> = TypeManager<'a, EnumBuilder<'a>>;
-
-impl<'a> Builder<'a> for EnumBuilder<'a> {
-    type Data = EnumVariantBuilder<'a>;
-    type BuilderType = EnumTypeBuilder<'a>;
+impl Builder for EnumBuilder {
+    type Data = Vec<(Cow<'static, str>, EnumVariant)>;
     type Type = EnumType;
 
-    fn new(inner: Self::BuilderType, variants_names: Vec<&'a str>) -> Self {
+    fn build_with(id: IdentifierType, name: impl Into<Cow<'static, str>>, data: Self::Data) -> Self {
         Self {
-            inner,
-            variants_names
+            inner: EnumType::new(id, name, data)
         }
     }
 
-    fn names(&self) -> &Vec<&'a str> {
-        &self.variants_names
-    }
-
-    fn builder_type(&self) -> &Self::BuilderType {
-        &self.inner
+    fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+        self.inner.variants().iter().map(|(name, _)| name.as_ref())
     }
 
     fn get_type(&self) -> &Self::Type {
-        &self.inner.inner
+        &self.inner
     }
 
     fn to_type(&self) -> Self::Type {
-        self.inner.inner.clone()
-    }
-
-    fn type_id(&self) -> IdentifierType {
-        self.inner.inner.id()
-    }
-}
-
-impl<'a> BuilderType<EnumVariantBuilder<'a>> for EnumTypeBuilder<'a> {
-    fn with(id: IdentifierType, variants: Vec<EnumVariantBuilder<'a>>) -> Self {
-        let types = variants.iter()
-            .map(|v| EnumVariant::new(v.iter()
-                .map(|(_, t)| t.clone())
-                .collect()
-            ).clone())
-            .collect();
-
-        Self {
-            inner: EnumType::new(id, types),
-            variants
-        }
+        self.inner.clone()
     }
 
     fn type_id(&self) -> IdentifierType {

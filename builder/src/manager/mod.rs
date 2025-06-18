@@ -13,27 +13,18 @@ use crate::{
     IdMapper
 };
 
-pub trait BuilderType<D> {
-    fn with(id: IdentifierType, data: Vec<D>) -> Self;
-
-    fn type_id(&self) -> IdentifierType;
-}
-
-pub trait Builder<'a> {
-    type Data;
-    type BuilderType: BuilderType<Self::Data>;
+pub trait Builder {
     type Type: Clone + Eq;
+    type Data;
 
-    fn new(inner: Self::BuilderType, names: Vec<&'a str>) -> Self;
+    fn build_with(id: IdentifierType, name: impl Into<Cow<'static, str>>, data: Self::Data) -> Self;
 
     fn get_type(&self) -> &Self::Type;
 
-    fn names(&self) -> &Vec<&'a str>;
+    fn names<'a>(&'a self) -> impl Iterator<Item = &'a str>;
 
-    fn builder_type(&self) -> &Self::BuilderType;
-
-    fn get_id_for_field(&self, name: &str) -> Option<IdentifierType> {
-        self.names().iter().position(|k| *k == name).map(|v| v as IdentifierType)
+    fn get_id_for_sub(&self, name: &str) -> Option<IdentifierType> {
+        self.names().position(|k| k == name).map(|v| v as IdentifierType)
     }
 
     fn to_type(&self) -> Self::Type;
@@ -42,7 +33,7 @@ pub trait Builder<'a> {
 }
 
 #[derive(Debug)]
-pub struct TypeManager<'a, T: Builder<'a>> {
+pub struct TypeManager<'a, T: Builder> {
     parent: Option<&'a Self>,
     // All structs registered in the manager
     types: Vec<T>,
@@ -50,7 +41,7 @@ pub struct TypeManager<'a, T: Builder<'a>> {
     mapper: IdMapper<'a>,
 }
 
-impl<'a, T: Builder<'a>> TypeManager<'a, T> {
+impl<'a, T: Builder> TypeManager<'a, T> {
     // Create a new struct manager
     pub fn new() -> Self {
         Self {
@@ -72,32 +63,30 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
         self.types.iter().any(|v| v.get_type() == ty)
     }
 
-    fn build_internal(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<T, BuilderError> {
+    fn build_internal(&mut self, name: impl Into<Cow<'static, str>>, data: T::Data) -> Result<T, BuilderError> {
+        let name = name.into();
         if self.mapper.has_variable(&name) {
             return Err(BuilderError::StructNameAlreadyUsed);
         }
 
-        let (fields_names, fields_types) = split_vec(fields);
-        let id = self.mapper.register(name)?;
-        let inner = T::BuilderType::with(id, fields_types);
+        // if its a Cow::Borrowed, only the reference is cloned
+        let id = self.mapper.register(name.clone())?;
+        let inner = T::build_with(id, name, data);
 
-        Ok(T::new(
-            inner,
-            fields_names
-        ))
+        Ok(inner)
     }
 
     // register a new struct in the manager
-    pub fn add(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<(), BuilderError> {
-        let builder = self.build_internal(name, fields)?;
+    pub fn add(&mut self, name: impl Into<Cow<'static, str>>, data: T::Data) -> Result<(), BuilderError> {
+        let builder = self.build_internal(name, data)?;
         self.types.push(builder);
 
         Ok(())
     }
 
     // Same as `add` but returns its identifier and the final struct
-    pub fn build(&mut self, name: Cow<'a, str>, fields: Vec<(&'a str, T::Data)>) -> Result<T::Type, BuilderError> {
-        let builder = self.build_internal(name, fields)?;
+    pub fn build(&mut self, name: impl Into<Cow<'static, str>>, data: T::Data) -> Result<T::Type, BuilderError> {
+        let builder = self.build_internal(name, data)?;
         let inner = builder.get_type().clone();
         self.types.push(builder);
 
@@ -111,7 +100,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
             }
         }
 
-        self.types.iter().find(|b| b.type_id() == *id).ok_or(BuilderError::StructNotFound)
+        self.types.iter().find(|b| b.type_id() == *id).ok_or(BuilderError::TypeNotFound)
     }
 
     // Get a struct by name
@@ -127,7 +116,7 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
             }
         }
 
-        self.types.iter().find(|v| v.get_type() == _type).ok_or(BuilderError::StructNotFound)   
+        self.types.iter().find(|v| v.get_type() == _type).ok_or(BuilderError::TypeNotFound)   
     }
 
     pub fn get_name_by_ref(&self, _type: &T::Type) -> Result<&Cow<str>, BuilderError> {
@@ -139,23 +128,11 @@ impl<'a, T: Builder<'a>> TypeManager<'a, T> {
 
         // We need to find its id to get the name from the mapper
         let id = self.get_by_ref(_type)?.type_id();
-        self.mapper.get_by_id(id).ok_or(BuilderError::StructNotFound)
+        self.mapper.get_by_id(id).ok_or(BuilderError::TypeNotFound)
     }
 
     // Convert the struct manager into a list of structs
     pub fn finalize<B: FromIterator<T::Type>>(&self) -> B {
         self.types.iter().map(T::to_type).collect()
     }
-}
-
-fn split_vec<A, B>(input: Vec<(A, B)>) -> (Vec<A>, Vec<B>) {
-    let mut vec_a = Vec::with_capacity(input.len());
-    let mut vec_b = Vec::with_capacity(input.len());
-
-    for (a, b) in input {
-        vec_a.push(a);
-        vec_b.push(b);
-    }
-
-    (vec_a, vec_b)
 }

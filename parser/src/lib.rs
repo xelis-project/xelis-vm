@@ -462,7 +462,7 @@ impl<'a> Parser<'a> {
                 Some(t) => match t {
                     Type::Struct(_type) => {
                         let index = *var_name as usize;
-                        if let Some(field_type) = _type.fields().get(index) {
+                        if let Some((_, field_type)) = _type.fields().get(index) {
                             Cow::Owned(field_type.clone())
                         } else {
                             return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
@@ -631,7 +631,10 @@ impl<'a> Parser<'a> {
     // { field1, field2, ... }
     // or with values
     // { field1: value1, field2: value2, ... }
-    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
+    fn read_constructor_fields<'b, I>(&mut self, context: &mut Context<'a>, expected_types: I) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>>
+    where 
+        I: Iterator<Item = &'b Type> + ExactSizeIterator
+    {
         trace!("Read constructor fields");
 
         let mut fields = Vec::with_capacity(expected_types.len());
@@ -709,26 +712,23 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
-        let fields = self.read_constructor_fields(context, struct_type.fields())?;
+        let fields = self.read_constructor_fields(context, struct_type.fields().iter().map(|(_, ty)| ty))?;
 
         if struct_type.fields().len() != fields.len() {
             return Err(err!(self, ParserErrorKind::InvalidFieldCount))
         }
 
         // Now verify that it match our struct
-        let builder = self.global_mapper.structs().get_by_ref(&struct_type)
-            .map_err(|e| err!(self, e.into()))?;
         let mut fields_expressions = Vec::with_capacity(fields.len());
         let iter = fields.into_iter()
             .zip(
                 struct_type.fields()
                     .iter()
-                    .zip(builder.names())
             );
 
-        for ((field_name, mut field_expr), (field_type, field_name_expected)) in iter {
+        for ((field_name, mut field_expr), (field_name_expected, field_type)) in iter {
             if field_name != *field_name_expected {
-                return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected)))
+                return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected.clone())))
             }
 
             self.verify_type_of(&mut field_expr, field_type, context, true)?;
@@ -749,31 +749,31 @@ impl<'a> Parser<'a> {
             let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
-            let (variant_id, variant_fields) = builder.get_variant_by_name(&variant_name)
+            let (variant_id, variant) = builder.get_variant_by_name(&variant_name)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            (variant_id, variant_fields.iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>())
+            (variant_id, variant.fields().iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>())
         };
 
         // If its an enum variant with fields
         let exprs = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
-            let fields = self.read_constructor_fields(context, &fields)?;
+            let fields = self.read_constructor_fields(context, fields.iter())?;
 
             // Now we verify that we have all fields needed
             let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
 
-            let variant = builder.get_variant_by_id(variant_id)
+            let (_, variant) = builder.get_variant_by_id(variant_id)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            if variant.len() != fields.len() {
+            if variant.fields().len() != fields.len() {
                 return Err(err!(self, ParserErrorKind::InvalidFieldCount))
             }
 
-            let mut fields_expressions = Vec::with_capacity(variant.len());
-            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant) {
+            let mut fields_expressions = Vec::with_capacity(variant.fields().len());
+            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant.fields()) {
                 if field_name != *expected_name {
                     return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
                 }
@@ -1266,7 +1266,7 @@ impl<'a> Parser<'a> {
                                         let builder = self.global_mapper.structs()
                                             .get_by_ref(_type)
                                             .map_err(|e| err!(self, e.into()))?;
-                                        let id = builder.get_id_for_field(id)
+                                        let id = builder.get_id_for_sub(id)
                                             .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedAttributeOnType(id, t.clone())))?;
 
                                         Expression::Variable(id)
@@ -1908,7 +1908,7 @@ impl<'a> Parser<'a> {
 
                 // TODO: no clone
                 builder.get_variant_by_name(&variant)
-                    .map(|(id, fields)| (id, fields.iter().map(|(n, v)| (n.to_string(), v.clone())).collect::<Vec<_>>()))
+                    .map(|(id, variant)| (id, variant.fields().iter().map(|(n, v)| (n.to_string(), v.clone())).collect::<Vec<_>>()))
                     .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant)))?
             };
 
@@ -2476,14 +2476,14 @@ impl<'a> Parser<'a> {
 
         let mut fields = Vec::with_capacity(params.len());
         for (name, param_type) in params {
-            fields.push((name, param_type));
+            fields.push((Cow::Owned(name.to_owned()), param_type));
         }
 
         self.expect_token(Token::BraceClose)?;
 
         self.global_mapper
             .structs_mut()
-            .add(Cow::Borrowed(name), fields)
+            .add(Cow::Owned(name.to_owned()), fields)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -2533,12 +2533,14 @@ impl<'a> Parser<'a> {
                 }
 
                 self.expect_token(Token::BraceClose)?;
-                fields
+                fields.into_iter()
+                    .map(|(k, v)| (Cow::Owned(k.to_owned()), v))
+                    .collect()
             } else {
                 Vec::new()
             };
 
-            variants.push((variant_name, fields));
+            variants.push((Cow::Owned(variant_name.to_owned()), EnumVariant::new(fields)));
 
             if self.peek_is(Token::Comma) {
                 self.expect_token(Token::Comma)?;
@@ -2553,7 +2555,7 @@ impl<'a> Parser<'a> {
 
         self.global_mapper
             .enums_mut()
-            .add(Cow::Borrowed(name), variants)
+            .add(Cow::Owned(name.to_owned()), variants)
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -3298,7 +3300,8 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_structure("Foo", Vec::new());
+        let fields: [(&str, Type); 0] = [];
+        env.register_structure("Foo", fields);
         let parser = Parser::new(tokens, &env);
         let err = parser.parse().unwrap_err();
         assert!(
@@ -3707,7 +3710,7 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_structure("Message", vec![
+        env.register_structure("Message", [
             ("message_id", Type::U8),
             ("message", Type::String)
         ]);
@@ -3740,7 +3743,7 @@ mod tests {
     fn test_struct_cast_error() {
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_structure("Message", vec![
+        env.register_structure("Message", [
             ("message_id", Type::U8)
         ]);
 
@@ -3771,7 +3774,7 @@ mod tests {
     fn test_struct_optional() {
         // struct Message { message_id: u64 }
         let mut env = EnvironmentBuilder::default();
-        env.register_structure("Message", vec![("message_id", Type::U64)]);
+        env.register_structure("Message", [("message_id", Type::U64)]);
 
         // let msg: optional<Message> = null;
         // let id: u64 = msg.unwrap().message_id;
@@ -3848,7 +3851,7 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_enum("Message", vec![
+        env.register_enum("Message", [
             ("HELLO", Vec::new()),
             ("WORLD", vec![("a", Type::U64)])
         ]);
@@ -3875,9 +3878,9 @@ mod tests {
     fn test_enum_operation() {
         // enum Either { Left, Right }
         let mut env = EnvironmentBuilder::new();
-        env.register_enum("Either", vec![
-            ("Left", Vec::new()),
-            ("Right", Vec::new())
+        env.register_enum("Either", [
+            ("Left", EnumVariant::new(Vec::new())),
+            ("Right", EnumVariant::new(Vec::new()))
         ]);
 
         // let value: Either = Either::Left;
@@ -3911,9 +3914,9 @@ mod tests {
     fn test_enum_optional() {
         // enum Either { Left, Right }
         let mut env = EnvironmentBuilder::default();
-        env.register_enum("Either", vec![
-            ("Left", Vec::new()),
-            ("Right", Vec::new())
+        env.register_enum("Either", [
+            ("Left", EnumVariant::new(Vec::new())),
+            ("Right", EnumVariant::new(Vec::new()))
         ]);
 
         // let value: optional<Either> = null;
@@ -3972,9 +3975,9 @@ mod tests {
 
         // Also test with a environment
         let mut env = EnvironmentBuilder::new();
-        env.register_enum("Message", vec![
-            ("HELLO", vec![("a", Type::U64)]),
-            ("WORLD", vec![("b", Type::String)])
+        env.register_enum("Message", [
+            ("HELLO", EnumVariant::new(vec![(Cow::Borrowed("a"), Type::U64)])),
+            ("WORLD", EnumVariant::new(vec![(Cow::Borrowed("b"), Type::String)]))
         ]);
 
         // Create an enum instance
@@ -4096,7 +4099,8 @@ mod tests {
     fn test_static_function_on_type() {
         // register Foo in environment
         let mut env = EnvironmentBuilder::new();
-        let ty = Type::Struct(env.register_structure("Foo", Vec::new()));
+        let fields: [(&str, Type); 0] = [];
+        let ty = Type::Struct(env.register_structure::<0>("Foo", fields));
         // register a static function on it
         env.register_static_function("bar", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
 
@@ -4114,7 +4118,8 @@ mod tests {
         assert_eq!(statements.len(), 1);
 
         // Try also on a enum type
-        let ty = Type::Enum(env.register_enum("Bar", Vec::new()));
+        let fields: [(&str, EnumVariant); 0] = [];
+        let ty = Type::Enum(env.register_enum("Bar", fields));
         // register a static function on it
         env.register_static_function("foo", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
 
@@ -4135,7 +4140,7 @@ mod tests {
     #[test]
     fn test_assign_struct_field_null() {
         let mut env = EnvironmentBuilder::default();
-        env.register_structure("Message", vec![("message_id", Type::Optional(Box::new(Type::U64)))]);
+        env.register_structure("Message", [("message_id", Type::Optional(Box::new(Type::U64)))]);
 
         let tokens = vec![
             Token::Identifier("Message"),

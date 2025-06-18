@@ -15,8 +15,8 @@ pub use hook::Hook;
 pub enum BuilderError {
     #[error("Struct name already used")]
     StructNameAlreadyUsed,
-    #[error("Struct not found")]
-    StructNotFound,
+    #[error("Type not found")]
+    TypeNotFound,
     #[error("mapping not found")]
     MappingNotFound,
     #[error("mapping already exists")]

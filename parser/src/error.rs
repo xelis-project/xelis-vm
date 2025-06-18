@@ -49,7 +49,7 @@ pub enum ParserErrorKind<'a> {
     #[error("cannot call this function, its either an entry or hook function")]
     FunctionIsNotCallable,
     #[error("invalid field name, got '{0}' but expected '{1}'")]
-    InvalidFieldName(&'a str, &'a str),
+    InvalidFieldName(&'a str, Cow<'a, str>),
     #[error("enum variant name '{0}' is already used")]
     EnumVariantAlreadyUsed(&'a str),
     #[error("invalid enum field name '{0}'")]

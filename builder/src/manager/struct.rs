@@ -1,37 +1,32 @@
+use std::borrow::Cow;
+
 use xelis_types::{IdentifierType, StructType, Type};
 
-use super::{Builder, BuilderType, TypeManager};
+use crate::Builder;
+
+use super::TypeManager;
 
 #[derive(Debug, Clone)]
-pub struct StructBuilder<'a> {
-    inner: StructType,
-    fields_names: Vec<&'a str>
+pub struct StructBuilder {
+    inner: StructType
 }
 
-pub type StructManager<'a> = TypeManager<'a, StructBuilder<'a>>;
-
-impl<'a> Builder<'a> for StructBuilder<'a> {
-    type Data = Type;
-    type BuilderType = StructType;
+impl Builder for StructBuilder {
+    type Data = Vec<(Cow<'static, str>, Type)>;
     type Type = StructType;
 
-    fn new(inner: Self::BuilderType, fields_names: Vec<&'a str>) -> Self {
+    fn build_with(id: IdentifierType, name: impl Into<Cow<'static, str>>, data: Self::Data) -> Self {
         Self {
-            inner,
-            fields_names
+            inner: StructType::new(id, name, data)
         }
-    }
-
-    fn builder_type(&self) -> &Self::BuilderType {
-        &self.inner
-    }
-
-    fn names(&self) -> &Vec<&'a str> {
-        &self.fields_names
     }
 
     fn get_type(&self) -> &Self::Type {
         &self.inner
+    }
+
+    fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+        self.inner.fields().iter().map(|(k, _)| k.as_ref())
     }
 
     fn to_type(&self) -> Self::Type {
@@ -43,12 +38,4 @@ impl<'a> Builder<'a> for StructBuilder<'a> {
     }
 }
 
-impl BuilderType<Type> for StructType {
-    fn with(id: IdentifierType, fields: Vec<Type>) -> Self {
-        StructType::new(id, fields)
-    }
-
-    fn type_id(&self) -> IdentifierType {
-        self.id()
-    }
-}
+pub type StructManager<'a> = TypeManager<'a, StructBuilder>;

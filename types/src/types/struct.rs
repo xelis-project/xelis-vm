@@ -1,4 +1,4 @@
-use std::{hash::{Hash, Hasher}, sync::Arc};
+use std::{borrow::Cow, hash::{Hash, Hasher}, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::IdentifierType;
@@ -9,8 +9,9 @@ use super::Type;
 pub struct Struct {
     // Unique identifier for serialization
     id: IdentifierType,
+    name: Cow<'static, str>,
     // Fields of the struct
-    fields: Vec<Type>
+    fields: Vec<(Cow<'static, str>, Type)>
 }
 
 impl Hash for Struct {
@@ -30,8 +31,8 @@ pub struct StructType(Arc<Struct>);
 
 impl StructType {
     /// Create a new struct type
-    pub fn new(id: IdentifierType, fields: Vec<Type>) -> Self {
-        Self(Arc::new(Struct { id, fields }))
+    pub fn new(id: IdentifierType, name: impl Into<Cow<'static, str>>, fields: Vec<(Cow<'static, str>, Type)>) -> Self {
+        Self(Arc::new(Struct { id, name: name.into(), fields }))
     }
 
     /// Get the unique identifier of the struct
@@ -40,9 +41,13 @@ impl StructType {
         self.0.id
     }
 
+    pub fn name(&self) -> &str {
+        &self.0.name
+    }
+
     /// Get the fields of the struct
     #[inline(always)]
-    pub fn fields(&self) -> &Vec<Type> {
+    pub fn fields(&self) -> &Vec<(Cow<'static, str>, Type)> {
         &self.0.fields
     }
 }

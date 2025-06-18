@@ -1,4 +1,4 @@
-use std::{hash::{Hash, Hasher}, sync::Arc};
+use std::{borrow::Cow, hash::{Hash, Hasher}, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,17 +8,29 @@ use super::Type;
 // Represents a variant of an enum
 // This is similar to a struct
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct EnumVariant(Vec<Type>);
+pub struct EnumVariant(Vec<(Cow<'static, str>, Type)>);
 
 impl EnumVariant {
     #[inline(always)]
-    pub fn new(types: Vec<Type>) -> Self {
+    pub fn new(types: Vec<(Cow<'static, str>, Type)>) -> Self {
         Self(types)
     }
 
     #[inline(always)]
-    pub fn fields(&self) -> &[Type] {
+    pub fn fields(&self) -> &[(Cow<'static, str>, Type)] {
         &self.0
+    }
+}
+
+impl From<Vec<(Cow<'static, str>, Type)>> for EnumVariant {
+    fn from(value: Vec<(Cow<'static, str>, Type)>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Vec<(&'static str, Type)>> for EnumVariant {
+    fn from(value: Vec<(&'static str, Type)>) -> Self {
+        Self(value.into_iter().map(|(k, v)| (Cow::Borrowed(k), v)).collect())
     }
 }
 
@@ -27,7 +39,8 @@ impl EnumVariant {
 #[derive(Clone, Eq, Debug, Serialize, Deserialize)]
 pub struct Enum {
     id: IdentifierType,
-    variants: Vec<EnumVariant>,
+    name: Cow<'static, str>,
+    variants: Vec<(Cow<'static, str>, EnumVariant)>,
 }
 
 impl Hash for Enum {
@@ -56,8 +69,8 @@ pub struct EnumValueType {
 
 impl EnumType {
     // Create a new enum type
-    pub fn new(id: IdentifierType, variants: Vec<EnumVariant>) -> Self {
-        Self(Arc::new(Enum { id, variants }))
+    pub fn new(id: IdentifierType, name: impl Into<Cow<'static, str>>, variants: Vec<(Cow<'static, str>, EnumVariant)>) -> Self {
+        Self(Arc::new(Enum { id, name: name.into(), variants }))
     }
 
     // Get the unique identifier of the enum
@@ -66,15 +79,21 @@ impl EnumType {
         self.0.id
     }
 
+    // Get the unique identifier of the enum
+    #[inline(always)]
+    pub fn name(&self) -> &str {
+        &self.0.name
+    }
+
     // Get the variants of the enum
     #[inline(always)]
-    pub fn variants(&self) -> &Vec<EnumVariant> {
+    pub fn variants(&self) -> &Vec<(Cow<'static, str>, EnumVariant)> {
         &self.0.variants
     }
 
     // Get a variant by its id
     #[inline(always)]
-    pub fn get_variant(&self, id: u8) -> Option<&EnumVariant> {
+    pub fn get_variant(&self, id: u8) -> Option<&(Cow<'static, str>, EnumVariant)> {
         self.0.variants.get(id as usize)
     }
 }

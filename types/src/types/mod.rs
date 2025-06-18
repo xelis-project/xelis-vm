@@ -433,12 +433,12 @@ impl fmt::Display for Type {
                 }
                 write!(f, ")")
             }
-            Type::Struct(id) => write!(f, "struct({:?})", id),
+            Type::Struct(ty) => write!(f, "struct {}", ty.name()),
             Type::Array(_type) => write!(f, "{}[]", _type),
             Type::Optional(_type) => write!(f, "optional<{}>", _type),
             Type::Range(_type) => write!(f, "range<{}>", _type),
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
-            Type::Enum(id) => write!(f, "enum({:?})", id),
+            Type::Enum(ty) => write!(f, "enum {}", ty.name()),
             Type::Opaque(id) => write!(f, "opaque({:?})", id),
         }
     }
@@ -479,14 +479,14 @@ mod tests {
         assert!(!Type::Optional(Box::new(Type::Bool)).is_compatible_with(&Type::Bool));
         assert!(!Type::Bool.is_compatible_with(&Type::Optional(Box::new(Type::Bool))));
 
-        let struct_type = StructType::new(0, Vec::new());
+        let struct_type = StructType::new(0, "Foo", Vec::new());
         assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_assign_compatible_with(&Type::Struct(struct_type.clone())));
     }
 
     #[test]
     fn test_type_id_equivalent() {
         let id = TypeId(1);
-        let struct_type = StructType::new(1,vec![]);
+        let struct_type = StructType::new(1, "Foo", vec![]);
         assert!(id.equivalent(&struct_type));
 
         // Also test hash
