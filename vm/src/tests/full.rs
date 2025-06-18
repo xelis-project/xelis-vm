@@ -1714,9 +1714,8 @@ fn test_match() {
         entry main() {
             let v: Foo = Foo::A { value: 50 };
             match v {
-                Foo::B { value: 50 } => panic("should not match"),
-                Foo::A { value: 50 } => return 0,
-                _ => panic("should not match default")
+                Foo::B { value } => panic("should not match"),
+                Foo::A { value } => return 0,
             };
 
             return 1
@@ -1738,6 +1737,7 @@ fn test_match_variant() {
 
         entry main() {
             match Foo::A { value: 50, second: 3 } {
+                Foo::B { value } => panic("should not match B"),
                 Foo::A { value, second } => return value,
                 _ => panic("should not match default")
             };
@@ -1747,4 +1747,24 @@ fn test_match_variant() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(50));
+
+        let code = r#"
+        enum Foo {
+            A { value: u64, second: u64 },
+            B { value: u64 },
+            C
+        }
+
+        entry main() {
+            match Foo::C {
+                Foo::B { value } => panic("should not match B"),
+                Foo::A { value, second } => panic("should not match A")
+                _ => return 0
+            };
+
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
 }

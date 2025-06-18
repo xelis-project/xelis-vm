@@ -615,12 +615,9 @@ impl<'a> Parser<'a> {
     // { field1, field2, ... }
     // or with values
     // { field1: value1, field2: value2, ... }
-    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<(Vec<(&'a str, Expression)>, bool), ParserError<'a>> {
+    fn read_constructor_fields(&mut self, context: &mut Context<'a>, expected_types: &[Type]) -> Result<Vec<(&'a str, Expression)>, ParserError<'a>> {
         trace!("Read constructor fields");
 
-        // bool to determine if we can register the variable
-        let in_match = context.is_in_a_match();
-        let mut registered_as_var = false;
         let mut fields = Vec::with_capacity(expected_types.len());
         for ty in expected_types {
             let field_name = self.next_identifier()?;
@@ -629,13 +626,8 @@ impl<'a> Parser<'a> {
                 Token::Comma | Token::BraceClose => {
                     // If we are in a match, register the variable
                     // So we can use it in the body
-                    let id = if in_match {
-                        registered_as_var = true;
-                        self.register_variable(context, field_name, ty.clone())?
-                    } else {
-                        context.get_variable_id(field_name)
-                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?
-                    };
+                    let id = context.get_variable_id(field_name)
+                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?;
 
                     Expression::Variable(id)
                 },
@@ -654,7 +646,7 @@ impl<'a> Parser<'a> {
         }
         self.expect_token(Token::BraceClose)?;
 
-        Ok((fields, registered_as_var))
+        Ok(fields)
     }
 
     // Verify the type of an expression, if not the same, try to cast it with no loss
@@ -701,7 +693,7 @@ impl<'a> Parser<'a> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
-        let (fields, _) = self.read_constructor_fields(context, struct_type.fields())?;
+        let fields = self.read_constructor_fields(context, struct_type.fields())?;
 
         if struct_type.fields().len() != fields.len() {
             return Err(err!(self, ParserErrorKind::InvalidFieldCount))
@@ -748,9 +740,9 @@ impl<'a> Parser<'a> {
         };
 
         // If its an enum variant with fields
-        let (exprs, deconstruct) = if !fields.is_empty() {
+        let exprs = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
-            let (fields, deconstruct) = self.read_constructor_fields(context, &fields)?;
+            let fields = self.read_constructor_fields(context, &fields)?;
 
             // Now we verify that we have all fields needed
             let builder = self.global_mapper.enums()
@@ -775,17 +767,13 @@ impl<'a> Parser<'a> {
                 fields_expressions.push(field_expr);
             }
 
-            (fields_expressions, deconstruct)
+            fields_expressions
         } else {
-            (Vec::new(), false)
+            Vec::new()
         };
 
         let variant = EnumValueType::new(enum_type, variant_id);
-        Ok(if deconstruct {
-            Expression::EnumPattern(exprs, variant)
-        } else {
-            Expression::EnumConstructor(exprs, variant)
-        })
+        Ok(Expression::EnumConstructor(exprs, variant))
     }
 
     // Read a constant from the environment
@@ -1278,9 +1266,6 @@ impl<'a> Parser<'a> {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
-                                    } else if let Some(ty) = context.get_match_on_type() {
-                                        let id = self.register_variable(context, id, ty)?;
-                                        Expression::Variable(id)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }
@@ -1883,6 +1868,96 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
+    fn read_match_pattern(&mut self, context: &mut Context<'a>, expected_type: &Type) -> Result<Option<MatchStatement>, ParserError<'a>> {
+        if let Type::Enum(enum_ty) = expected_type {
+            let name = self.next_identifier()?;
+
+            if !self.peek_is(Token::Colon) {
+                self.register_variable(context, name, expected_type.clone())?;
+                return Ok(None)
+            }
+
+            let ty = self.get_type_from_token(Token::Identifier(name))?;
+            if ty != *expected_type {
+                return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
+            }
+
+            self.expect_token(Token::Colon)?;
+            self.expect_token(Token::Colon)?;
+            let variant = self.next_identifier()?;
+            let (id, fields) = {
+                let builder = self.global_mapper.enums()
+                    .get_by_ref(&enum_ty)
+                    .map_err(|e| err!(self, e.into()))?;
+
+                // TODO: no clone
+                builder.get_variant_by_name(&variant)
+                    .map(|(id, fields)| (id, fields.iter().map(|(n, v)| (n.to_string(), v.clone())).collect::<Vec<_>>()))
+                    .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant)))?
+            };
+
+            if !fields.is_empty() {
+                self.expect_token(Token::BraceOpen)?;
+            }
+
+            let mut variables = Vec::with_capacity(fields.len());
+            for (field, _) in fields.iter() {
+                let actual_field = self.next_identifier()?;
+                if field != actual_field {
+                    return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(actual_field)))
+                }
+
+                let var_name = if self.peek_is(Token::Colon) {
+                    self.expect_token(Token::Colon)?;
+                    self.next_identifier()?
+                } else {
+                    actual_field
+                };
+
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                }
+
+                variables.push(var_name);
+            }
+
+            if !fields.is_empty() {
+                self.expect_token(Token::BraceClose)?;
+            }
+
+            let count = fields.len();
+            // Register the variables in reverse order in the context
+            // Because VM flatten in current order, but compiler will memset in reverse
+            for (variable, (_, ty)) in variables.into_iter().zip(fields).rev() {
+                self.register_variable(context, variable, ty)?;
+            }
+
+            let variant = EnumValueType::new(enum_ty.clone(), id);
+            // TODO: if ignored, pop them in compiler
+            Ok(Some(MatchStatement::Variant(count, variant)))
+        } else {
+            if self.peek_is_identifier() {
+                let name = self.next_identifier()?;
+                self.register_variable(context, name, expected_type.clone())?;
+                return Ok(None)
+            }
+
+            let expr = self.read_expression_expected_type(context, expected_type)?;
+            let ty = self.get_type_from_expression(None, &expr, context)?;
+            if *ty != *expected_type {
+                if let Type::Range(inner) = ty.as_ref() {
+                    if **inner != *expected_type {
+                        return Err(err!(self, ParserErrorKind::ExpectedMatchingType))        
+                    }
+                } else {
+                    return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
+                }
+            }
+
+            Ok(Some(MatchStatement::Cond(expr)))
+        }
+    }
+
     // Read a single statement
     fn read_statement(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Option<Statement>, ParserError<'a>> {
         if let Some(token) = self.next() {
@@ -2033,49 +2108,26 @@ impl<'a> Parser<'a> {
                     self.expect_token(Token::BraceOpen)?;
                     let mut patterns = Vec::new();
                     let mut default_case = None;
-                    loop {
-                        if default_case.is_none() {
-                            context.set_in_a_match(Some(expr_ty.clone()));
-                        }
-
-                        let pattern = self.read_expression_expected_type(context, &expr_ty)?;
-
-                        let is_consumed = default_case.is_none() && context.get_match_on_type().is_none();
-                        if !is_consumed {
-                            context.set_in_a_match(None);
-                        }
-
-                        let ty = self.get_type_from_expression(None, &pattern, context)?;
-                        if *ty != expr_ty {
-                            if let Type::Range(inner) = ty.as_ref() {
-                                if **inner != expr_ty {
-                                    return Err(err!(self, ParserErrorKind::ExpectedMatchingType))        
-                                }
-                            } else {
-                                return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
-                            }
-                        }
-
+                    while self.peek_is_not(Token::BraceClose) {
+                        context.begin_scope();
+                        let pattern = self.read_match_pattern(context, &expr_ty)?;
                         self.expect_token(Token::FatArrow)?;
                         let body = self.read_statement(context, &return_type)?
                             .ok_or_else(|| err!(self, ParserErrorKind::ExpectedBodyPatternMatch))?;
+                        context.end_scope();
 
-                        if is_consumed {
-                            default_case = Some(Box::new(body));
+                        if let Some(pattern) = pattern {
+                            patterns.push((pattern, body));
                         } else {
-                            let item = if let Expression::EnumPattern(exprs, ty) = pattern {
-                                (MatchStatement::Variant(exprs, ty), body)
-                            } else {
-                                (MatchStatement::Cond(pattern), body)
-                            };
+                            if default_case.is_some() {
+                                return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                            }
 
-                            patterns.push(item);
+                            default_case = Some(Box::new(body));
                         }
 
                         if self.peek_is(Token::Comma) {
                             self.expect_token(Token::Comma)?;
-                        } else {
-                            break;
                         }
                     }
 

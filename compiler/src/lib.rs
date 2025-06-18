@@ -584,6 +584,8 @@ impl<'a> Compiler<'a> {
                 let mut jumps_end = Vec::with_capacity(patterns.len());
                 for (condition, statement) in patterns {
                     trace!("compiling pattern {:?} with {:?}", condition, statement);
+                    self.push_mem_scope();
+
                     match condition {
                         MatchStatement::Cond(expr) => {
                             self.compile_expr(chunk, expr)?;
@@ -602,11 +604,11 @@ impl<'a> Compiler<'a> {
                     let jump_addr = chunk.last_index();
 
                     if let MatchStatement::Variant(exprs, _) = condition {
-                        trace!("storing {} values for variant match", exprs.len());
+                        trace!("storing {} values for variant match", exprs);
 
                         // Match OpCode add N values on stack + the magic byte
-                        self.add_values_on_stack(chunk.last_index(), exprs.len() + 1)?;
-                        for _ in exprs {
+                        self.add_values_on_stack(chunk.last_index(), exprs + 1)?;
+                        for _ in 0..*exprs {
                             self.memstore(chunk)?;
                         }
 
@@ -618,7 +620,6 @@ impl<'a> Compiler<'a> {
                     // One is used for the jump if false
                     self.decrease_values_on_stack()?;
 
-                    self.push_mem_scope();
                     self.compile_statement(chunk, statement)?;
                     self.pop_mem_scope(chunk)?;
 

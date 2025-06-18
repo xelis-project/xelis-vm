@@ -10,10 +10,6 @@ pub struct Context<'a> {
     max_variables_count: usize,
     // is_in_loop is used to allow the use of the break and continue keywords
     is_in_loop: bool,
-    // are we in a match pattern
-    // this is useful to determine if we can
-    // auto register an unknown variable for default case
-    match_on_type: Option<Type>,
 }
 
 impl<'a> Context<'a> {
@@ -25,7 +21,6 @@ impl<'a> Context<'a> {
             checkpoints: Vec::new(),
             max_variables_count: 0,
             is_in_loop: false,
-            match_on_type: None,
         }
     }
 
@@ -97,21 +92,6 @@ impl<'a> Context<'a> {
     // set if the Context is in a loop
     pub fn set_in_a_loop(&mut self, is_in_loop: bool) {
         self.is_in_loop = is_in_loop;
-    }
-
-    // returns if the Context is in a match
-    pub fn is_in_a_match(&self) -> bool {
-        self.match_on_type.is_some()
-    }
-
-    // returns the type if the Context is in match
-    pub fn get_match_on_type(&mut self) -> Option<Type> {
-        self.match_on_type.take()
-    }
-
-    // set if the Context is in a loop
-    pub fn set_in_a_match(&mut self, is_in_match: Option<Type>) {
-        self.match_on_type = is_in_match;
     }
 }
 

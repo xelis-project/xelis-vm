@@ -51,8 +51,8 @@ pub enum Statement {
 #[derive(Debug, Eq, PartialEq)]
 pub enum MatchStatement {
     // match the variant and flatten it
-    Variant(Vec<Expression>, EnumValueType),
-    Cond(Expression)
+    Variant(usize, EnumValueType),
+    Cond(Expression),
 
 }
 
