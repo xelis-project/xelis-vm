@@ -1768,3 +1768,20 @@ fn test_match_variant() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_foreach_map_mapping_found() {
+    let code = r#"
+        entry main() {
+            let artists: map<u64, string> = {1: "paul", 2: "john", 3: "triton"};
+            
+            foreach n in artists.keys() {
+                artists.get(n);
+            }
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}

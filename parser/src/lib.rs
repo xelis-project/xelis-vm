@@ -120,6 +120,13 @@ impl<'a> Function<'a> {
             Function::Native(_) => true,
         }
     }
+
+    fn is_instance(&self) -> bool {
+        match self {
+            Function::Program(f) => f.get_instance_name().is_some(),
+            Function::Native(f) => f.is_on_instance(),
+        }
+    }
 }
 
 // Character to use to ignore a variable
@@ -410,7 +417,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_from_generic_type(&self, on_type: Option<&Type>, _type: &Type, path: Option<&Expression>, context: &Context<'a>) -> Result<Type, ParserError<'a>> {
-        trace!("Get from generic type: {:?}", _type);
+        trace!("Get from generic type: {:?} on type {:?}", _type, on_type);
         Ok(match _type {
             Type::T(id) => match on_type {
                 Some(t) if id.is_some() => t.get_generic_type(id.unwrap())
@@ -425,6 +432,7 @@ impl<'a> Parser<'a> {
                     None => return Err(err!(self, ParserErrorKind::NoValueType))
                 }
             },
+            Type::Array(inner) => Type::Array(Box::new(self.get_from_generic_type(on_type, inner, path, context)?)),
             Type::Optional(inner) => Type::Optional(Box::new(self.get_from_generic_type(on_type, inner, path, context)?)),
             _ => _type.clone()
         })
@@ -475,8 +483,16 @@ impl<'a> Parser<'a> {
             Expression::FunctionCall(path, name, _) => {
                 let f = self.get_function(*name)?;
                 let return_type = f.return_type();
+                
                 match return_type {
-                    Some(ref v) => Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?),
+                    Some(ref v) => {
+                        if let Some(path) = path.as_ref().filter(|_| f.is_instance()) {
+                            let ty = self.get_type_from_expression(None, path, context)?;
+                            Cow::Owned(self.get_from_generic_type(Some(&ty), v, None, context)?)
+                        } else {
+                            Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?)
+                        }
+                    }
                     None => return Err(err!(self, ParserErrorKind::FunctionNoReturnType))
                 }
             },
@@ -2000,6 +2016,7 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::NotIterable(expr_type.into_owned())))
                     }
 
+                    trace!("register foreach variable {:?} {:?} {:?}", expr, expr_type, expr_type.get_inner_type());
                     let id = self.register_variable(context, variable, expr_type.get_inner_type().clone())?;
                     let statements = self.read_loop_body(context, return_type)?;
                     context.end_scope();

@@ -181,6 +181,8 @@ impl<'a> FunctionMapper<'a> {
             return parent.get_compatible(name, on_type, instance, types, expressions);
         }
 
+        trace!("no function found for '{}' on {:?} (instance = {}) with {:?}", name, on_type, instance, types);
+
         Err(BuilderError::MappingNotFound)
     }
 
