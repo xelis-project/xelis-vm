@@ -263,14 +263,14 @@ mod tests {
     fn test_opaque_type_serde() {
         let opaque_type = OpaqueType::new(42);
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"42"#);
+        assert_eq!(json, r#"{"id":42,"allow_external_input":false}"#);
 
         let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque_type, opaque_type2);
 
         let opaque_type = Type::Opaque(OpaqueType::new(42));
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"type":"opaque","value":42}"#);
+        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"allow_external_input":false}}"#);
     }
 
     #[test]

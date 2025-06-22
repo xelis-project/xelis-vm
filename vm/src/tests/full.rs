@@ -1217,7 +1217,7 @@ fn test_opaque_fn_call() {
     impl_opaque!("Foo", Foo);
 
     let mut env = EnvironmentBuilder::default();
-    let ty = Type::Opaque(env.register_opaque::<Foo>("Foo"));
+    let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
 
     env.register_native_function("foo", None, vec![], |_, _, _| {
         Ok(Some(Primitive::Opaque(Foo.into()).into()))
@@ -1356,7 +1356,7 @@ fn test_types_compatibility() {
     impl_opaque!("Dummy", DummyOpaque);
 
     let mut env = EnvironmentBuilder::default();
-    let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy"));
+    let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
     env.register_native_function("test", None, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
     env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
     env.register_static_function("static", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Optional(Box::new(Type::Bool))));
