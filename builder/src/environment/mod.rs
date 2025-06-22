@@ -115,7 +115,7 @@ impl<'a> EnvironmentBuilder<'a> {
         let ty = TypeId::of::<T>();
         let opaque = self.opaque_manager.build(name, allow_external_input)
             .expect("Unique opaque name");
-        self.env.add_opaque(ty);
+        self.env.add_opaque(ty, allow_external_input);
         opaque
     }
 
