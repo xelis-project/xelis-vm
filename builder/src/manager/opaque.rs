@@ -15,9 +15,9 @@ impl<'a> OpaqueManager<'a> {
     }
 
     // Register a new opaque type
-    pub fn build(&mut self, name: &'a str) -> Result<OpaqueType, BuilderError> {
+    pub fn build(&mut self, name: &'a str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
         let id = self.mapper.register(name)?;
-        let ty = OpaqueType::new(id);
+        let ty = OpaqueType::with(id, allow_external_input);
         self.types.insert(id, ty);
         Ok(ty)
     }

@@ -110,6 +110,8 @@ pub enum ParserErrorKind<'a> {
     InvalidHookReturnType(&'a str, Option<Type>, Option<Type>),
     #[error("Hook '{0}' (id {1}) is already registered")]
     DuplicatedHook(&'a str, u8),
+    #[error("Opaque is not allowed from external")]
+    ExternalOpaqueNotAllowed,
     #[error("unexpected token '{0:?}'")]
     UnexpectedToken(Token<'a>),
     #[error("unexpected token in postfix expresion '{0:?}'")]

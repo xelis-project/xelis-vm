@@ -2299,38 +2299,52 @@ impl<'a> Parser<'a> {
 
         // Check that the function name is a known hook
         let mut hook_id = None;
-        if kind.is_hook() {
-            let hook = self.environment.get_hooks().get(name)
-                .ok_or_else(|| err!(self, ParserErrorKind::UnknownHook(name)))?;
-
-            // Verify that the params len are correct
-            if parameters.len() != hook.parameters.len() {
-                return Err(err!(self, ParserErrorKind::InvalidHookParameters(name, parameters.len(), hook.parameters.len())));
-            }
-
-            // Verify their types
-            for ((_, got), (_, expected)) in parameters.iter().zip(hook.parameters.iter()) {
-                if got != expected {
-                    return Err(err!(self, ParserErrorKind::InvalidHookParameter(name, got.clone(), expected.clone())));
+        match kind {
+            FunctionKind::Hook => {
+                let hook = self.environment.get_hooks().get(name)
+                    .ok_or_else(|| err!(self, ParserErrorKind::UnknownHook(name)))?;
+        
+                // Verify that the params len are correct
+                if parameters.len() != hook.parameters.len() {
+                    return Err(err!(self, ParserErrorKind::InvalidHookParameters(name, parameters.len(), hook.parameters.len())));
                 }
-            }
-
-            // Verify the return type
-            if return_type != hook.return_type {
-                return Err(err!(self, ParserErrorKind::InvalidHookReturnType(name, return_type, hook.return_type.clone())));
-            }
-
-            // Check that this hook isn't already registered
-            for f in self.functions.iter() {
-                if let FunctionType::Hook(h) = f {
-                    if h.hook_id() == hook.hook_id {
-                        return Err(err!(self, ParserErrorKind::DuplicatedHook(name, hook.hook_id)))
+        
+                // Verify their types
+                for ((_, got), (_, expected)) in parameters.iter().zip(hook.parameters.iter()) {
+                    if got != expected {
+                        return Err(err!(self, ParserErrorKind::InvalidHookParameter(name, got.clone(), expected.clone())));
                     }
                 }
-            }
-
-            hook_id = Some(hook.hook_id);
-        }
+        
+                // Verify the return type
+                if return_type != hook.return_type {
+                    return Err(err!(self, ParserErrorKind::InvalidHookReturnType(name, return_type, hook.return_type.clone())));
+                }
+        
+                // Check that this hook isn't already registered
+                for f in self.functions.iter() {
+                    if let FunctionType::Hook(h) = f {
+                        if h.hook_id() == hook.hook_id {
+                            return Err(err!(self, ParserErrorKind::DuplicatedHook(name, hook.hook_id)))
+                        }
+                    }
+                }
+        
+                hook_id = Some(hook.hook_id);
+            },
+            FunctionKind::Entry => {
+                // Ensure that we don't try to ask for a opaque
+                // that is not allowed from external
+                for (_, ty) in parameters.iter() {
+                    if let Type::Opaque(ty) = ty {
+                        if !ty.allow_external_input() {
+                            return Err(err!(self, ParserErrorKind::ExternalOpaqueNotAllowed)) 
+                        }
+                    }
+                }
+            },
+            _ => {}
+        };
 
         let id = self.global_mapper
             .functions_mut()

@@ -4,7 +4,7 @@ use core::fmt;
 use std::{
     any::TypeId,
     fmt::{Debug, Display},
-    hash::{Hash, Hasher}
+    hash::{Hash, Hasher},
 };
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
@@ -12,15 +12,44 @@ use crate::{IdentifierType, ValueError};
 use traits::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct OpaqueType(IdentifierType);
+struct OpaqueTypeInner {
+    id: IdentifierType,
+    allow_external_input: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OpaqueType(OpaqueTypeInner);
 
 impl OpaqueType {
     pub fn new(id: IdentifierType) -> Self {
-        Self(id)
+        Self::with(id, false)
+    }
+
+    pub fn with(id: IdentifierType, allow_external_input: bool) -> Self {
+        Self(OpaqueTypeInner {
+            id,
+            allow_external_input
+        })
     }
 
     pub fn id(&self) -> IdentifierType {
-        self.0
+        self.0.id
+    }
+
+    pub fn allow_external_input(&self) -> bool {
+        self.0.allow_external_input
+    }
+}
+
+impl Serialize for OpaqueType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'a> Deserialize<'a> for OpaqueType {
+    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self(OpaqueTypeInner::deserialize(deserializer)?))
     }
 }
 
@@ -29,10 +58,6 @@ pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + Debug 
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Opaque")
-    }
-
-    fn is_external_input_allowed(&self) -> bool {
-        true
     }
 }
 
@@ -66,11 +91,6 @@ impl OpaqueWrapper {
         Self {
             inner: Box::new(value)
         }
-    }
-
-    // Is it allowed to be passed as an external param
-    pub fn is_external_input_allowed(&self) -> bool {
-        self.inner.is_external_input_allowed()
     }
 
     /// Get the TypeId of the OpaqueWrapper
@@ -176,11 +196,12 @@ impl Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
-    use std::any::TypeId;
+    use std::{any::TypeId, hash::DefaultHasher};
 
     use crate::{
         impl_opaque,
-        register_opaque_json, Type
+        register_opaque_json,
+        Type
     };
     use super::*;
 
@@ -215,7 +236,7 @@ mod tests {
         assert_eq!(opaque.get_type_id(), TypeId::of::<CustomOpaque>());
 
         // Test hashing
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut hasher = DefaultHasher::new();
         opaque.hash(&mut hasher);
 
         // Test equality
