@@ -51,7 +51,7 @@ impl<'a> EnvironmentBuilder<'a> {
     fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
         let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone()).unwrap();
-        self.env.add_function(NativeFunction::new(require_instance, params, on_call, cost, return_type));
+        self.env.add_function(NativeFunction::new(on_type, require_instance, params, on_call, cost, return_type));
     }
 
     // Register a native function

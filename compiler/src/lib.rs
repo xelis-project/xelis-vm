@@ -306,6 +306,22 @@ impl<'a> Compiler<'a> {
             Expression::ForceType(expr, _) => {
                 self.compile_expr(chunk, expr)?;
             },
+            Expression::FunctionPointer(id) => {
+                let len = self.environment.get_functions().len();
+                if (*id as usize) < len {
+                    chunk.emit_opcode(OpCode::SysCall);
+                    chunk.write_u16(*id);
+                } else {
+                    chunk.emit_opcode(OpCode::InvokeChunk);
+                    let id = *id as usize - len;
+                    let f = self.program.functions()
+                        .get(id)
+                        .ok_or(CompilerError::ExpectedFunction)?;
+
+                    chunk.write_u16(id as u16);
+                    chunk.write_u8(f.get_parameters().len() as u8 + f.get_instance_name().is_some() as u8);
+                }
+            },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {
                     self.compile_expr(chunk, expr_on)?;
@@ -323,7 +339,7 @@ impl<'a> Compiler<'a> {
 
                     self.environment.get_functions()
                         .get(*id as usize)
-                        .ok_or(CompilerError::ExpectedVariable)?
+                        .ok_or(CompilerError::ExpectedFunction)?
                         .return_type()
                         .is_some()
                 } else {
@@ -334,7 +350,7 @@ impl<'a> Compiler<'a> {
 
                     self.program.functions()
                         .get(id)
-                        .ok_or(CompilerError::ExpectedVariable)?
+                        .ok_or(CompilerError::ExpectedFunction)?
                         .return_type()
                         .is_some()
                 };

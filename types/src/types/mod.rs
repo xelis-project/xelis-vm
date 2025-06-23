@@ -1,15 +1,19 @@
 mod r#struct;
 mod r#enum;
+mod func;
+
 pub mod opaque;
 
+use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::Equivalent;
 use serde::{Deserialize, Serialize};
-pub use r#struct::*;
-pub use r#enum::*;
-use opaque::OpaqueType;
 
 use crate::{values::Primitive, Constant};
-use std::{fmt, hash::{Hash, Hasher}};
+use opaque::OpaqueType;
+
+pub use r#struct::*;
+pub use r#enum::*;
+pub use func::*;
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -42,6 +46,7 @@ pub enum Type {
     Struct(StructType),
     Enum(EnumType),
     Opaque(OpaqueType),
+    Function(FnType)
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,6 +445,7 @@ impl fmt::Display for Type {
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(ty) => write!(f, "enum {}", ty.name()),
             Type::Opaque(id) => write!(f, "opaque({:?})", id),
+            Type::Function(ty) => write!(f, "{}", ty)
         }
     }
 }

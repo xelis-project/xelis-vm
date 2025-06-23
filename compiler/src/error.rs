@@ -3,6 +3,8 @@ use xelis_ast::Operator;
 
 #[derive(Debug, Error)]
 pub enum CompilerError {
+    #[error("expected a function")]
+    ExpectedFunction,
     #[error("too many array values: {0}")]
     TooManyArrayValues(usize),
     #[error("too many map values: {0}")]

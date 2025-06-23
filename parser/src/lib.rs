@@ -107,25 +107,47 @@ enum Function<'a> {
 }
 
 impl<'a> Function<'a> {
-    fn return_type(&self) -> &Option<Type> {
+    pub fn return_type(&self) -> &Option<Type> {
         match self {
             Function::Native(f) => f.return_type(),
             Function::Program(f) => f.return_type()
         }
     }
 
-    fn is_normal(&self) -> bool {
+    pub fn is_normal(&self) -> bool {
         match self {
             Function::Program(f) => f.kind().is_normal(),
             Function::Native(_) => true,
         }
     }
 
-    fn is_instance(&self) -> bool {
+    pub fn is_instance(&self) -> bool {
         match self {
             Function::Program(f) => f.get_instance_name().is_some(),
             Function::Native(f) => f.is_on_instance(),
         }
+    }
+
+    pub fn as_type(&self) -> Option<FnType> {
+        Some(match self {
+            Self::Program(FunctionType::Declared(f)) => FnType::new(
+                f.get_on_type().clone(),
+                f.get_instance_name().is_some(),
+                f.get_parameters()
+                        .iter()
+                        .map(Parameter::get_type)
+                        .cloned()
+                        .collect(),
+                    f.get_return_type().clone()
+            ),
+            Self::Native(f) => FnType::new(
+                f.on_type().cloned(),
+                f.is_on_instance(),
+                f.get_parameters().clone(),
+                f.return_type().clone()
+            ),
+            _ => return None
+        })
     }
 }
 
@@ -372,6 +394,31 @@ impl<'a> Parser<'a> {
 
                 Type::Tuples(tuples)
             },
+            Token::Function => {
+                // fn(Type, Type) -> Type
+                self.expect_token(Token::ParenthesisOpen)?;
+                let mut parameters = Vec::new();
+                while self.peek_is_not(Token::ParenthesisClose) {
+                    let ty = self.read_type()?;
+                    parameters.push(ty);
+
+                    if self.peek_is(Token::Comma) {
+                        self.expect_token(Token::Comma)?;
+                    } else {
+                        break;
+                    }
+                }
+                self.expect_token(Token::ParenthesisClose)?;
+
+                let return_type = if self.peek_is(Token::ReturnType) {
+                    self.expect_token(Token::ReturnType)?;
+                    Some(self.read_type()?)
+                } else {
+                    None
+                };
+
+                Type::Function(FnType::new(None, false, parameters, return_type))
+            }
             token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
         })
     }
@@ -479,6 +526,12 @@ impl<'a> Parser<'a> {
                     _ => return Err(err!(self, ParserErrorKind::UnexpectedMappedVariableId(var_name.clone())))
                 },
                 None => Cow::Borrowed(context.get_type_of_variable(var_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedMappedVariableId(*var_name)))?),
+            },
+            Expression::FunctionPointer(id) => {
+                let f = self.get_function(*id)?;
+                let ty = f.as_type()
+                    .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
+                Cow::Owned(Type::Function(ty))
             },
             Expression::FunctionCall(path, name, _) => {
                 let f = self.get_function(*name)?;
@@ -1282,6 +1335,12 @@ impl<'a> Parser<'a> {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
+                                    } else if let Some(Type::Function(f)) = expected_type {
+                                        let id = self.global_mapper.functions()
+                                            .get_by_signature(id, f.on_type(), f.on_instance(), f.parameters())
+                                            .map_err(|e| err!(self, e.into()))?;
+
+                                        Expression::FunctionPointer(id)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }
@@ -4172,7 +4231,6 @@ mod tests {
     #[test]
     fn test_assign_optional_to_type() {
         let mut env = EnvironmentBuilder::default();
-        // env.register_structure("Message", vec![("message_id", Type::Optional(Box::new(Type::U64)))]);
         env.register_native_function("test", None, vec![], |_, _, _| todo!(), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
         // let _: bool = test();

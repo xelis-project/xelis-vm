@@ -29,6 +29,7 @@ pub enum Expression {
     ForceType(Box<Expression>, Type),
     // Each sub variable/attribute of the enum, its type
     EnumPattern(Vec<Expression>, EnumValueType),
+    FunctionPointer(IdentifierType),
 }
 
 #[derive(Debug, Eq, PartialEq)]

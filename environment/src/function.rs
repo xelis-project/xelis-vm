@@ -15,6 +15,7 @@ pub type OnCallFn = fn(FnInstance, FnParams, &mut Context) -> FnReturnType;
 #[derive(Debug, Clone)]
 pub struct NativeFunction {
     // function on type
+    on_type: Option<Type>,
     require_instance: bool,
     parameters: Vec<Type>,
     on_call: OnCallFn,
@@ -27,14 +28,23 @@ pub struct NativeFunction {
 impl NativeFunction {
     // Create a new instance of the NativeFunction
     #[inline]
-    pub fn new(require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
+    pub fn new(on_type: Option<Type>, require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
+            on_type,
             require_instance,
             parameters,
             on_call,
             cost,
             return_type
         }
+    }
+
+    // Get function on type
+    // example: Foo::bar
+    // Foo is on_type
+    #[inline]
+    pub fn on_type(&self) -> Option<&Type> {
+        self.on_type.as_ref()
     }
 
     // Check if the function requires an instance

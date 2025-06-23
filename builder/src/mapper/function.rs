@@ -81,13 +81,18 @@ impl<'a> FunctionMapper<'a> {
         self.mappings.get(id)
     }
 
+    pub fn get_by_signature(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Type>) -> Result<IdentifierType, BuilderError> {
+        let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
+        self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Borrowed(types)))
+    }
+
     pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature
         if let Some(types) = types.iter().cloned().collect() {        
-            let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
-            if let Ok(id) = self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Owned(types))) {
-                return Ok(id);
+            if let Ok(id) = self.get_by_signature(name, on_type, instance, &types) {
+                return Ok(id)
             }
+
         }
 
         // Lets find a compatible signature
