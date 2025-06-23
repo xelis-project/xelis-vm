@@ -411,6 +411,7 @@ impl<'a> Parser<'a> {
                 self.expect_token(Token::ParenthesisClose)?;
 
                 let return_type = if self.peek_is(Token::ReturnType) {
+                    trace!("read return type of fn");
                     self.expect_token(Token::ReturnType)?;
                     Some(self.read_type()?)
                 } else {
@@ -1168,7 +1169,7 @@ impl<'a> Parser<'a> {
         expected_type: Option<&Type>, 
         context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
-        trace!("Read expression with peek {:?}", self.peek());
+        trace!("Read expression with peek {:?} on type {:?}, expected type {:?}", self.peek(), on_type, expected_type);
         // All expressions parsed
         let mut operator_stack: Vec<Operator> = Vec::new();
         // Queued items, draining the above two vectors
@@ -1347,7 +1348,7 @@ impl<'a> Parser<'a> {
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
                                     } else if let Ok(id) = self.global_mapper.functions()
-                                        .get_by_signature(id, expected_type) {
+                                        .get_by_signature(id, on_type) {
                                         Expression::FunctionPointer(id)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
