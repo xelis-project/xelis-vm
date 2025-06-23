@@ -1785,3 +1785,23 @@ fn test_foreach_map_mapping_found() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+
+#[test]
+fn test_function_as_param() {
+    let code = r#"
+        fn foo() -> u64 {
+            return 42
+        }
+
+        fn bar(f: fn() -> u64) -> u64 {
+            return 42
+        }
+
+        entry main() {
+            return bar(foo)
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+}

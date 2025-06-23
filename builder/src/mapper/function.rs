@@ -53,12 +53,14 @@ impl<'a> FunctionMapper<'a> {
 
     // Register a function signature
     pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
-        let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let ty = on_type.clone()
-            .map(|t| (Cow::Owned(t), require_instance));
-        let signature = Signature::new(Cow::Borrowed(name), ty, Cow::Owned(params));
+        if on_type.as_ref().map_or(false, |v| matches!(v, Type::Function(_))) {
+            return Err(BuilderError::InvalidSignature)
+        }
+
+        let signature = Signature::new(Cow::Borrowed(name), on_type.clone().map(Cow::Owned));
 
         if self.mapper.has_variable(&signature) {
+            println!("{:?}", signature);
             return Err(BuilderError::SignatureAlreadyRegistered);
         }
 
@@ -81,26 +83,28 @@ impl<'a> FunctionMapper<'a> {
         self.mappings.get(id)
     }
 
-    pub fn get_by_signature(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Type>) -> Result<IdentifierType, BuilderError> {
-        let on_ty = on_type.map(|t| (Cow::Borrowed(t), instance));
-        self.mapper.get(&Signature::new(Cow::Borrowed(name), on_ty, Cow::Borrowed(types)))
+
+    pub fn get_by_signature(&self, name: &str, on_type: Option<&Type>) -> Result<IdentifierType, BuilderError> {
+        self.mapper.get(&Signature::new(Cow::Borrowed(name), on_type.map(Cow::Borrowed)))
     }
 
     pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
-        // First check if we have the exact signature
-        if let Some(types) = types.iter().cloned().collect() {        
-            if let Ok(id) = self.get_by_signature(name, on_type, instance, &types) {
-                return Ok(id)
+        // First check if we have the exact signature  
+        if let Ok(id) = self.get_by_signature(name, on_type) {
+            let function = self.get_function(&id)
+                .ok_or(BuilderError::MappingNotFound)?;
+
+            if function.require_instance != instance {
+                return Err(BuilderError::FunctionInstanceMismatch)
             }
 
+            return Ok(id)
         }
 
         // Lets find a compatible signature
         'main: for (signature, id) in self.mapper.mappings.iter()
             .filter(|(s, _)|
                 s.get_name() == name
-                && s.get_parameters().len() == types.len()
-                && s.is_on_instance() == instance
             ) {
             let is_on_type = match (signature.get_on_type(), on_type) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
@@ -113,7 +117,14 @@ impl<'a> FunctionMapper<'a> {
             }
 
             let mut updated_expressions = Vec::new();
-            for (i, (a, b)) in signature.get_parameters().iter().zip(types).enumerate() {
+            let function = self.get_function(id)
+                .ok_or(BuilderError::MappingNotFound)?;
+
+            if function.require_instance != instance {
+                continue;
+            }
+
+            for (i, ((_, a), b)) in function.parameters.iter().zip(types).enumerate() {
                 trace!("Checking parameter {} with types {:?} and {:?}", i, a, b);
                 let Some(b) = b else {
                     // We don't know the type of the parameter, we can't cast it

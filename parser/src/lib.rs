@@ -872,6 +872,10 @@ impl<'a> Parser<'a> {
             const_fn.call(constants)
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
+        } else if let Ok(id) = self.global_mapper.functions().get_by_signature(constant_name, Some(&_type)) {
+            // Read a function pointer
+            // Like Foo::bar
+            Ok(Expression::FunctionPointer(id))
         } else if self.peek_is(Token::ParenthesisOpen) {
             // Try to read a static (on type) function call from it
             self.read_function_call(None, false, Some(&_type), constant_name, context)
@@ -1313,8 +1317,15 @@ impl<'a> Parser<'a> {
                         Ok(Token::Colon) if matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {
-                                // mostly an access to a struct field
                                 Some(t) => match t {
+                                    Type::Function(f) => {
+                                        let id = self.global_mapper.functions()
+                                            .get_by_signature(id, f.on_type())
+                                            .map_err(|e| err!(self, e.into()))?;
+
+                                        Expression::FunctionPointer(id)
+                                    },
+                                    // mostly an access to a struct field
                                     Type::Struct(_type) => {
                                         let builder = self.global_mapper.structs()
                                             .get_by_ref(_type)
@@ -1335,11 +1346,8 @@ impl<'a> Parser<'a> {
                                         self.read_struct_constructor(builder.get_type().clone(), context)?
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
-                                    } else if let Some(Type::Function(f)) = expected_type {
-                                        let id = self.global_mapper.functions()
-                                            .get_by_signature(id, f.on_type(), f.on_instance(), f.parameters())
-                                            .map_err(|e| err!(self, e.into()))?;
-
+                                    } else if let Ok(id) = self.global_mapper.functions()
+                                        .get_by_signature(id, expected_type) {
                                         Expression::FunctionPointer(id)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))

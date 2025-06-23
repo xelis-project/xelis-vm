@@ -23,10 +23,14 @@ pub enum BuilderError {
     MappingExists,
     #[error("Signature already registered")]
     SignatureAlreadyRegistered,
+    #[error("Invalid signature")]
+    InvalidSignature,
     #[error(transparent)]
     ValueError(#[from] ValueError),
     #[error("Invalid const fn parameters")]
     InvalidConstFnParameters,
+    #[error("Function instance mismatch")]
+    FunctionInstanceMismatch,
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }

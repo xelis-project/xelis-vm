@@ -49,17 +49,15 @@ impl Parameter {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Signature<'a> {
     name: Cow<'a, str>,
-    on_type: Option<(Cow<'a, Type>, bool)>,
-    parameters: Cow<'a, Vec<Type>>
+    on_type: Option<Cow<'a, Type>>,
 }
 
 impl<'a> Signature<'a> {
     #[inline(always)]
-    pub fn new(name: Cow<'a, str>, on_type: Option<(Cow<'a, Type>, bool)>, parameters: Cow<'a, Vec<Type>>) -> Self {
+    pub fn new(name: Cow<'a, str>, on_type: Option<Cow<'a, Type>>) -> Self {
         Signature {
             name,
             on_type,
-            parameters,
         }
     }
 
@@ -71,18 +69,6 @@ impl<'a> Signature<'a> {
     #[inline(always)]
     pub fn get_on_type(&self) -> Option<&Cow<'a, Type>> {
         self.on_type.as_ref()
-            .map(|(t, _)| t)
-    }
-
-    #[inline(always)]
-    pub fn get_parameters(&self) -> &Vec<Type> {
-        &self.parameters
-    }
-
-    #[inline(always)]
-    pub fn is_on_instance(&self) -> bool {
-        self.on_type.as_ref()
-            .map_or(false, |(_, v)| *v)
     }
 }
 
