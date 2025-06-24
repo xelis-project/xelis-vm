@@ -9,8 +9,15 @@ use xelis_types::{
 use super::Operator;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum DynamicCall {
+    Variable(IdentifierType),
+    Closure(Vec<Statement>)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
+    DynamicCall(DynamicCall, Vec<Expression>), // var_id, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     TuplesConstructor(Vec<Expression>),
@@ -32,7 +39,7 @@ pub enum Expression {
     FunctionPointer(IdentifierType),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Statement {
     If(Expression, Vec<Statement>, Option<Vec<Statement>>),
     While(Expression, Vec<Statement>),
@@ -49,7 +56,7 @@ pub enum Statement {
     Match(Box<Expression>, Vec<(MatchStatement, Statement)>, Option<Box<Statement>>, Option<Type>),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum MatchStatement {
     // match the variant and flatten it
     Variant(usize, EnumValueType),
@@ -57,27 +64,27 @@ pub enum MatchStatement {
 
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum TupleStatement {
     Deconstruct(TupleDeconstruction),
     Depth
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct TupleDeconstruction {
     // If none, pop from stack
     pub id: Option<IdentifierType>,
     pub value_type: Type
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct DeclarationStatement {
     pub id: Option<IdentifierType>,
     pub value_type: Type,
     pub value: Expression,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct ConstantDeclaration {
     pub value: Constant,
     pub value_type: Type,

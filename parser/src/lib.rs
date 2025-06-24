@@ -534,10 +534,20 @@ impl<'a> Parser<'a> {
                     .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
                 Cow::Owned(Type::Function(ty))
             },
+            Expression::DynamicCall(call, _) => match call {
+                DynamicCall::Variable(id) => {
+                    match context.get_type_of_variable(id) {
+                        Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
+                        _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
+                    }
+                },
+                DynamicCall::Closure(statements) => self.statement_return_type(statements, context)?.map(Cow::Owned)
+                    .ok_or_else(|| err!(self, ParserErrorKind::ExpectedClosureWithReturn))?,
+            },
             Expression::FunctionCall(path, name, _) => {
                 let f = self.get_function(*name)?;
                 let return_type = f.return_type();
-                
+
                 match return_type {
                     Some(ref v) => {
                         if let Some(path) = path.as_ref().filter(|_| f.is_instance()) {
@@ -667,8 +677,8 @@ impl<'a> Parser<'a> {
         trace!("read function call {} on type {:?}", name, on_type);
         let (mut parameters, types) = self.read_function_params(context)?;
 
-        if on_type.is_none() {
-            if let Some(Type::Function(ty)) = context.get_variable_id(name).and_then(|id| context.get_type_of_variable(&id)) {    
+        if on_type.is_none() && path.is_none() {
+            if let Some((id, Type::Function(ty))) = context.get_variable(name) {
                 if !self.global_mapper
                     .functions()
                     .has_compatible_params(None, ty.parameters().iter(), types.iter(), &mut parameters)
@@ -676,7 +686,7 @@ impl<'a> Parser<'a> {
                     return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                 }
 
-                todo!()
+                return Ok(Expression::DynamicCall(DynamicCall::Variable(id), parameters))
             }
         }
 
@@ -2309,6 +2319,31 @@ impl<'a> Parser<'a> {
 
         Ok(ok)
     }
+
+    fn statement_return_type(&self, statements: &Vec<Statement>, context: &Context<'a>) -> Result<Option<Type>, ParserError<'a>> {
+    let mut ty = None;
+    if let Some(statement) = statements.last() {
+        match statement {
+            Statement::If(_, statements, else_statements) => {
+                // if its the last statement
+                ty = self.statement_return_type(&statements, context)?;
+                // if it ends with a return, else must also end with a return
+                if let Some(statements) = else_statements.as_ref().filter(|_| ty.is_some()) {
+                    ty = self.statement_return_type(statements, context)?;
+                } else {
+                    ty = None;
+                }
+            }
+            Statement::Return(Some(expr)) => {
+                ty = Some(self.get_type_from_expression(None, expr, context)?
+                    .into_owned());
+            },
+            _ => {}
+        }
+    }
+
+    Ok(ty)
+}
 
     // Verify if we allow function declaration on a type
     fn allow_fn_declaration_on_type(&self, ty: &Type) -> bool {

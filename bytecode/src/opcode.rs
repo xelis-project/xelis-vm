@@ -154,6 +154,9 @@ pub enum OpCode {
     // If first_byte match is true, it will pop it and flatten
     // the object itself
     Match,
+    // Similar to invoke chunk / syscall
+    // chunk id is taken from stack
+    DynamicCall,
 }
 
 impl OpCode {
@@ -248,6 +251,7 @@ impl OpCode {
             60 => OpCode::Dec,
             61 => OpCode::Flatten,
             62 => OpCode::Match,
+            63 => OpCode::DynamicCall,
             _ => return None,
         })
     }
@@ -297,6 +301,7 @@ impl OpCode {
             OpCode::NewObject => 1, // u8 initial values
             OpCode::NewMap => 1, // u8 initial values
             OpCode::Match => 5, // magic byte + u32 addr
+            OpCode::DynamicCall => 1, // params len
 
             _ => 0,
         }

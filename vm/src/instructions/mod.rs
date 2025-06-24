@@ -142,6 +142,7 @@ impl<'a> InstructionTable<'a> {
         instructions[OpCode::Dec.as_usize()] = (decrement, 1);
         instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
         instructions[OpCode::Match.as_usize()] = (match_, 2);
+        instructions[OpCode::DynamicCall.as_usize()] = (dynamic_call, 5);
 
         Self { instructions }
     }

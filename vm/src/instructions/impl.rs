@@ -116,6 +116,10 @@ pub fn array_call<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'
 pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
     let args = manager.read_u8()? as usize;
+    internal_invoke_chunk(stack, id, args)
+}
+
+pub fn internal_invoke_chunk<'a>(stack: &mut Stack, id: u16, args: usize) -> Result<InstructionResult, VMError> {
     debug!("invoke chunk: {}, args: {}", id, args);
 
     // We need to reverse the order of the arguments
@@ -133,7 +137,10 @@ pub fn invoke_chunk<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkM
 
 pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     let id = manager.read_u16()?;
+    internal_syscall(backend, id, stack, context)
+}
 
+fn internal_syscall<'a>(backend: &Backend<'a>, id: u16, stack: &mut Stack, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
     debug!("syscall: {}", id);
 
     let f = backend.environment.get_functions()
@@ -176,4 +183,21 @@ pub fn syscall<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     }
 
     Ok(InstructionResult::Nothing)
+}
+
+pub fn dynamic_call<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult, VMError> {
+    let id = stack.pop_stack()?
+        .as_ref()?
+        .as_u16()?;
+
+    let len = backend.environment.get_functions().len();
+    let syscall = (id as usize) < len;
+    let args = manager.read_u8()? as usize;
+    debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
+
+    if syscall {
+        internal_syscall(backend, id, stack, context)
+    } else {
+        internal_invoke_chunk(stack, (id as usize - len) as u16, args)
+    }
 }

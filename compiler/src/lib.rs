@@ -3,7 +3,14 @@ mod error;
 use std::{collections::HashSet, iter};
 use log::{trace, warn};
 use xelis_ast::{
-    Expression, FunctionType, MatchStatement, Operator, Program, Statement, TupleStatement
+    DynamicCall,
+    Expression,
+    FunctionType,
+    MatchStatement,
+    Operator,
+    Program,
+    Statement,
+    TupleStatement
 };
 use xelis_environment::Environment;
 use xelis_bytecode::{Chunk, Module, OpCode};
@@ -307,36 +314,26 @@ impl<'a> Compiler<'a> {
                 self.compile_expr(chunk, expr)?;
             },
             Expression::FunctionPointer(id) => {
-                let len = self.environment.get_functions().len();
-                let return_value = if (*id as usize) < len {
-                    chunk.emit_opcode(OpCode::SysCall);
-                    chunk.write_u16(*id);
+                // Compile the fn pointer id as a stack value
+                self.compile_expr(chunk, &Expression::Constant(Constant::Default(Primitive::U16(*id))))?;
+            },
+            Expression::DynamicCall(call, params) => {
+                for param in params {
+                    self.compile_expr(chunk, param)?;
+                }
 
-                    self.environment.get_functions()
-                        .get(*id as usize)
-                        .ok_or(CompilerError::ExpectedFunction)?
-                        .return_type()
-                        .is_some()
-                } else {
-                    chunk.emit_opcode(OpCode::InvokeChunk);
-                    let id = *id as usize - len;
-                    let f = self.program.functions()
-                        .get(id)
-                        .ok_or(CompilerError::ExpectedFunction)?;
+                match call {
+                    DynamicCall::Variable(var) => {
+                        // Load the variable that is storing the current closure id
+                        self.compile_expr(chunk, &Expression::Variable(*var))?;
 
-                    chunk.write_u16(id as u16);
-                    chunk.write_u8(f.get_parameters().len() as u8 + f.get_instance_name().is_some() as u8);
-
-                    self.program.functions()
-                        .get(id)
-                        .ok_or(CompilerError::ExpectedFunction)?
-                        .return_type()
-                        .is_some()
-                };
-
-                // If the function returns a value, we push one
-                if return_value {
-                    self.add_value_on_stack(chunk.last_index())?;
+                        chunk.emit_opcode(OpCode::DynamicCall);
+                        chunk.write_u8(params.len() as _);
+                    },
+                    DynamicCall::Closure(statements) => {
+                        // Its a raw call
+                        self.compile_statements(chunk, statements)?;
+                    }
                 }
             },
             Expression::FunctionCall(expr_on, id, params) => {

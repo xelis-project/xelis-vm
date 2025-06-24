@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("expected a closure with return")]
+    ExpectedClosureWithReturn,
     #[error("expected a normal function for pointer")]
     ExpectedNormalFunction,
     #[error("duplicated match pattern")]

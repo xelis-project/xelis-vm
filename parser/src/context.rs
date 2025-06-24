@@ -53,6 +53,24 @@ impl<'a> Context<'a> {
             .map(|v| (self.scopes.len() - 1 - v) as IdentifierType)
     }
 
+
+    // Get the variable identifier from its registered name
+    pub fn get_variable<'b>(&'b self, key: &'b str) -> Option<(IdentifierType, &'b Type)> {
+        // We go through our scopes in reverse order to get the last variable registered with the same name
+        // This is done to support variables names shadowing
+        let id = self.scopes.iter()
+            .rev()
+            .position(|(k, _)| *k == key)
+            // We return the position of the variable in the scopes
+            // Position don't give the real index, but the actual index in the reverse order
+            .map(|v| (self.scopes.len() - 1 - v) as IdentifierType)?;
+
+        let ty = self.get_type_of_variable(&id)?;
+
+        Some((id, ty))
+    }
+
+
     // register a variable in the current scope
     pub fn register_variable(&mut self, key: &'a str, var_type: Type) -> Option<IdentifierType> {
         if self.has_variable(&key) {
