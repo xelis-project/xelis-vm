@@ -1529,26 +1529,27 @@ impl<'a> Parser<'a> {
                         return Err(err!(self, ParserErrorKind::UnexpectedToken(Token::SemiColon)))
                     }
                 },
+                Token::BraceOpen => {
+                    let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
+                        (Some(*key.clone()), Some(*value.clone()))
+                    } else {
+                        // If its an assignation
+                        // variable path is on first
+                        match queue.first() {
+                            Some(QueueItem::Expression(expr)) => match self.get_type_from_expression_internal(None, expr, context)?
+                                .map(|v| v.into_owned()) {
+                                    Some(Type::Map(key, value)) => (Some(*key), Some(*value)),
+                                    _ => (None, None)
+                            }
+                            _ => (None, None)
+                        }
+                    };
+
+                    self.read_map_constructor(key, value, context)?
+                },
                 token => {
                     if token.is_type() {
                         self.read_type_constant(token, context)?
-                    } else if token == Token::BraceOpen {
-                        let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
-                            (Some(*key.clone()), Some(*value.clone()))
-                        } else {
-                            // If its an assignation
-                            // variable path is on first
-                            match queue.first() {
-                                Some(QueueItem::Expression(expr)) => match self.get_type_from_expression_internal(None, expr, context)?
-                                    .map(|v| v.into_owned()) {
-                                        Some(Type::Map(key, value)) => (Some(*key), Some(*value)),
-                                        _ => (None, None)
-                                }
-                                _ => (None, None)
-                            }
-                        };
-
-                        self.read_map_constructor(key, value, context)?
                     } else {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,
