@@ -1806,16 +1806,22 @@ fn test_function_pointer() {
     assert_eq!(run_code_id(code, 2), Primitive::U64(21));
 
     let code = r#"
-        fn foo() -> u64 {
-            return 10
+        struct Foo {
+            value: u64
         }
 
-        fn abc() -> fn() -> u64 {
+        fn foo() -> Foo {
+            return Foo {
+                value: 10
+            }
+        }
+
+        fn abc() -> fn() -> Foo {
             return foo
         }
 
-        fn bar(f: fn() -> u64) -> u64 {
-            return f()
+        fn bar(f: fn() -> Foo) -> u64 {
+            return f().value
         }
 
         entry main() {
