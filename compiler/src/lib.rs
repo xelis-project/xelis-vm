@@ -323,6 +323,7 @@ impl<'a> Compiler<'a> {
 
                 // Load the variable that is storing the current closure id
                 self.compile_expr(chunk, &Expression::Variable(*id))?;
+                self.decrease_values_on_stack_by(params.len())?;
 
                 chunk.emit_opcode(OpCode::DynamicCall);
                 chunk.write_u8(params.len() as _);
