@@ -60,7 +60,7 @@ impl<'a> FunctionMapper<'a> {
         let signature = Signature::new(Cow::Borrowed(name), on_type.clone().map(Cow::Owned));
 
         if self.mapper.has_variable(&signature) {
-            println!("{:?}", signature);
+            trace!("{:?}", signature);
             return Err(BuilderError::SignatureAlreadyRegistered);
         }
 
@@ -80,6 +80,10 @@ impl<'a> FunctionMapper<'a> {
 
     // Get a function mapp
     pub fn get_function(&self, id: &IdentifierType) -> Option<&Function<'a>> {
+        if let Some(f) = self.parent.and_then(|parent| parent.get_function(id)) {
+            return Some(f)
+        }
+
         self.mappings.get(id)
     }
 
@@ -88,9 +92,88 @@ impl<'a> FunctionMapper<'a> {
         self.mapper.get(&Signature::new(Cow::Borrowed(name), on_type.map(Cow::Borrowed)))
     }
 
+    pub fn has_compatible_params<'b>(
+        &'b self,
+        on_type: Option<&Type>,
+        params: impl Iterator<Item = &'b Type>,
+        detected_types: impl Iterator<Item = &'b Option<Type>>,
+        expressions: &mut [Expression]
+    ) -> bool {
+        let mut updated_expressions = Vec::new();
+        for (i, (a, b)) in params.zip(detected_types).enumerate() {
+            trace!("Checking parameter {} with types {:?} and {:?}", i, a, b);
+            let Some(b) = b else {
+                // We don't know the type of the parameter, we can't cast it
+                if !a.allow_null() {
+                    trace!("Parameter {} is not nullable", i);
+                    return false;
+                } else {
+                    continue;
+                }
+            };
+
+            if let Some(instance) = on_type.filter(|v| v.contains_sub_type() && a.is_generic()) {
+                if !a.is_generic_compatible_with(instance, b) {
+                    trace!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
+                    return false;
+                }
+            }
+
+            let mut cast_to_type = on_type
+                .map(Type::get_inner_type)
+                .filter(|t| b.is_castable_to(t));
+
+            if cast_to_type.is_none() && !a.is_compatible_with(b) {
+                // If our parameter is castable to the signature parameter, cast it
+                if b.is_castable_to(a) {
+                    cast_to_type = Some(a);
+                } else if a != b {
+                    // If the parameter is optional and its the exact same type inside
+                    // we allow to pass it
+                    if let Type::Optional(inner) = a {
+                        if !inner.is_compatible_with(b) {
+                            trace!("inner {} is not compatible with {}", inner, b);
+                            return false;
+                        }
+                    } else {
+                        trace!("not optional, invalid");
+                        return false;
+                    }
+                }
+            }
+
+            // If cast is needed, cast it, if we fail, we continue to the next signature
+            if let Some(a) = cast_to_type {
+                // We can only cast hardcoded values
+                if let Expression::Constant(value) = &expressions[i] {
+                    let cloned = value.clone();
+                    match cloned.checked_cast_to_primitive_type(a) {
+                        Ok(v) => {
+                            updated_expressions.push((i, Expression::Constant(v)));
+                        },
+                        Err(e) => {
+                            trace!("Parameter {} failed to cast: {:?}", i, e);
+                            return false;
+                        }
+                    };
+                } else {
+                    trace!("Parameter {} is not a constant", i);
+                    return false;
+                }
+            }
+        }
+
+        for (i, expr) in updated_expressions {
+            expressions[i] = expr;
+        }
+
+        true
+    }
+
     pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature  
         if let Ok(id) = self.get_by_signature(name, on_type) {
+            trace!("found id {} from signature", id);
             let function = self.get_function(&id)
                 .ok_or(BuilderError::MappingNotFound)?;
 
@@ -98,14 +181,19 @@ impl<'a> FunctionMapper<'a> {
                 return Err(BuilderError::FunctionInstanceMismatch)
             }
 
-            return Ok(id)
+            if self.has_compatible_params(on_type, function.parameters.iter().map(|(_, v)| v), types.iter(), expressions) {
+                return Ok(id);
+            }
+
+            trace!("id {} not compatible!", id);
         }
 
         // Lets find a compatible signature
-        'main: for (signature, id) in self.mapper.mappings.iter()
+        for (signature, id) in self.mapper.mappings.iter()
             .filter(|(s, _)|
                 s.get_name() == name
             ) {
+            trace!("checking {:?}", signature);
             let is_on_type = match (signature.get_on_type(), on_type) {
                 (Some(s), Some(k)) => s.is_compatible_with(k),
                 (None, None) => true,
@@ -113,84 +201,21 @@ impl<'a> FunctionMapper<'a> {
             };
 
             if !is_on_type {
+                trace!("not on same type");
                 continue;
             }
 
-            let mut updated_expressions = Vec::new();
             let function = self.get_function(id)
                 .ok_or(BuilderError::MappingNotFound)?;
 
             if function.require_instance != instance {
+                trace!("invalid instance");
                 continue;
             }
 
-            for (i, ((_, a), b)) in function.parameters.iter().zip(types).enumerate() {
-                trace!("Checking parameter {} with types {:?} and {:?}", i, a, b);
-                let Some(b) = b else {
-                    // We don't know the type of the parameter, we can't cast it
-                    if !a.allow_null() {
-                        trace!("Parameter {} is not nullable", i);
-                        continue 'main;
-                    } else {
-                        continue;
-                    }
-                };
-
-                if let Some(instance) = on_type.filter(|v| v.contains_sub_type() && a.is_generic()) {
-                    if !a.is_generic_compatible_with(instance, b) {
-                        trace!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
-                        continue 'main;
-                    }
-                }
-
-                let mut cast_to_type = on_type
-                    .map(Type::get_inner_type)
-                    .filter(|t| b.is_castable_to(t));
-
-                if cast_to_type.is_none() && !a.is_compatible_with(b) {
-                    // If our parameter is castable to the signature parameter, cast it
-                    if b.is_castable_to(a) {
-                        cast_to_type = Some(a);
-                    } else {
-                        // If the parameter is optional and its the exact same type inside
-                        // we allow to pass it
-                        if let Type::Optional(inner) = a {
-                            if !inner.is_compatible_with(b) {
-                                continue 'main;
-                            }
-                        } else {
-                            continue 'main;
-                        }
-                    }
-                }
-
-                // If cast is needed, cast it, if we fail, we continue to the next signature
-                if let Some(a) = cast_to_type {
-                    // We can only cast hardcoded values
-                    if let Expression::Constant(value) = &expressions[i] {
-                        let cloned = value.clone();
-                        match cloned.checked_cast_to_primitive_type(a) {
-                            Ok(v) => {
-                                updated_expressions.push((i, Expression::Constant(v)));
-                                continue;
-                            },
-                            Err(e) => {
-                                trace!("Parameter {} failed to cast: {:?}", i, e);
-                                continue 'main;
-                            }
-                        };
-                    } else {
-                        trace!("Parameter {} is not a constant", i);
-                        continue 'main;
-                    }
-                }
+            if self.has_compatible_params(on_type, function.parameters.iter().map(|(_, v)| v), types.iter(), expressions) {
+                return Ok(id.clone());
             }
-
-            for (i, expr) in updated_expressions {
-                expressions[i] = expr;
-            }
-
-            return Ok(id.clone());
         }
 
         if let Some(parent) = self.parent {

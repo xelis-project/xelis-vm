@@ -194,6 +194,8 @@ pub enum ParserErrorKind<'a> {
     InvalidExpression,
     #[error("unknown error")]
     UnknownError,
+    #[error("incompatible closure params")]
+    IncompatibleClosureParams,
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }

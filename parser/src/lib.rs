@@ -637,7 +637,7 @@ impl<'a> Parser<'a> {
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
     fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
-        trace!("Read function params");
+        trace!("read function params");
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -664,14 +664,28 @@ impl<'a> Parser<'a> {
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
     fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-        trace!("read function call {}", name);
+        trace!("read function call {} on type {:?}", name, on_type);
         let (mut parameters, types) = self.read_function_params(context)?;
+
+        if on_type.is_none() {
+            if let Some(Type::Function(ty)) = context.get_variable_id(name).and_then(|id| context.get_type_of_variable(&id)) {    
+                if !self.global_mapper
+                    .functions()
+                    .has_compatible_params(None, ty.parameters().iter(), types.iter(), &mut parameters)
+                {
+                    return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
+                }
+
+                todo!()
+            }
+        }
 
         let id = self.global_mapper
             .functions()
             .get_compatible(name, on_type, instance, &types, &mut parameters)
             .map_err(|e| err!(self, e.into()))?;
 
+        trace!("found function with id {}", id);
         // Entry are only callable by external
         let f = self.get_function(id)?;
         if !f.is_normal() {
@@ -873,14 +887,14 @@ impl<'a> Parser<'a> {
             const_fn.call(constants)
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
-        } else if let Ok(id) = self.global_mapper.functions().get_by_signature(constant_name, Some(&_type)) {
-            // Read a function pointer
-            // Like Foo::bar
-            Ok(Expression::FunctionPointer(id))
         } else if self.peek_is(Token::ParenthesisOpen) {
             // Try to read a static (on type) function call from it
             self.read_function_call(None, false, Some(&_type), constant_name, context)
         // If its a enum, it may be a variant constructor
+        } else if let Ok(id) = self.global_mapper.functions().get_by_signature(constant_name, Some(&_type)) {
+            // Read a function pointer
+            // Like Foo::bar
+            Ok(Expression::FunctionPointer(id))
         } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {

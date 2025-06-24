@@ -1795,7 +1795,7 @@ fn test_function_as_param() {
         }
 
         fn bar(f: fn() -> u64) -> u64 {
-            return 42
+            return f()
         }
 
         entry main() {
