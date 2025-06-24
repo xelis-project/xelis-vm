@@ -9,15 +9,9 @@ use xelis_types::{
 use super::Operator;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum DynamicCall {
-    Variable(IdentifierType),
-    Closure(Vec<Statement>)
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
-    DynamicCall(DynamicCall, Vec<Expression>), // var_id, parameters
+    DynamicCall(IdentifierType, Vec<Expression>), // var_id, parameters
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     TuplesConstructor(Vec<Expression>),

@@ -1,7 +1,6 @@
 pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
-use xelis_ast::Signature;
 use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, StructType, Type};
 use xelis_environment::{Environment, NativeFunction, OnCallFn};
 use crate::{
@@ -80,10 +79,11 @@ impl<'a> EnvironmentBuilder<'a> {
     // Get a native function by its signature
     // Panic if the function signature is not found
     pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<Type>) -> &mut NativeFunction {
-        let signature = Signature::new(Cow::Borrowed(name), on_type.map(Cow::Owned));
-        let id = self.functions_mapper.get(&signature).unwrap();
-        self.env.get_function_by_id_mut(id as usize).expect("native fuction")
+        let id = self.functions_mapper.get_by_signature(name, on_type.as_ref())
+            .expect("function by signature not found");
 
+        self.env.get_function_by_id_mut(id as usize)
+            .expect("native fuction")
     }
 
     // Register a structure in the environment

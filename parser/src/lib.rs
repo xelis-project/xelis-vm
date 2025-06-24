@@ -534,15 +534,9 @@ impl<'a> Parser<'a> {
                     .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
                 Cow::Owned(Type::Function(ty))
             },
-            Expression::DynamicCall(call, _) => match call {
-                DynamicCall::Variable(id) => {
-                    match context.get_type_of_variable(id) {
-                        Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
-                        _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
-                    }
-                },
-                DynamicCall::Closure(statements) => self.statement_return_type(statements, context)?.map(Cow::Owned)
-                    .ok_or_else(|| err!(self, ParserErrorKind::ExpectedClosureWithReturn))?,
+            Expression::DynamicCall(id, _) => match context.get_type_of_variable(id) {
+                Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
+                _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
             },
             Expression::FunctionCall(path, name, _) => {
                 let f = self.get_function(*name)?;
@@ -646,24 +640,39 @@ impl<'a> Parser<'a> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_params(&mut self, context: &mut Context<'a>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
+    fn read_function_params(&mut self, context: &mut Context<'a>, expected_types: Option<Vec<Type>>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
         trace!("read function params");
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
         let mut types: Vec<Option<Type>> = Vec::new();
-        while self.peek_is_not(Token::ParenthesisClose) {
-            let expr = self.read_expression_delimited(&Token::Comma, context)?;
-            // We are forced to clone the type because we can't borrow it from the expression
-            // I prefer to do this than doing an iteration below
-            let t = self.get_type_from_expression_internal(None, &expr, context)?
-                .map(|v| v.into_owned());
 
-            types.push(t);
-            parameters.push(expr);
+        if let Some(expected_types) = expected_types {
+            let mut iter = expected_types.into_iter().peekable();
+            while let Some(next) = iter.next() {
+                let expr = self.read_expr(Some(&Token::Comma), None, true, true, Some(&next), context)?;
 
-            if self.peek_is(Token::Comma) {
-                self.expect_token(Token::Comma)?;
+                parameters.push(expr);
+                types.push(Some(next));
+
+                if iter.peek().is_some() {
+                    self.expect_token(Token::Comma)?;
+                }
+            }
+        } else {
+            while self.peek_is_not(Token::ParenthesisClose) {
+                let expr = self.read_expression_delimited(&Token::Comma, context)?;
+                // We are forced to clone the type because we can't borrow it from the expression
+                // I prefer to do this than doing an iteration below
+                let t = self.get_type_from_expression_internal(None, &expr, context)?
+                    .map(|v| v.into_owned());
+    
+                types.push(t);
+                parameters.push(expr);
+    
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                }
             }
         }
 
@@ -675,7 +684,14 @@ impl<'a> Parser<'a> {
     // function_name(param1, param2, ...)
     fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {} on type {:?}", name, on_type);
-        let (mut parameters, types) = self.read_function_params(context)?;
+
+        let types = self.global_mapper.functions()
+            .get_by_signature(name, on_type)
+            .ok()
+            .and_then(|v| self.global_mapper.functions().get_function(&v))
+            .map(|f| f.parameters.iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>());
+
+        let (mut parameters, types) = self.read_function_params(context, types)?;
 
         if on_type.is_none() && path.is_none() {
             if let Some((id, Type::Function(ty))) = context.get_variable(name) {
@@ -686,7 +702,7 @@ impl<'a> Parser<'a> {
                     return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                 }
 
-                return Ok(Expression::DynamicCall(DynamicCall::Variable(id), parameters))
+                return Ok(Expression::DynamicCall(id, parameters))
             }
         }
 
@@ -886,7 +902,7 @@ impl<'a> Parser<'a> {
             Ok(expr)
         // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
-            let (mut parameters, _) = self.read_function_params(context)?;
+            let (mut parameters, _) = self.read_function_params(context, None)?;
             let mut constants = Vec::with_capacity(parameters.len());
             for param in parameters.iter_mut() {
                 let constant = self.try_convert_expr_to_value(param)
@@ -910,6 +926,55 @@ impl<'a> Parser<'a> {
         } else {
             Err(err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
         }
+    }
+
+    fn read_closure(&mut self, ty: &FnType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read closure with {:?}", ty);
+        let params = if ty.parameters().is_empty() {
+            Vec::new()
+        } else {
+            let parameters = self.read_parameters()?;
+            self.expect_token(Token::OperatorBitwiseOr)?;
+            parameters
+        };
+
+        let current = context.max_variables_count();
+        context.begin_scope();
+        // Register the closure params
+        let mut new_params = Vec::with_capacity(params.len());
+        for (name, param_type) in params {
+            let id = context.register_variable(name, param_type.clone())
+                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
+
+            new_params.push(Parameter::new(id, param_type));
+        }
+
+        self.expect_token(Token::BraceOpen)?;
+        let statements = self.read_body(context, ty.return_type())?;
+        let max = context.max_variables_count() - current;
+        context.end_scope();
+
+        if ty.return_type().is_some() && !Self::ends_with_return(&statements)? {
+            return Err(err!(self, ParserErrorKind::NoReturnFound))
+        }
+
+        trace!("closure statements: {:?}", statements);
+        let closure = FunctionType::Declared(DeclaredFunction::new(
+            None,
+            None,
+            new_params,
+            statements,
+            ty.return_type().cloned(),
+            max
+        ));
+
+        // Inject the closure
+        self.functions.push(closure);
+        let id = self.global_mapper.functions_mut()
+            .register_closure()
+            .map_err(|e| err!(self, e.into()))?;
+
+        Ok(Expression::FunctionPointer(id))
     }
 
     // Execute the selected operator
@@ -1193,7 +1258,7 @@ impl<'a> Parser<'a> {
         expected_type: Option<&Type>, 
         context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
-        trace!("Read expression with peek {:?} on type {:?}, expected type {:?}", self.peek(), on_type, expected_type);
+        trace!("Read expression with peek {:?} on type {:?}, expected type {:?}, operator {}", self.peek(), on_type, expected_type, accept_operator);
         // All expressions parsed
         let mut operator_stack: Vec<Operator> = Vec::new();
         // Queued items, draining the above two vectors
@@ -1207,19 +1272,22 @@ impl<'a> Parser<'a> {
             .ok()
             .filter(|peek| {
                 if delimiter == Some(peek) {
+                    trace!("delimiter reached");
                     return false
                 }
 
                 if !allow_ternary && **peek == Token::OperatorTernary {
+                    trace!("not accepting ternary");
                     return false
                 }
 
                 if !accept_operator && required_operator {
+                    trace!("not accepting operator");
                     return false
                 }
 
-                required_operator == peek.is_operator() 
-                    || (**peek == Token::BracketOpen && queue.is_empty())
+                required_operator == peek.is_operator()
+                    || ((matches!(peek, Token::BracketOpen | Token::OperatorOr | Token::OperatorBitwiseOr)) && queue.is_empty())
 
             }).is_some()
         {
@@ -1548,8 +1616,11 @@ impl<'a> Parser<'a> {
                     self.read_map_constructor(key, value, context)?
                 },
                 token => {
+                    trace!("{:?}", token);
                     if token.is_type() {
                         self.read_type_constant(token, context)?
+                    } else if let Some(Type::Function(ty)) = expected_type {
+                        self.read_closure(ty, context)?
                     } else {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,
@@ -1763,7 +1834,7 @@ impl<'a> Parser<'a> {
      *     ...
      * }
      */
-    fn read_body(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError<'a>> {
+    fn read_body(&mut self, context: &mut Context<'a>, return_type: Option<&Type>) -> Result<Vec<Statement>, ParserError<'a>> {
         context.begin_scope();
         let statements = self.read_statements(context, return_type)?;
         context.end_scope();
@@ -1966,7 +2037,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn read_loop_body(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError<'a>> {
+    fn read_loop_body(&mut self, context: &mut Context<'a>, return_type: Option<&Type>) -> Result<Vec<Statement>, ParserError<'a>> {
         // support nested loop
         let old_value = context.is_in_a_loop();
         context.set_in_a_loop(true);
@@ -2068,7 +2139,7 @@ impl<'a> Parser<'a> {
     }
 
     // Read a single statement
-    fn read_statement(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Option<Statement>, ParserError<'a>> {
+    fn read_statement(&mut self, context: &mut Context<'a>, return_type: Option<&Type>) -> Result<Option<Statement>, ParserError<'a>> {
         if let Some(token) = self.next() {
             trace!("statement token: {:?}", token);
             let statement: Statement = match token {
@@ -2222,7 +2293,7 @@ impl<'a> Parser<'a> {
                         context.begin_scope();
                         let pattern = self.read_match_pattern(context, &expr_ty)?;
                         self.expect_token(Token::FatArrow)?;
-                        let body = self.read_statement(context, &return_type)?
+                        let body = self.read_statement(context, return_type)?
                             .ok_or_else(|| err!(self, ParserErrorKind::ExpectedBodyPatternMatch))?;
                         context.end_scope();
 
@@ -2262,7 +2333,7 @@ impl<'a> Parser<'a> {
     // Read all statements in a block
     // return type is used to verify that the last statement is a return with a valid value type
     // consume_brace is used to know if we should consume the open brace
-    fn read_statements(&mut self, context: &mut Context<'a>, return_type: &Option<Type>) -> Result<Vec<Statement>, ParserError<'a>> {
+    fn read_statements(&mut self, context: &mut Context<'a>, return_type: Option<&Type>) -> Result<Vec<Statement>, ParserError<'a>> {
         trace!("Read statements");
         let mut statements: Vec<Statement> = Vec::new();
         while let Some(statement) = self.read_statement(context, return_type)? {
@@ -2320,31 +2391,6 @@ impl<'a> Parser<'a> {
 
         Ok(ok)
     }
-
-    fn statement_return_type(&self, statements: &Vec<Statement>, context: &Context<'a>) -> Result<Option<Type>, ParserError<'a>> {
-    let mut ty = None;
-    if let Some(statement) = statements.last() {
-        match statement {
-            Statement::If(_, statements, else_statements) => {
-                // if its the last statement
-                ty = self.statement_return_type(&statements, context)?;
-                // if it ends with a return, else must also end with a return
-                if let Some(statements) = else_statements.as_ref().filter(|_| ty.is_some()) {
-                    ty = self.statement_return_type(statements, context)?;
-                } else {
-                    ty = None;
-                }
-            }
-            Statement::Return(Some(expr)) => {
-                ty = Some(self.get_type_from_expression(None, expr, context)?
-                    .into_owned());
-            },
-            _ => {}
-        }
-    }
-
-    Ok(ty)
-}
 
     // Verify if we allow function declaration on a type
     fn allow_fn_declaration_on_type(&self, ty: &Type) -> bool {
@@ -2496,15 +2542,16 @@ impl<'a> Parser<'a> {
                 Vec::new(),
                 return_type.clone(),
                 0,
-                hook_id.unwrap()
+                hook_id.expect("hook")
             ))
         };
 
         // push function before reading statements to allow recursive calls
+        let index = self.functions.len();
         self.functions.push(function);
 
         self.expect_token(Token::BraceOpen)?;
-        let statements = self.read_body(context, &return_type)?;
+        let statements = self.read_body(context, return_type.as_ref())?;
         context.end_scope();
 
         // verify that the function ends with a return
@@ -2513,7 +2560,7 @@ impl<'a> Parser<'a> {
         }
 
         let last = self.functions
-            .last_mut()
+            .get_mut(index)
             .ok_or(err!(self, ParserErrorKind::UnknownError))?;
 
         last.set_statements(statements);
@@ -2750,7 +2797,7 @@ mod tests {
             context.register_variable(name, t).unwrap();
         }
 
-        parser.read_statements(&mut context, return_type).unwrap()
+        parser.read_statements(&mut context, return_type.as_ref()).unwrap()
     }
 
     #[track_caller]
@@ -3209,7 +3256,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
 
-        assert!(parser.read_statements(&mut context, &None).is_err());
+        assert!(parser.read_statements(&mut context, None).is_err());
     }
 
     #[test]
@@ -3899,7 +3946,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
 
-        assert!(parser.read_statements(&mut context, &None).is_err());
+        assert!(parser.read_statements(&mut context, None).is_err());
     }
 
     #[test]
@@ -4308,7 +4355,7 @@ mod tests {
         let mut context = Context::new();
         context.begin_scope();
 
-        assert!(parser.read_statements(&mut context, &None).is_err());
+        assert!(parser.read_statements(&mut context, None).is_err());
     }
 
     #[test]

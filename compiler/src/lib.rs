@@ -3,7 +3,6 @@ mod error;
 use std::{collections::HashSet, iter};
 use log::{trace, warn};
 use xelis_ast::{
-    DynamicCall,
     Expression,
     FunctionType,
     MatchStatement,
@@ -317,24 +316,16 @@ impl<'a> Compiler<'a> {
                 // Compile the fn pointer id as a stack value
                 self.compile_expr(chunk, &Expression::Constant(Constant::Default(Primitive::U16(*id))))?;
             },
-            Expression::DynamicCall(call, params) => {
+            Expression::DynamicCall(id, params) => {
                 for param in params {
                     self.compile_expr(chunk, param)?;
                 }
 
-                match call {
-                    DynamicCall::Variable(var) => {
-                        // Load the variable that is storing the current closure id
-                        self.compile_expr(chunk, &Expression::Variable(*var))?;
+                // Load the variable that is storing the current closure id
+                self.compile_expr(chunk, &Expression::Variable(*id))?;
 
-                        chunk.emit_opcode(OpCode::DynamicCall);
-                        chunk.write_u8(params.len() as _);
-                    },
-                    DynamicCall::Closure(statements) => {
-                        // Its a raw call
-                        self.compile_statements(chunk, statements)?;
-                    }
-                }
+                chunk.emit_opcode(OpCode::DynamicCall);
+                chunk.write_u8(params.len() as _);
             },
             Expression::FunctionCall(expr_on, id, params) => {
                 if let Some(expr_on) = expr_on {

@@ -1786,7 +1786,6 @@ fn test_foreach_map_mapping_found() {
     assert_eq!(run_code(code), Primitive::U64(0));
 }
 
-
 #[test]
 fn test_function_pointer() {
     let code = r#"
@@ -1830,4 +1829,37 @@ fn test_function_pointer() {
     "#;
 
     assert_eq!(run_code_id(code, 3), Primitive::U64(10));
+}
+
+#[test]
+fn test_closure() {
+    let code = r#"
+        fn bar(f: fn() -> u64) -> u64 {
+            return f() / 2
+        }
+
+        entry main() {
+            return bar(|| {
+                return 10
+            })
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(5));
+
+    let code = r#"
+        fn bar(f: fn(u64) -> u64) -> u64 {
+            return f(4) / 2
+        }
+
+        entry main() {
+            let closure: fn(u64) -> u64 = |v: u64| {
+                return v * 5
+            };
+
+            return bar(closure)
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
 }

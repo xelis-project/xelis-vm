@@ -47,23 +47,29 @@ impl Parameter {
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum SignatureId<'a> {
+    Function(Cow<'a, str>),
+    Closure(usize)
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Signature<'a> {
-    name: Cow<'a, str>,
-    on_type: Option<Cow<'a, Type>>,
+    id: SignatureId<'a>,
+    on_type: Option<Cow<'a, Type>>
 }
 
 impl<'a> Signature<'a> {
     #[inline(always)]
-    pub fn new(name: Cow<'a, str>, on_type: Option<Cow<'a, Type>>) -> Self {
+    pub fn new(id: SignatureId<'a>, on_type: Option<Cow<'a, Type>>) -> Self {
         Signature {
-            name,
-            on_type,
+            id,
+            on_type
         }
     }
 
     #[inline(always)]
-    pub fn get_name(&self) -> &str {
-        &self.name
+    pub fn get_id(&self) -> &SignatureId<'a> {
+        &self.id
     }
 
     #[inline(always)]

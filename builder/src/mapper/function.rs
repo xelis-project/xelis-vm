@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use xelis_ast::{Expression, Signature};
+use xelis_ast::{Expression, Signature, SignatureId};
 use xelis_types::{IdentifierType, NoHashMap, Type};
 use log::trace;
 
@@ -26,6 +26,7 @@ pub struct FunctionMapper<'a> {
     mapper: Mapper<'a, Signature<'a>>,
     parent: Option<&'a FunctionMapper<'a>>,
     mappings: NoHashMap<Function<'a>>,
+    closure_id: usize,
 }
 
 impl<'a> FunctionMapper<'a> {
@@ -33,7 +34,8 @@ impl<'a> FunctionMapper<'a> {
         Self {
             mapper: Mapper::new(),
             parent: None,
-            mappings: NoHashMap::default()
+            mappings: NoHashMap::default(),
+            closure_id: 0,
         }
     }
 
@@ -41,9 +43,16 @@ impl<'a> FunctionMapper<'a> {
     pub fn with_parent(parent: &'a Self) -> Self {
         Self {
             mapper: Mapper::with_parent(&parent.mapper),
+            closure_id: parent.closure_id,
             parent: Some(parent),
-            mappings: NoHashMap::default()
+            mappings: NoHashMap::default(),
         }
+    }
+
+    fn next_closure_id(&mut self) -> usize {
+        let id = self.closure_id;
+        self.closure_id += 1;
+        id
     }
 
     // Get the identifier of a variable name
@@ -57,7 +66,7 @@ impl<'a> FunctionMapper<'a> {
             return Err(BuilderError::InvalidSignature)
         }
 
-        let signature = Signature::new(Cow::Borrowed(name), on_type.clone().map(Cow::Owned));
+        let signature = Signature::new(SignatureId::Function(Cow::Borrowed(name)), on_type.clone().map(Cow::Owned));
 
         if self.mapper.has_variable(&signature) {
             trace!("{:?}", signature);
@@ -78,6 +87,14 @@ impl<'a> FunctionMapper<'a> {
         Ok(id)
     }
 
+    pub fn register_closure(&mut self) -> Result<IdentifierType, BuilderError> {
+        let id = self.next_closure_id();
+        let signature = Signature::new(SignatureId::Closure(id), None);
+
+        let id = self.mapper.register(signature)?;
+        Ok(id)
+    }
+
     // Get a function mapp
     pub fn get_function(&self, id: &IdentifierType) -> Option<&Function<'a>> {
         if let Some(f) = self.parent.and_then(|parent| parent.get_function(id)) {
@@ -87,9 +104,8 @@ impl<'a> FunctionMapper<'a> {
         self.mappings.get(id)
     }
 
-
     pub fn get_by_signature(&self, name: &str, on_type: Option<&Type>) -> Result<IdentifierType, BuilderError> {
-        self.mapper.get(&Signature::new(Cow::Borrowed(name), on_type.map(Cow::Borrowed)))
+        self.mapper.get(&Signature::new(SignatureId::Function(Cow::Borrowed(name)), on_type.map(Cow::Borrowed)))
     }
 
     pub fn has_compatible_params<'b>(
@@ -170,6 +186,8 @@ impl<'a> FunctionMapper<'a> {
         true
     }
 
+    // Only real functions are available
+    // Closure are not selected
     pub fn get_compatible(&self, name: &str, on_type: Option<&Type>, instance: bool, types: &Vec<Option<Type>>, expressions: &mut [Expression]) -> Result<IdentifierType, BuilderError> {
         // First check if we have the exact signature  
         if let Ok(id) = self.get_by_signature(name, on_type) {
@@ -188,10 +206,11 @@ impl<'a> FunctionMapper<'a> {
             trace!("id {} not compatible!", id);
         }
 
+        let signature_id = SignatureId::Function(Cow::Borrowed(name));
         // Lets find a compatible signature
         for (signature, id) in self.mapper.mappings.iter()
             .filter(|(s, _)|
-                s.get_name() == name
+                *s.get_id() == signature_id
             ) {
             trace!("checking {:?}", signature);
             let is_on_type = match (signature.get_on_type(), on_type) {
