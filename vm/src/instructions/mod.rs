@@ -10,7 +10,7 @@ use iterator::*;
 use constructor::*;
 use memory::*;
 
-use xelis_bytecode::OpCode;
+use xelis_bytecode::{Module, OpCode};
 use xelis_types::{Primitive, ValueCell};
 
 use crate::Context;
@@ -38,15 +38,16 @@ macro_rules! trace {
 
 
 #[derive(Debug)]
-pub enum InstructionResult {
+pub enum InstructionResult<'a> {
     Nothing,
     Break,
     InvokeChunk(u16),
+    AppendModule(&'a Module)
 }
 
 // A handler is a function pointer to an instruction
 // With its associated cost
-pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'a, '_>) -> Result<InstructionResult, VMError>, u64);
+pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError>, u64);
 
 // Table of instructions
 // It contains all the instructions that the VM can execute

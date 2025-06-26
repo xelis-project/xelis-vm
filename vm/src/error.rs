@@ -4,6 +4,8 @@ use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("no module found")]
+    NoModule,
     #[error("Expected checkpoint")]
     ExpectedCheckPoint,
     #[error("register max size reached")]
@@ -68,6 +70,8 @@ pub enum VMError {
     StackOverflow,
     #[error("call stack overflow")]
     CallStackOverflow,
+    #[error("modules stack overflow")]
+    ModulesStackOverflow,
     #[error("unexpected type")]
     UnexpectedType,
     #[error("{0}")]

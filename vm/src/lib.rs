@@ -25,22 +25,27 @@ pub use chunk::*;
 // This represents how many calls can be chained
 const CALL_STACK_SIZE: usize = 64;
 
+// 8 modules maximum in the stack
+// This represents how many modules can be chained
+const MODULES_STACK_SIZE: usize = 8;
+
 // Backend of the VM
 // This is the immutable part of the VM
 pub struct Backend<'a> {
-    // The module to execute
-    module: &'a Module,
-    // The environment of the VM
-    environment: &'a Environment,
     // The instruction table of the VM
     table: InstructionTable<'a>,
+    // The module to execute
+    modules: Vec<&'a Module>,
+    // The environment of the VM
+    environment: &'a Environment,
 }
 
 impl<'a> Backend<'a> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
-        self.module.get_constant_at(id)
+        self.modules.last()
+            .and_then(|module| module.get_constant_at(id))
             .ok_or(VMError::ConstantNotFound)
     }
 }
@@ -50,7 +55,9 @@ pub struct VM<'a, 'r> {
     backend: Backend<'a>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
-    call_stack: Vec<ChunkManager<'a>>,
+    // It is behind an Option so we know
+    // when we have to switch the module
+    call_stack: Vec<Option<ChunkManager<'a>>>,
     // The stack of the VM
     // Every values are stored here
     stack: Stack,
@@ -75,9 +82,9 @@ impl<'a, 'r> VM<'a, 'r> {
     pub fn with(module: &'a Module, environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a, 'r>) -> Self {
         Self {
             backend: Backend {
-                module,
-                environment,
                 table,
+                modules: vec![module],
+                environment,
             },
             call_stack: Vec::with_capacity(4),
             stack: Stack::new(),
@@ -136,21 +143,22 @@ impl<'a, 'r> VM<'a, 'r> {
 
     // Invoke a chunk using its id
     pub(crate) fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
-        if self.call_stack.len() >= CALL_STACK_SIZE {
+        if self.call_stack.len() + 1 >= CALL_STACK_SIZE {
             return Err(VMError::CallStackOverflow);
         }
 
-        let chunk = self.backend.module.get_chunk_at(id as usize)
+        let chunk = self.backend.modules.last()
+            .and_then(|module| module.get_chunk_at(id as usize))
             .ok_or(VMError::ChunkNotFound)?;
 
         let manager = ChunkManager::new(chunk);
-        self.call_stack.push(manager);
+        self.call_stack.push(Some(manager));
         Ok(())
     }
 
     // Invoke an entry chunk using its id
     pub fn invoke_entry_chunk(&mut self, id: u16) -> Result<(), VMError> {
-        if !self.backend.module.is_entry_chunk(id as usize) {
+        if !self.backend.modules.last().map_or(false, |m| m.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
         }
         self.invoke_chunk_id(id)
@@ -167,7 +175,10 @@ impl<'a, 'r> VM<'a, 'r> {
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
     pub fn invoke_hook_id(&mut self, hook_id: u8) -> Result<bool, VMError> {
-        match self.backend.module.get_chunk_id_of_hook(hook_id) {
+        let module = self.backend.modules.last()
+            .ok_or(VMError::NoModule)?;
+
+        match module.get_chunk_id_of_hook(hook_id) {
             Some(id) => self.invoke_chunk_id(id as _).map(|_| true),
             None => Ok(false)
         }
@@ -177,7 +188,10 @@ impl<'a, 'r> VM<'a, 'r> {
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
     pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
-        match self.backend.module.get_chunk_id_of_hook(hook_id) {
+        let module = self.backend.modules.last()
+            .ok_or(VMError::NoModule)?;
+
+        match module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
                 self.invoke_chunk_id(id as _)?;
                 self.stack.extend_stack(args.map(Into::into))?;
@@ -196,47 +210,75 @@ impl<'a, 'r> VM<'a, 'r> {
     // It will execute the bytecode
     // First chunk executed should always return a value
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
-        while let Some(mut manager) = self.call_stack.pop() {
-            let mut clean_pointers = true;
-            while let Some(opcode) = manager.next_u8() {
-                match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
-                    Ok(InstructionResult::Nothing) => {},
-                    Ok(InstructionResult::InvokeChunk(id)) => {
-                        if self.backend.module.is_entry_chunk(id as usize) {
-                            return Err(VMError::EntryChunkCalled);
-                        }
+        // Freely copy the module has its a reference only
+        // We go through every modules injected
+        while let Some(module) = self.backend.modules.last().copied() {
+            while let Some(manager) = self.call_stack.pop() {
+                let Some(mut manager) = manager else {
+                    // Move to the next module
+                    break;
+                };
 
-                        // If tail call optimization is enabled,
-                        // we have another instruction and that its not a OpCode::Return
-                        // push current frame back to our call_stack
-                        // Otherwise, clean pointers for safety reasons
-                        if !self.tail_call_optimization || manager.has_next_instruction() {
-                            // We don't check the call stack size
-                            // because we've pop it from call stack
-                            // and it will be done below for next invoke
-                            self.call_stack.push(manager);
-                            clean_pointers = false;
-                        }
+                let mut clean_pointers = true;
+                while let Some(opcode) = manager.next_u8() {
+                    match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
+                        Ok(InstructionResult::Nothing) => {},
+                        Ok(InstructionResult::InvokeChunk(id)) => {
+                            if module.is_entry_chunk(id as usize) {
+                                return Err(VMError::EntryChunkCalled);
+                            }
 
-                        self.invoke_chunk_id(id)?;
-                        break;
-                    },
-                    Ok(InstructionResult::Break) => {
-                        break;
-                    },
-                    Err(e) => {
-                        trace!("Error: {:?}", e);
-                        trace!("Stack: {:?}", self.stack.get_inner());
-                        trace!("Call stack left: {}", self.call_stack.len());
-                        trace!("Current registers: {:?}", manager.get_registers());
-                        return Err(e);
+                            // If tail call optimization is enabled,
+                            // we have another instruction and that its not a OpCode::Return
+                            // push current frame back to our call_stack
+                            // Otherwise, clean pointers for safety reasons
+                            if !self.tail_call_optimization || manager.has_next_instruction() {
+                                // We don't check the call stack size
+                                // because we've pop it from call stack
+                                // and it will be done below for next invoke
+                                self.call_stack.push(Some(manager));
+                                clean_pointers = false;
+                            }
+
+                            self.invoke_chunk_id(id)?;
+                            break;
+                        },
+                        Ok(InstructionResult::AppendModule(module, id)) => {
+                            // Check that we still have a slot available
+                            if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
+                                return Err(VMError::ModulesStackOverflow)
+                            }
+
+                            // Same as InvokeChunk above
+                            if !self.tail_call_optimization || manager.has_next_instruction() {
+                                self.call_stack.push(Some(manager));
+                                clean_pointers = false;
+                            }
+
+                            self.backend.modules.push(module);
+                            self.invoke_chunk_id(id)?;
+                            break;
+                        },
+                        Ok(InstructionResult::Break) => {
+                            break;
+                        },
+                        Err(e) => {
+                            trace!("Error: {:?}", e);
+                            trace!("Stack: {:?}", self.stack.get_inner());
+                            trace!("Call stack left: {}", self.call_stack.len());
+                            trace!("Current registers: {:?}", manager.get_registers());
+                            return Err(e);
+                        }
                     }
+                }
+    
+                if clean_pointers {
+                    self.stack.checkpoint_clean()?;
                 }
             }
 
-            if clean_pointers {
-                self.stack.checkpoint_clean()?;
-            }
+            // Pop the module because we fully executed it
+            debug_assert!(self.backend.modules.pop().is_some(), "backend modules must be some");
         }
 
         let end_value = self.stack.pop_stack()?
