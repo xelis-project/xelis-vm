@@ -11,10 +11,11 @@ macro_rules! bench {
     ($group: expr, $name: expr, $code: expr, $id: expr) => {
         $group.bench_function($name, |b| {    
             let (module, env) = prepare($code);
-            let mut vm = VM::new(&module, &env);
+            let mut vm = VM::new(&env);
             b.iter(|| {
-                vm.invoke_entry_chunk($id).unwrap();
-                vm.run().unwrap();
+                vm.append_module(&module).expect("module");
+                vm.invoke_entry_chunk($id).expect("entry");
+                vm.run().expect("run");
                 vm.context_mut().reset_usage();
             });
         });

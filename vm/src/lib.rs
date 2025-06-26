@@ -71,19 +71,19 @@ pub struct VM<'a, 'r> {
 impl<'a, 'r> VM<'a, 'r> {
     // Create a new VM
     // Insert the environment as a reference in the context
-    pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
+    pub fn new(environment: &'a Environment) -> Self {
         let mut context = Context::default();
         context.insert_ref(environment);
 
-        Self::with(module, environment, InstructionTable::new(), context)
+        Self::with(environment, InstructionTable::new(), context)
     }
 
     // Create a new VM with a given table and context
-    pub fn with(module: &'a Module, environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a, 'r>) -> Self {
+    pub fn with(environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a, 'r>) -> Self {
         Self {
             backend: Backend {
                 table,
-                modules: vec![module],
+                modules: Vec::new(),
                 environment,
             },
             call_stack: Vec::with_capacity(4),
@@ -94,49 +94,49 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Check if the tail call optimization flag is enabled or not
-    #[inline]
+    #[inline(always)]
     pub fn has_tail_call_optimization(&self) -> bool {
         self.tail_call_optimization
     }
 
     // Enable/disable the tail call optimization flag
-    #[inline]
+    #[inline(always)]
     pub fn set_tail_call_optimization(&mut self, value: bool) {
         self.tail_call_optimization = value;
     }
 
     // Get the stack
-    #[inline]
+    #[inline(always)]
     pub fn get_stack(&self) -> &Stack {
         &self.stack
     }
 
     // Get the context
-    #[inline]
+    #[inline(always)]
     pub fn context(&self) -> &Context<'a, 'r> {
         &self.context
     }
 
     // Get a mutable reference to the context
-    #[inline]
+    #[inline(always)]
     pub fn context_mut(&mut self) -> &mut Context<'a, 'r> {
         &mut self.context
     }
 
     // Get the instruction table
-    #[inline]
+    #[inline(always)]
     pub fn table(&self) -> &InstructionTable<'a> {
         &self.backend.table
     }
 
     // Get a mutable reference to the instruction table
-    #[inline]
+    #[inline(always)]
     pub fn table_mut(&mut self) -> &mut InstructionTable<'a> {
         &mut self.backend.table
     }
 
     // Get the environment
-    #[inline]
+    #[inline(always)]
     pub fn environment(&self) -> &Environment {
         self.backend.environment
     }
@@ -156,7 +156,23 @@ impl<'a, 'r> VM<'a, 'r> {
         Ok(())
     }
 
+    // Append a new module to execute
+    // Once added, you can invoke a chunk / entry / hook
+    pub fn append_module(&mut self, module: &'a Module) -> Result<(), VMError> {
+        if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
+            return Err(VMError::ModulesStackOverflow)
+        }
+
+        if !self.backend.modules.is_empty() {
+            self.call_stack.push(None);
+        }
+
+        self.backend.modules.push(module);
+        Ok(())
+    }
+
     // Invoke an entry chunk using its id
+    // This will use the latest module added
     pub fn invoke_entry_chunk(&mut self, id: u16) -> Result<(), VMError> {
         if !self.backend.modules.last().map_or(false, |m| m.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
@@ -165,6 +181,7 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Invoke an entry chunk using its id
+    // This will use the latest module added
     pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
         self.stack.extend_stack(args.map(Into::into))?;
@@ -277,8 +294,11 @@ impl<'a, 'r> VM<'a, 'r> {
                 }
             }
 
+
             // Pop the module because we fully executed it
-            debug_assert!(self.backend.modules.pop().is_some(), "backend modules must be some");
+            // This allow the VM to be fully reusable
+            let res = self.backend.modules.pop();
+            debug_assert!(res.is_some(), "backend modules must be some");
         }
 
         let end_value = self.stack.pop_stack()?

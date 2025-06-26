@@ -196,8 +196,9 @@ fn test_struct() {
 
     {
         let env = Environment::new();
-        let mut vm = VM::new(&module, &env);
-        vm.invoke_chunk_id(0).unwrap();
+        let mut vm = VM::new(&env);
+        vm.append_module(&module).expect("module");
+        vm.invoke_chunk_id(0).expect("entry chunk at 0");
         assert_eq!(
             vm.run().unwrap(),
             ValueCell::Object(
@@ -243,8 +244,10 @@ fn test_struct() {
     chunk.emit_opcode(OpCode::Return);
 
     let env = Environment::new();
-    let mut vm = VM::new(&module, &env);
-    vm.invoke_chunk_id(0).unwrap();
+    let mut vm = VM::new(&env);
+    vm.append_module(&module).expect("module");
+    vm.invoke_chunk_id(0).expect("entry chunk");
+
     assert_eq!(vm.run().unwrap(), Primitive::U16(30).into());
 }
 
@@ -277,8 +280,10 @@ fn test_function_call() {
     module.add_chunk(bool_fn);
 
     let env = Environment::new();
-    let mut vm = VM::new(&module, &env);
-    vm.invoke_chunk_id(0).unwrap();
+    let mut vm = VM::new(&env);
+    vm.append_module(&module).expect("module");
+    vm.invoke_chunk_id(0).expect("entry chunk");
+
     assert_eq!(vm.run().unwrap(), Primitive::Boolean(true).into());
 }
 
@@ -312,8 +317,10 @@ fn test_function_call_on_value() {
     module.add_chunk(struct_fn);
 
     let env = Environment::new();
-    let mut vm = VM::new(&module, &env);
-    vm.invoke_chunk_id(0).unwrap();
+    let mut vm = VM::new(&env);
+    vm.append_module(&module).expect("module");
+    vm.invoke_chunk_id(0).expect("entry chunk");
+
     assert_eq!(vm.run().unwrap(), Primitive::U64(10).into());
 }
 

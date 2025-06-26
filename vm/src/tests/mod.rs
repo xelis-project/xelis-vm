@@ -17,10 +17,11 @@ fn run_internal(module: Module, environment: &Environment, id: u16) -> Result<Pr
     let validator = ModuleValidator::new(&module, environment);
     validator.verify().unwrap();
 
-    let mut vm = VM::new(&module, environment);
+    let mut vm = VM::new(environment);
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.invoke_chunk_id(id).unwrap();
-    vm.run().map(|mut v| v.into_value().unwrap())
+    vm.append_module(&module).expect("module");
+    vm.invoke_chunk_id(id).expect("valid entry chunk");
+    vm.run().map(|mut v| v.into_value().expect("primitive"))
 }
 
 #[track_caller]
