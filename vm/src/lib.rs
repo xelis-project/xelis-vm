@@ -83,7 +83,7 @@ impl<'a, 'r> VM<'a, 'r> {
         Self {
             backend: Backend {
                 table,
-                modules: Vec::new(),
+                modules: Vec::with_capacity(1),
                 environment,
             },
             call_stack: Vec::with_capacity(4),
