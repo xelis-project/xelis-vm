@@ -170,6 +170,8 @@ impl<'a, 'r> VM<'a, 'r> {
         }
 
         if !self.backend.modules.is_empty() {
+            // Add a None call_stack to inform
+            // that we should switch to the next module
             self.call_stack.push(None);
         }
 
@@ -230,20 +232,30 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Add the chunk manager to the call stack if required
+    // Returns `false` if not added back
     #[inline]
-    fn push_back_call_stack(&mut self, manager: ChunkManager<'a>, clean_pointers: &mut bool) {
+    fn push_back_call_stack(&mut self, manager: ChunkManager<'a>) -> Result<(), VMError> {
         // If tail call optimization is enabled,
         // we have another instruction and that its not a OpCode::Return
         // push current frame back to our call_stack
         // Otherwise, clean pointers for safety reasons
         if !self.tail_call_optimization || manager.has_next_instruction() {
-            // We don't check the call stack size
-            // because we've pop it from call stack
-            // and it will be done below for next invoke
-            self.call_stack_size += 1;
+            // add back our call stack as we need it
             self.call_stack.push(Some(manager));
-            *clean_pointers = false;
+
+            Ok(())
+        } else {
+            self.on_call_stack_end()
         }
+    }
+
+    // Called at the end of a call stack
+    #[inline]
+    fn on_call_stack_end(&mut self) -> Result<(), VMError> {
+        // call stack has been fully consummed
+        // don't push it back but clean pointers
+        self.call_stack_size -= 1;
+        self.stack.checkpoint_clean()
     }
 
     // Run the VM
@@ -252,14 +264,8 @@ impl<'a, 'r> VM<'a, 'r> {
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
         // Freely copy the module has its a reference only
         // We go through every modules injected
-        while let Some(module) = self.backend.modules.last().copied() {
-            while let Some(manager) = self.call_stack.pop() {
-                let Some(mut manager) = manager else {
-                    // Move to the next module
-                    break;
-                };
-
-                let mut clean_pointers = true;
+        'modules: while let Some(module) = self.backend.modules.last().copied() {
+            'call_stack: while let Some(Some(mut manager)) = self.call_stack.pop() {
                 while let Some(opcode) = manager.next_u8() {
                     match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
                         Ok(InstructionResult::Nothing) => {},
@@ -268,21 +274,21 @@ impl<'a, 'r> VM<'a, 'r> {
                                 return Err(VMError::EntryChunkCalled);
                             }
 
-                            self.push_back_call_stack(manager, &mut clean_pointers);
+                            self.push_back_call_stack(manager)?;
                             self.invoke_chunk_id(id)?;
-                            break;
+
+                            // Jump to the next call stack
+                            continue 'call_stack;
                         },
-                        Ok(InstructionResult::AppendModule(module, id)) => {
-                            // Check that we still have a slot available
-                            if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
-                                return Err(VMError::ModulesStackOverflow)
-                            }
+                        Ok(InstructionResult::AppendModule(new_module, id)) => {
+                            // Push back the current callstack
+                            self.push_back_call_stack(manager)?;
 
-                            self.push_back_call_stack(manager, &mut clean_pointers);
-
-                            self.backend.modules.push(module);
+                            self.append_module(new_module)?;
                             self.invoke_chunk_id(id)?;
-                            break;
+
+                            // Jump to the next module
+                            continue 'modules;
                         },
                         Ok(InstructionResult::Break) => {
                             break;
@@ -298,12 +304,7 @@ impl<'a, 'r> VM<'a, 'r> {
                     }
                 }
 
-                if clean_pointers {
-                    self.stack.checkpoint_clean()?;
-                }
-
-                // Reduce the call stack size by one
-                self.call_stack_size -= 1;
+                self.on_call_stack_end()?;
             }
 
 
