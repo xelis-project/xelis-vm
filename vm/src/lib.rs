@@ -58,6 +58,9 @@ pub struct VM<'a, 'r> {
     // It is behind an Option so we know
     // when we have to switch the module
     call_stack: Vec<Option<ChunkManager<'a>>>,
+    // Real call stack size counting
+    // only Some entries
+    call_stack_size: usize,
     // The stack of the VM
     // Every values are stored here
     stack: Stack,
@@ -87,6 +90,7 @@ impl<'a, 'r> VM<'a, 'r> {
                 environment,
             },
             call_stack: Vec::with_capacity(4),
+            call_stack_size: 0,
             stack: Stack::new(),
             context,
             tail_call_optimization: false
@@ -143,7 +147,7 @@ impl<'a, 'r> VM<'a, 'r> {
 
     // Invoke a chunk using its id
     pub(crate) fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
-        if self.call_stack.len() + 1 >= CALL_STACK_SIZE {
+        if self.call_stack_size + 1 >= CALL_STACK_SIZE {
             return Err(VMError::CallStackOverflow);
         }
 
@@ -153,6 +157,8 @@ impl<'a, 'r> VM<'a, 'r> {
 
         let manager = ChunkManager::new(chunk);
         self.call_stack.push(Some(manager));
+        self.call_stack_size += 1;
+
         Ok(())
     }
 
@@ -223,6 +229,23 @@ impl<'a, 'r> VM<'a, 'r> {
         self.stack.push_stack(value.into())
     }
 
+    // Add the chunk manager to the call stack if required
+    #[inline]
+    fn push_back_call_stack(&mut self, manager: ChunkManager<'a>, clean_pointers: &mut bool) {
+        // If tail call optimization is enabled,
+        // we have another instruction and that its not a OpCode::Return
+        // push current frame back to our call_stack
+        // Otherwise, clean pointers for safety reasons
+        if !self.tail_call_optimization || manager.has_next_instruction() {
+            // We don't check the call stack size
+            // because we've pop it from call stack
+            // and it will be done below for next invoke
+            self.call_stack_size += 1;
+            self.call_stack.push(Some(manager));
+            *clean_pointers = false;
+        }
+    }
+
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
@@ -245,18 +268,7 @@ impl<'a, 'r> VM<'a, 'r> {
                                 return Err(VMError::EntryChunkCalled);
                             }
 
-                            // If tail call optimization is enabled,
-                            // we have another instruction and that its not a OpCode::Return
-                            // push current frame back to our call_stack
-                            // Otherwise, clean pointers for safety reasons
-                            if !self.tail_call_optimization || manager.has_next_instruction() {
-                                // We don't check the call stack size
-                                // because we've pop it from call stack
-                                // and it will be done below for next invoke
-                                self.call_stack.push(Some(manager));
-                                clean_pointers = false;
-                            }
-
+                            self.push_back_call_stack(manager, &mut clean_pointers);
                             self.invoke_chunk_id(id)?;
                             break;
                         },
@@ -266,11 +278,7 @@ impl<'a, 'r> VM<'a, 'r> {
                                 return Err(VMError::ModulesStackOverflow)
                             }
 
-                            // Same as InvokeChunk above
-                            if !self.tail_call_optimization || manager.has_next_instruction() {
-                                self.call_stack.push(Some(manager));
-                                clean_pointers = false;
-                            }
+                            self.push_back_call_stack(manager, &mut clean_pointers);
 
                             self.backend.modules.push(module);
                             self.invoke_chunk_id(id)?;
@@ -283,15 +291,19 @@ impl<'a, 'r> VM<'a, 'r> {
                             trace!("Error: {:?}", e);
                             trace!("Stack: {:?}", self.stack.get_inner());
                             trace!("Call stack left: {}", self.call_stack.len());
+                            trace!("Call stack size: {}", self.call_stack_size);
                             trace!("Current registers: {:?}", manager.get_registers());
                             return Err(e);
                         }
                     }
                 }
-    
+
                 if clean_pointers {
                     self.stack.checkpoint_clean()?;
                 }
+
+                // Reduce the call stack size by one
+                self.call_stack_size -= 1;
             }
 
 
@@ -300,6 +312,8 @@ impl<'a, 'r> VM<'a, 'r> {
             let res = self.backend.modules.pop();
             debug_assert!(res.is_some(), "backend modules must be some");
         }
+
+        debug_assert!(self.call_stack_size == 0, "call stack size is not zero");
 
         let end_value = self.stack.pop_stack()?
             .into_owned()?;
