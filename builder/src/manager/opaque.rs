@@ -2,7 +2,7 @@ use xelis_types::{IdentifierType, NoHashMap, OpaqueType};
 use crate::{BuilderError, Mapper};
 
 pub struct OpaqueManager<'a> {
-    mapper: Mapper<'a, &'a str>,
+    mapper: Mapper<'a, &'static str>,
     types: NoHashMap<OpaqueType>
 }
 
@@ -15,10 +15,10 @@ impl<'a> OpaqueManager<'a> {
     }
 
     // Register a new opaque type
-    pub fn build(&mut self, name: &'a str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
+    pub fn build(&mut self, name: &'static str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
         let id = self.mapper.register(name)?;
-        let ty = OpaqueType::with(id, allow_external_input);
-        self.types.insert(id, ty);
+        let ty = OpaqueType::with(id, name, allow_external_input);
+        self.types.insert(id, ty.clone());
         Ok(ty)
     }
 

@@ -111,7 +111,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register an opaque type in the environment
     // Panic if the opaque name is already used
-    pub fn register_opaque<T: Opaque>(&mut self, name: &'a str, allow_external_input: bool) -> OpaqueType {
+    pub fn register_opaque<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool) -> OpaqueType {
         let ty = TypeId::of::<T>();
         let opaque = self.opaque_manager.build(name, allow_external_input)
             .expect("Unique opaque name");

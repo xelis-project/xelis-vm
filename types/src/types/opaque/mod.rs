@@ -1,33 +1,35 @@
 pub mod traits;
 
-use core::fmt;
 use std::{
     any::TypeId,
-    fmt::{Debug, Display},
-    hash::{Hash, Hasher},
+    borrow::Cow,
+    fmt,
+    hash::{Hash, Hasher}
 };
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
 use crate::{IdentifierType, ValueError};
 use traits::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 struct OpaqueTypeInner {
     id: IdentifierType,
+    name: Cow<'static, str>,
     allow_external_input: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OpaqueType(OpaqueTypeInner);
 
 impl OpaqueType {
-    pub fn new(id: IdentifierType) -> Self {
-        Self::with(id, false)
+    pub fn new(id: IdentifierType, name: &'static str,) -> Self {
+        Self::with(id, name, false)
     }
 
-    pub fn with(id: IdentifierType, allow_external_input: bool) -> Self {
+    pub fn with(id: IdentifierType, name: &'static str, allow_external_input: bool) -> Self {
         Self(OpaqueTypeInner {
             id,
+            name: name.into(),
             allow_external_input
         })
     }
@@ -36,8 +38,18 @@ impl OpaqueType {
         self.0.id
     }
 
+    pub fn name(&self) -> &str {
+        &self.0.name
+    }
+
     pub fn allow_external_input(&self) -> bool {
         self.0.allow_external_input
+    }
+}
+
+impl fmt::Display for OpaqueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.name)
     }
 }
 
@@ -53,7 +65,7 @@ impl<'a> Deserialize<'a> for OpaqueType {
     }
 }
 
-pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + Debug + Sync + Send {
+pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + fmt::Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -188,7 +200,7 @@ impl<T: Opaque> From<T> for OpaqueWrapper {
     }
 }
 
-impl Display for OpaqueWrapper {
+impl fmt::Display for OpaqueWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.inner.display(f)
     }
@@ -217,7 +229,7 @@ mod tests {
         json
     );
 
-    impl Display for CustomOpaque {
+    impl fmt::Display for CustomOpaque {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "CustomOpaque({})", self.value)
         }
@@ -261,16 +273,16 @@ mod tests {
 
     #[test]
     fn test_opaque_type_serde() {
-        let opaque_type = OpaqueType::new(42);
+        let opaque_type = OpaqueType::new(42, "Foo");
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"id":42,"allow_external_input":false}"#);
+        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false}"#);
 
         let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque_type, opaque_type2);
 
-        let opaque_type = Type::Opaque(OpaqueType::new(42));
+        let opaque_type = Type::Opaque(OpaqueType::new(42, "Foo"));
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"allow_external_input":false}}"#);
+        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false}}"#);
     }
 
     #[test]

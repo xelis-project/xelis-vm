@@ -444,7 +444,7 @@ impl fmt::Display for Type {
             Type::Range(_type) => write!(f, "range<{}>", _type),
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(ty) => write!(f, "enum {}", ty.name()),
-            Type::Opaque(id) => write!(f, "opaque({:?})", id),
+            Type::Opaque(id) => write!(f, "opaque({})", id),
             Type::Function(ty) => write!(f, "{}", ty)
         }
     }
