@@ -1,4 +1,5 @@
 mod stack_value;
+mod serde_map;
 
 use std::{
     borrow::Cow,
@@ -25,6 +26,10 @@ pub enum ValueCell {
     Object(Vec<ValueCell>),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
+    #[serde(
+        serialize_with = "serde_map::serialize",
+        deserialize_with = "serde_map::deserialize"
+    )]
     Map(IndexMap<ValueCell, ValueCell>),
 }
 

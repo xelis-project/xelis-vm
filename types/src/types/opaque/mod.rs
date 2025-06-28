@@ -179,7 +179,7 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
             .map_err(serde::de::Error::custom)?;
 
         let deserialize_fn = registry.get(&type_name.as_str())
-            .ok_or(serde::de::Error::custom("Unknown type"))?;
+            .ok_or(serde::de::Error::custom(format!("Unknown type '{}' for registry", type_name)))?;
 
         deserialize_fn(value)
             .map_err(serde::de::Error::custom)
@@ -209,11 +209,14 @@ impl fmt::Display for OpaqueWrapper {
 #[cfg(test)]
 mod tests {
     use std::{any::TypeId, hash::DefaultHasher};
+    use indexmap::IndexMap;
 
     use crate::{
         impl_opaque,
         register_opaque_json,
-        Type
+        Primitive,
+        Type,
+        ValueCell
     };
     use super::*;
 
@@ -291,5 +294,24 @@ mod tests {
         let _: &CustomOpaque = opaque.as_ref().unwrap();
         let _: &mut CustomOpaque = opaque.as_mut().unwrap();
         let _: CustomOpaque = opaque.into_inner().unwrap();
+    }
+
+    #[test]
+    fn test_map_opaque_as_key() {
+        {
+            let mut registry = JSON_REGISTRY.write().unwrap();
+            register_opaque_json!(registry, "CustomOpaque", CustomOpaque);
+        }
+
+        let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        let mut map = IndexMap::new();
+        map.insert(ValueCell::Default(Primitive::Opaque(opaque)), ValueCell::Default(Primitive::String("hello world".to_owned())));
+        map.insert(ValueCell::Default(Primitive::String("key test".to_owned())), ValueCell::Default(Primitive::String("hello world 2".to_owned())));
+
+        let map = ValueCell::Map(map);
+        let json = serde_json::to_string(&map).unwrap();
+        let map2: ValueCell = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(map, map2);
     }
 }
