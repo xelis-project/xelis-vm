@@ -7,18 +7,42 @@ use super::VMError;
 const STACK_SIZE: usize = 256;
 
 pub struct Stack {
+    checkpoints: Vec<usize>,
     stack: Vec<StackValue>
 }
 
 impl Stack {
     pub fn new() -> Self {
         Self {
+            checkpoints: Vec::with_capacity(4),
             stack: Vec::with_capacity(16)
         }
     }
 
+    // Mark as a checkpoint until which len we should
+    // clean the pointers
+    #[inline]
+    pub fn mark_checkpoint(&mut self) {
+        self.checkpoints.push(self.stack.len());
+    }
+
+    // Clean all our stack to prevent any undefined behavior with
+    // raw pointers
+    // This will transform every value as owned
+    #[inline]
     pub fn checkpoint_clean(&mut self) -> Result<(), VMError> {
-        for value in self.stack.iter_mut() {
+        let mut checkpoint = self.checkpoints.pop()
+            .ok_or(VMError::NoCheckPoint)?;
+
+        // It is possible that some values in our
+        // stack got used by the next chunk
+        // So we skip until the stack left
+        let len = self.stack.len();
+        if checkpoint > len {
+            checkpoint = len.saturating_sub(1);
+        }
+
+        for value in self.stack[checkpoint..].iter_mut() {
             value.make_owned()?;
         }
 

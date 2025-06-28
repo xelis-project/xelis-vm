@@ -1864,3 +1864,20 @@ fn test_closure() {
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(10));
 }
+
+#[test]
+fn test_function_assign() {
+    let code = r#"
+        fn foo() -> u64 {
+            return 10
+        }
+
+        entry main() {
+            let a: u64 = 0
+            a = foo()
+            return a
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+}

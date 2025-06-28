@@ -156,6 +156,7 @@ impl<'a, 'r> VM<'a, 'r> {
             .ok_or(VMError::ChunkNotFound)?;
 
         let manager = ChunkManager::new(chunk);
+        self.stack.mark_checkpoint();
         self.call_stack.push(Some(manager));
         self.call_stack_size += 1;
 

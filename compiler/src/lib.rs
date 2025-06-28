@@ -101,6 +101,8 @@ impl<'a> Compiler<'a> {
         chunk.emit_opcode(OpCode::MemorySet);
         let id = self.memstore_ids.last_mut()
             .ok_or(CompilerError::ExpectedMemstoreId)?;
+
+        trace!("memory set at {}", id);
         chunk.write_u16(*id);
         *id += 1;
 
