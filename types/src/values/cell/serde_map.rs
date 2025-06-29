@@ -20,14 +20,14 @@ where
 
 pub fn deserialize<'de, D>(
     deserializer: D,
-) -> Result<IndexMap<ValueCell, ValueCell>, D::Error>
+) -> Result<Box<IndexMap<ValueCell, ValueCell>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct MapVecVisitor;
 
     impl<'de> Visitor<'de> for MapVecVisitor {
-        type Value = IndexMap<ValueCell, ValueCell>;
+        type Value = Box<IndexMap<ValueCell, ValueCell>>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a list of key-value pairs")
@@ -41,7 +41,7 @@ where
             while let Some((k, v)) = seq.next_element::<(ValueCell, ValueCell)>()? {
                 map.insert(k, v);
             }
-            Ok(map)
+            Ok(Box::new(map))
         }
     }
 

@@ -1872,12 +1872,16 @@ fn test_function_assign() {
             return 10
         }
 
+        fn bar(a: u64) -> u64 {
+            return  a + foo()
+        }
+
         entry main() {
             let a: u64 = 0
-            a = foo()
+            a = bar(a)
             return a
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 2), Primitive::U64(10));
 }

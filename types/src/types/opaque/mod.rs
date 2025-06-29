@@ -308,7 +308,7 @@ mod tests {
         map.insert(ValueCell::Default(Primitive::Opaque(opaque)), ValueCell::Default(Primitive::String("hello world".to_owned())));
         map.insert(ValueCell::Default(Primitive::String("key test".to_owned())), ValueCell::Default(Primitive::String("hello world 2".to_owned())));
 
-        let map = ValueCell::Map(map);
+        let map = ValueCell::Map(Box::new(map));
         let json = serde_json::to_string(&map).unwrap();
         let map2: ValueCell = serde_json::from_str(&json).unwrap();
 

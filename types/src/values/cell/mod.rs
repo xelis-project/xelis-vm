@@ -30,7 +30,7 @@ pub enum ValueCell {
         serialize_with = "serde_map::serialize",
         deserialize_with = "serde_map::deserialize"
     )]
-    Map(IndexMap<ValueCell, ValueCell>),
+    Map(Box<IndexMap<ValueCell, ValueCell>>),
 }
 
 #[cfg(feature = "infinite-cell-depth")]
@@ -131,7 +131,7 @@ impl From<Constant> for ValueCell {
             Constant::Default(v) => Self::Default(v),
             Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
-            Constant::Map(map) => Self::Map(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect()),
+            Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
             Constant::Typed(values, ty) => {
                 let mut cells = Vec::with_capacity(values.len());
 
@@ -747,7 +747,7 @@ impl ValueCell {
                         .tuples()
                         .collect();
 
-                    stack.push(ValueCell::Map(map));
+                    stack.push(ValueCell::Map(Box::new(map)));
                 }
             }
         }
