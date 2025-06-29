@@ -186,18 +186,23 @@ fn internal_syscall<'a>(backend: &Backend<'a>, id: u16, stack: &mut Stack, conte
 }
 
 pub fn dynamic_call<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
-    let id = stack.pop_stack()?
-        .as_ref()?
-        .as_u16()?;
+    let value = stack.pop_stack()?;
+    let values = value.as_ref()?
+        .as_vec()?;
 
-    let len = backend.environment.get_functions().len();
-    let syscall = (id as usize) < len;
+    if values.len() != 2 {
+        return Err(VMError::InvalidDynamicCall)
+    }
+
+    let id = values[0].as_u16()?;
+    let syscall = values[1].as_bool()?;
+
     let args = manager.read_u8()? as usize;
     debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
 
     if syscall {
         internal_syscall(backend, id, stack, context)
     } else {
-        internal_invoke_chunk(stack, (id as usize - len) as u16, args)
+        internal_invoke_chunk(stack, id, args)
     }
 }

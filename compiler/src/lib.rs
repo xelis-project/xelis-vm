@@ -314,9 +314,22 @@ impl<'a> Compiler<'a> {
             Expression::ForceType(expr, _) => {
                 self.compile_expr(chunk, expr)?;
             },
-            Expression::FunctionPointer(id) => {
+            Expression::FunctionPointer(mut id) => {
                 // Compile the fn pointer id as a stack value
-                self.compile_expr(chunk, &Expression::Constant(Constant::Default(Primitive::U16(*id))))?;
+                // In order to be future-proof
+                // we also add a bool bit to tell if its an id for syscall
+                // or if its an id for the module
+                // Because its dynamic, we can't write it as opcode
+                let len = self.environment.get_functions().len();
+                let is_syscall = (id as usize) < len;
+                if !is_syscall {
+                    id -= len as u16;
+                }
+
+                let id = Primitive::U16(id).into();
+                let syscall = Primitive::Boolean(is_syscall).into();
+
+                self.compile_expr(chunk, &Expression::Constant(Constant::Array(vec![id, syscall])))?;
             },
             Expression::DynamicCall(id, params) => {
                 for param in params {
