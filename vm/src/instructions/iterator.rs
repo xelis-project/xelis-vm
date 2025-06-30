@@ -5,7 +5,7 @@ use xelis_types::Primitive;
 
 use super::InstructionResult;
 
-pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn iterable_length<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     debug!("iterable length");
 
     let value = stack.pop_stack()?;
@@ -18,7 +18,7 @@ pub fn iterable_length<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkMana
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn iterator_begin<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     debug!("iterator begin");
 
     let value = stack.pop_stack()?;
@@ -27,7 +27,7 @@ pub fn iterator_begin<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut Chun
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn iterator_next<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     debug!("iterator next");
 
     let addr = manager.read_u32()?;
@@ -43,7 +43,7 @@ pub fn iterator_next<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut Chunk
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_end<'a>(_: &Backend<'a>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn iterator_end<'ty, 'a>(_: &Backend<'a, 'ty>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     debug!("iterator end");
 
     manager.pop_iterator()?;

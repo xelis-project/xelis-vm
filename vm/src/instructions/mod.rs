@@ -47,26 +47,26 @@ pub enum InstructionResult<'a> {
 
 // A handler is a function pointer to an instruction
 // With its associated cost
-pub type Handler<'a> = (fn(&Backend<'a>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError>, u64);
+pub type Handler<'a, 'ty> = (fn(&Backend<'a, 'ty>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError>, u64);
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
 // It is a fixed size array of 256 elements
 // Each element is a function pointer to the instruction
-pub struct InstructionTable<'a> {
-    instructions: [Handler<'a>; 256],
+pub struct InstructionTable<'a, 'ty> {
+    instructions: [Handler<'a, 'ty>; 256],
 }
 
-impl Default for InstructionTable<'_> {
+impl<'a, 'ty> Default for InstructionTable<'a, 'ty> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> InstructionTable<'a> {
+impl<'a, 'ty> InstructionTable<'a, 'ty> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
-        let mut instructions: [Handler; 256] = [(unimplemented, 0); 256];
+        let mut instructions: [Handler<'a, 'ty>; 256] = [(unimplemented, 0); 256];
 
         instructions[OpCode::Constant.as_usize()] = (constant, 1);
         instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
@@ -149,7 +149,7 @@ impl<'a> InstructionTable<'a> {
     }
 
     // Allow to overwrite a instruction with a custom handler
-    pub fn set_instruction(&mut self, opcode: OpCode, handler: Handler<'a>) {
+    pub fn set_instruction(&mut self, opcode: OpCode, handler: Handler<'a, 'ty>) {
         self.instructions[opcode.as_usize()] = handler;
     }
 
@@ -159,7 +159,7 @@ impl<'a> InstructionTable<'a> {
     }
 
     // Execute an instruction
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
@@ -170,21 +170,21 @@ impl<'a> InstructionTable<'a> {
     }
 }
 
-fn unimplemented<'a>(_: &Backend<'a>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn unimplemented<'a, 'ty>(_: &Backend<'a, 'ty>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     Err(VMError::InvalidOpCode)
 }
 
-fn return_fn<'a>(_: &Backend<'a>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn return_fn<'ty, 'a>(_: &Backend<'a, 'ty>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a>(_: &Backend<'a>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn jump<'ty, 'a>(_: &Backend<'a, 'ty>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let addr = manager.read_u32()?;
     manager.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn jump_if_false<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let addr = manager.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {
@@ -193,7 +193,7 @@ fn jump_if_false<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
     Ok(InstructionResult::Nothing)
 }
 
-fn flatten<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn flatten<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.into_owned()?
         .to_vec()?;
@@ -221,7 +221,7 @@ fn is_value_in_range<T: PartialOrd>(
     }
 }
 
-fn match_<'a>(backend: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+fn match_<'ty, 'a>(backend: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let magic_byte = manager.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?

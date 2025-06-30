@@ -8,7 +8,7 @@ use indexmap::{IndexMap, IndexSet};
 use xelis_types::{EnumType, StructType};
 
 // Also re-export the necessary macro
-pub use better_any::tid;
+pub use better_any::*;
 pub use error::EnvironmentError;
 pub use function::*;
 pub use context::*;
@@ -16,9 +16,9 @@ pub use context::*;
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
 #[derive(Debug, Clone)]
-pub struct Environment {
+pub struct Environment<'ty> {
     // All functions provided by the Environment
-    functions: Vec<NativeFunction>,
+    functions: Vec<NativeFunction<'ty>>,
     // All structures provided by the Environment
     structures: IndexSet<StructType>,
     // All enums provided by the Environment
@@ -29,9 +29,9 @@ pub struct Environment {
     hooks: u8
 }
 
-tid!(Environment);
+tid!(Environment<'ty>);
 
-impl Default for Environment {
+impl Default for Environment<'_> {
     fn default() -> Self {
         Self {
             functions: Vec::new(),
@@ -43,7 +43,7 @@ impl Default for Environment {
     }
 }
 
-impl Environment {
+impl<'ty> Environment<'ty> {
     // Create a new environment
     pub fn new() -> Self {
         Self::default()
@@ -51,7 +51,7 @@ impl Environment {
 
     // Get all the registered functions
     #[inline(always)]
-    pub fn get_functions(&self) -> &Vec<NativeFunction> {
+    pub fn get_functions(&self) -> &Vec<NativeFunction<'ty>> {
         &self.functions
     }
 
@@ -75,12 +75,12 @@ impl Environment {
 
     // Add a new function to the environment
     #[inline(always)]
-    pub fn add_function(&mut self, function: NativeFunction) {
+    pub fn add_function(&mut self, function: NativeFunction<'ty>) {
         self.functions.push(function);
     }
 
     // Get a mutable native function by its id
-    pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction> {
+    pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction<'ty>> {
         self.functions.get_mut(id)
     }
 

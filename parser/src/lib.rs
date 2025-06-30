@@ -101,12 +101,12 @@ macro_rules! op_num_with_bool {
     }};
 }
 
-enum Function<'a> {
-    Native(&'a NativeFunction),
+enum Function<'a, 'ty> {
+    Native(&'a NativeFunction<'ty>),
     Program(&'a FunctionType)
 }
 
-impl<'a> Function<'a> {
+impl<'a> Function<'a, '_> {
     pub fn return_type(&self) -> &Option<Type> {
         match self {
             Function::Native(f) => f.return_type(),
@@ -155,7 +155,7 @@ impl<'a> Function<'a> {
 // its content will be dropped directly by VM
 const IGNORE_VARIABLE: &str = "_";
 
-pub struct Parser<'a> {
+pub struct Parser<'a, 'ty> {
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
@@ -164,7 +164,7 @@ pub struct Parser<'a> {
     functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
-    environment: &'a EnvironmentBuilder<'a>,
+    environment: &'a EnvironmentBuilder<'ty>,
     // Disable upgrading values to consts
     disable_const_upgrading: bool,
     // Disable shadowing variables
@@ -190,9 +190,9 @@ enum TuplePattern<'a> {
     Tuple(Vec<TuplePattern<'a>>),
 }
 
-impl<'a> Parser<'a> {
+impl<'a, 'ty> Parser<'a, 'ty> {
     // Compatibility purpose: Create a new parser with a list of tokens only
-    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
+    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'ty>) -> Self {
         Self::with(tokens.into_iter().map(|v| TokenResult {
             token: v,
             line: 0,
@@ -202,7 +202,7 @@ impl<'a> Parser<'a> {
     }
 
     // Create a new parser with a list of tokens and the environment
-    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder) -> Self {
+    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'ty>) -> Self {
         Self {
             tokens: tokens.collect(),
             constants: HashMap::new(),
@@ -2602,7 +2602,7 @@ impl<'a> Parser<'a> {
     }
 
     // get a function using its identifier
-    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b, 'ty>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
         let len = self.environment.get_functions().len();
@@ -2776,7 +2776,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_with_env(tokens: Vec<Token>, env: &EnvironmentBuilder) -> Program {
+    fn test_parser_with_env<'a>(tokens: Vec<Token<'a>>, env: &'a EnvironmentBuilder<'a>) -> Program {
         let parser = Parser::new(tokens, env);
         let (program, _) = parser.parse().unwrap();
         program
@@ -2789,7 +2789,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_statement_with(tokens: Vec<Token>, variables: Vec<(&str, Type)>, return_type: &Option<Type>, env: &EnvironmentBuilder) -> Vec<Statement> {
+    fn test_parser_statement_with<'a>(tokens: Vec<Token<'a>>, variables: Vec<(&'a str, Type)>, return_type: &Option<Type>, env: &'a EnvironmentBuilder<'a>) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -4283,6 +4283,12 @@ mod tests {
         // register a static function on it
         env.register_static_function("bar", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
 
+        // Try also on a enum type
+        let fields: [(&str, EnumVariant); 0] = [];
+        let ty = Type::Enum(env.register_enum("Bar", fields));
+        // register a static function on it
+        env.register_static_function("foo", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
+
         // Foo::bar()
         let tokens = vec![
             Token::Identifier("Foo"),
@@ -4295,12 +4301,6 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
-
-        // Try also on a enum type
-        let fields: [(&str, EnumVariant); 0] = [];
-        let ty = Type::Enum(env.register_enum("Bar", fields));
-        // register a static function on it
-        env.register_static_function("foo", ty, Vec::new(), |_, _, _| todo!(), 0, Some(Type::U64));
 
         // Bar::foo()
         let tokens = vec![

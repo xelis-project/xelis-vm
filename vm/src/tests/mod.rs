@@ -12,7 +12,7 @@ mod full;
 
 
 #[track_caller]
-fn run_internal(module: Module, environment: &Environment, id: u16) -> Result<Primitive, VMError> {
+fn run_internal<'a, 'ty>(module: Module, environment: &'a Environment<'ty>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator
     let validator = ModuleValidator::new(&module, environment);
     validator.verify().unwrap();

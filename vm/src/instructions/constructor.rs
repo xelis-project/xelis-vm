@@ -6,7 +6,7 @@ use xelis_types::{Primitive, ValueCell};
 use crate::{debug, stack::Stack, Backend, ChunkManager, Context, VMError};
 use super::InstructionResult;
 
-pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn new_array<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let length = manager.read_u8()?;
     debug!("new array with length {}", length);
 
@@ -24,7 +24,7 @@ pub fn new_array<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkMana
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn new_range<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     debug!("new range");
     let mut end = stack.pop_stack()?.into_owned()?;
     let mut start = stack.pop_stack()?.into_owned()?;
@@ -46,7 +46,7 @@ pub fn new_range<'a>(_: &Backend<'a>, stack: &mut Stack, _: &mut ChunkManager<'a
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_map<'a>(_: &Backend<'a>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'a, '_>) -> Result<InstructionResult<'a>, VMError> {
+pub fn new_map<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
     let len = manager.read_u8()?;
     debug!("new map with length {}", len);
 

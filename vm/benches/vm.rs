@@ -9,8 +9,9 @@ use xelis_vm::VM;
 
 macro_rules! bench {
     ($group: expr, $name: expr, $code: expr, $id: expr) => {
-        $group.bench_function($name, |b| {    
-            let (module, env) = prepare($code);
+        $group.bench_function($name, |b| {
+            let code = $code;
+            let (module, env) = prepare(&code);
             let mut vm = VM::new(&env);
             b.iter(|| {
                 vm.append_module(&module).expect("module");
@@ -344,13 +345,13 @@ fn prime_finder(c: &mut Criterion) {
     bench!(
         group,
         "2000",
-        &code.replace("N", "2000")
+        code.replace("N", "2000")
     );
 
     bench!(
         group,
         "5000",
-        &code.replace("N", "5000")
+        code.replace("N", "5000")
     );
 }
 

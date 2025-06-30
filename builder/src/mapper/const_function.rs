@@ -20,7 +20,7 @@ impl<'a> ConstFunction<'a> {
     pub fn call(&self, parameters: Vec<Constant>) -> Result<Constant, anyhow::Error> {
         // Check that the params match
         if self.parameters.len() != parameters.len() {
-            return Err(BuilderError::InvalidConstFnParameters.into());
+            return Err(BuilderError::InvalidConstFnParametersMismatch.into());
         }
 
         let mut updated_constants = Vec::with_capacity(parameters.len());
@@ -76,7 +76,7 @@ impl<'a> ConstFunctionMapper<'a> {
         Ok(())
     }
 
-    pub fn get_const_fn(&self, for_type: &Type, fn_name: &'a str) -> Option<&ConstFunction<'a>> {
+    pub fn get_const_fn<'b>(&'b self, for_type: &Type, fn_name: &str) -> Option<&'b ConstFunction<'b>> {
         self.mappings.get(for_type)
             .and_then(|m| m.get(fn_name))
     }

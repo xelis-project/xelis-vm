@@ -51,15 +51,15 @@ pub enum ValidatorError {
     StringTooBig,
 }
 
-pub struct ModuleValidator<'a> {
+pub struct ModuleValidator<'a, 'ty> {
     module: &'a Module,
-    environment: &'a Environment,
+    environment: &'a Environment<'ty>,
     constant_max_depth: usize,
     constant_max_memory: usize
 }
 
-impl<'a> ModuleValidator<'a> {
-    pub fn new(module: &'a Module, environment: &'a Environment) -> Self {
+impl<'a, 'ty> ModuleValidator<'a, 'ty> {
+    pub fn new(module: &'a Module, environment: &'a Environment<'ty>) -> Self {
         Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 * 1024 }
     }
 

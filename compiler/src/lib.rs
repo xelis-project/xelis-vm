@@ -20,10 +20,10 @@ use xelis_types::{Constant, Primitive};
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
 
-pub struct Compiler<'a> {
+pub struct Compiler<'a, 'ty> {
     // Program to compile
     program: &'a Program,
-    environment: &'a Environment,
+    environment: &'a Environment<'ty>,
     // Final module to return
     module: Module,
     // Index of break jump to patch
@@ -44,9 +44,9 @@ pub struct Compiler<'a> {
     parameters_ids: HashSet<u16>,
 }
 
-impl<'a> Compiler<'a> {
+impl<'a, 'ty> Compiler<'a, 'ty> {
     // Create a new compiler
-    pub fn new(program: &'a Program, environment: &'a Environment) -> Self {
+    pub fn new(program: &'a Program, environment: &'a Environment<'ty>) -> Self {
         Self {
             program,
             environment,
@@ -976,38 +976,43 @@ mod tests {
     }
 
     #[track_caller]
-    fn prepare_program(code: &str) -> (Program, Environment) {
+    fn prepare_program(code: &str) -> Module {
         let environment = EnvironmentBuilder::default();
-        prepare_program_with_env(code, environment)
+        prepare_program_with_env(code, &environment)
     }
 
 
     #[track_caller]
-    fn prepare_program_with_env(code: &str, environment: EnvironmentBuilder) -> (Program, Environment) {
+    fn prepare_program_with_env<'a>(code: &'a str, environment: &'a EnvironmentBuilder<'a>) -> Module {
         let tokens = Lexer::new(code).get().unwrap();
-        let mut parser = Parser::new(tokens, &environment);
+        let mut parser = Parser::new(tokens, environment);
         parser.set_const_upgrading_disabled(true);
 
+
         let (program, _) = parser.parse().unwrap();
-        (program, environment.build())
+        let compiler = Compiler::new(&program, environment.environment());
+        let module = compiler.compile().unwrap();
+
+        module
     }
 
 
     #[track_caller]
-    fn prepare_program_with_const_enabled(code: &str) -> (Program, Environment) {
+    fn prepare_program_with_const_enabled<'a>(code: &'a str) -> Module {
         let tokens = Lexer::new(code).get().unwrap();
         let environment = EnvironmentBuilder::default();
         let parser = Parser::new(tokens, &environment);
 
         let (program, _) = parser.parse().unwrap();
-        (program, environment.build())
+        let compiler = Compiler::new(&program, environment.environment());
+        let module = compiler.compile().unwrap();
+
+        module
     }
 
     #[test]
     fn test_program_with_constants() {
-        let (program, environment) = prepare_program_with_const_enabled("const A: u64 = 1; const B: u64 = 2; entry main() { return A + B }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program_with_const_enabled("const A: u64 = 1; const B: u64 = 2; entry main() { return A + B }");
         assert_eq!(module.chunks().len(), 1);
         assert!(module.is_entry_chunk(0));
         assert_eq!(module.constants().len(), 1);
@@ -1030,9 +1035,8 @@ mod tests {
 
     #[test]
     fn test_simple_program() {
-        let (program, environment) = prepare_program("fn main() {}");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program("fn main() {}");
+
         assert_eq!(module.chunks().len(), 1);
         assert!(!module.is_entry_chunk(0));
         assert_eq!(module.constants().len(), 0);
@@ -1040,9 +1044,8 @@ mod tests {
 
     #[test]
     fn test_entry_program() {
-        let (program, environment) = prepare_program("entry main() { return 0 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module =  prepare_program("entry main() { return 0 }");
+
         assert_eq!(module.chunks().len(), 1);
         assert!(module.is_entry_chunk(0));
         assert_eq!(module.constants().len(), 1);
@@ -1064,17 +1067,13 @@ mod tests {
 
     #[test]
     fn test_dangling_value_on_stack() {
-        let (program, environment) = prepare_program("entry main() { 1 + 1; return 1 }");
-        let compiler = Compiler::new(&program, &environment);
-        let result = compiler.compile();
-        result.unwrap();
+        let _ = prepare_program("entry main() { 1 + 1; return 1 }");
     }
 
     #[test]
     fn test_simple_expression() {
-        let (program, environment) = prepare_program("entry main() { return 1 + 2 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program("entry main() { return 1 + 2 }");
+
         assert_eq!(module.chunks().len(), 1);
         assert!(module.is_entry_chunk(0));
         assert_eq!(module.constants().len(), 2);
@@ -1103,10 +1102,8 @@ mod tests {
 
     #[test]
     fn test_if() {
-        let (program, environment) = prepare_program("entry main() { if true { return 0 } return 1 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
-    
+        let module = prepare_program("entry main() { if true { return 0 } return 1 }");
+
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
             chunk.get_instructions(),
@@ -1123,9 +1120,7 @@ mod tests {
 
     #[test]
     fn test_if_else() {
-        let (program, environment) = prepare_program("entry main() { if true { return 0 } else { return 1 } }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { if true { return 0 } else { return 1 } }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1143,9 +1138,7 @@ mod tests {
 
     #[test]
     fn test_while() {
-        let (program, environment) = prepare_program("entry main() { let i: u64 = 0; while i < 10 { i += 1; } return i }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { let i: u64 = 0; while i < 10 { i += 1; } return i }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1169,9 +1162,7 @@ mod tests {
 
     #[test]
     fn test_for_each() {
-        let (program, environment) = prepare_program("entry main() { foreach i in [1, 2, 3] { return i } return 1 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { foreach i in [1, 2, 3] { return i } return 1 }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1200,9 +1191,7 @@ mod tests {
 
     #[test]
     fn test_for() {
-        let (program, environment) = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { return i } return 1 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { return i } return 1 }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1228,9 +1217,7 @@ mod tests {
 
     #[test]
     fn test_struct() {
-        let (program, environment) = prepare_program("struct Test { a: u64, b: u64 } entry main() { let t: Test = Test { a: 1, b: 2 }; return t.a }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("struct Test { a: u64, b: u64 } entry main() { let t: Test = Test { a: 1, b: 2 }; return t.a }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1249,9 +1236,7 @@ mod tests {
 
     #[test]
     fn test_struct_const() {
-        let (program, environment) = prepare_program_with_const_enabled("struct Test { a: u64, b: u64 } entry main() { return Test { a: 1, b: 2 }.a }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program_with_const_enabled("struct Test { a: u64, b: u64 } entry main() { return Test { a: 1, b: 2 }.a }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1268,9 +1253,7 @@ mod tests {
 
     #[test]
     fn test_function_call() {
-        let (program, environment) = prepare_program("fn test() -> u64 { return 1 } entry main() { return test() }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program("fn test() -> u64 { return 1 } entry main() { return test() }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1293,9 +1276,7 @@ mod tests {
 
     #[test]
     fn test_break() {
-        let (program, environment) = prepare_program("entry main() { while true { break } return 1 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { while true { break } return 1 }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1315,9 +1296,7 @@ mod tests {
 
     #[test]
     fn test_continue() {
-        let (program, environment) = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { continue; } return 0 }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+       let module = prepare_program("entry main() { for i: u64 = 0; i < 10; i += 1 { continue; } return 0 }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1344,9 +1323,7 @@ mod tests {
 
     #[test]
     fn test_enum() {
-        let (program, environment) = prepare_program("enum Test { A, B } fn main() -> Test { return Test::A }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program("enum Test { A, B } fn main() -> Test { return Test::A }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1364,9 +1341,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         env.register_static_function("test", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Bool));
 
-        let (program, environment) = prepare_program_with_env("fn main() -> bool { return bool::test() }", env);
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program_with_env("fn main() -> bool { return bool::test() }", &env);
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1380,9 +1355,7 @@ mod tests {
 
     #[test]
     fn test_enum_with_fields() {
-        let (program, environment) = prepare_program("enum Test { A, B { value: u64 } } fn main() -> Test { return Test::B { value: 1 } }");
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program("enum Test { A, B { value: u64 } } fn main() -> Test { return Test::B { value: 1 } }");
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1409,9 +1382,7 @@ mod tests {
             }
         "#;
 
-        let (program, environment) = prepare_program(code);
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program(code);
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
@@ -1477,9 +1448,7 @@ mod tests {
             }
         "#;
 
-        let (program, environment) = prepare_program(code);
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program(code);
         assert_eq!(module.constants().len(), 1);
         assert_eq!(
             module.get_constant_at(0),
@@ -1498,9 +1467,8 @@ mod tests {
 
         let mut env = EnvironmentBuilder::new();
         env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], |_, _, _| { todo!() }, 0, Some(Type::U64));
-        let (program, environment) = prepare_program_with_env(code, env);
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
+        let module = prepare_program_with_env(code, &env);
+
         assert_eq!(
             module.constants().iter().cloned().collect::<Vec<_>>(),
             vec![
@@ -1520,10 +1488,7 @@ mod tests {
             }
         "#;
 
-        let (program, environment) = prepare_program(code);
-        let compiler = Compiler::new(&program, &environment);
-        let module = compiler.compile().unwrap();
-
+        let module = prepare_program(code);
         assert_eq!(
             module.get_chunk_at(0).unwrap().get_instructions(),
             &[

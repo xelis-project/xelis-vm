@@ -31,16 +31,16 @@ const MODULES_STACK_SIZE: usize = 8;
 
 // Backend of the VM
 // This is the immutable part of the VM
-pub struct Backend<'a> {
+pub struct Backend<'a, 'ty> {
     // The instruction table of the VM
-    table: InstructionTable<'a>,
+    table: InstructionTable<'a, 'ty>,
     // The module to execute
     modules: Vec<&'a Module>,
     // The environment of the VM
-    environment: &'a Environment,
+    environment: &'a Environment<'ty>,
 }
 
-impl<'a> Backend<'a> {
+impl<'a, 'ty> Backend<'a, 'ty> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
@@ -51,8 +51,8 @@ impl<'a> Backend<'a> {
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
-pub struct VM<'a, 'r> {
-    backend: Backend<'a>,
+pub struct VM<'a, 'ty> {
+    backend: Backend<'a, 'ty>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
     // It is behind an Option so we know
@@ -65,16 +65,16 @@ pub struct VM<'a, 'r> {
     // Every values are stored here
     stack: Stack,
     // Context given to each instruction
-    context: Context<'a, 'r>,
+    context: Context<'ty, 'a>,
     // Flag to enable/disable the tail call optimization
     // in our VM
     tail_call_optimization: bool
 }
 
-impl<'a, 'r> VM<'a, 'r> {
+impl<'a, 'ty> VM<'a, 'ty> {
     // Create a new VM
     // Insert the environment as a reference in the context
-    pub fn new(environment: &'a Environment) -> Self {
+    pub fn new(environment: &'a Environment<'ty>) -> Self {
         let mut context = Context::default();
         context.insert_ref(environment);
 
@@ -82,7 +82,7 @@ impl<'a, 'r> VM<'a, 'r> {
     }
 
     // Create a new VM with a given table and context
-    pub fn with(environment: &'a Environment, table: InstructionTable<'a>, context: Context<'a, 'r>) -> Self {
+    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty>, context: Context<'ty, 'a>) -> Self {
         Self {
             backend: Backend {
                 table,
@@ -117,31 +117,31 @@ impl<'a, 'r> VM<'a, 'r> {
 
     // Get the context
     #[inline(always)]
-    pub fn context(&self) -> &Context<'a, 'r> {
+    pub fn context(&self) -> &Context<'ty, 'a> {
         &self.context
     }
 
     // Get a mutable reference to the context
     #[inline(always)]
-    pub fn context_mut(&mut self) -> &mut Context<'a, 'r> {
+    pub fn context_mut(&mut self) -> &mut Context<'ty, 'a> {
         &mut self.context
     }
 
     // Get the instruction table
     #[inline(always)]
-    pub fn table(&self) -> &InstructionTable<'a> {
+    pub fn table(&self) -> &InstructionTable<'a, 'ty> {
         &self.backend.table
     }
 
     // Get a mutable reference to the instruction table
     #[inline(always)]
-    pub fn table_mut(&mut self) -> &mut InstructionTable<'a> {
+    pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty> {
         &mut self.backend.table
     }
 
     // Get the environment
     #[inline(always)]
-    pub fn environment(&self) -> &Environment {
+    pub fn environment(&self) -> &Environment<'ty> {
         self.backend.environment
     }
 
