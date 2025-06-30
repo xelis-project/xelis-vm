@@ -20,10 +20,10 @@ use xelis_types::{Constant, Primitive};
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
 
-pub struct Compiler<'a, 'ty> {
+pub struct Compiler<'a> {
     // Program to compile
     program: &'a Program,
-    environment: &'a Environment<'ty>,
+    environment: &'a Environment,
     // Final module to return
     module: Module,
     // Index of break jump to patch
@@ -44,9 +44,9 @@ pub struct Compiler<'a, 'ty> {
     parameters_ids: HashSet<u16>,
 }
 
-impl<'a, 'ty> Compiler<'a, 'ty> {
+impl<'a> Compiler<'a> {
     // Create a new compiler
-    pub fn new(program: &'a Program, environment: &'a Environment<'ty>) -> Self {
+    pub fn new(program: &'a Program, environment: &'a Environment) -> Self {
         Self {
             program,
             environment,

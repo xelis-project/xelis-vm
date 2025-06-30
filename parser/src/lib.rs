@@ -101,12 +101,12 @@ macro_rules! op_num_with_bool {
     }};
 }
 
-enum Function<'a, 'ty> {
-    Native(&'a NativeFunction<'ty>),
+enum Function<'a> {
+    Native(&'a NativeFunction),
     Program(&'a FunctionType)
 }
 
-impl<'a> Function<'a, '_> {
+impl<'a> Function<'a> {
     pub fn return_type(&self) -> &Option<Type> {
         match self {
             Function::Native(f) => f.return_type(),
@@ -2602,7 +2602,7 @@ impl<'a, 'ty> Parser<'a, 'ty> {
     }
 
     // get a function using its identifier
-    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b, 'ty>, ParserError<'a>> {
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
         let len = self.environment.get_functions().len();

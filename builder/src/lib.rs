@@ -49,18 +49,18 @@ mod tests {
 
     impl Foo for FooImpl {}
 
-    fn bar<'ty, F: Foo + Tid<'ty>>(_: FnInstance, _: FnParams, context: &mut Context<'ty, '_>) -> FnReturnType {
+    fn bar<'a, 'ty, 'r, F: Tid<'ty>>(_: FnInstance<'a>, _: FnParams, context: &'a mut Context<'ty, 'r>) -> FnReturnType {
         let _: &F = context.get().unwrap();
         Ok(None)
     }
 
-    fn build_env<'a, F: Foo + Tid<'a>>() -> EnvironmentBuilder<'a> {
+    fn build_env<'a, F: Foo + Tid<'static> + 'static>() -> EnvironmentBuilder<'a> {
         let mut env = EnvironmentBuilder::default();
         env.register_native_function(
             "bar",
             None,
             vec![],
-            bar::<F>,
+            Box::new(bar::<F>),
             1000,
             None
         );
@@ -70,6 +70,6 @@ mod tests {
 
     #[test]
     fn test_context_lifetime<'a>() {
-        build_env::<'a, FooImpl>();
+        build_env::<FooImpl>();
     }
 }

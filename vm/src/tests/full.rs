@@ -12,7 +12,7 @@ fn prepare_module(code: &str) -> (Module, Environment) {
 }
 
 #[track_caller]
-fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a>) -> (Module, Environment<'a>) {
+fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a>) -> (Module, Environment) {
     let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
 

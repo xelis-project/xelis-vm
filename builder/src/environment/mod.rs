@@ -29,7 +29,7 @@ pub struct EnvironmentBuilder<'a> {
     types_constants_functions: ConstFunctionMapper<'a>,
     // Hooks functions registered in the environment
     hooks: HashMap<&'a str, Hook<'a>>,
-    env: Environment<'a>
+    env: Environment
 }
 
 impl<'a> EnvironmentBuilder<'a> {
@@ -47,7 +47,7 @@ impl<'a> EnvironmentBuilder<'a> {
         }
     }
 
-    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<'a>, cost: u64, return_type: Option<Type>) {
+    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
         let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone()).unwrap();
         self.env.add_function(NativeFunction::new(on_type, require_instance, params, on_call, cost, return_type));
@@ -55,7 +55,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Register a native function
     // Panic if the function signature is already registered
-    pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<'a>, cost: u64, return_type: Option<Type>) {
+    pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         let instance = for_type.is_some();
         self.register_function_internal(name, for_type, instance, parameters, on_call, cost, return_type);
     }
@@ -64,7 +64,7 @@ impl<'a> EnvironmentBuilder<'a> {
     // This is function not accessible from an instance but still behind the type
     // Example: u64::from_be_bytes
     // Panic if the function signature is already registered
-    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<'a>, cost: u64, return_type: Option<Type>) {
+    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) {
         self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type);
     }
 
@@ -78,7 +78,7 @@ impl<'a> EnvironmentBuilder<'a> {
 
     // Get a native function by its signature
     // Panic if the function signature is not found
-    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<Type>) -> &mut NativeFunction<'a> {
+    pub fn get_mut_function(&mut self, name: &'a str, on_type: Option<Type>) -> &mut NativeFunction {
         let id = self.functions_mapper.get_by_signature(name, on_type.as_ref())
             .expect("function by signature not found");
 
@@ -166,7 +166,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // all registered functions
-    pub fn get_functions(&self) -> &Vec<NativeFunction<'a>> {
+    pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.env.get_functions()
     }
 
@@ -183,17 +183,17 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     // Get the environment for the interpreter
-    pub fn environment(&self) -> &Environment<'a> {
+    pub fn environment(&self) -> &Environment {
         &self.env
     }
 
     // Build the environment for the interpreter
-    pub fn build(self) -> Environment<'a> {
+    pub fn build(self) -> Environment {
         self.env
     }
 
     // Finalize the environment builder and return the environment and the function mapper
-    pub fn finalize(self) -> (Environment<'a>, FunctionMapper<'a>) {
+    pub fn finalize(self) -> (Environment, FunctionMapper<'a>) {
         (self.env, self.functions_mapper)
     }
 }
