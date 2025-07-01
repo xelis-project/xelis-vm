@@ -4,7 +4,7 @@ use crate::{debug, stack::Stack, Backend, ChunkManager, VMError};
 use super::InstructionResult;
 
 
-pub fn memory_load<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn memory_load<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     let index = manager.read_u16()?;
     debug!("memory load at {}", index);
 
@@ -14,7 +14,7 @@ pub fn memory_load<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &m
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_set<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn memory_set<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     let index = manager.read_u16()?;
     debug!("memory set at {}", index);
 
@@ -24,7 +24,7 @@ pub fn memory_set<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_pop<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn memory_pop<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("memory pop");
 
     let v = manager.pop_register()?;
@@ -36,7 +36,7 @@ pub fn memory_pop<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_len<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn memory_len<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("memory len");
 
     let len = Primitive::U32(manager.registers_len() as u32);
@@ -48,7 +48,7 @@ pub fn memory_len<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn memory_to_owned<'ty, 'a>(_: &Backend<'a, 'ty>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn memory_to_owned<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("memory to owned");
 
     let index = manager.read_u16()?;

@@ -187,7 +187,7 @@ macro_rules! opcode_op_assign {
 
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
-        pub fn $fn<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+        pub fn $fn<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
             debug!(stringify!($fn));
             $macro1!(stack, $macro2, $op);
             Ok(InstructionResult::Nothing)
@@ -225,7 +225,7 @@ opcode_fn!(bitwise_xor_assign, opcode_op_assign, op_bool, ^);
 opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
-pub fn neg<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn neg<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("neg");
 
     let value = stack.pop_stack()?;
@@ -233,7 +233,7 @@ pub fn neg<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManage
     Ok(InstructionResult::Nothing)
 }
 
-pub fn assign<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn assign<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("assign");
 
     let right = stack.pop_stack()?;
@@ -250,7 +250,7 @@ pub fn assign<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkMan
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn pow<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("pow");
 
     let right = stack.pop_stack()?.into_owned()?;
@@ -274,7 +274,7 @@ pub fn pow<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManage
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow_assign<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn pow_assign<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("pow_assign");
 
     let right = stack.pop_stack()?;
@@ -301,7 +301,7 @@ pub fn pow_assign<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut Chun
     Ok(InstructionResult::Nothing)
 }
 
-pub fn cast<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn cast<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("cast");
 
     let _type = manager.read_type()?;
@@ -323,7 +323,7 @@ pub fn cast<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, manager: &mut Chun
     Ok(InstructionResult::Nothing)
 }
 
-pub fn and<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn and<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("and");
 
     let value = stack.pop_stack()?;
@@ -334,7 +334,7 @@ pub fn and<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManage
     Ok(InstructionResult::Nothing)
 }
 
-pub fn or<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn or<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("or");
 
     let right = stack.pop_stack()?;
@@ -345,7 +345,7 @@ pub fn or<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager
     Ok(InstructionResult::Nothing)
 }
 
-pub fn increment<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn increment<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("increment");
 
     let v = stack.last_mut_stack()?;
@@ -353,7 +353,7 @@ pub fn increment<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut Chunk
     Ok(InstructionResult::Nothing)
 }
 
-pub fn decrement<'ty, 'a>(_: &Backend<'a, 'ty>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'a>) -> Result<InstructionResult<'a>, VMError> {
+pub fn decrement<'a, 'ty, 'r>(_: &Backend<'a, 'ty, 'r>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a>, VMError> {
     debug!("decrement");
 
     let v = stack.last_mut_stack()?;

@@ -31,16 +31,16 @@ const MODULES_STACK_SIZE: usize = 8;
 
 // Backend of the VM
 // This is the immutable part of the VM
-pub struct Backend<'a, 'ty> {
+pub struct Backend<'a, 'ty, 'r> {
     // The instruction table of the VM
-    table: InstructionTable<'a, 'ty>,
+    table: InstructionTable<'a, 'ty, 'r>,
     // The module to execute
     modules: Vec<&'a Module>,
     // The environment of the VM
     environment: &'a Environment<'ty>,
 }
 
-impl<'a, 'ty> Backend<'a, 'ty> {
+impl<'a, 'ty, 'r> Backend<'a, 'ty, 'r> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
@@ -51,8 +51,8 @@ impl<'a, 'ty> Backend<'a, 'ty> {
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
-pub struct VM<'a, 'ty> {
-    backend: Backend<'a, 'ty>,
+pub struct VM<'a: 'r, 'ty, 'r> {
+    backend: Backend<'a, 'ty, 'r>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
     // It is behind an Option so we know
@@ -65,13 +65,13 @@ pub struct VM<'a, 'ty> {
     // Every values are stored here
     stack: Stack,
     // Context given to each instruction
-    context: Context<'ty, 'a>,
+    context: Context<'ty, 'r>,
     // Flag to enable/disable the tail call optimization
     // in our VM
     tail_call_optimization: bool
 }
 
-impl<'a, 'ty> VM<'a, 'ty> {
+impl<'a, 'ty, 'r> VM<'a, 'ty, 'r> {
     // Create a new VM
     // Insert the environment as a reference in the context
     pub fn new(environment: &'a Environment<'ty>) -> Self {
@@ -82,7 +82,7 @@ impl<'a, 'ty> VM<'a, 'ty> {
     }
 
     // Create a new VM with a given table and context
-    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty>, context: Context<'ty, 'a>) -> Self {
+    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty, 'r>, context: Context<'ty, 'r>) -> Self {
         Self {
             backend: Backend {
                 table,
@@ -117,25 +117,25 @@ impl<'a, 'ty> VM<'a, 'ty> {
 
     // Get the context
     #[inline(always)]
-    pub fn context(&self) -> &Context<'ty, 'a> {
+    pub fn context(&self) -> &Context<'ty, 'r> {
         &self.context
     }
 
     // Get a mutable reference to the context
     #[inline(always)]
-    pub fn context_mut(&mut self) -> &mut Context<'ty, 'a> {
+    pub fn context_mut(&mut self) -> &mut Context<'ty, 'r> {
         &mut self.context
     }
 
     // Get the instruction table
     #[inline(always)]
-    pub fn table(&self) -> &InstructionTable<'a, 'ty> {
+    pub fn table(&self) -> &InstructionTable<'a, 'ty, 'r> {
         &self.backend.table
     }
 
     // Get a mutable reference to the instruction table
     #[inline(always)]
-    pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty> {
+    pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty, 'r> {
         &mut self.backend.table
     }
 
