@@ -101,12 +101,12 @@ macro_rules! op_num_with_bool {
     }};
 }
 
-enum Function<'a> {
-    Native(&'a NativeFunction),
+enum Function<'a, 'ty> {
+    Native(&'a NativeFunction<'ty>),
     Program(&'a FunctionType)
 }
 
-impl<'a> Function<'a> {
+impl<'a, 'ty> Function<'a, 'ty> {
     pub fn return_type(&self) -> &Option<Type> {
         match self {
             Function::Native(f) => f.return_type(),
@@ -164,7 +164,7 @@ pub struct Parser<'a, 'ty> {
     functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
-    environment: &'a EnvironmentBuilder<'ty>,
+    environment: &'a EnvironmentBuilder<'a, 'ty>,
     // Disable upgrading values to consts
     disable_const_upgrading: bool,
     // Disable shadowing variables
@@ -192,7 +192,7 @@ enum TuplePattern<'a> {
 
 impl<'a, 'ty> Parser<'a, 'ty> {
     // Compatibility purpose: Create a new parser with a list of tokens only
-    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'ty>) -> Self {
+    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a, 'ty>) -> Self {
         Self::with(tokens.into_iter().map(|v| TokenResult {
             token: v,
             line: 0,
@@ -202,7 +202,7 @@ impl<'a, 'ty> Parser<'a, 'ty> {
     }
 
     // Create a new parser with a list of tokens and the environment
-    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'ty>) -> Self {
+    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a, 'ty>) -> Self {
         Self {
             tokens: tokens.collect(),
             constants: HashMap::new(),
@@ -2602,7 +2602,7 @@ impl<'a, 'ty> Parser<'a, 'ty> {
     }
 
     // get a function using its identifier
-    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b, 'ty>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
         let len = self.environment.get_functions().len();
@@ -2776,7 +2776,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_with_env<'a>(tokens: Vec<Token<'a>>, env: &'a EnvironmentBuilder<'a>) -> Program {
+    fn test_parser_with_env<'a, 'ty>(tokens: Vec<Token<'a>>, env: &'a EnvironmentBuilder<'a, 'ty>) -> Program {
         let parser = Parser::new(tokens, env);
         let (program, _) = parser.parse().unwrap();
         program
@@ -2789,7 +2789,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_statement_with<'a>(tokens: Vec<Token<'a>>, variables: Vec<(&'a str, Type)>, return_type: &Option<Type>, env: &'a EnvironmentBuilder<'a>) -> Vec<Statement> {
+    fn test_parser_statement_with<'a, 'ty>(tokens: Vec<Token<'a>>, variables: Vec<(&'a str, Type)>, return_type: &Option<Type>, env: &'a EnvironmentBuilder<'a, 'ty>) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();

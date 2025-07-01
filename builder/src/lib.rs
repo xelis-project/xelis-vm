@@ -39,7 +39,7 @@ pub enum BuilderError {
 
 #[cfg(test)]
 mod tests {
-    use xelis_environment::{tid, Tid, Context, FnInstance, FnParams, FnReturnType};
+    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, Tid};
     use crate::EnvironmentBuilder;
 
     trait Foo {}
@@ -54,13 +54,13 @@ mod tests {
         Ok(None)
     }
 
-    fn build_env<'a, F: Foo + Tid<'static> + 'static>() -> EnvironmentBuilder<'a> {
+    fn build_env<'a, 'ty, F: Foo + Tid<'ty>>() -> EnvironmentBuilder<'a, 'ty> {
         let mut env = EnvironmentBuilder::default();
         env.register_native_function(
             "bar",
             None,
             vec![],
-            Box::new(bar::<F>),
+            bar::<F>,
             1000,
             None
         );

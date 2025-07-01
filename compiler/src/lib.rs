@@ -20,10 +20,10 @@ use xelis_types::{Constant, Primitive};
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
 
-pub struct Compiler<'a> {
+pub struct Compiler<'a, 'ty> {
     // Program to compile
     program: &'a Program,
-    environment: &'a Environment,
+    environment: &'a Environment<'ty>,
     // Final module to return
     module: Module,
     // Index of break jump to patch
@@ -44,9 +44,9 @@ pub struct Compiler<'a> {
     parameters_ids: HashSet<u16>,
 }
 
-impl<'a> Compiler<'a> {
+impl<'a, 'ty> Compiler<'a, 'ty> {
     // Create a new compiler
-    pub fn new(program: &'a Program, environment: &'a Environment) -> Self {
+    pub fn new(program: &'a Program, environment: &'a Environment<'ty>) -> Self {
         Self {
             program,
             environment,
@@ -983,7 +983,7 @@ mod tests {
 
 
     #[track_caller]
-    fn prepare_program_with_env<'a>(code: &'a str, environment: &'a EnvironmentBuilder<'a>) -> Module {
+    fn prepare_program_with_env<'a, 'ty>(code: &'a str, environment: &'a EnvironmentBuilder<'a, 'ty>) -> Module {
         let tokens = Lexer::new(code).get().unwrap();
         let mut parser = Parser::new(tokens, environment);
         parser.set_const_upgrading_disabled(true);

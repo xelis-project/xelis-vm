@@ -37,7 +37,7 @@ pub struct Backend<'a, 'ty> {
     // The module to execute
     modules: Vec<&'a Module>,
     // The environment of the VM
-    environment: &'a Environment,
+    environment: &'a Environment<'ty>,
 }
 
 impl<'a, 'ty> Backend<'a, 'ty> {
@@ -74,7 +74,7 @@ pub struct VM<'a, 'ty> {
 impl<'a, 'ty> VM<'a, 'ty> {
     // Create a new VM
     // Insert the environment as a reference in the context
-    pub fn new(environment: &'a Environment) -> Self {
+    pub fn new(environment: &'a Environment<'ty>) -> Self {
         let mut context = Context::default();
         context.insert_ref(environment);
 
@@ -82,7 +82,7 @@ impl<'a, 'ty> VM<'a, 'ty> {
     }
 
     // Create a new VM with a given table and context
-    pub fn with(environment: &'a Environment, table: InstructionTable<'a, 'ty>, context: Context<'ty, 'a>) -> Self {
+    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty>, context: Context<'ty, 'a>) -> Self {
         Self {
             backend: Backend {
                 table,
@@ -141,7 +141,7 @@ impl<'a, 'ty> VM<'a, 'ty> {
 
     // Get the environment
     #[inline(always)]
-    pub fn environment(&self) -> &Environment {
+    pub fn environment(&self) -> &Environment<'ty> {
         self.backend.environment
     }
 
