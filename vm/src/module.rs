@@ -3,6 +3,7 @@ use std::{ops::Deref, sync::Arc};
 use xelis_bytecode::Module;
 
 // Module with provided metadata
+#[derive(Debug)]
 pub struct ModuleMetadata<'a, M> {
     pub module: Reference<'a, Module>,
     pub metadata: Reference<'a, M>
@@ -17,11 +18,11 @@ impl<'a, M> Clone for ModuleMetadata<'a, M> {
     }
 }
 
+#[derive(Debug)]
 pub enum Reference<'a, T> {
     Borrowed(&'a T),
     Shared(Arc<T>),
 }
-
 
 impl<'a, T> Clone for Reference<'a, T> {
     fn clone(&self) -> Self {

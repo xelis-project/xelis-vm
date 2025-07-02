@@ -13,7 +13,7 @@ use memory::*;
 use xelis_bytecode::{Module, OpCode};
 use xelis_types::{Primitive, ValueCell};
 
-use crate::{ChunkReader, Context};
+use crate::{ChunkReader, Context, Reference};
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
@@ -42,7 +42,11 @@ pub enum InstructionResult<'a, M> {
     Nothing,
     Break,
     InvokeChunk(u16),
-    AppendModule(&'a Module, &'a M, u16)
+    AppendModule {
+        module: Reference<'a, Module>,
+        metadata: Reference<'a, M>,
+        chunk_id: u16
+    }
 }
 
 // A handler is a function pointer to an instruction

@@ -295,12 +295,16 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
                             // Jump to the next call stack
                             continue 'call_stack;
                         },
-                        Ok(InstructionResult::AppendModule(new_module, metadata, id)) => {
+                        Ok(InstructionResult::AppendModule {
+                            module: new_module,
+                            metadata,
+                            chunk_id
+                        }) => {
                             // Push back the current callstack
                             self.push_back_call_stack(manager, reader)?;
 
                             self.append_module(new_module, metadata)?;
-                            self.invoke_chunk_id(id as _)?;
+                            self.invoke_chunk_id(chunk_id as _)?;
 
                             // Jump to the next module
                             continue 'modules;
