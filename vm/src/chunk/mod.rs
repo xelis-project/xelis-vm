@@ -1,6 +1,6 @@
 mod reader;
 
-use std::{cmp::Ordering, ops::{Deref, DerefMut}};
+use std::cmp::Ordering;
 use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
 
@@ -13,25 +13,44 @@ const REGISTERS_SIZE: usize = u16::MAX as usize;
 
 // Manager for a chunk
 // It contains the reader and the stacks
-pub struct ChunkManager<'a> {
-    reader: ChunkReader<'a>,
+pub struct ChunkManager {
     // Registers are temporary and "scoped" per chunk
     registers: Vec<StackValue>,
     // Iterators stack
     iterators: Vec<ValueIterator>,
+    // Chunk id to invoke
+    chunk_id: usize,
+    // current index in the chunk
+    ip: usize,
 }
 
-impl<'a> ChunkManager<'a> {
+impl ChunkManager {
     // Create a new chunk manager
     // It will create a reader from the chunk
     // and initialize the stack and registers
     #[inline]
-    pub fn new(chunk: &'a Chunk) -> Self {
-        ChunkManager {
-            reader: ChunkReader::new(chunk),
+    pub fn new(chunk_id: usize) -> Self {
+        Self {
             registers: Vec::new(),
             iterators: Vec::new(),
+            chunk_id,
+            ip: 0,
         }
+    }
+
+    #[inline(always)]
+    pub fn chunk_id(&self) -> usize {
+        self.chunk_id
+    }
+
+    #[inline(always)]
+    pub fn set_ip(&mut self, ip: usize) {
+        self.ip = ip;
+    }
+
+    #[inline(always)]
+    pub fn ip(&self) -> usize {
+        self.ip
     }
 
     // Get the registers
@@ -127,19 +146,5 @@ impl<'a> ChunkManager<'a> {
     #[inline]
     pub fn registers_len(&mut self) -> usize {
         self.registers.len()
-    }
-}
-
-impl<'a> Deref for ChunkManager<'a> {
-    type Target = ChunkReader<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.reader
-    }
-}
-
-impl<'a> DerefMut for ChunkManager<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.reader
     }
 }

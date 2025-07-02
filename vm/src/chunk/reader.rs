@@ -11,16 +11,16 @@ pub struct ChunkReader<'a> {
 }
 
 impl<'a> ChunkReader<'a> {
-    #[inline]
-    pub fn new(chunk: &'a Chunk) -> Self {
-        ChunkReader {
+    #[inline(always)]
+    pub fn new(chunk: &'a Chunk, ip: usize) -> Self {
+        Self {
             chunk,
-            ip: 0
+            ip
         }
     }
 
     // Get the current index in our reader
-    #[inline]
+    #[inline(always)]
     pub fn index(&self) -> usize {
         self.ip
     }

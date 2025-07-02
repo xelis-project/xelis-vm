@@ -13,7 +13,7 @@ use memory::*;
 use xelis_bytecode::{Module, OpCode};
 use xelis_types::{Primitive, ValueCell};
 
-use crate::Context;
+use crate::{ChunkReader, Context};
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
@@ -47,7 +47,7 @@ pub enum InstructionResult<'a, M> {
 
 // A handler is a function pointer to an instruction
 // With its associated cost
-pub type Handler<'a, 'ty, 'r, M> = (fn(&Backend<'a, 'ty, 'r, M>, &mut Stack, &mut ChunkManager<'a>, &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError>, u64);
+pub type Handler<'a, 'ty, 'r, M> = (fn(&Backend<'a, 'ty, 'r, M>, &mut Stack, &mut ChunkManager, &mut ChunkReader<'_>, &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError>, u64);
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
@@ -159,41 +159,41 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     }
 
     // Execute an instruction
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
         context.increase_gas_usage(cost)?;
 
-        instruction(backend, stack, chunk_manager, context)
+        instruction(backend, stack, chunk_manager, reader, context)
     }
 }
 
-fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Err(VMError::InvalidOpCode)
 }
 
-fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
-    let addr = manager.read_u32()?;
-    manager.set_index(addr as usize)?;
+fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    let addr = reader.read_u32()?;
+    reader.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
-    let addr = manager.read_u32()?;
+fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {
-        manager.set_index(addr as usize)?;
+        reader.set_index(addr as usize)?;
     }
     Ok(InstructionResult::Nothing)
 }
 
-fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.into_owned()?
         .to_vec()?;
@@ -221,8 +221,8 @@ fn is_value_in_range<T: PartialOrd>(
     }
 }
 
-fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
-    let magic_byte = manager.read_u8()?;
+fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?
             .as_ref()?;
@@ -232,7 +232,7 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
 
         // if its the same, flatten it
         if same {
-            flatten(backend, stack, manager, context)?;
+            flatten(backend, stack, manager, reader, context)?;
         }
 
         same
@@ -267,11 +267,11 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
         }
     };
 
-    let addr = manager.read_u32()?;
+    let addr = reader.read_u32()?;
 
     // Do the jump to the next condition
     if !same {
-        manager.set_index(addr as usize)?;
+        reader.set_index(addr as usize)?;
     }
 
     Ok(InstructionResult::Nothing)

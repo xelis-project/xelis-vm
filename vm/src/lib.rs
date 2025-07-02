@@ -4,6 +4,7 @@ mod iterator;
 mod stack;
 mod validator;
 mod instructions;
+mod module;
 
 #[cfg(test)]
 mod tests;
@@ -20,6 +21,7 @@ pub use validator::*;
 pub use instructions::*;
 pub use error::VMError;
 pub use chunk::*;
+pub use module::*;
 
 // 64 elements maximum in the call stack
 // This represents how many calls can be chained
@@ -28,22 +30,6 @@ const CALL_STACK_SIZE: usize = 64;
 // 8 modules maximum in the stack
 // This represents how many modules can be chained
 const MODULES_STACK_SIZE: usize = 8;
-
-// Module with provided metadata
-#[derive(Copy)]
-pub struct ModuleMetadata<'a, M> {
-    pub module: &'a Module,
-    pub metadata: &'a M
-}
-
-impl<'a, M> Clone for ModuleMetadata<'a, M> {
-    fn clone(&self) -> Self {
-        Self {
-            module: self.module,
-            metadata: self.metadata
-        }
-    }
-}
 
 // Backend of the VM
 // This is the immutable part of the VM
@@ -80,7 +66,7 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r, M> {
     // Every chunks to proceed are stored here
     // It is behind an Option so we know
     // when we have to switch the module
-    call_stack: Vec<Option<ChunkManager<'a>>>,
+    call_stack: Vec<Option<ChunkManager>>,
     // Real call stack size counting
     // only Some entries
     call_stack_size: usize,
@@ -101,7 +87,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
         let mut context = Context::default();
         context.insert_ref(environment);
 
-        Self::with(environment, InstructionTable::new(), context)
+        Self::with(environment, Default::default(), context)
     }
 
     // Create a new VM with a given table and context
@@ -169,16 +155,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
     }
 
     // Invoke a chunk using its id
-    pub(crate) fn invoke_chunk_id(&mut self, id: u16) -> Result<(), VMError> {
+    pub(crate) fn invoke_chunk_id(&mut self, id: usize) -> Result<(), VMError> {
         if self.call_stack_size + 1 >= CALL_STACK_SIZE {
             return Err(VMError::CallStackOverflow);
         }
 
-        let chunk = self.backend.modules.last()
-            .and_then(|m| m.module.get_chunk_at(id as usize))
-            .ok_or(VMError::ChunkNotFound)?;
-
-        let manager = ChunkManager::new(chunk);
+        let manager = ChunkManager::new(id);
         self.stack.mark_checkpoint();
         self.call_stack.push(Some(manager));
         self.call_stack_size += 1;
@@ -188,7 +170,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
 
     // Append a new module to execute
     // Once added, you can invoke a chunk / entry / hook
-    pub fn append_module(&mut self, module: &'a Module, metadata: &'a M) -> Result<(), VMError> {
+    pub fn append_module(&mut self, module: impl Into<Reference<'a, Module>>, metadata: impl Into<Reference<'a, M>>) -> Result<(), VMError> {
         if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
             return Err(VMError::ModulesStackOverflow)
         }
@@ -209,7 +191,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
         if !self.backend.modules.last().map_or(false, |m| m.module.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
         }
-        self.invoke_chunk_id(id)
+        self.invoke_chunk_id(id as _)
     }
 
     // Invoke an entry chunk using its id
@@ -258,12 +240,15 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
     // Add the chunk manager to the call stack if required
     // Returns `false` if not added back
     #[inline]
-    fn push_back_call_stack(&mut self, manager: ChunkManager<'a>) -> Result<(), VMError> {
+    fn push_back_call_stack(&mut self, mut manager: ChunkManager, reader: ChunkReader<'_>) -> Result<(), VMError> {
         // If tail call optimization is enabled,
         // we have another instruction and that its not a OpCode::Return
         // push current frame back to our call_stack
         // Otherwise, clean pointers for safety reasons
-        if !self.tail_call_optimization || manager.has_next_instruction() {
+        if !self.tail_call_optimization || reader.has_next_instruction() {
+            // Store the current index in the manager
+            // so we can store from it again
+            manager.set_ip(reader.index());
             // add back our call stack as we need it
             self.call_stack.push(Some(manager));
 
@@ -290,26 +275,32 @@ impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
         // We go through every modules injected
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(Some(mut manager)) = self.call_stack.pop() {
-                while let Some(opcode) = manager.next_u8() {
-                    match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
+                // Retrieve the required chunk
+                let chunk = m.module.get_chunk_at(manager.chunk_id())
+                    .ok_or(VMError::ChunkNotFound)?;
+
+                // Create the chunk reader for it
+                let mut reader = ChunkReader::new(chunk, manager.ip());
+                while let Some(opcode) = reader.next_u8() {
+                    match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut reader, &mut self.context) {
                         Ok(InstructionResult::Nothing) => {},
                         Ok(InstructionResult::InvokeChunk(id)) => {
                             if m.module.is_entry_chunk(id as usize) {
                                 return Err(VMError::EntryChunkCalled);
                             }
 
-                            self.push_back_call_stack(manager)?;
-                            self.invoke_chunk_id(id)?;
+                            self.push_back_call_stack(manager, reader)?;
+                            self.invoke_chunk_id(id as _)?;
 
                             // Jump to the next call stack
                             continue 'call_stack;
                         },
                         Ok(InstructionResult::AppendModule(new_module, metadata, id)) => {
                             // Push back the current callstack
-                            self.push_back_call_stack(manager)?;
+                            self.push_back_call_stack(manager, reader)?;
 
                             self.append_module(new_module, metadata)?;
-                            self.invoke_chunk_id(id)?;
+                            self.invoke_chunk_id(id as _)?;
 
                             // Jump to the next module
                             continue 'modules;

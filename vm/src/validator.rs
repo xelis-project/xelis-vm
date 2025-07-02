@@ -185,7 +185,7 @@ impl<'a> ModuleValidator<'a> {
 
         // Verify all the chunks
         for chunk in self.module.chunks() {
-            let mut reader = ChunkReader::new(chunk);
+            let mut reader = ChunkReader::new(chunk, 0);
             while let Some(instruction) = reader.next_u8() {
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
