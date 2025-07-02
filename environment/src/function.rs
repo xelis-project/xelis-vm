@@ -11,7 +11,7 @@ pub type FnReturnType = Result<Option<ValueCell>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
 pub type FnParams = Vec<StackValue>;
 // pub type OnCallFn = for<'a, 'ty, 'r> fn(FnInstance<'a>, FnParams, &'a mut Context<'ty, 'r>) -> FnReturnType;
-pub type OnCallFn<'ty> = for<'a, 'r> fn(
+pub type OnCallFn = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
         &'a mut Context<'ty, 'r>,
@@ -20,22 +20,22 @@ pub type OnCallFn<'ty> = for<'a, 'r> fn(
 // Native function that is implemented in Rust
 // This is used to register functions in the environment
 #[derive(Clone)]
-pub struct NativeFunction<'ty> {
+pub struct NativeFunction {
     // function on type
     on_type: Option<Type>,
     require_instance: bool,
     parameters: Vec<Type>,
-    on_call: OnCallFn<'ty>,
+    on_call: OnCallFn,
     // cost for each call
     cost: u64,
     // expected type of the returned value
     return_type: Option<Type>
 }
 
-impl<'ty> NativeFunction<'ty> {
+impl NativeFunction {
     // Create a new instance of the NativeFunction
     #[inline]
-    pub fn new(on_type: Option<Type>, require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn<'ty>, cost: u64, return_type: Option<Type>) -> Self {
+    pub fn new(on_type: Option<Type>, require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
         Self {
             on_type,
             require_instance,
@@ -61,7 +61,7 @@ impl<'ty> NativeFunction<'ty> {
     }
 
     // Execute the function
-    pub fn call_function<'r>(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context<'ty, 'r>) -> Result<Option<ValueCell>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context<'ty, 'r>) -> Result<Option<ValueCell>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.require_instance) {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.require_instance));
         }
@@ -75,7 +75,7 @@ impl<'ty> NativeFunction<'ty> {
 
     // Set the function on call
     #[inline]
-    pub fn set_on_call(&mut self, on_call: OnCallFn<'ty>) {
+    pub fn set_on_call(&mut self, on_call: OnCallFn) {
         self.on_call = on_call;
     }
 
@@ -104,7 +104,7 @@ impl<'ty> NativeFunction<'ty> {
     }
 }
 
-impl<'ty> fmt::Debug for NativeFunction<'ty> {
+impl<'ty> fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NativeFunction")
             .field("on_type", &self.on_type)

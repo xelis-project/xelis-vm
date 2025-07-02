@@ -5,7 +5,7 @@ use xelis_types::Primitive;
 
 use super::InstructionResult;
 
-pub fn iterable_length<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterable_length<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterable length");
 
     let value = stack.pop_stack()?;
@@ -18,7 +18,7 @@ pub fn iterable_length<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_begin<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_begin<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator begin");
 
     let value = stack.pop_stack()?;
@@ -27,7 +27,7 @@ pub fn iterator_begin<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_next<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_next<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator next");
 
     let addr = manager.read_u32()?;
@@ -43,7 +43,7 @@ pub fn iterator_next<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut St
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_end<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_end<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator end");
 
     manager.pop_iterator()?;

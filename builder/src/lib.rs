@@ -39,7 +39,7 @@ pub enum BuilderError {
 
 #[cfg(test)]
 mod tests {
-    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, Tid};
+    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType};
     use crate::EnvironmentBuilder;
 
     trait Foo {}
@@ -49,12 +49,16 @@ mod tests {
 
     impl Foo for FooImpl {}
 
-    fn bar<'a, 'ty, 'r, F: Tid<'ty>>(_: FnInstance<'a>, _: FnParams, context: &'a mut Context<'ty, 'r>) -> FnReturnType {
-        let _: &F = context.get().unwrap();
+    struct FooWrapper<F: Foo>(pub F);
+
+    tid! { impl<'a, F: 'static> TidAble<'a> for FooWrapper<F> where F: Foo }
+
+    fn bar<'a, 'ty, 'r, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, context: &'a mut Context<'ty, 'r>) -> FnReturnType {
+        let _: &FooWrapper<F> = context.get().unwrap();
         Ok(None)
     }
 
-    fn build_env<'a, 'ty, F: Foo + Tid<'ty>>() -> EnvironmentBuilder<'a, 'ty> {
+    fn build_env<'a, F: Foo + 'static>() -> EnvironmentBuilder<'a> {
         let mut env = EnvironmentBuilder::default();
         env.register_native_function(
             "bar",
@@ -70,6 +74,14 @@ mod tests {
 
     #[test]
     fn test_context_lifetime<'a>() {
-        build_env::<FooImpl>();
+        let env = build_env::<FooImpl>();
+        let f = env.get_functions()
+            .last()
+            .unwrap();
+
+        let mut context = Context::new();
+        context.insert(FooWrapper(FooImpl));
+
+        assert!(f.call_function(None, vec![], &mut context).unwrap().is_none());
     }
 }

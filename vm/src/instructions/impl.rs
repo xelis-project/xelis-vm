@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::{stack::Stack, Backend, ChunkManager, Context, VMError, debug};
 use super::InstructionResult;
 
-pub fn constant<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = manager.read_u16()? as usize;
     debug!("constant load at {}", index);
 
@@ -16,7 +16,7 @@ pub fn constant<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut S
     Ok(InstructionResult::Nothing)
 }
 
-pub fn subload<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = manager.read_u8()?;
     debug!("subload at {}", index);
 
@@ -27,7 +27,7 @@ pub fn subload<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, m
     Ok(InstructionResult::Nothing)
 }
 
-pub fn copy<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn copy<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("copy");
     let value = stack.last_stack()?;
 
@@ -40,7 +40,7 @@ pub fn copy<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &
     Ok(InstructionResult::Nothing)
 }
 
-pub fn copy_n<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn copy_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = manager.read_u8()?;
     debug!("copy at {}", index);
 
@@ -55,7 +55,7 @@ pub fn copy_n<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, ma
     Ok(InstructionResult::Nothing)
 }
 
-pub fn to_owned<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("to_owned");
 
     let value = stack.last_mut_stack()?;
@@ -64,14 +64,14 @@ pub fn to_owned<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pop");
 
     stack.pop_stack()?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop_n<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         let n = manager.read_u8()?;
     debug!("pop n {}", n);
 
@@ -79,7 +79,7 @@ pub fn pop_n<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, man
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn swap<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = manager.read_u8()?;
     debug!("swap at {}", index);
 
@@ -87,7 +87,7 @@ pub fn swap<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, mana
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap2<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn swap2<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index_a = manager.read_u8()?;
     let index_b = manager.read_u8()?;
 
@@ -97,7 +97,7 @@ pub fn swap2<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, man
     Ok(InstructionResult::Nothing)
 }
 
-pub fn array_call<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn array_call<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let index = value.as_u32()?;
     debug!("array call at {}", index);
@@ -113,7 +113,7 @@ pub fn array_call<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack
     Ok(InstructionResult::Nothing)
 }
 
-pub fn invoke_chunk<'a, 'ty, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn invoke_chunk<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = manager.read_u16()?;
     let args = manager.read_u8()? as usize;
     internal_invoke_chunk(stack, id, args)
@@ -135,12 +135,12 @@ pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize) -> 
     Ok(InstructionResult::InvokeChunk(id))
 }
 
-pub fn syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = manager.read_u16()?;
     internal_syscall(backend, id, stack, context)
 }
 
-fn internal_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, '_>) -> Result<InstructionResult<'a, M>, VMError> {
+fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("syscall: {}", id);
 
     let f = backend.environment.get_functions()
@@ -185,7 +185,7 @@ fn internal_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn dynamic_call<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager<'a>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.as_ref()?
         .as_vec()?;

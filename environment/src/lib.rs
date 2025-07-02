@@ -16,9 +16,9 @@ pub use context::*;
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
 #[derive(Debug, Clone)]
-pub struct Environment<'ty> {
+pub struct Environment {
     // All functions provided by the Environment
-    functions: Vec<NativeFunction<'ty>>,
+    functions: Vec<NativeFunction>,
     // All structures provided by the Environment
     structures: IndexSet<StructType>,
     // All enums provided by the Environment
@@ -29,9 +29,9 @@ pub struct Environment<'ty> {
     hooks: u8
 }
 
-tid!(Environment<'ty>);
+tid!(Environment);
 
-impl<'ty> Default for Environment<'ty> {
+impl Default for Environment {
     fn default() -> Self {
         Self {
             functions: Vec::new(),
@@ -43,7 +43,7 @@ impl<'ty> Default for Environment<'ty> {
     }
 }
 
-impl<'ty> Environment<'ty> {
+impl Environment {
     // Create a new environment
     pub fn new() -> Self {
         Self::default()
@@ -51,7 +51,7 @@ impl<'ty> Environment<'ty> {
 
     // Get all the registered functions
     #[inline(always)]
-    pub fn get_functions(&self) -> &Vec<NativeFunction<'ty>> {
+    pub fn get_functions(&self) -> &Vec<NativeFunction> {
         &self.functions
     }
 
@@ -75,12 +75,12 @@ impl<'ty> Environment<'ty> {
 
     // Add a new function to the environment
     #[inline(always)]
-    pub fn add_function(&mut self, function: NativeFunction<'ty>) {
+    pub fn add_function(&mut self, function: NativeFunction) {
         self.functions.push(function);
     }
 
     // Get a mutable native function by its id
-    pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction<'ty>> {
+    pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction> {
         self.functions.get_mut(id)
     }
 
