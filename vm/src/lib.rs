@@ -56,7 +56,7 @@ pub struct Backend<'a: 'r, 'ty: 'a, 'r, M> {
     environment: &'a Environment<'ty>,
 }
 
-impl<'a, 'ty, 'r, M> Backend<'a, 'ty, 'r, M> {
+impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
