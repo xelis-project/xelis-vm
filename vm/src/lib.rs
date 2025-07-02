@@ -31,7 +31,7 @@ const MODULES_STACK_SIZE: usize = 8;
 
 // Backend of the VM
 // This is the immutable part of the VM
-pub struct Backend<'a, 'ty, 'r> {
+pub struct Backend<'a: 'r, 'ty: 'a, 'r> {
     // The instruction table of the VM
     table: InstructionTable<'a, 'ty, 'r>,
     // The module to execute
@@ -51,7 +51,7 @@ impl<'a, 'ty, 'r> Backend<'a, 'ty, 'r> {
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
-pub struct VM<'a: 'r, 'ty, 'r> {
+pub struct VM<'a: 'r, 'ty: 'a, 'r> {
     backend: Backend<'a, 'ty, 'r>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
@@ -71,7 +71,7 @@ pub struct VM<'a: 'r, 'ty, 'r> {
     tail_call_optimization: bool
 }
 
-impl<'a, 'ty, 'r> VM<'a, 'ty, 'r> {
+impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
     // Create a new VM
     // Insert the environment as a reference in the context
     pub fn new(environment: &'a Environment<'ty>) -> Self {

@@ -53,17 +53,17 @@ pub type Handler<'a, 'ty, 'r> = (fn(&Backend<'a, 'ty, 'r>, &mut Stack, &mut Chun
 // It contains all the instructions that the VM can execute
 // It is a fixed size array of 256 elements
 // Each element is a function pointer to the instruction
-pub struct InstructionTable<'a, 'ty, 'r> {
+pub struct InstructionTable<'a: 'r, 'ty: 'a, 'r> {
     instructions: [Handler<'a, 'ty, 'r>; 256],
 }
 
-impl<'a, 'ty, 'r> Default for InstructionTable<'a, 'ty, 'r> {
+impl<'a: 'r, 'ty: 'a, 'r> Default for InstructionTable<'a, 'ty, 'r> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a, 'ty, 'r> InstructionTable<'a, 'ty, 'r> {
+impl<'a: 'r, 'ty: 'a, 'r> InstructionTable<'a, 'ty, 'r> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
         let mut instructions: [Handler<'a, 'ty, 'r>; 256] = [(unimplemented, 0); 256];
