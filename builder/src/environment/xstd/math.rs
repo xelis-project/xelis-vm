@@ -3,6 +3,7 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     Context,
+    SysCallResult,
 };
 use xelis_types::{Type, Primitive, U256 as u256};
 use paste::paste;
@@ -13,7 +14,7 @@ macro_rules! sqrt_fn {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
             // Square root implementation using a simple binary search method
-            fn [<sqrt_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<sqrt_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let n = zelf?.[<as_ $f>]()?;
                 let one = $f::from(1u8);
 
@@ -36,7 +37,7 @@ macro_rules! sqrt_fn {
                             } else {
                                 // If mid + 1 would overflow, mid must be the maximum possible value
                                 // which means it's our answer
-                                return Ok(Some(Primitive::$t(mid).into()));
+                                return Ok(SysCallResult::Return(Primitive::$t(mid).into()));
                             }
                         }
                     } else {
@@ -46,7 +47,7 @@ macro_rules! sqrt_fn {
                 }
                 
                 // When the loop terminates, right is the floor(sqrt(n))
-                Ok(Some(Primitive::$t(right).into()))
+                Ok(SysCallResult::Return(Primitive::$t(right).into()))
             }
 
             // Register the sqrt function for this type
@@ -77,7 +78,7 @@ macro_rules! register_sqrt_fns {
 }
 
 // Register all math functions
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // Register square root functions for all integer types
     register_sqrt_fns!(env);
 }

@@ -39,7 +39,7 @@ pub enum BuilderError {
 
 #[cfg(test)]
 mod tests {
-    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType};
+    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, SysCallResult};
     use crate::EnvironmentBuilder;
 
     trait Foo {}
@@ -53,18 +53,18 @@ mod tests {
 
     tid! { impl<'a, F: 'static> TidAble<'a> for FooWrapper<F> where F: Foo }
 
-    fn bar<'a, 'ty, 'r, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, context: &'a mut Context<'ty, 'r>) -> FnReturnType {
+    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, context: &'a mut Context<'ty, 'r>) -> FnReturnType<M> {
         let _: &FooWrapper<F> = context.get().unwrap();
-        Ok(None)
+        Ok(SysCallResult::None)
     }
 
-    fn build_env<'a, F: Foo + 'static>() -> EnvironmentBuilder<'a> {
+    fn build_env<'a, F: Foo + 'static>() -> EnvironmentBuilder<'a, ()> {
         let mut env = EnvironmentBuilder::default();
         env.register_native_function(
             "bar",
             None,
             vec![],
-            bar::<F>,
+            bar::<(), F>,
             1000,
             None
         );

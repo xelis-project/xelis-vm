@@ -1,41 +1,64 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
+use xelis_bytecode::Module;
 use xelis_types::{StackValue, Type, ValueCell};
 use crate::Context;
 
 use super::EnvironmentError;
 
+pub enum SysCallResult<M> {
+    None,
+    Return(ValueCell),
+    DynamicCall {
+        // Should contains Vec<u16, bool>
+        ptr: ValueCell,
+        params: Vec<ValueCell>
+    },
+    // NOTE: due to the invariant lifetime issue
+    // we don't provide any reference
+    ModuleCall {
+        module: Arc<Module>,
+        metadata: Arc<M>,
+        chunk: u16,
+    }
+}
+
+impl<M> SysCallResult<M> {
+    pub const fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
-pub type FnReturnType = Result<Option<ValueCell>, EnvironmentError>;
+pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
 pub type FnParams = Vec<StackValue>;
-// pub type OnCallFn = for<'a, 'ty, 'r> fn(FnInstance<'a>, FnParams, &'a mut Context<'ty, 'r>) -> FnReturnType;
-pub type OnCallFn = for<'a, 'ty, 'r> fn(
+pub type OnCallFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
         &'a mut Context<'ty, 'r>,
-    ) -> FnReturnType;
+    ) -> FnReturnType<M>;
 
 // Native function that is implemented in Rust
 // This is used to register functions in the environment
 #[derive(Clone)]
-pub struct NativeFunction {
+pub struct NativeFunction<M> {
     // function on type
     on_type: Option<Type>,
     require_instance: bool,
     parameters: Vec<Type>,
-    on_call: OnCallFn,
+    on_call: OnCallFn<M>,
     // cost for each call
     cost: u64,
     // expected type of the returned value
     return_type: Option<Type>
 }
 
-impl NativeFunction {
+impl<M> NativeFunction<M> {
     // Create a new instance of the NativeFunction
     #[inline]
-    pub fn new(on_type: Option<Type>, require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn, cost: u64, return_type: Option<Type>) -> Self {
+    pub fn new(on_type: Option<Type>, require_instance: bool, parameters: Vec<Type>, on_call: OnCallFn<M>, cost: u64, return_type: Option<Type>) -> Self {
         Self {
             on_type,
             require_instance,
@@ -61,7 +84,7 @@ impl NativeFunction {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context<'ty, 'r>) -> Result<Option<ValueCell>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.require_instance) {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.require_instance));
         }
@@ -75,7 +98,7 @@ impl NativeFunction {
 
     // Set the function on call
     #[inline]
-    pub fn set_on_call(&mut self, on_call: OnCallFn) {
+    pub fn set_on_call(&mut self, on_call: OnCallFn<M>) {
         self.on_call = on_call;
     }
 
@@ -104,7 +127,7 @@ impl NativeFunction {
     }
 }
 
-impl<'ty> fmt::Debug for NativeFunction {
+impl<'ty, M> fmt::Debug for NativeFunction<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NativeFunction")
             .field("on_type", &self.on_type)

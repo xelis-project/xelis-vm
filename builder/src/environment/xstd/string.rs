@@ -4,10 +4,11 @@ use super::{
     FnInstance,
     FnParams,
     FnReturnType,
-    EnvironmentBuilder
+    EnvironmentBuilder,
+    SysCallResult
 };
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // String
     env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::U32));
     env.register_native_function("trim", Some(Type::String), vec![], trim, 1, Some(Type::String));
@@ -30,43 +31,43 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("substring_range", Some(Type::String), vec![("value", Type::U32), ("value", Type::U32)], string_substring_range, 3, Some(Type::Optional(Box::new(Type::String))));
 }
 
-fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
-    Ok(Some(Primitive::U32(s.len() as u32).into()))
+    Ok(SysCallResult::Return(Primitive::U32(s.len() as u32).into()))
 }
 
-fn trim(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn trim<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?.trim().to_string();
-    Ok(Some(Primitive::String(s).into()))
+    Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn contains(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let s = zelf?.as_string()?;
-    Ok(Some(Primitive::Boolean(s.contains(value)).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(s.contains(value)).into()))
 }
 
-fn contains_ignore_case(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?.to_lowercase();
     let s: String = zelf?.as_string()?.to_lowercase();
-    Ok(Some(Primitive::Boolean(s.contains(&value)).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(s.contains(&value)).into()))
 }
 
-fn to_uppercase(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn to_uppercase<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s: String = zelf?.as_string()?.to_uppercase();
-    Ok(Some(Primitive::String(s).into()))
+    Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_lowercase(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s: String = zelf?.as_string()?.to_lowercase();
-    Ok(Some(Primitive::String(s).into()))
+    Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
 
     let mut bytes = Vec::new();
@@ -74,36 +75,36 @@ fn to_bytes(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
         bytes.push(Primitive::U8(*b).into());
     }
 
-    Ok(Some(ValueCell::Object(bytes)))
+    Ok(SysCallResult::Return(ValueCell::Object(bytes)))
 }
 
-fn index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
         let inner = Primitive::U32(index as u32).into();
-        Ok(Some(inner))
+        Ok(SysCallResult::Return(inner))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn last_index_of(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
         let inner = Primitive::U32(index as u32).into();
-        Ok(Some(inner))
+        Ok(SysCallResult::Return(inner))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
@@ -112,26 +113,26 @@ fn replace(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
     let old = handle1.as_string()?;
     let new = handle2.as_string()?;
     let s = s.replace(old, new);
-    Ok(Some(Primitive::String(s).into()))
+    Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn starts_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
-    Ok(Some(Primitive::Boolean(s.starts_with(value)).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(s.starts_with(value)).into()))
 }
 
-fn ends_with(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
-    Ok(Some(Primitive::Boolean(s.ends_with(value)).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(s.ends_with(value)).into()))
 }
 
-fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
@@ -140,48 +141,48 @@ fn split(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetur
         .map(|s| Primitive::String(s.to_string()).into())
         .collect();
 
-    Ok(Some(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values)))
 }
 
-fn char_at(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param =  parameters.remove(0);
     let index = param.as_u32()? as usize;
     let s = zelf?.as_string()?;
     if let Some(c) = s.chars().nth(index) {
         let inner = Primitive::String(c.to_string()).into();
-        Ok(Some(inner))
+        Ok(SysCallResult::Return(inner))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn is_empty(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
-    Ok(Some(Primitive::Boolean(s.is_empty()).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(s.is_empty()).into()))
 }
 
-fn string_matches(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
     let m = s.matches(value);
-    Ok(Some(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect())))
+    Ok(SysCallResult::Return(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect())))
 }
 
-fn string_substring(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn string_substring<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
         let inner = Primitive::String(s.to_owned()).into();
-        Ok(Some(inner))
+        Ok(SysCallResult::Return(inner))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn string_substring_range(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn string_substring_range<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
@@ -189,8 +190,8 @@ fn string_substring_range(zelf: FnInstance, mut parameters: FnParams, _: &mut Co
     let end = param2.as_u32()? as usize;
     if let Some(s) = s.get(start..end) {
         let inner = Primitive::String(s.to_owned()).into();
-        Ok(Some(inner))
+        Ok(SysCallResult::Return(inner))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }

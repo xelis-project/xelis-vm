@@ -26,7 +26,7 @@ macro_rules! bench {
     };
 }
 
-fn prepare(code: &str) -> (Module, Environment) {
+fn prepare(code: &str) -> (Module, Environment<()>) {
     let tokens = Lexer::new(code).get().unwrap();
     let env = EnvironmentBuilder::default();
     let (program, _) = Parser::new(tokens, &env).parse().unwrap();

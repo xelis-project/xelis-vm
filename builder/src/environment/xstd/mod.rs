@@ -16,10 +16,11 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     Context,
+    SysCallResult,
 };
 use super::EnvironmentBuilder;
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     array::register(env);
     bytes::register(env);
     optional::register(env);
@@ -38,47 +39,47 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("clone", Some(Type::T(None)), vec![], clone, 5, Some(Type::T(None)));
 }
 
-fn println(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn println<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{}", param.as_ref()?);
 
-    Ok(None)
+    Ok(SysCallResult::None)
 }
 
-fn debug(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn debug<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{:?}", param);
 
-    Ok(None)
+    Ok(SysCallResult::None)
 }
 
-fn panic(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let value = param.into_owned()?;
 
     Err(EnvironmentError::Panic(format!("{:#}", value)))
 }
 
-fn assert(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn assert<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     let value = param.as_bool()?;
 
     if value {
-        Ok(None)
+        Ok(SysCallResult::None)
     } else {
         Err(EnvironmentError::AssertionFailed)
     }
 }
 
-fn is_same_ptr(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let left = parameters[0].as_ref()?;
     let right = parameters[1].as_ref()?;
     let same = ptr::from_ref(left) == ptr::from_ref(right);
 
-    Ok(Some(Primitive::Boolean(same).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(same).into()))
 }
 
-fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn require<M>(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let msg = parameters.remove(1)
         .into_owned()?
         .into_string()?;
@@ -91,13 +92,13 @@ fn require(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturn
     let value = param.as_bool()?;
 
     if value {
-        Ok(None)
+        Ok(SysCallResult::None)
     } else {
         Err(EnvironmentError::Expect(msg))
     }
 }
 
-fn clone(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+fn clone<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
 
     let memory = zelf.calculate_memory_usage(context.memory_left())?;
@@ -105,5 +106,5 @@ fn clone(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
     // context.increase_gas_usage(memory as _)?;
     context.increase_memory_usage_unchecked(memory)?;
 
-    Ok(Some(zelf.clone()))
+    Ok(SysCallResult::Return(zelf.clone()))
 }

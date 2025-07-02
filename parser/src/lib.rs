@@ -101,12 +101,12 @@ macro_rules! op_num_with_bool {
     }};
 }
 
-enum Function<'a> {
-    Native(&'a NativeFunction),
+enum Function<'a, M> {
+    Native(&'a NativeFunction<M>),
     Program(&'a FunctionType)
 }
 
-impl<'a> Function<'a> {
+impl<'a, M> Function<'a,M> {
     pub fn return_type(&self) -> &Option<Type> {
         match self {
             Function::Native(f) => f.return_type(),
@@ -155,7 +155,7 @@ impl<'a> Function<'a> {
 // its content will be dropped directly by VM
 const IGNORE_VARIABLE: &str = "_";
 
-pub struct Parser<'a> {
+pub struct Parser<'a, M> {
     // Tokens to process
     tokens: VecDeque<TokenResult<'a>>,
     // All constants declared
@@ -164,7 +164,7 @@ pub struct Parser<'a> {
     functions: Vec<FunctionType>,
     global_mapper: GlobalMapper<'a>,
     // Environment contains all the library linked to the program
-    environment: &'a EnvironmentBuilder<'a>,
+    environment: &'a EnvironmentBuilder<'a, M>,
     // Disable upgrading values to consts
     disable_const_upgrading: bool,
     // Disable shadowing variables
@@ -190,9 +190,9 @@ enum TuplePattern<'a> {
     Tuple(Vec<TuplePattern<'a>>),
 }
 
-impl<'a> Parser<'a> {
+impl<'a, M> Parser<'a, M> {
     // Compatibility purpose: Create a new parser with a list of tokens only
-    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a>) -> Self {
+    pub fn new<I: IntoIterator<Item = Token<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a, M>) -> Self {
         Self::with(tokens.into_iter().map(|v| TokenResult {
             token: v,
             line: 0,
@@ -202,7 +202,7 @@ impl<'a> Parser<'a> {
     }
 
     // Create a new parser with a list of tokens and the environment
-    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a>) -> Self {
+    pub fn with<I: Iterator<Item = TokenResult<'a>>>(tokens: I, environment: &'a EnvironmentBuilder<'a, M>) -> Self {
         Self {
             tokens: tokens.collect(),
             constants: HashMap::new(),
@@ -2602,7 +2602,7 @@ impl<'a> Parser<'a> {
     }
 
     // get a function using its identifier
-    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b>, ParserError<'a>> {
+    fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b, M>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
         let len = self.environment.get_functions().len();
@@ -2767,6 +2767,8 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use xelis_environment::SysCallResult;
+
     use super::*;
 
     #[track_caller]
@@ -2776,7 +2778,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_with_env<'a>(tokens: Vec<Token<'a>>, env: &'a EnvironmentBuilder<'a>) -> Program {
+    fn test_parser_with_env<'a>(tokens: Vec<Token<'a>>, env: &'a EnvironmentBuilder<'a, ()>) -> Program {
         let parser = Parser::new(tokens, env);
         let (program, _) = parser.parse().unwrap();
         program
@@ -2789,7 +2791,7 @@ mod tests {
     }
 
     #[track_caller]
-    fn test_parser_statement_with<'a>(tokens: Vec<Token<'a>>, variables: Vec<(&'a str, Type)>, return_type: &Option<Type>, env: &'a EnvironmentBuilder<'a>) -> Vec<Statement> {
+    fn test_parser_statement_with<'a>(tokens: Vec<Token<'a>>, variables: Vec<(&'a str, Type)>, return_type: &Option<Type>, env: &'a EnvironmentBuilder<'a, ()>) -> Vec<Statement> {
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -3251,7 +3253,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let env = EnvironmentBuilder::new();
+        let env = EnvironmentBuilder::<()>::new();
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -3478,7 +3480,7 @@ mod tests {
             Token::BraceClose
         ];
 
-        let mut env = EnvironmentBuilder::new();
+        let mut env = EnvironmentBuilder::<()>::new();
         let fields: [(&str, Type); 0] = [];
         env.register_structure("Foo", fields);
         let parser = Parser::new(tokens, &env);
@@ -3787,27 +3789,27 @@ mod tests {
     fn test_ends_with_return() {
         const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Default(Primitive::U64(0)))));
         let statements = vec![RETURN];
-        assert!(Parser::ends_with_return(&statements).unwrap());
+        assert!(Parser::<()>::ends_with_return(&statements).unwrap());
 
         let statements = vec![RETURN, Statement::Expression(Expression::Constant(Primitive::U64(0).into()))];
-        assert!(!Parser::ends_with_return(&statements).unwrap());
+        assert!(!Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if ... return
         let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), None), RETURN];
-        assert!(Parser::ends_with_return(&statements).unwrap());
+        assert!(Parser::<()>::ends_with_return(&statements).unwrap());
 
         let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), None)];
-        assert!(!Parser::ends_with_return(&statements).unwrap());
+        assert!(!Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if else
         let statements = vec![Statement::If(Expression::Constant(Primitive::Boolean(true).into()), Vec::new(), Some(Vec::new()))];
-        assert!(!Parser::ends_with_return(&statements).unwrap());
+        assert!(!Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if return else return
         let statements = vec![
             Statement::If(Expression::Constant(Primitive::Boolean(true).into()), vec![RETURN], Some(vec![RETURN]))
         ];
-        assert!(Parser::ends_with_return(&statements).unwrap());
+        assert!(Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if return else if return else no return
         let statements = vec![
@@ -3819,7 +3821,7 @@ mod tests {
                 ])
             )
         ];
-        assert!(!Parser::ends_with_return(&statements).unwrap());
+        assert!(!Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if return else if return else return
         let statements = vec![
@@ -3831,7 +3833,7 @@ mod tests {
                 ])
             )
         ];
-        assert!(Parser::ends_with_return(&statements).unwrap());
+        assert!(Parser::<()>::ends_with_return(&statements).unwrap());
     }
 
     #[test]
@@ -3921,7 +3923,7 @@ mod tests {
     #[test]
     fn test_struct_cast_error() {
         // Also test with a environment
-        let mut env = EnvironmentBuilder::new();
+        let mut env = EnvironmentBuilder::<()>::new();
         env.register_structure("Message", [
             ("message_id", Type::U8)
         ]);
@@ -4217,8 +4219,8 @@ mod tests {
 
     #[test]
     fn test_optional_fn_param() {
-        let mut env = EnvironmentBuilder::new();
-        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], |_, _, _| { Ok(None) }, 0, None);
+        let mut env = EnvironmentBuilder::<()>::new();
+        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], |_, _, _| { Ok(SysCallResult::None) }, 0, None);
 
         // test(null)
         let tokens = vec![
@@ -4336,7 +4338,7 @@ mod tests {
 
     #[test]
     fn test_assign_optional_to_type() {
-        let mut env = EnvironmentBuilder::default();
+        let mut env = EnvironmentBuilder::<()>::default();
         env.register_native_function("test", None, vec![], |_, _, _| todo!(), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
         // let _: bool = test();

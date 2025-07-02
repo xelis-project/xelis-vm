@@ -16,7 +16,7 @@ impl<'a> GlobalMapper<'a> {
         }
     }
 
-    pub fn with(environment: &'a EnvironmentBuilder) -> Self {
+    pub fn with<M>(environment: &'a EnvironmentBuilder<M>) -> Self {
         Self {
             functions_mapper: FunctionMapper::with_parent(environment.get_functions_mapper()),
             struct_manager: StructManager::with_parent(environment.get_struct_manager()),

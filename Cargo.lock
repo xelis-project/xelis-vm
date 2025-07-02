@@ -755,6 +755,7 @@ dependencies = [
  "hashbrown",
  "indexmap",
  "thiserror",
+ "xelis-bytecode",
  "xelis-types",
 ]
 

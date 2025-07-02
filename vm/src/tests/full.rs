@@ -7,12 +7,12 @@ use xelis_types::{traits::{JSONHelper, Serializable}, Primitive};
 use super::*;
 
 #[track_caller]
-fn prepare_module(code: &str) -> (Module, Environment) {
+fn prepare_module(code: &str) -> (Module, Environment<()>) {
     prepare_module_with(code, EnvironmentBuilder::default())
 }
 
 #[track_caller]
-fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a>) -> (Module, Environment) {
+fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> (Module, Environment<()>) {
     let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
 
@@ -1221,11 +1221,11 @@ fn test_opaque_fn_call() {
     let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
 
     env.register_native_function("foo", None, vec![], |_, _, _| {
-        Ok(Some(Primitive::Opaque(Foo.into()).into()))
+        Ok(SysCallResult::Return(Primitive::Opaque(Foo.into()).into()))
     }, 0, Some(ty.clone()));
 
     env.register_native_function("call", Some(ty), vec![], |_, _, _| {
-        Ok(Some(Primitive::U64(0).into()))
+        Ok(SysCallResult::Return(Primitive::U64(0).into()))
     }, 0, Some(Type::U64));
 
     let code = r#"
@@ -1358,9 +1358,9 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
-    env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
-    env.register_static_function("static", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Optional(Box::new(Type::Bool))));
+    env.register_native_function("test", None, vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
+    env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
+    env.register_static_function("static", Type::Bool, vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {

@@ -1,9 +1,16 @@
-use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_environment::{
+    Context,
+    EnvironmentError,
+    FnInstance,
+    FnParams,
+    FnReturnType,
+    SysCallResult
+};
 use xelis_types::{Type, Primitive, ValueCell};
 
 use crate::EnvironmentBuilder;
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let key_type = Type::T(Some(0));
     let value_type = Type::T(Some(1));
     let _type = Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()));
@@ -18,12 +25,12 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("values", Some(_type.clone()), vec![], values, 20, Some(Type::Array(Box::new(value_type.clone()))));
 }
 
-fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let len = zelf?.as_map()?.len();
-    Ok(Some(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref()?;
     if k.is_map() {
@@ -31,10 +38,10 @@ fn contains_key(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
     }
 
     let contains = zelf?.as_map()?.contains_key(k);
-    Ok(Some(Primitive::Boolean(contains).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref()?;
     if k.is_map() {
@@ -45,13 +52,13 @@ fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnT
         .get(k)
         .cloned();
 
-    Ok(Some(match value {
+    Ok(SysCallResult::Return(match value {
         Some(v) => v,
         None => Primitive::Null.into(),
     }))
 }
 
-fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
     let key = param.into_owned()?;
@@ -81,13 +88,13 @@ fn insert(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
     let previous = map
         .insert(key, value);
 
-    Ok(Some(match previous {
+    Ok(SysCallResult::Return(match previous {
         Some(v) => v,
         None => Primitive::Null.into(),
     }))
 }
 
-fn shift_remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
     let k = key.as_ref()?;
@@ -100,13 +107,13 @@ fn shift_remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Contex
     context.increase_gas_usage(map.len() as _)?;
 
     let value = map.shift_remove(k);
-    Ok(Some(match value {
+    Ok(SysCallResult::Return(match value {
         Some(v) => v,
         None => Primitive::Null.into(),
     }))
 }
 
-fn swap_remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
     let k = key.as_ref()?;
@@ -116,18 +123,18 @@ fn swap_remove(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
 
     let value = zelf?.as_mut_map()?
         .swap_remove(k);
-    Ok(Some(match value {
+    Ok(SysCallResult::Return(match value {
         Some(v) => v,
         None => Primitive::Null.into(),
     }))
 }
 
-fn clear(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn clear<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     zelf?.as_mut_map()?.clear();
-    Ok(None)
+    Ok(SysCallResult::None)
 }
 
-fn keys(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+fn keys<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let map = zelf?.as_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
@@ -137,10 +144,10 @@ fn keys(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
         .map(|key| key.clone().into())
         .collect::<Vec<_>>();
 
-    Ok(Some(ValueCell::Object(keys)))
+    Ok(SysCallResult::Return(ValueCell::Object(keys)))
 }
 
-fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let map = zelf?.as_mut_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
@@ -150,5 +157,5 @@ fn values(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
         .map(|v| v.clone())
         .collect::<Vec<_>>();
 
-    Ok(Some(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values)))
 }

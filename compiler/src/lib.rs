@@ -20,10 +20,10 @@ use xelis_types::{Constant, Primitive};
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
 
-pub struct Compiler<'a> {
+pub struct Compiler<'a, M> {
     // Program to compile
     program: &'a Program,
-    environment: &'a Environment,
+    environment: &'a Environment<M>,
     // Final module to return
     module: Module,
     // Index of break jump to patch
@@ -44,9 +44,9 @@ pub struct Compiler<'a> {
     parameters_ids: HashSet<u16>,
 }
 
-impl<'a> Compiler<'a> {
+impl<'a, M> Compiler<'a, M> {
     // Create a new compiler
-    pub fn new(program: &'a Program, environment: &'a Environment) -> Self {
+    pub fn new(program: &'a Program, environment: &'a Environment<M>) -> Self {
         Self {
             program,
             environment,
@@ -959,6 +959,7 @@ impl<'a> Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use xelis_builder::EnvironmentBuilder;
+    use xelis_environment::SysCallResult;
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
     use xelis_types::{Primitive, Type, ValueCell};
@@ -968,7 +969,7 @@ mod tests {
     #[test]
     fn test_empty_program() {
         let program = Program::new();
-        let environment = Environment::new();
+        let environment = Environment::<()>::new();
         let compiler = Compiler::new(&program, &environment);
         let module = compiler.compile().unwrap();
         assert_eq!(module.chunks().len(), 0);
@@ -983,7 +984,7 @@ mod tests {
 
 
     #[track_caller]
-    fn prepare_program_with_env<'a>(code: &'a str, environment: &'a EnvironmentBuilder<'a>) -> Module {
+    fn prepare_program_with_env<'a>(code: &'a str, environment: &'a EnvironmentBuilder<'a, ()>) -> Module {
         let tokens = Lexer::new(code).get().unwrap();
         let mut parser = Parser::new(tokens, environment);
         parser.set_const_upgrading_disabled(true);
@@ -1000,7 +1001,7 @@ mod tests {
     #[track_caller]
     fn prepare_program_with_const_enabled<'a>(code: &'a str) -> Module {
         let tokens = Lexer::new(code).get().unwrap();
-        let environment = EnvironmentBuilder::default();
+        let environment = EnvironmentBuilder::<()>::default();
         let parser = Parser::new(tokens, &environment);
 
         let (program, _) = parser.parse().unwrap();
@@ -1339,7 +1340,7 @@ mod tests {
     #[test]
     fn test_static_function_call() {
         let mut env = EnvironmentBuilder::new();
-        env.register_static_function("test", Type::Bool, vec![], |_, _, _| Ok(Some(ValueCell::Default(Primitive::Null))), 0, Some(Type::Bool));
+        env.register_static_function("test", Type::Bool, vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null))), 0, Some(Type::Bool));
 
         let module = prepare_program_with_env("fn main() -> bool { return bool::test() }", &env);
 

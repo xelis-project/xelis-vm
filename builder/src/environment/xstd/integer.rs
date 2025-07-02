@@ -1,4 +1,5 @@
 use xelis_environment::{
+    SysCallResult,
     FnInstance,
     FnParams,
     FnReturnType,
@@ -12,7 +13,7 @@ use crate::EnvironmentBuilder;
 macro_rules! checked_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident) => {
         paste! {
-            fn [<checked_ $op _ $f>](zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
                 let other = parameters.remove(0).into_owned()?.[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -20,7 +21,7 @@ macro_rules! checked_fn {
                 // Perform the operation with `checked_$op` as a method name
                 let result = value.[<checked_ $op>](other);
                 
-                Ok(Some(
+                Ok(SysCallResult::Return(
                     result.map(|v| Primitive::$t(v))
                         .unwrap_or_default()
                         .into()
@@ -58,11 +59,11 @@ macro_rules! register_checked_fns {
 macro_rules! to_endian_array {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _array_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<to_ $endian _array_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
-                Ok(Some(ValueCell::Object(vec)))
+                Ok(SysCallResult::Return(ValueCell::Object(vec)))
             }
 
             $env.register_native_function(
@@ -87,10 +88,10 @@ macro_rules! register_to_endian_array {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>](zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                Ok(Some(ValueCell::Bytes(bytes.to_vec())))
+                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec())))
             }
 
             $env.register_native_function(
@@ -115,12 +116,12 @@ macro_rules! register_to_endian_bytes {
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<min_ $f>](zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref()?.[<as_ $f>]()?;
 
                 let min = value.min(other);
-                Ok(Some(Primitive::$t(min).into()))
+                Ok(SysCallResult::Return(Primitive::$t(min).into()))
             }
 
             $env.register_native_function(
@@ -139,12 +140,12 @@ macro_rules! min {
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<max_ $f>](zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType {
+            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref()?.[<as_ $f>]()?;
 
                 let min = value.max(other);
-                Ok(Some(Primitive::$t(min).into()))
+                Ok(SysCallResult::Return(Primitive::$t(min).into()))
             }
 
             $env.register_native_function(
@@ -179,7 +180,7 @@ macro_rules! register_constants_min_max {
     };
 }
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // Register all operations with overflow checking
     register_checked_fns!(env, U8, u8);
     register_checked_fns!(env, U16, u16);

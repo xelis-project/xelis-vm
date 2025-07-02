@@ -4,11 +4,12 @@ use xelis_environment::{
     EnvironmentError,
     FnInstance,
     FnParams,
-    FnReturnType
+    FnReturnType,
+    SysCallResult
 };
 use super::EnvironmentBuilder;
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], is_none, 1, Some(Type::Bool));
     env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], is_some, 1, Some(Type::Bool));
     env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], unwrap, 1, Some(Type::T(Some(0))));
@@ -16,29 +17,29 @@ pub fn register(env: &mut EnvironmentBuilder) {
     env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("msg", Type::String)], expect, 15, Some(Type::T(Some(0))));
 }
 
-fn is_none(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Primitive::Boolean(zelf?.is_null()).into()))
+fn is_none<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+    Ok(SysCallResult::Return(Primitive::Boolean(zelf?.is_null()).into()))
 }
 
-fn is_some(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
-    Ok(Some(Primitive::Boolean(!zelf?.is_null()).into()))
+fn is_some<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+    Ok(SysCallResult::Return(Primitive::Boolean(!zelf?.is_null()).into()))
 }
 
-fn unwrap(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let opt = zelf?.take_as_optional()?.ok_or(ValueError::OptionalIsNull)?;
-    Ok(Some(opt))
+    Ok(SysCallResult::Return(opt))
 }
 
-fn unwrap_or(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let optional = zelf?.take_as_optional()?;
     match optional {
-        Some(value) => Ok(Some(value)),
-        None => Ok(Some(default.into_owned()?))
+        Some(value) => Ok(SysCallResult::Return(value)),
+        None => Ok(SysCallResult::Return(default.into_owned()?))
     }
 }
 
-fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let mut param = parameters.remove(0)
         .into_owned()?;
     let msg = param.into_string()?;
@@ -50,5 +51,5 @@ fn expect(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     let opt = zelf?.take_as_optional()?
         .ok_or(EnvironmentError::Expect(msg))?;
 
-    Ok(Some(opt))
+    Ok(SysCallResult::Return(opt))
 }

@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
 
+use xelis_environment::{NativeFunction, SysCallResult};
+use xelis_types::{StackValue, ValueCell};
+
 use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, Context, VMError};
 use super::InstructionResult;
 
@@ -175,14 +178,47 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
         None => None,
     };
 
-    if let Some(v) = f.call_function(instance, arguments.into(), context)? {
-        let memory_usage = v.calculate_memory_usage(context.memory_left())?;
-        context.increase_memory_usage_unchecked(memory_usage)?;
+    perform_syscall(backend, f, instance, arguments.into(), stack, context)
+}
 
-        stack.push_stack(v.into())?;
-    }
+fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &NativeFunction<M>, instance: Option<&mut ValueCell>, parameters: Vec<StackValue>, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    Ok(match f.call_function(instance, parameters, context)? {
+        SysCallResult::None => InstructionResult::Nothing,
+        SysCallResult::Return(v) => {
+            let memory_usage = v.calculate_memory_usage(context.memory_left())?;
+            context.increase_memory_usage_unchecked(memory_usage)?;
+    
+            stack.push_stack(v.into())?;
+            InstructionResult::Nothing
+        },
+        SysCallResult::DynamicCall { ptr, params } => {
+            let values = ptr.as_vec()?;
 
-    Ok(InstructionResult::Nothing)
+            if values.len() != 2 {
+                return Err(VMError::InvalidDynamicCall)
+            }
+            
+            let id = values[0].as_u16()?;
+            let syscall = values[1].as_bool()?;
+
+            if syscall {
+                let f = backend.environment.get_functions()
+                    .get(id as usize)
+                    .ok_or(VMError::UnknownSysCall(id))?;
+
+                // TODO: could be better
+                // FIXME: prevent too many recursive
+                let parameters = params.into_iter().map(Into::into).collect();
+                perform_syscall(backend, f, None, parameters, stack, context)?
+            } else {
+                stack.extend_stack(params.into_iter().map(Into::into))?;
+                InstructionResult::InvokeChunk(id)
+            }
+        },
+        SysCallResult::ModuleCall { module, metadata, chunk } => {
+            InstructionResult::AppendModule { module: module.into(), metadata: metadata.into(), chunk_id: chunk }
+        }
+    })
 }
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {

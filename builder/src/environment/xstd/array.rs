@@ -1,5 +1,5 @@
 use xelis_types::{Constant, Primitive, Type, ValueCell};
-use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType};
+use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, SysCallResult};
 use super::EnvironmentBuilder;
 use paste::paste;
 
@@ -25,7 +25,7 @@ macro_rules! array_number_with_size {
     };
 }
 
-pub fn register(env: &mut EnvironmentBuilder) {
+pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], len, 1, Some(Type::U32));
     env.register_native_function("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], push, 2, None);
     env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], remove, 5, Some(Type::T(Some(0))));
@@ -54,12 +54,12 @@ pub fn register(env: &mut EnvironmentBuilder) {
 }
 
 // native functions
-fn len(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let len = zelf?.as_vec()?.len();
-    Ok(Some(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn push<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let array =  zelf?.as_mut_vec()?;
     if array.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
@@ -76,10 +76,10 @@ fn push(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> Fn
 
     array.push(value.into());
 
-    Ok(None)
+    Ok(SysCallResult::None)
 }
 
-fn remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
     let array = zelf?.as_mut_vec()?;
@@ -90,19 +90,19 @@ fn remove(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
     // moving all elements after the index to the left is costly
     context.increase_gas_usage((array.len() as u64) * 5)?;
 
-    Ok(Some(array.remove(index)))
+    Ok(SysCallResult::Return(array.remove(index)))
 }
 
-fn pop(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn pop<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(Some(value))
+        Ok(SysCallResult::Return(value))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let range = param.as_ref()?;
     let (start, end) = range.as_range()?;
@@ -129,10 +129,10 @@ fn slice(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> F
         slice.push(value);
     }
 
-    Ok(Some(ValueCell::Object(slice)))
+    Ok(SysCallResult::Return(ValueCell::Object(slice)))
 }
 
-fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref()?;
     let vec = zelf?.as_vec()?;
@@ -140,38 +140,38 @@ fn contains(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(Some(Primitive::Boolean(vec.iter().find(|v| **v == *handle).is_some()).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| **v == *handle).is_some()).into()))
 }
 
-fn get(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(Some(value.clone()))
+        Ok(SysCallResult::Return(value.clone()))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn first(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn first<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(Some(value.clone()))
+        Ok(SysCallResult::Return(value.clone()))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn last(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType {
+fn last<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(Some(value.clone()))
+        Ok(SysCallResult::Return(value.clone()))
     } else {
-        Ok(Some(Primitive::Null.into()))
+        Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn extend(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType {
+fn extend<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let other = parameters.remove(0)
         .into_owned()?
         .to_vec()?;
@@ -185,10 +185,10 @@ fn extend(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> 
 
     vec.extend(other);
 
-    Ok(None)
+    Ok(SysCallResult::None)
 }
 
-fn concat(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+fn concat<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     context.increase_gas_usage(vec.len() as u64)?;
 
@@ -205,7 +205,7 @@ fn concat(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType 
         result.extend(v.iter().cloned());
     }
 
-    Ok(Some(ValueCell::Object(result)))
+    Ok(SysCallResult::Return(ValueCell::Object(result)))
 }
 
 fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
@@ -215,7 +215,7 @@ fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
     Ok(Constant::Array(values))
 }
 
-fn to_bytes(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType {
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let values = zelf?.as_vec()?;
     let len = values.len();
 
@@ -225,5 +225,5 @@ fn to_bytes(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTyp
         .map(|v| v.as_u8())
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(Some(ValueCell::Bytes(bytes)))
+    Ok(SysCallResult::Return(ValueCell::Bytes(bytes)))
 }
