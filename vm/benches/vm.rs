@@ -14,7 +14,7 @@ macro_rules! bench {
             let (module, env) = prepare(&code);
             let mut vm = VM::new(&env);
             b.iter(|| {
-                vm.append_module(&module).expect("module");
+                vm.append_module(&module, &()).expect("module");
                 vm.invoke_entry_chunk($id).expect("entry");
                 vm.run().expect("run");
                 vm.context_mut().reset_usage();

@@ -29,30 +29,53 @@ const CALL_STACK_SIZE: usize = 64;
 // This represents how many modules can be chained
 const MODULES_STACK_SIZE: usize = 8;
 
+// Module with provided metadata
+#[derive(Copy)]
+pub struct ModuleMetadata<'a, M> {
+    pub module: &'a Module,
+    pub metadata: &'a M
+}
+
+impl<'a, M> Clone for ModuleMetadata<'a, M> {
+    fn clone(&self) -> Self {
+        Self {
+            module: self.module,
+            metadata: self.metadata
+        }
+    }
+}
+
 // Backend of the VM
 // This is the immutable part of the VM
-pub struct Backend<'a: 'r, 'ty: 'a, 'r> {
+pub struct Backend<'a: 'r, 'ty: 'a, 'r, M> {
     // The instruction table of the VM
-    table: InstructionTable<'a, 'ty, 'r>,
+    table: InstructionTable<'a, 'ty, 'r, M>,
     // The module to execute
-    modules: Vec<&'a Module>,
+    modules: Vec<ModuleMetadata<'a, M>>,
     // The environment of the VM
     environment: &'a Environment<'ty>,
 }
 
-impl<'a, 'ty, 'r> Backend<'a, 'ty, 'r> {
+impl<'a, 'ty, 'r, M> Backend<'a, 'ty, 'r, M> {
     // Get a constant registered in the module using its id
     #[inline(always)]
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
         self.modules.last()
-            .and_then(|module| module.get_constant_at(id))
+            .and_then(|m| m.module.get_constant_at(id))
             .ok_or(VMError::ConstantNotFound)
+    }
+
+    // Get the current module with its associated metadata
+    #[inline(always)]
+    pub fn current(&self) -> Result<&ModuleMetadata<'a, M>, VMError> {
+        self.modules.last()
+            .ok_or(VMError::NoModule)
     }
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
-pub struct VM<'a: 'r, 'ty: 'a, 'r> {
-    backend: Backend<'a, 'ty, 'r>,
+pub struct VM<'a: 'r, 'ty: 'a, 'r, M> {
+    backend: Backend<'a, 'ty, 'r, M>,
     // The call stack of the VM
     // Every chunks to proceed are stored here
     // It is behind an Option so we know
@@ -71,7 +94,7 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r> {
     tail_call_optimization: bool
 }
 
-impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
+impl<'a: 'r, 'ty: 'a, 'r, M> VM<'a, 'ty, 'r, M> {
     // Create a new VM
     // Insert the environment as a reference in the context
     pub fn new(environment: &'a Environment<'ty>) -> Self {
@@ -82,7 +105,7 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
     }
 
     // Create a new VM with a given table and context
-    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty, 'r>, context: Context<'ty, 'r>) -> Self {
+    pub fn with(environment: &'a Environment<'ty>, table: InstructionTable<'a, 'ty, 'r, M>, context: Context<'ty, 'r>) -> Self {
         Self {
             backend: Backend {
                 table,
@@ -129,13 +152,13 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
 
     // Get the instruction table
     #[inline(always)]
-    pub fn table(&self) -> &InstructionTable<'a, 'ty, 'r> {
+    pub fn table(&self) -> &InstructionTable<'a, 'ty, 'r, M> {
         &self.backend.table
     }
 
     // Get a mutable reference to the instruction table
     #[inline(always)]
-    pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty, 'r> {
+    pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty, 'r, M> {
         &mut self.backend.table
     }
 
@@ -152,7 +175,7 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
         }
 
         let chunk = self.backend.modules.last()
-            .and_then(|module| module.get_chunk_at(id as usize))
+            .and_then(|m| m.module.get_chunk_at(id as usize))
             .ok_or(VMError::ChunkNotFound)?;
 
         let manager = ChunkManager::new(chunk);
@@ -165,7 +188,7 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
 
     // Append a new module to execute
     // Once added, you can invoke a chunk / entry / hook
-    pub fn append_module(&mut self, module: &'a Module) -> Result<(), VMError> {
+    pub fn append_module(&mut self, module: &'a Module, metadata: &'a M) -> Result<(), VMError> {
         if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
             return Err(VMError::ModulesStackOverflow)
         }
@@ -176,14 +199,14 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
             self.call_stack.push(None);
         }
 
-        self.backend.modules.push(module);
+        self.backend.modules.push(ModuleMetadata { module: module.into(), metadata: metadata.into() });
         Ok(())
     }
 
     // Invoke an entry chunk using its id
     // This will use the latest module added
     pub fn invoke_entry_chunk(&mut self, id: u16) -> Result<(), VMError> {
-        if !self.backend.modules.last().map_or(false, |m| m.is_entry_chunk(id as usize)) {
+        if !self.backend.modules.last().map_or(false, |m| m.module.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
         }
         self.invoke_chunk_id(id)
@@ -201,10 +224,10 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
     pub fn invoke_hook_id(&mut self, hook_id: u8) -> Result<bool, VMError> {
-        let module = self.backend.modules.last()
+        let m = self.backend.modules.last()
             .ok_or(VMError::NoModule)?;
 
-        match module.get_chunk_id_of_hook(hook_id) {
+        match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => self.invoke_chunk_id(id as _).map(|_| true),
             None => Ok(false)
         }
@@ -214,10 +237,10 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
     pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
-        let module = self.backend.modules.last()
+        let m = self.backend.modules.last()
             .ok_or(VMError::NoModule)?;
 
-        match module.get_chunk_id_of_hook(hook_id) {
+        match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
                 self.invoke_chunk_id(id as _)?;
                 self.stack.extend_stack(args.map(Into::into))?;
@@ -265,13 +288,13 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
     pub fn run(&mut self) -> Result<ValueCell, VMError> {
         // Freely copy the module has its a reference only
         // We go through every modules injected
-        'modules: while let Some(module) = self.backend.modules.last().copied() {
+        'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(Some(mut manager)) = self.call_stack.pop() {
                 while let Some(opcode) = manager.next_u8() {
                     match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut self.context) {
                         Ok(InstructionResult::Nothing) => {},
                         Ok(InstructionResult::InvokeChunk(id)) => {
-                            if module.is_entry_chunk(id as usize) {
+                            if m.module.is_entry_chunk(id as usize) {
                                 return Err(VMError::EntryChunkCalled);
                             }
 
@@ -281,11 +304,11 @@ impl<'a: 'r, 'ty: 'a, 'r> VM<'a, 'ty, 'r> {
                             // Jump to the next call stack
                             continue 'call_stack;
                         },
-                        Ok(InstructionResult::AppendModule(new_module, id)) => {
+                        Ok(InstructionResult::AppendModule(new_module, metadata, id)) => {
                             // Push back the current callstack
                             self.push_back_call_stack(manager)?;
 
-                            self.append_module(new_module)?;
+                            self.append_module(new_module, metadata)?;
                             self.invoke_chunk_id(id)?;
 
                             // Jump to the next module

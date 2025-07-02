@@ -19,7 +19,7 @@ fn run_internal<'a>(module: Module, environment: &'a Environment, id: u16) -> Re
 
     let mut vm = VM::new(environment);
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.append_module(&module).expect("module");
+    vm.append_module(&module, &()).expect("module");
     vm.invoke_chunk_id(id).expect("valid entry chunk");
     vm.run().map(|mut v| v.into_value().expect("primitive"))
 }
