@@ -150,6 +150,8 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
         .get(id as usize)
         .ok_or(VMError::UnknownSysCall(id))?;
 
+    context.increase_gas_usage(f.get_cost())?;
+
     let args = f.get_parameters().len();
     let mut arguments = VecDeque::with_capacity(args);
     for _ in 0..args {
@@ -161,8 +163,6 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
     } else {
         None
     };
-
-    context.increase_gas_usage(f.get_cost())?;
 
     // We need to find if we are using two times the same instance
 
@@ -205,6 +205,8 @@ fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &Native
                 let f = backend.environment.get_functions()
                     .get(id as usize)
                     .ok_or(VMError::UnknownSysCall(id))?;
+
+                context.increase_gas_usage(f.get_cost())?;
 
                 // TODO: could be better
                 // FIXME: prevent too many recursive
