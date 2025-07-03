@@ -119,10 +119,11 @@ pub fn array_call<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
 pub fn invoke_chunk<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = reader.read_u16()?;
     let args = reader.read_u8()? as usize;
-    internal_invoke_chunk(stack, id, args)
+    internal_invoke_chunk(stack, id, args, None)
 }
 
-pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize) -> Result<InstructionResult<'a, M>, VMError> {
+#[inline]
+pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize, from: Option<u16>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("invoke chunk: {}, args: {}", id, args);
 
     // We need to reverse the order of the arguments
@@ -135,7 +136,14 @@ pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize) -> 
     let slice = &mut stack.get_inner_mut()[len - args..len];
     slice.reverse();
 
-    Ok(InstructionResult::InvokeChunk(id))
+    Ok(if let Some(from) = from {
+        InstructionResult::InvokeDynamicChunk {
+            chunk_id: id as _,
+            from: from as _,
+        }
+    } else {
+        InstructionResult::InvokeChunk(id)
+    })
 }
 
 pub fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
@@ -230,12 +238,13 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
     let values = value.as_ref()?
         .as_vec()?;
 
-    if values.len() != 2 {
+    if values.len() != 3 {
         return Err(VMError::InvalidDynamicCall)
     }
 
     let id = values[0].as_u16()?;
     let syscall = values[1].as_bool()?;
+    let from = values[2].as_u16()?;
 
     let args = reader.read_u8()? as usize;
     debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
@@ -243,6 +252,6 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
     if syscall {
         internal_syscall(backend, id, stack, context)
     } else {
-        internal_invoke_chunk(stack, id, args)
+        internal_invoke_chunk(stack, id, args, Some(from))
     }
 }

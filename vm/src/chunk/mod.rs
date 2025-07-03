@@ -1,6 +1,6 @@
 mod reader;
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, mem};
 use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
 
@@ -14,6 +14,7 @@ const REGISTERS_SIZE: usize = u16::MAX as usize;
 // Manager for a chunk
 // It contains the reader and the stacks
 pub struct ChunkManager {
+    registers_origin: Option<usize>,
     // Registers are temporary and "scoped" per chunk
     registers: Vec<StackValue>,
     // Iterators stack
@@ -30,17 +31,30 @@ impl ChunkManager {
     // and initialize the stack and registers
     #[inline]
     pub fn new(chunk_id: usize) -> Self {
+        Self::with(chunk_id, None, Vec::new())
+    }
+
+    #[inline]
+    pub fn with(chunk_id: usize, registers_origin: Option<usize>, registers: Vec<StackValue>) -> Self {
         Self {
-            registers: Vec::new(),
-            iterators: Vec::new(),
+            registers_origin,
             chunk_id,
+            registers,
+            iterators: Vec::new(),
             ip: 0,
         }
     }
 
+    // For which chunk id is it currently configured
     #[inline(always)]
     pub fn chunk_id(&self) -> usize {
         self.chunk_id
+    }
+
+    // Retrieve the registers origin chunk id
+    #[inline(always)]
+    pub fn registers_origin(&self) -> Option<usize> {
+        self.registers_origin
     }
 
     #[inline(always)]
@@ -146,5 +160,12 @@ impl ChunkManager {
     #[inline]
     pub fn registers_len(&mut self) -> usize {
         self.registers.len()
+    }
+
+    // Swap the register with another ChunkManager to allow
+    // access from one to another
+    #[inline]
+    pub fn swap_registers(&mut self, other: &mut Self) {
+        mem::swap(&mut self.registers, &mut other.registers);
     }
 }

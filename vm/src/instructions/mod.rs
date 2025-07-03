@@ -42,6 +42,10 @@ pub enum InstructionResult<'a, M> {
     Nothing,
     Break,
     InvokeChunk(u16),
+    InvokeDynamicChunk {
+        chunk_id: usize,
+        from: usize,
+    },
     AppendModule {
         module: Reference<'a, Module>,
         metadata: Reference<'a, M>,
