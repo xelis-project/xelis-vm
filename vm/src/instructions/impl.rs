@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use xelis_environment::{NativeFunction, SysCallResult};
 use xelis_types::{StackValue, ValueCell};
 
-use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, Context, VMError};
+use crate::{debug, stack::Stack, Backend, ChunkContext, ChunkManager, ChunkReader, Context, VMError};
 use super::InstructionResult;
 
 pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
@@ -254,4 +254,9 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
     } else {
         internal_invoke_chunk(stack, id, args, Some(from))
     }
+}
+
+pub fn capture_context<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    manager.set_context(ChunkContext::ShouldKeep);
+    Ok(InstructionResult::Nothing)
 }

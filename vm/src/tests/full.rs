@@ -1833,6 +1833,82 @@ fn test_function_pointer() {
 }
 
 #[test]
+fn test_function_pointer_with_local_context() {
+    let code = r#"
+        struct Foo {
+            value: u64
+        }
+
+        fn foo(value: u64) -> Foo {
+            return Foo {
+                value
+            }
+        }
+
+        fn abc() -> fn() -> Foo {
+            let a: u64 = 10
+            return || {
+                return foo(a)
+            }
+        }
+
+        fn bar(f: fn() -> Foo) -> u64 {
+            return f().value
+        }
+
+        entry main() {
+            return bar(abc())
+        }
+    "#;
+
+    // It should borrow the "abc" function chunk manager
+    // until the dynamic call has been executed
+    // set to 4 because our closure create a function
+    assert_eq!(run_code_id(code, 4), Primitive::U64(10));
+}
+
+#[test]
+fn test_function_pointer_with_multiple_returns() {
+    let code = r#"
+        fn foo(value: u64) {
+            println("foo " + value)
+            let b: u64 = value * 2;
+            assert(b == 20);
+        }
+
+        fn abc() -> fn() {
+            println("abc")
+            let a: u64 = 10
+            return || {
+                println("closure")
+                foo(a)
+            }
+        }
+
+        fn abc2() -> fn() {
+            println("abc2")
+            return abc()
+        }
+
+        fn bar(f: fn()) {
+            println("bar")
+            f()
+        }
+
+        entry main() {
+            println("main")
+            bar(abc2())
+            return 0
+        }
+    "#;
+
+    // It should borrow the "abc" function chunk manager
+    // until the dynamic call has been executed
+    // set to 4 because our closure create a function
+    assert_eq!(run_code_id(code, 5), Primitive::U64(0));
+}
+
+#[test]
 fn test_closure() {
     let code = r#"
         fn bar(f: fn() -> u64) -> u64 {

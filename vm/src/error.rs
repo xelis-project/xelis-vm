@@ -78,6 +78,8 @@ pub enum VMError {
     StackOverflow,
     #[error("call stack overflow")]
     CallStackOverflow,
+    #[error("call stack underflow")]
+    CallStackUnderflow,
     #[error("modules stack overflow")]
     ModulesStackOverflow,
     #[error("unexpected type")]

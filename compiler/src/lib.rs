@@ -314,7 +314,7 @@ impl<'a, M> Compiler<'a, M> {
             Expression::ForceType(expr, _) => {
                 self.compile_expr(chunk, chunk_id, expr)?;
             },
-            Expression::FunctionPointer(mut id) => {
+            Expression::FunctionPointer(mut id, closure) => {
                 // Compile the fn pointer id as a stack value
                 // In order to be future-proof
                 // we also add a bool bit to tell if its an id for syscall
@@ -329,6 +329,10 @@ impl<'a, M> Compiler<'a, M> {
                 let id = Primitive::U16(id).into();
                 let syscall = Primitive::Boolean(is_syscall).into();
                 let from = Primitive::U16(chunk_id).into();
+
+                if *closure {
+                    chunk.emit_opcode(OpCode::CaptureContext);
+                }
 
                 self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Array(vec![id, syscall, from])))?;
             },

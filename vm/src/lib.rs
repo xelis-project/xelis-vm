@@ -59,11 +59,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
     }
 }
 
+#[derive(Debug)]
 enum CallStack {
     // When we should move to the next module
     SwitchModule,
     // When we have a new chunk manager in the queue
     Chunk(ChunkManager),
+    // only kept has an alive context
+    Context(ChunkManager),
 }
 
 // Virtual Machine to execute the bytecode from chunks of a Module.
@@ -245,6 +248,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     }
 
     // Push a value to the stack
+    #[inline(always)]
     pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         self.stack.push_stack(value.into())
     }
@@ -257,42 +261,45 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         // we have another instruction and that its not a OpCode::Return
         // push current frame back to our call_stack
         // Otherwise, clean pointers for safety reasons
-        if !self.tail_call_optimization || reader.has_next_instruction() {
+        if !self.tail_call_optimization || reader.has_next_instruction() || matches!(manager.context(), ChunkContext::ShouldKeep) {
             // Store the current index in the manager
             // so we can store from it again
             manager.set_ip(reader.index());
+            manager.set_context(ChunkContext::Pending);
             // add back our call stack as we need it
             self.call_stack.push(CallStack::Chunk(manager));
 
             Ok(())
         } else {
-            self.on_call_stack_end(manager)
+            self.on_call_stack_end(&mut manager)
         }
     }
 
     // Called at the end of a call stack
     #[inline]
-    fn on_call_stack_end(&mut self, mut manager: ChunkManager) -> Result<(), VMError> {
+    fn on_call_stack_end(&mut self, manager: &mut ChunkManager) -> Result<(), VMError> {
         // call stack has been fully consummed
         // don't push it back but clean pointers
         self.call_stack_size -= 1;
         if let Some(origin) = manager.registers_origin() {
             // Swap back our registers
-            let previous = self.find_manager_with_chunk_id(origin)?;
-            previous.swap_registers(&mut manager);
+            let previous = self.find_manager_with_chunk_id(origin)
+                .ok_or(VMError::ChunkManagerNotFound(origin))?;
+            previous.swap_registers(manager);
         }
 
         self.stack.checkpoint_clean()
     }
 
-    fn find_manager_with_chunk_id(&mut self, chunk_id: usize) -> Result<&mut ChunkManager, VMError> {
+    // Find the chunk manager for the requested chunk id
+    #[inline]
+    fn find_manager_with_chunk_id(&mut self, chunk_id: usize) -> Option<&mut ChunkManager> {
         self.call_stack.iter_mut()
             .filter_map(|call_stack| match call_stack {
-                CallStack::Chunk(chunk) if chunk.chunk_id() == chunk_id => Some(chunk),
+                CallStack::Chunk(chunk) | CallStack::Context(chunk) if chunk.chunk_id() == chunk_id => Some(chunk),
                 _ => None,
             })
             .next()
-            .ok_or(VMError::ChunkManagerNotFound(chunk_id))
     }
 
     // Run the VM
@@ -305,6 +312,21 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             'call_stack: while let Some(call_stack) = self.call_stack.pop() {
                 match call_stack {
                     CallStack::SwitchModule => break 'call_stack,
+                    CallStack::Context(manager) => {
+                        if matches!(manager.context(), ChunkContext::Pending) {
+                            // If our previous call stack isn't a chunk, return an error
+                            if self.call_stack.last().map_or(true, |v| !matches!(v, CallStack::Chunk(_))) {
+                                return Err(VMError::CallStackUnderflow)
+                            }
+
+                            // re-inject it to the previous one over and over until its finally used
+                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
+                        } else {
+                            self.call_stack_size -= 1;
+                        }
+
+                        continue 'call_stack;
+                    },
                     CallStack::Chunk(mut manager) => {
                         // Retrieve the required chunk
                         let chunk = m.module.get_chunk_at(manager.chunk_id())
@@ -312,7 +334,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                         // Create the chunk reader for it
                         let mut reader = ChunkReader::new(chunk, manager.ip());
-                        while let Some(opcode) = reader.next_u8() {
+                        'opcodes: while let Some(opcode) = reader.next_u8() {
                             match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut reader, &mut self.context) {
                                 Ok(InstructionResult::Nothing) => {},
                                 Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
@@ -322,12 +344,17 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                                     let mut new = ChunkManager::with(
                                         chunk_id,
-                                        Some(from),
+                                        None,
                                         Vec::new()
                                     );
 
-                                    let previous = self.find_manager_with_chunk_id(from)?;
-                                    new.swap_registers(previous);
+                                    if let Some(previous) = self.find_manager_with_chunk_id(from) {
+                                        new.swap_registers(previous);
+                                        previous.set_context(ChunkContext::Used);
+                                    } else {
+                                        trace!("No chunk manager found for origin {}, skipping it", from);
+                                        new.set_registers_origin(None);
+                                    }
 
                                     self.push_back_call_stack(manager, reader)?;
 
@@ -368,7 +395,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     continue 'modules;
                                 },
                                 Ok(InstructionResult::Break) => {
-                                    break;
+                                    break 'opcodes;
                                 },
                                 Err(e) => {
                                     trace!("Error: {:?}", e);
@@ -381,11 +408,19 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             }
                         }
 
-                        self.on_call_stack_end(manager)?;
+                        self.on_call_stack_end(&mut manager)?;
+
+                        if matches!(manager.context(), ChunkContext::ShouldKeep) && self.call_stack_size != 0 {
+                            manager.set_context(ChunkContext::Pending);
+                            // we must keep it, only clean the stack
+                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
+
+                            // We keep it to prevent any DoS using closures
+                            self.call_stack_size += 1;
+                        }
                     }
                 };
             }
-
 
             // Pop the module because we fully executed it
             // This allow the VM to be fully reusable

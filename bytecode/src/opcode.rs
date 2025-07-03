@@ -157,6 +157,9 @@ pub enum OpCode {
     // Similar to invoke chunk / syscall
     // chunk id is taken from stack
     DynamicCall,
+    // Capture the context when a closure
+    // has been returned from a chunk
+    CaptureContext,
 }
 
 impl OpCode {
@@ -252,6 +255,8 @@ impl OpCode {
             61 => OpCode::Flatten,
             62 => OpCode::Match,
             63 => OpCode::DynamicCall,
+            64 => OpCode::CaptureContext,
+
             _ => return None,
         })
     }

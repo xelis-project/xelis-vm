@@ -11,9 +11,24 @@ pub use reader::ChunkReader;
 // u16::MAX registers maximum
 const REGISTERS_SIZE: usize = u16::MAX as usize;
 
+#[derive(Clone, Copy, Debug)]
+pub enum ChunkContext {
+    // Nothing to do
+    None,
+    // Must be kept in the callstack
+    ShouldKeep,
+    // Pending in the callstack, unused
+    Pending,
+    // has been used, can be removed from
+    // the callstack
+    Used,
+}
+
 // Manager for a chunk
 // It contains the reader and the stacks
+#[derive(Debug)]
 pub struct ChunkManager {
+    // Chunk id from which we took the registers
     registers_origin: Option<usize>,
     // Registers are temporary and "scoped" per chunk
     registers: Vec<StackValue>,
@@ -23,18 +38,21 @@ pub struct ChunkManager {
     chunk_id: usize,
     // current index in the chunk
     ip: usize,
+    // should we keep it despite the end of it?
+    context: ChunkContext,
 }
 
 impl ChunkManager {
     // Create a new chunk manager
     // It will create a reader from the chunk
     // and initialize the stack and registers
-    #[inline]
+    #[inline(always)]
     pub fn new(chunk_id: usize) -> Self {
         Self::with(chunk_id, None, Vec::new())
     }
 
-    #[inline]
+    // Create a new chunk manager with a registers origin and a registers list
+    #[inline(always)]
     pub fn with(chunk_id: usize, registers_origin: Option<usize>, registers: Vec<StackValue>) -> Self {
         Self {
             registers_origin,
@@ -42,6 +60,7 @@ impl ChunkManager {
             registers,
             iterators: Vec::new(),
             ip: 0,
+            context: ChunkContext::None,
         }
     }
 
@@ -58,6 +77,16 @@ impl ChunkManager {
     }
 
     #[inline(always)]
+    pub fn set_context(&mut self, value: ChunkContext) {
+        self.context = value;
+    }
+
+    #[inline(always)]
+    pub fn context(&self) -> ChunkContext {
+        self.context
+    }
+
+    #[inline(always)]
     pub fn set_ip(&mut self, ip: usize) {
         self.ip = ip;
     }
@@ -68,26 +97,29 @@ impl ChunkManager {
     }
 
     // Get the registers
-    #[inline]
+    #[inline(always)]
     pub fn get_registers(&self) -> &Vec<StackValue> {
         &self.registers
     }
 
     // Add an iterator to the stack
+    #[inline(always)]
     pub fn add_iterator(&mut self, iterator: ValueIterator) {
         self.iterators.push(iterator);
     }
 
     // Pop an iterator from the stack
+    #[inline(always)]
     pub fn pop_iterator(&mut self) -> Result<ValueIterator, VMError> {
         self.iterators.pop().ok_or(VMError::EmptyIterator)
     }
 
     // Get the next value from the iterators stack
+    #[inline(always)]
     pub fn next_iterator(&mut self) -> Result<Option<StackValue>, VMError> {
-        Ok(self.iterators.last_mut()
-            .ok_or(VMError::EmptyIterator)?
-            .next()?)
+        self.iterators.last_mut()
+            .ok_or(VMError::EmptyIterator)
+            .and_then(|v| v.next().map_err(VMError::from))
     }
 
     // Push/set a new value into the registers
@@ -136,13 +168,13 @@ impl ChunkManager {
     }
 
     // Get a value from the registers
-    #[inline]
+    #[inline(always)]
     pub fn from_register(&mut self, index: usize) -> Result<&mut StackValue, VMError> {
         self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
     }
 
     // Pop a value from the registers
-    #[inline]
+    #[inline(always)]
     pub fn pop_register(&mut self) -> Result<StackValue, VMError> {
         self.registers.pop().ok_or(VMError::EmptyRegister)
     }
@@ -157,9 +189,14 @@ impl ChunkManager {
     }
 
     // Make owned the stack value at the registers index
-    #[inline]
+    #[inline(always)]
     pub fn registers_len(&mut self) -> usize {
         self.registers.len()
+    }
+
+    #[inline(always)]
+    pub fn set_registers_origin(&mut self, origin: Option<usize>) {
+        self.registers_origin = origin;
     }
 
     // Swap the register with another ChunkManager to allow

@@ -528,7 +528,7 @@ impl<'a, M> Parser<'a, M> {
                 },
                 None => Cow::Borrowed(context.get_type_of_variable(var_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedMappedVariableId(*var_name)))?),
             },
-            Expression::FunctionPointer(id) => {
+            Expression::FunctionPointer(id, _) => {
                 let f = self.get_function(*id)?;
                 let ty = f.as_type()
                     .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
@@ -920,7 +920,7 @@ impl<'a, M> Parser<'a, M> {
         } else if let Ok(id) = self.global_mapper.functions().get_by_signature(constant_name, Some(&_type)) {
             // Read a function pointer
             // Like Foo::bar
-            Ok(Expression::FunctionPointer(id))
+            Ok(Expression::FunctionPointer(id, false))
         } else if let Type::Enum(enum_type) = _type {
             self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
@@ -974,7 +974,7 @@ impl<'a, M> Parser<'a, M> {
             .register_closure()
             .map_err(|e| err!(self, e.into()))?;
 
-        Ok(Expression::FunctionPointer(id))
+        Ok(Expression::FunctionPointer(id, true))
     }
 
     // Execute the selected operator
@@ -1416,7 +1416,7 @@ impl<'a, M> Parser<'a, M> {
                                             .get_by_signature(id, f.on_type())
                                             .map_err(|e| err!(self, e.into()))?;
 
-                                        Expression::FunctionPointer(id)
+                                        Expression::FunctionPointer(id, false)
                                     },
                                     // mostly an access to a struct field
                                     Type::Struct(_type) => {
@@ -1441,7 +1441,7 @@ impl<'a, M> Parser<'a, M> {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
                                     } else if let Ok(id) = self.global_mapper.functions()
                                         .get_by_signature(id, on_type) {
-                                        Expression::FunctionPointer(id)
+                                        Expression::FunctionPointer(id, false)
                                     } else {
                                         return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
                                     }

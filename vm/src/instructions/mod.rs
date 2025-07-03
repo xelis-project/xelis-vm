@@ -151,7 +151,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         instructions[OpCode::Dec.as_usize()] = (decrement, 1);
         instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
         instructions[OpCode::Match.as_usize()] = (match_, 2);
-        instructions[OpCode::DynamicCall.as_usize()] = (dynamic_call, 5);
+        instructions[OpCode::DynamicCall.as_usize()] = (dynamic_call, 8);
+        instructions[OpCode::CaptureContext.as_usize()] = (capture_context, 5);
 
         Self { instructions }
     }
