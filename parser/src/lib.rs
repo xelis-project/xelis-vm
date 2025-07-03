@@ -534,7 +534,7 @@ impl<'a, M> Parser<'a, M> {
                     .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
                 Cow::Owned(Type::Function(ty))
             },
-            Expression::DynamicCall(id, _) => match context.get_type_of_variable(id) {
+            Expression::DynamicCall(id, _, _) => match context.get_type_of_variable(id) {
                 Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
                 _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
             },
@@ -702,7 +702,7 @@ impl<'a, M> Parser<'a, M> {
                     return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                 }
 
-                return Ok(Expression::DynamicCall(id, parameters))
+                return Ok(Expression::DynamicCall(id, parameters, ty.return_type().is_some()))
             }
         }
 
@@ -940,6 +940,7 @@ impl<'a, M> Parser<'a, M> {
 
         let current = context.max_variables_count();
         context.begin_scope();
+
         // Register the closure params
         let mut new_params = Vec::with_capacity(params.len());
         for (name, param_type) in params {

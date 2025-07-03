@@ -336,14 +336,19 @@ impl<'a, M> Compiler<'a, M> {
 
                 self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Array(vec![id, syscall, from])))?;
             },
-            Expression::DynamicCall(id, params) => {
+            Expression::DynamicCall(id, params, return_value) => {
                 for param in params {
                     self.compile_expr(chunk, chunk_id, param)?;
                 }
 
                 // Load the variable that is storing the current closure id
                 self.compile_expr(chunk, chunk_id, &Expression::Variable(*id))?;
-                self.decrease_values_on_stack_by(params.len())?;
+                // + 1 for the variable being loaded
+                self.decrease_values_on_stack_by(params.len() + 1)?;
+
+                if *return_value {
+                    self.add_value_on_stack(chunk.last_index())?;
+                }
 
                 chunk.emit_opcode(OpCode::DynamicCall);
                 chunk.write_u8(params.len() as _);
@@ -526,6 +531,7 @@ impl<'a, M> Compiler<'a, M> {
 
                 // Reverse it, otherwise it will be shifted
                 for index in on_stack.into_iter().take(dangling).rev() {
+                    trace!("inject OpCode Pop at {}", index + 1);
                     chunk.inject_opcode_at(OpCode::Pop, index + 1);
                 }
             }
