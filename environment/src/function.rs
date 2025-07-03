@@ -12,7 +12,7 @@ pub enum SysCallResult<M> {
     DynamicCall {
         // Should contains Vec<u16, bool>
         ptr: ValueCell,
-        params: Vec<ValueCell>
+        params: FnParams
     },
     // NOTE: due to the invariant lifetime issue
     // we don't provide any reference

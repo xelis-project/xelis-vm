@@ -4,6 +4,8 @@ use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("instance callback")]
+    InstanceCallback,
     #[error("invalid dynamic call")]
     InvalidDynamicCall,
     #[error("no stack checkpoint")]

@@ -1866,6 +1866,24 @@ fn test_closure() {
 }
 
 #[test]
+fn test_closure_with_external_context() {
+    let code = r#"
+        fn bar(f: fn() -> u64) -> u64 {
+            return f() / 2
+        }
+
+        entry main() {
+            let a: u64 = 50;
+            return bar(|| {
+                return a * 10
+            })
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(250));
+}
+
+#[test]
 fn test_function_assign() {
     let code = r#"
         fn foo() -> u64 {

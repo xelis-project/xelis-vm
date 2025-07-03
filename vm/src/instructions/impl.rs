@@ -206,12 +206,14 @@ fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &Native
                     .get(id as usize)
                     .ok_or(VMError::UnknownSysCall(id))?;
 
+                if f.is_on_instance() {
+                    return Err(VMError::InstanceCallback)
+                }
+
                 context.increase_gas_usage(f.get_cost())?;
 
-                // TODO: could be better
                 // FIXME: prevent too many recursive
-                let parameters = params.into_iter().map(Into::into).collect();
-                perform_syscall(backend, f, None, parameters, stack, context)?
+                perform_syscall(backend, f, None, params, stack, context)?
             } else {
                 stack.extend_stack(params.into_iter().map(Into::into))?;
                 InstructionResult::InvokeChunk(id)
