@@ -523,6 +523,21 @@ mod tests {
     }
 
     #[test]
+    fn test_mapping_generic_range() {
+        let expected = Type::Range(Box::new(Type::U32));
+        let got = Type::Range(Box::new(Type::U32))
+            .map_generic_type(Some(&Type::Range(Box::new(Type::U64))));
+
+        assert!(expected == got);
+
+        let expected = Type::Range(Box::new(Type::U32));
+        let got = Type::Range(Box::new(Type::U32))
+            .map_generic_type(Some(&Type::Array(Box::new(Type::U64))));
+
+        assert!(expected == got);
+    }
+
+    #[test]
     fn test_type_id_equivalent() {
         let id = TypeId(1);
         let struct_type = StructType::new(1, "Foo", vec![]);

@@ -1467,7 +1467,7 @@ impl<'a, M> Parser<'a, M> {
                             Literal::U64(n) => Primitive::U64(n),
                             Literal::U128(n) => Primitive::U128(n),
                             Literal::U256(n) => Primitive::U256(n),
-                            Literal::Number(n) => match expected_type {
+                            Literal::Number(n) => match expected_type.map(Type::get_inner_type) {
                                 Some(Type::U8) => Primitive::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
                                 Some(Type::U16) => Primitive::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
                                 Some(Type::U32) => Primitive::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
