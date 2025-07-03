@@ -1,4 +1,4 @@
-use xelis_types::{Type, Primitive, ValueError};
+use xelis_types::{FnType, Primitive, Type, ValueError};
 use xelis_environment::{
     Context,
     EnvironmentError,
@@ -10,11 +10,15 @@ use xelis_environment::{
 use super::EnvironmentBuilder;
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
+    // callback function
+    let f = FnType::new(None, false, vec![], Some(Type::T(Some(0))));
+
     env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], is_none, 1, Some(Type::Bool));
     env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], is_some, 1, Some(Type::Bool));
     env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], unwrap, 1, Some(Type::T(Some(0))));
     env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], unwrap_or, 1, Some(Type::T(Some(0))));
-    env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("msg", Type::String)], expect, 15, Some(Type::T(Some(0))));
+    env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("msg", Type::String)], expect, 1, Some(Type::T(Some(0))));
+    env.register_native_function("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::Function(f))], unwrap_or_else, 2, Some(Type::T(Some(0))));
 }
 
 fn is_none<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
@@ -36,6 +40,18 @@ fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
     match optional {
         Some(value) => Ok(SysCallResult::Return(value)),
         None => Ok(SysCallResult::Return(default.into_owned()?))
+    }
+}
+
+fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+    let default = parameters.remove(0);
+    let optional = zelf?.take_as_optional()?;
+    match optional {
+        Some(value) => Ok(SysCallResult::Return(value)),
+        None => Ok(SysCallResult::DynamicCall {
+            ptr: default.into_owned()?,
+            params: Vec::new()
+        })
     }
 }
 

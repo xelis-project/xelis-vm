@@ -686,11 +686,10 @@ impl<'a, M> Parser<'a, M> {
         trace!("read function call {} on type {:?}", name, on_type);
 
         let types = self.global_mapper.functions()
-            .get_by_signature(name, on_type)
-            .ok()
-            .and_then(|v| self.global_mapper.functions().get_function(&v))
-            .map(|f| f.parameters.iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>());
+            .get_by_compatible_signature(name, on_type, instance)
+            .map(|f| f.parameters.iter().map(|(_, ty)| ty.map_generic_type(on_type)).collect::<Vec<_>>());
 
+        trace!("expected params: {:?}", types);
         let (mut parameters, types) = self.read_function_params(context, types)?;
 
         if on_type.is_none() && path.is_none() {
@@ -1617,7 +1616,7 @@ impl<'a, M> Parser<'a, M> {
                     self.read_map_constructor(key, value, context)?
                 },
                 token => {
-                    trace!("{:?}", token);
+                    trace!("no specific case for {:?}, expected type: {:?}", token, expected_type);
                     if token.is_type() {
                         self.read_type_constant(token, context)?
                     } else if let Some(Type::Function(ty)) = expected_type {

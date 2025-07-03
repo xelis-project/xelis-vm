@@ -202,12 +202,13 @@ fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &Native
         SysCallResult::DynamicCall { ptr, params } => {
             let values = ptr.as_vec()?;
 
-            if values.len() != 2 {
+            if values.len() != 3 {
                 return Err(VMError::InvalidDynamicCall)
             }
-            
+
             let id = values[0].as_u16()?;
             let syscall = values[1].as_bool()?;
+            let from = values[2].as_u16()?;
 
             if syscall {
                 let f = backend.environment.get_functions()
@@ -224,7 +225,10 @@ fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &Native
                 perform_syscall(backend, f, None, params, stack, context)?
             } else {
                 stack.extend_stack(params.into_iter().map(Into::into))?;
-                InstructionResult::InvokeChunk(id)
+                InstructionResult::InvokeDynamicChunk {
+                    chunk_id: id as _,
+                    from: from as _,
+                }
             }
         },
         SysCallResult::ModuleCall { module, metadata, chunk } => {

@@ -22,6 +22,15 @@ impl FnType {
         }
     }
 
+    pub fn map_generic_type(&self, ty: Option<&Type>) -> Self {
+        Self {
+            on_type: self.on_type.as_ref().map(|t| Box::new(t.map_generic_type(ty))),
+            on_instance: self.on_instance,
+            parameters: self.parameters.iter().map(|t| t.map_generic_type(ty)).collect(),
+            return_type: self.return_type.as_ref().map(|t| Box::new(t.map_generic_type(ty))),
+        }
+    }
+
     pub fn on_type(&self) -> Option<&Type> {
         self.on_type.as_deref()
     }

@@ -1979,3 +1979,17 @@ fn test_function_assign() {
 
     assert_eq!(run_code_id(code, 2), Primitive::U64(10));
 }
+
+#[test]
+fn test_callback_from_syscall() {
+    let code = r#"
+        entry main() {
+            let a: optional<u64> = null;
+            return a.unwrap_or_else(|| {
+                return 10
+            })
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+}

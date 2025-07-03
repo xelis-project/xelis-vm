@@ -198,6 +198,22 @@ impl Type {
         }
     }
 
+    pub fn map_generic_type(&self, replacement: Option<&Type>) -> Self {
+        match self {
+            Type::T(Some(id)) => replacement.and_then(|ty| ty.get_generic_type(*id).cloned()).unwrap_or_else(|| self.clone()),
+            Type::Optional(inner) => Type::Optional(Box::new(inner.map_generic_type(replacement))),
+            Type::Array(inner) => Type::Array(Box::new(inner.map_generic_type(replacement))),
+            Type::Range(inner) => Type::Range(Box::new(inner.map_generic_type(replacement))),
+            Type::Map(k, v) => Type::Map(
+                Box::new(k.map_generic_type(replacement)),
+                Box::new(v.map_generic_type(replacement)),
+            ),
+            Type::Tuples(types) => Type::Tuples(types.iter().map(|t| t.map_generic_type(replacement)).collect()),
+            Type::Function(f) => Type::Function(f.map_generic_type(replacement)),
+            _ => self.clone(),
+        }
+    }
+
     // check if the type contains a sub type
     pub fn contains_sub_type(&self) -> bool {
         match self {
@@ -251,6 +267,14 @@ impl Type {
             },
             Self::Map(k, v) => match other {
                 Self::Map(k2, v2) => k.is_assign_compatible_with(k2) && v.is_assign_compatible_with(v2),
+                _ => self.is_compatible_with(other)
+            }
+            Self::Function(f) => match other {
+                Self::Function(f2) if f2.return_type().is_some() && f.return_type().is_some() => f.return_type()
+                    .expect("f type")
+                    .is_assign_compatible_with(
+                        f2.return_type().expect("f2 type")
+                    ),
                 _ => self.is_compatible_with(other)
             }
             _ => other.is_compatible_with(self)
@@ -487,6 +511,15 @@ mod tests {
 
         let struct_type = StructType::new(0, "Foo", Vec::new());
         assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_assign_compatible_with(&Type::Struct(struct_type.clone())));
+    }
+
+    #[test]
+    fn test_mapping_generic_map() {
+        let expected = Type::Map(Box::new(Type::U64), Box::new(Type::String));
+        let got = Type::Map(Box::new(Type::T(Some(0))), Box::new(Type::T(Some(1))))
+            .map_generic_type(Some(&expected));
+
+        assert!(expected == got);
     }
 
     #[test]

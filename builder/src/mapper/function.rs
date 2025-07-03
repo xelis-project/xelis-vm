@@ -108,6 +108,46 @@ impl<'a> FunctionMapper<'a> {
         self.mapper.get(&Signature::new(SignatureId::Function(Cow::Borrowed(name)), on_type.map(Cow::Borrowed)))
     }
 
+    // This look for the exact signature and for a signature on type T(0)
+    pub fn get_by_compatible_signature(&self, name: &str, on_type: Option<&Type>, instance: bool) -> Option<&Function> {
+        if let Ok(id) = self.get_by_signature(name, on_type) {
+            return self.get_function(&id)
+        }
+
+        let signature_id = SignatureId::Function(Cow::Borrowed(name));
+        // Lets find a compatible signature
+        for (signature, id) in self.mapper.mappings.iter()
+            .filter(|(s, _)|
+                *s.get_id() == signature_id
+            ) {
+            trace!("checking {:?}", signature);
+            let is_on_type = match (signature.get_on_type(), on_type) {
+                (Some(s), Some(k)) => s.is_compatible_with(k),
+                (None, None) => true,
+                _ => false
+            };
+
+            if !is_on_type {
+                continue;
+            }
+
+            let function = self.get_function(id)?;
+
+            if function.require_instance != instance {
+                trace!("invalid instance");
+                continue;
+            }
+
+            return Some(function)
+        }
+
+        if let Some(parent) = self.parent {
+            return parent.get_by_compatible_signature(name, on_type, instance);
+        }
+
+        None
+    }
+
     pub fn has_compatible_params<'b>(
         &'b self,
         on_type: Option<&Type>,
@@ -151,7 +191,7 @@ impl<'a> FunctionMapper<'a> {
                             trace!("inner {} is not compatible with {}", inner, b);
                             return false;
                         }
-                    } else {
+                    } else if a.map_generic_type(on_type) != *b {
                         trace!("not optional, invalid");
                         return false;
                     }
