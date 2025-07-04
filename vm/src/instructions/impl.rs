@@ -3,7 +3,16 @@ use std::collections::VecDeque;
 use xelis_environment::{NativeFunction, SysCallResult};
 use xelis_types::{StackValue, ValueCell};
 
-use crate::{debug, stack::Stack, Backend, ChunkContext, ChunkManager, ChunkReader, Context, VMError};
+use crate::{
+    debug,
+    stack::Stack,
+    Backend,
+    ChunkContext,
+    ChunkManager,
+    ChunkReader,
+    Context,
+    VMError
+};
 use super::InstructionResult;
 
 pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
@@ -19,12 +28,17 @@ pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack
     Ok(InstructionResult::Nothing)
 }
 
-pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = reader.read_u8()?;
     debug!("subload at {}", index);
 
     let path = stack.pop_stack()?;
     let sub = path.get_at_index(index as usize)?;
+
+    let memory_usage = sub.as_ref()?
+        .calculate_memory_usage(context.memory_left())?;
+    context.increase_memory_usage_unchecked(memory_usage)?;
+
     stack.push_stack_unchecked(sub);
 
     Ok(InstructionResult::Nothing)
@@ -58,11 +72,14 @@ pub fn copy_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
     Ok(InstructionResult::Nothing)
 }
 
-pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("to_owned");
 
     let value = stack.last_mut_stack()?;
-    value.make_owned()?;
+    if value.make_owned()? {
+        let memory = value.as_ref()?.calculate_memory_usage(context.memory_left())?;
+        context.increase_memory_usage_unchecked(memory)?;
+    }
 
     Ok(InstructionResult::Nothing)
 }
@@ -75,7 +92,7 @@ pub fn pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
 }
 
 pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
-        let n = reader.read_u8()?;
+    let n = reader.read_u8()?;
     debug!("pop n {}", n);
 
     stack.pop_stack_n(n)?;

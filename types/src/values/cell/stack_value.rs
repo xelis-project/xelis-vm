@@ -102,6 +102,7 @@ impl StackValue {
     }
 
     // Get an owned variant from it
+    #[inline(always)]
     pub fn to_owned(&self) -> Result<Self, ValueError> {
         Ok(Self::Owned(self.as_ref()?.clone()))
     }
@@ -151,16 +152,18 @@ impl StackValue {
 
     // Transform the StackValue into an Owned variant if its a pointer
     // Do nothing if its a Owned variant already
-    pub fn make_owned(&mut self) -> Result<(), ValueError> {
+    pub fn make_owned(&mut self) -> Result<bool, ValueError> {
         if let Self::Pointer { ptr, .. } = self {
             unsafe {
                 let cell = ptr.as_ref()
                     .ok_or(ValueError::InvalidPointer)?;
                 *self = cell.clone().into();
             }
-        }
 
-        Ok(())
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     // Get a reference to the value
