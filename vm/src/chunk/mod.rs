@@ -10,6 +10,7 @@ pub use reader::ChunkReader;
 
 // u16::MAX registers maximum
 const REGISTERS_SIZE: usize = u16::MAX as usize;
+const ITERATORS_SIZE: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ChunkContext {
@@ -104,8 +105,14 @@ impl ChunkManager {
 
     // Add an iterator to the stack
     #[inline(always)]
-    pub fn add_iterator(&mut self, iterator: ValueIterator) {
+    pub fn add_iterator(&mut self, iterator: ValueIterator) -> Result<(), VMError> {
+        if self.iterators.len() >= ITERATORS_SIZE {
+            return Err(VMError::IteratorOverflow)
+        }
+
         self.iterators.push(iterator);
+
+        Ok(())
     }
 
     // Pop an iterator from the stack

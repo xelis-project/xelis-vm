@@ -30,7 +30,7 @@ pub fn iterator_begin<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack
 
     let value = stack.pop_stack()?;
     let iterator = ValueIterator::new(value)?;
-    manager.add_iterator(iterator);
+    manager.add_iterator(iterator)?;
     Ok(InstructionResult::Nothing)
 }
 

@@ -4,6 +4,8 @@ use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("iterator overflow")]
+    IteratorOverflow,
     #[error("chunk manager not found with id {0}")]
     ChunkManagerNotFound(usize),
     #[error("instance callback")]
