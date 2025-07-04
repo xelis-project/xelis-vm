@@ -1871,13 +1871,11 @@ fn test_function_pointer_with_local_context() {
 fn test_function_pointer_with_multiple_returns() {
     let code = r#"
         fn foo(value: u64) {
-            println("foo " + value)
             let b: u64 = value * 2;
             assert(b == 20);
         }
 
         fn abc() -> fn() {
-            println("abc")
             let a: u64 = 10
             return || {
                 println("closure")
@@ -1886,17 +1884,14 @@ fn test_function_pointer_with_multiple_returns() {
         }
 
         fn abc2() -> fn() {
-            println("abc2")
             return abc()
         }
 
         fn bar(f: fn()) {
-            println("bar")
             f()
         }
 
         entry main() {
-            println("main")
             bar(abc2())
             return 0
         }
