@@ -180,7 +180,15 @@ pub enum OpCodeWithArgs {
     Match {
         magic_byte: u8,
         addr: u32,
-    }
+    },
+    // Execute a invoke chunk or syscall
+    // from a dynamic value taken from the stack
+    DynamicCall {
+        args_count: u8
+    },
+    // Mark the Chunk Manager has context
+    // keep it in the callstack until its used
+    CaptureContext,
 }
 
 impl OpCodeWithArgs {
@@ -254,6 +262,8 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Dec => OpCode::Dec,
             OpCodeWithArgs::Flatten => OpCode::Flatten,
             OpCodeWithArgs::Match { .. } => OpCode::Match,
+            OpCodeWithArgs::DynamicCall { .. } => OpCode::DynamicCall,
+            OpCodeWithArgs::CaptureContext => OpCode::CaptureContext,
         }
     }
 
@@ -288,7 +298,8 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Match { magic_byte, addr } => {
                 chunk.write_u8(*magic_byte);
                 chunk.write_u32(*addr);
-            }
+            },
+            OpCodeWithArgs::DynamicCall { args_count } => chunk.write_u8(*args_count),
             _ => {}
         }
     }
@@ -308,7 +319,7 @@ impl OpCodeWithArgs {
                     index: args[0].parse().map_err(|_| "Invalid index")?
                 }
             }
-            "MEMORYLOAD" => {
+            "MEMORY_LOAD" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -317,7 +328,7 @@ impl OpCodeWithArgs {
                     register_index: args[0].parse().map_err(|_| "Invalid register index")?
                 }
             }
-            "MEMORYSET" => {
+            "MEMORY_SET" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -342,7 +353,7 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Pop
             },
-            "POPN" => {
+            "POP_N" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -358,7 +369,7 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Copy
             }
-            "COPYN" => {
+            "COPY_N" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -403,7 +414,7 @@ impl OpCodeWithArgs {
                     addr
                 }
             },
-            "JUMPIFFALSE" => {
+            "JUMP_IF_FALSE" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -420,21 +431,21 @@ impl OpCodeWithArgs {
                     addr
                 }
             },
-            "ITERABLELENGTH" => {
+            "ITERABLE_LENGTH" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::IterableLength
             },
-            "ITERATORBEGIN" => {
+            "ITERATOR_BEGIN" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::IteratorBegin
             },
-            "ITERATORNEXT" => {
+            "ITERATOR_NEXT" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -451,7 +462,7 @@ impl OpCodeWithArgs {
                     addr
                 }
             },
-            "ITERATOREND" => {
+            "ITERATOR_END" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
@@ -465,7 +476,7 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Return
             },
-            "ARRAYCALL" => OpCodeWithArgs::ArrayCall,
+            "ARRAY_CALL" => OpCodeWithArgs::ArrayCall,
             "CAST" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
@@ -475,7 +486,7 @@ impl OpCodeWithArgs {
                     primitive_type_id: args[0].parse().map_err(|_| "Invalid type id")?
                 }
             },
-            "INVOKECHUNK" => {
+            "INVOKE_CHUNK" => {
                 if args.len() != 2 {
                     return Err("Invalid args count");
                 }
@@ -493,7 +504,7 @@ impl OpCodeWithArgs {
                     args_count: args[1].parse().map_err(|_| "Invalid args count")?
                 }
             },
-            "SYSCALL" => {
+            "SYS_CALL" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -502,7 +513,7 @@ impl OpCodeWithArgs {
                     sys_call_id: args[0].parse().map_err(|_| "Invalid sys call id")?
                 }
             }
-            "NEWOBJECT" => {
+            "NEW_OBJECT" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -511,14 +522,14 @@ impl OpCodeWithArgs {
                     length: args[0].parse().map_err(|_| "Invalid length")?
                 }
             },
-            "NEWRANGE" => {
+            "NEW_RANGE" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::NewRange
             },
-            "NEWMAP" => {
+            "NEW_MAP" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
                 }
@@ -667,77 +678,77 @@ impl OpCodeWithArgs {
 
                 OpCodeWithArgs::Assign
             },
-            "ASSIGNADD" => {
+            "ASSIGN_ADD" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignAdd
             },
-            "ASSIGNSUB" => {
+            "ASSIGN_SUB" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignSub
             },
-            "ASSIGNMUL" => {
+            "ASSIGN_MUL" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignMul
             },
-            "ASSIGNDIV" => {
+            "ASSIGN_DIV" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignDiv
             },
-            "ASSIGNMOD" => {
+            "ASSIGN_MOD" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignMod
             },
-            "ASSIGNPOW" => {
+            "ASSIGN_POW" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignPow
             },
-            "ASSIGNAND" => {
+            "ASSIGN_AND" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignBitwiseAnd
             },
-            "ASSIGNOR" => {
+            "ASSIGN_OR" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignBitwiseOr
             },
-            "ASSIGNXOR" => {
+            "ASSIGN_XOR" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignXor
             },
-            "ASSIGNSHL" => {
+            "ASSIGN_SHL" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
 
                 OpCodeWithArgs::AssignShl
             },
-            "ASSIGNSHR" => {
+            "ASSIGN_SHR" => {
                 if !args.is_empty() {
                     return Err("Invalid args count");
                 }
@@ -774,7 +785,23 @@ impl OpCodeWithArgs {
                     magic_byte: args[0].parse().map_err(|_| "Invalid magic byte")?,
                     addr: args[0].parse().map_err(|_| "Invalid jump address")?
                 }
-            }
+            },
+            "DYNAMIC_CALL" => {
+                if args.len() != 1 {
+                    return Err("invalid args count")
+                }
+
+                OpCodeWithArgs::DynamicCall {
+                    args_count: args[0].parse().map_err(|_| "Invalid args count")?
+                }
+            },
+            "CAPTURE_CONTEXT" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::CaptureContext
+            },
             _ => return Err("Invalid OpCode")
         })
     }
