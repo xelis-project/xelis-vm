@@ -960,6 +960,7 @@ impl<'a, M> Parser<'a, M> {
 
         trace!("closure statements: {:?}", statements);
         let closure = FunctionType::Declared(DeclaredFunction::new(
+            FunctionVisibility::Anonymous,
             None,
             None,
             new_params,
@@ -2529,7 +2530,12 @@ impl<'a, M> Parser<'a, M> {
 
         let function = match kind {
             FunctionKind::Entry => FunctionType::Entry(EntryFunction::new(new_params, Vec::new(), context.max_variables_count() as u16)),
-            FunctionKind::Declared => FunctionType::Declared(DeclaredFunction::new(
+            FunctionKind::Declared { public } => FunctionType::Declared(DeclaredFunction::new(
+                if public {
+                    FunctionVisibility::Public
+                } else {
+                    FunctionVisibility::Private
+                },
                 for_type,
                 instance_name,
                 new_params,
@@ -2605,9 +2611,10 @@ impl<'a, M> Parser<'a, M> {
     fn get_function<'b>(&'b self, id: u16) -> Result<Function<'b, M>, ParserError<'a>> {
         // the id is the index of the function in the functions array
         let index = id as usize;
-        let len = self.environment.get_functions().len();
+        let f = self.environment.get_functions();
+        let len = f.len();
         if index < len {
-            Ok(Function::Native(&self.environment.get_functions()[index]))
+            Ok(Function::Native(&f[index]))
         } else {
             match self.functions.get(index - len) {
                 Some(func) => Ok(Function::Program(func)),
@@ -2751,7 +2758,8 @@ impl<'a, M> Parser<'a, M> {
                     continue;
                 }
                 Token::Const => self.read_const(&mut context)?,
-                Token::Function => self.read_function(FunctionKind::Declared, &mut context)?,
+                Token::Pub => self.read_function(FunctionKind::Declared { public: true }, &mut context)?,
+                Token::Function => self.read_function(FunctionKind::Declared { public: false }, &mut context)?,
                 Token::Entry => self.read_function(FunctionKind::Entry, &mut context)?,
                 Token::Hook => self.read_function(FunctionKind::Hook, &mut context)?,
                 Token::Struct => self.read_struct()?,
@@ -3416,7 +3424,7 @@ mod tests {
         assert_eq!(
             *program.functions().get(0).unwrap(),
             FunctionType::Declared(
-                DeclaredFunction::new(None, None, Vec::new(), statements, Some(Type::Bool), 1)
+                DeclaredFunction::new(FunctionVisibility::Private, None, None, Vec::new(), statements, Some(Type::Bool), 1)
             )
         );
     }

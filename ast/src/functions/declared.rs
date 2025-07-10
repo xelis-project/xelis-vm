@@ -2,8 +2,21 @@ use xelis_types::{Type, IdentifierType};
 use crate::Statement;
 use super::Parameter;
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionVisibility {
+    // Public function: can be called by any other
+    // program
+    Public,
+    // Private: can only be called from the same program
+    #[default]
+    Private,
+    // Anonymous function (closure)
+    Anonymous,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct DeclaredFunction {
+    visibility: FunctionVisibility,
     for_type: Option<Type>,
     instance_name: Option<IdentifierType>,
     parameters: Vec<Parameter>,
@@ -13,8 +26,9 @@ pub struct DeclaredFunction {
 }
 
 impl DeclaredFunction {
-    pub fn new(for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
+    pub fn new(visibility: FunctionVisibility, for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
         DeclaredFunction {
+            visibility,
             for_type,
             instance_name,
             parameters,
@@ -22,6 +36,18 @@ impl DeclaredFunction {
             return_type,
             variables_count
         }
+    }
+
+    pub const fn is_public(&self) -> bool {
+        matches!(self.visibility, FunctionVisibility::Public)
+    }
+
+    pub const fn is_private(&self) -> bool {
+        matches!(self.visibility, FunctionVisibility::Private)
+    }
+
+    pub const fn is_anonymous(&self) -> bool {
+        matches!(self.visibility, FunctionVisibility::Anonymous)
     }
 
     pub fn get_on_type(&self) -> &Option<Type> {

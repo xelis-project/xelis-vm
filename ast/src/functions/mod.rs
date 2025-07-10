@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use xelis_types::{Type, IdentifierType};
 use super::Statement;
 
-pub use declared::{DeclaredFunction, EntryFunction};
+pub use declared::*;
 pub use hook::*;
 
 // The return type of the entry function
@@ -89,7 +89,9 @@ pub enum FunctionType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FunctionKind {
-    Declared,
+    Declared {
+        public: bool
+    },
     Hook,
     Entry
 }
@@ -104,7 +106,7 @@ impl FunctionKind {
     }
 
     pub fn is_normal(&self) -> bool {
-        matches!(self, Self::Declared)
+        matches!(self, Self::Declared { .. })
     }
 }
 
@@ -186,7 +188,7 @@ impl FunctionType {
 
     pub const fn kind(&self) -> FunctionKind {
         match self {
-            Self::Declared(_) => FunctionKind::Declared,
+            Self::Declared(f) => FunctionKind::Declared { public: f.is_public() },
             Self::Entry(_) => FunctionKind::Entry,
             Self::Hook(_) => FunctionKind::Hook
         }
