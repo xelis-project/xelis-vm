@@ -146,7 +146,7 @@ mod tests {
             ADD
 
             #main
-            INVOKECHUNK #other 0
+            INVOKE_CHUNK #other 0
         "#;
 
         let assembler = Assembler::new(source);
