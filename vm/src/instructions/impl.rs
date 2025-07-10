@@ -11,7 +11,7 @@ use crate::{
     ChunkManager,
     ChunkReader,
     Context,
-    VMError
+    VMError,
 };
 use super::InstructionResult;
 
@@ -205,53 +205,76 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
 
     perform_syscall(backend, f, instance, arguments.into(), stack, context)
 }
+fn perform_syscall<'a, 'ty, 'r, M>(
+    backend: &Backend<'a, 'ty, 'r, M>,
+    f: &NativeFunction<M>,
+    mut instance: Option<&mut ValueCell>,
+    mut fn_params: Vec<StackValue>,
+    stack: &mut Stack,
+    context: &mut Context<'ty, 'r>,
+) -> Result<InstructionResult<'a, M>, VMError> {
+    let mut function = f;
 
-fn perform_syscall<'a, 'ty, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, f: &NativeFunction<M>, instance: Option<&mut ValueCell>, parameters: Vec<StackValue>, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
-    Ok(match f.call_function(instance, parameters, context)? {
-        SysCallResult::None => InstructionResult::Nothing,
-        SysCallResult::Return(v) => {
-            let memory_usage = v.calculate_memory_usage(context.memory_left())?;
-            context.increase_memory_usage_unchecked(memory_usage)?;
-    
-            stack.push_stack(v.into())?;
-            InstructionResult::Nothing
-        },
-        SysCallResult::DynamicCall { ptr, params } => {
-            let values = ptr.as_vec()?;
+    loop {
+        match  function.call_function(instance, fn_params, context)? {
+            SysCallResult::None => return Ok(InstructionResult::Nothing),
+            SysCallResult::Return(v) => {
+                let memory_usage = v.calculate_memory_usage(context.memory_left())?;
+                context.increase_memory_usage_unchecked(memory_usage)?;
+                stack.push_stack(v.into())?;
 
-            if values.len() != 3 {
-                return Err(VMError::InvalidDynamicCall)
-            }
+                return Ok(InstructionResult::Nothing);
+            },
+            SysCallResult::DynamicCall { ptr, params } => {
+                let values = ptr.as_vec()?;
 
-            let id = values[0].as_u16()?;
-            let syscall = values[1].as_bool()?;
-            let from = values[2].as_u16()?;
-
-            if syscall {
-                let f = backend.environment.get_functions()
-                    .get(id as usize)
-                    .ok_or(VMError::UnknownSysCall(id))?;
-
-                if f.is_on_instance() {
-                    return Err(VMError::InstanceCallback)
+                if values.len() != 3 {
+                    return Err(VMError::InvalidDynamicCall);
                 }
 
-                context.increase_gas_usage(f.get_cost())?;
+                let id = values[0].as_u16()?;
+                let syscall = values[1].as_bool()?;
+                let from = values[2].as_u16()?;
 
-                // FIXME: prevent too many recursive
-                perform_syscall(backend, f, None, params, stack, context)?
-            } else {
-                stack.extend_stack(params.into_iter().map(Into::into))?;
-                InstructionResult::InvokeDynamicChunk {
-                    chunk_id: id as _,
-                    from: from as _,
+                if syscall {
+                    let f = backend
+                        .environment
+                        .get_functions()
+                        .get(id as usize)
+                        .ok_or(VMError::UnknownSysCall(id))?;
+
+                    // We currently don't support on instance
+                    if f.is_on_instance() {
+                        return Err(VMError::InstanceCallback);
+                    }
+
+                    context.increase_gas_usage(f.get_cost())?;
+
+                    // Loop back again with new function and parameters
+                    function = f;
+                    instance = None;
+                    fn_params = params;
+
+                    continue;
+                } else {
+                    stack.extend_stack(params.into_iter().map(Into::into))?;
+                    return Ok(InstructionResult::InvokeDynamicChunk {
+                        chunk_id: id as _,
+                        from: from as _,
+                    });
                 }
-            }
-        },
-        SysCallResult::ModuleCall { module, metadata, chunk } => {
-            InstructionResult::AppendModule { module: module.into(), metadata: metadata.into(), chunk_id: chunk }
+            },
+            SysCallResult::ModuleCall {
+                module,
+                metadata,
+                chunk,
+            } => return Ok(InstructionResult::AppendModule {
+                module: module.into(),
+                metadata: metadata.into(),
+                chunk_id: chunk,
+            })
         }
-    })
+    }
 }
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
