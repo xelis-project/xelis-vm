@@ -3,12 +3,16 @@ use std::collections::HashSet;
 use thiserror::Error;
 use xelis_environment::Environment;
 use xelis_types::{Primitive, ValueCell, ValueError};
-use xelis_bytecode::{Module, OpCode};
+use xelis_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
 
 #[derive(Debug, Error)]
 pub enum ValidatorError {
+    #[error("invalid hooks")]
+    InvalidHooks,
+    #[error("no accessible chunk")]
+    NoAccessibleChunk,
     #[error("too much memory usage in constants")]
     TooMuchMemoryUsage,
     #[error("too many constants")]
@@ -158,33 +162,33 @@ impl<'a, M> ModuleValidator<'a, M> {
 
         // Verify that the entry ids are valid
         let mut used_ids = HashSet::new();
-        for entry_id in self.module.chunks_entry_ids() {
-            if *entry_id >= len {
-                return Err(ValidatorError::InvalidEntryId(*entry_id));
-            }
 
-            if !used_ids.insert(*entry_id) {
-                return Err(ValidatorError::ChunkIdAlreadyUsed(*entry_id))
-            }
-        }
-
-        // Verify all the chunks marked as hook
-        for (hook_id, chunk_id) in self.module.hook_chunk_ids() {
-            // Verify:
-            // - chunk id
-            // - the hook id
-            // - chunk id not an entry
-            if *chunk_id >= len || *hook_id >= self.environment.hooks() {
-                return Err(ValidatorError::InvalidHookId(*hook_id, *chunk_id));
-            }
-
-            if !used_ids.insert(*chunk_id) {
-                return Err(ValidatorError::ChunkIdAlreadyUsed(*chunk_id))
-            }
-        }
+        // All hook ids, ensure uniqueness
+        let mut hook_ids = HashSet::new();
 
         // Verify all the chunks
-        for chunk in self.module.chunks() {
+        for (i, (chunk, access)) in self.module.chunks().iter().enumerate() {
+            match access {
+                Access::Entry => {
+                    if !used_ids.insert(i) {
+                        return Err(ValidatorError::ChunkIdAlreadyUsed(i))
+                    }
+                },
+                Access::Hook { id } => {
+                    if !hook_ids.insert(*id) {
+                        return Err(ValidatorError::InvalidHookId(*id, i));
+                    }
+
+                    // Ensure both pointers are pointing to each others
+                    if !self.module.hook_chunk_ids()
+                        .get(id)
+                        .map_or(false, |id| *id == i) {
+                        return Err(ValidatorError::InvalidHookId(*id, i));
+                    }
+                },
+                _ => {}
+            }
+
             let mut reader = ChunkReader::new(chunk, 0);
             while let Some(instruction) = reader.next_u8() {
                 let op = OpCode::from_byte(instruction)
@@ -195,10 +199,15 @@ impl<'a, M> ModuleValidator<'a, M> {
                 match op {
                     OpCode::InvokeChunk => {
                         let chunk_id = reader.read_u16()
-                            .map_err(|_| ValidatorError::InvalidOpCode)? as _;
+                            .map_err(|_| ValidatorError::InvalidOpCode)? as usize;
 
                         // Make sure the chunk id is valid
-                        if chunk_id >= self.module.chunks().len() || used_ids.contains(&chunk_id) {
+                        if chunk_id >= len || !self.module.get_chunk_access_at(chunk_id)
+                            .map_or(false, |(_, a)| match a {
+                                Access::Entry | Access::Hook { .. } => false,
+                                _ => true,
+                            })
+                        {
                             return Err(ValidatorError::InvalidEntryId(chunk_id as usize));
                         }
 
@@ -247,6 +256,10 @@ impl<'a, M> ModuleValidator<'a, M> {
                 reader.advance(count)
                     .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
             }
+        }
+
+        if hook_ids.len() != self.module.hook_chunk_ids().len() {
+            return Err(ValidatorError::InvalidHooks)
         }
 
         Ok(())

@@ -14,6 +14,24 @@ pub enum FunctionVisibility {
     Anonymous,
 }
 
+impl FunctionVisibility {
+    #[inline]
+    pub const fn is_public(&self) -> bool {
+        matches!(self, FunctionVisibility::Public)
+    }
+
+    #[inline]
+    pub const fn is_private(&self) -> bool {
+        matches!(self, FunctionVisibility::Private)
+    }
+
+    #[inline]
+    pub const fn is_anonymous(&self) -> bool {
+        matches!(self, FunctionVisibility::Anonymous)
+    }
+
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct DeclaredFunction {
     visibility: FunctionVisibility,
@@ -38,16 +56,9 @@ impl DeclaredFunction {
         }
     }
 
-    pub const fn is_public(&self) -> bool {
-        matches!(self.visibility, FunctionVisibility::Public)
-    }
-
-    pub const fn is_private(&self) -> bool {
-        matches!(self.visibility, FunctionVisibility::Private)
-    }
-
-    pub const fn is_anonymous(&self) -> bool {
-        matches!(self.visibility, FunctionVisibility::Anonymous)
+    #[inline]
+    pub const fn visibility(&self) -> FunctionVisibility {
+        self.visibility
     }
 
     pub fn get_on_type(&self) -> &Option<Type> {

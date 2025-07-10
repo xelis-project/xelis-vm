@@ -25,7 +25,7 @@ fn test_casting() {
     chunk.emit_opcode(OpCode::Cast);
     chunk.write_u8(Type::String.primitive_byte().unwrap());
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::String("10".to_string()));
 }
@@ -36,7 +36,7 @@ fn test_pop_empty_stack() {
     let mut chunk = Chunk::new();
     chunk.emit_opcode(OpCode::Pop);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert!(matches!(try_run(module), Err(VMError::EmptyStack)));
 }
@@ -60,7 +60,7 @@ fn test_pop_constant() {
 
 
     chunk.emit_opcode(OpCode::Return);
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(0));
 }
@@ -72,7 +72,7 @@ fn test_pop_n_out_of_bounds() {
     chunk.emit_opcode(OpCode::PopN);
     chunk.write_u8(1);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert!(matches!(try_run(module), Err(VMError::StackIndexOutOfBounds)));
 }
@@ -99,7 +99,7 @@ fn test_pop_n_constants() {
 
     // Add a return 0
     chunk.emit_opcode(OpCode::Return);
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(0));
 }
@@ -129,7 +129,7 @@ fn test_array_call() {
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::ArrayCall);
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(10));
 }
@@ -168,7 +168,7 @@ fn test_multi_depth_array_call() {
 
     chunk.emit_opcode(OpCode::ArrayCall);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(30));
 }
@@ -192,7 +192,7 @@ fn test_struct() {
 
     chunk.emit_opcode(OpCode::Return);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     {
         let env = Environment::new();
@@ -276,8 +276,8 @@ fn test_function_call() {
     // return its value
     first.emit_opcode(OpCode::Return);
 
-    module.add_chunk(first);
-    module.add_chunk(bool_fn);
+    module.add_internal_chunk(first);
+    module.add_internal_chunk(bool_fn);
 
     let env = Environment::new();
     let mut vm = VM::new(&env);
@@ -313,8 +313,8 @@ fn test_function_call_on_value() {
     main.write_u16(1);
     main.write_u8(1);
 
-    module.add_chunk(main);
-    module.add_chunk(struct_fn);
+    module.add_entry_chunk(main);
+    module.add_internal_chunk(struct_fn);
 
     let env = Environment::new();
     let mut vm = VM::new(&env);
@@ -342,7 +342,7 @@ fn test_memory() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(10));
 }
@@ -439,7 +439,7 @@ fn test_for_each_index() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U8(30));
 }
@@ -469,7 +469,7 @@ fn test_memory_overwrite_self() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -508,7 +508,7 @@ fn test_safe_sub_value_pointer() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -563,7 +563,7 @@ fn test_safe_sub_intermediate_value_pointer() {
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -624,7 +624,7 @@ fn test_for_each_iterator() {
     chunk.emit_opcode(OpCode::Return);
 
     // Execute
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
     assert_eq!(run(module), Primitive::U8(150));
 }
 
@@ -641,7 +641,7 @@ fn test_bad_program_recursive_infinite() {
     chunk.emit_opcode(OpCode::Return);
 
     // Execute
-    module.add_chunk(chunk);
+    module.add_internal_chunk(chunk);
 
     assert!(try_run(module).is_err());
 }
@@ -698,7 +698,7 @@ fn test_bad_program_bad_stack_pointers() {
     main.emit_opcode(OpCode::Return);
 
     // Execute
-    module.add_chunk(add);
+    module.add_internal_chunk(add);
     module.add_entry_chunk(main);
 
     let res = try_run_id(module, 1).unwrap();
@@ -779,7 +779,7 @@ fn test_infinite_map_depth() {
     chunk.write_u16(0);
 
     // Execute
-    module.add_chunk(chunk);
+    module.add_entry_chunk(chunk);
 
     assert!(try_run(module).is_err());
     // assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));

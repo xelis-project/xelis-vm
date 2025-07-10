@@ -5,14 +5,22 @@ use opcode::OpCodeWithArgs;
 
 use thiserror::Error;
 use xelis_types::Constant;
-use xelis_bytecode::{Chunk, Module};
+use xelis_bytecode::{Access, Chunk, Module};
 
 #[derive(Debug, Error)]
-pub enum AssemblerError {
+pub enum AssemblerError<'a> {
     #[error("Error on opcode: {0}")]
     OpCode(&'static str),
     #[error("Expected a chunk")]
     ExpectedChunk,
+    #[error("overwrite hook {0}")]
+    OverwriteHook(u8),
+    #[error("unknown access '{0}'")]
+    UnknownAccess(&'a str),
+    #[error("missing hook id")]
+    MissingHookId,
+    #[error("invalid hook id '{0}'")]
+    HookId(&'a str),
 }
 
 // Assembler to convert source code into bytecode
@@ -40,8 +48,23 @@ impl<'a> Assembler<'a> {
         self.module.add_constant(value)
     }
 
+    fn add_chunk(&mut self, chunk: Chunk, access: Access) -> Result<(), AssemblerError<'a>> {
+        match access {
+            Access::All => self.module.add_public_chunk(chunk),
+            Access::Entry => self.module.add_entry_chunk(chunk),
+            Access::Internal => self.module.add_internal_chunk(chunk),
+            Access::Hook { id } => {
+                if self.module.add_hook_chunk(id, chunk).is_some() {
+                    return Err(AssemblerError::OverwriteHook(id))
+                }
+            }
+        };
+
+        Ok(())
+    }
+
     // Assemble the source code into bytecode
-    pub fn assemble(mut self) -> Result<Module, AssemblerError> {
+    pub fn assemble(mut self) -> Result<Module, AssemblerError<'a>> {
         let mut chunk = None;
         for line in self.source.lines() {
             let line = line.trim();
@@ -50,17 +73,40 @@ impl<'a> Assembler<'a> {
                 // Ignore comments and empty lines
             } else if line.starts_with("#") {
                 debug!("Creating new chunk: {}", &line[1..]);
+
+                // By default, set to internal
+                let mut parts = line.split_ascii_whitespace()
+                    .skip(1);
+                let access = if let Some(str) = parts.next() {
+                    match str {
+                        "all" => Access::All,
+                        "entry" => Access::Entry,
+                        "internal" => Access::Internal,
+                        "hook" => {
+                            let id = parts.next()
+                                .ok_or(AssemblerError::MissingHookId)?;
+
+                            Access::Hook {
+                                id: id.parse().map_err(|_| AssemblerError::HookId(id))?
+                            }
+                        },
+                        _ => return Err(AssemblerError::UnknownAccess(str))
+                    }
+                } else {
+                    Access::Internal
+                };
+
                 // Push the previous chunk and create a new one
-                if let Some(chunk) = chunk.take() {
-                    self.module.add_chunk(chunk);
+                if let Some((chunk, access)) = chunk.take() {
+                    self.add_chunk(chunk, access)?;
                 }
 
-                chunk = Some(Chunk::new());
+                chunk = Some((Chunk::new(), access));
                 self.chunks_labels.push(&line[1..]);
             } else if line.starts_with(":") {
                 debug!("Registering jump label: {}", &line[1..]);
                 // Register a jump label for the next instruction
-                let c = chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?;
+                let (c, _) = chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?;
                 self.jump_labels.push((&line[1..], c.index() as u32));
             } else {
                 debug!("Assembling line: {}", line);
@@ -68,12 +114,14 @@ impl<'a> Assembler<'a> {
                     .map_err(AssemblerError::OpCode)?;
 
                 trace!("Assembled: {:?}", op);
-                op.write_to_chunk(chunk.as_mut().ok_or(AssemblerError::ExpectedChunk)?);
+                let (chunk, _) = chunk.as_mut()
+                    .ok_or(AssemblerError::ExpectedChunk)?;
+                op.write_to_chunk(chunk);
             }
         }
 
-        if let Some(chunk) = chunk.take() {
-            self.module.add_chunk(chunk);
+        if let Some((chunk, access)) = chunk.take() {
+            self.add_chunk(chunk, access)?;
         }
 
         Ok(self.module)
@@ -154,7 +202,7 @@ mod tests {
 
         assert_eq!(module.chunks().len(), 2);
         assert_eq!(
-            module.chunks().last().unwrap().get_instructions(),
+            module.chunks().last().unwrap().0.get_instructions(),
             &[OpCode::InvokeChunk.as_byte(), 0, 0, 0]
         );
     }
@@ -175,7 +223,7 @@ mod tests {
 
         assert_eq!(module.chunks().len(), 1);
         assert_eq!(
-            module.chunks().last().unwrap().get_instructions(),
+            module.chunks().last().unwrap().0.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Copy.as_byte(),
@@ -183,5 +231,34 @@ mod tests {
                 OpCode::Jump.as_byte(), 5, 0, 0, 0,
             ]
         );
+    }
+
+    fn test_access_kind(source: &str, expected: Access) {
+        let assembler = Assembler::new(source);
+        let module = assembler.assemble().unwrap();
+
+        assert_eq!(module.chunks().len(), 1);
+        let (_, access) = module.chunks().last().unwrap();
+        assert!(*access == expected);
+    }
+
+    #[test]
+    fn test_entry_chunk() {
+        test_access_kind("#main entry", Access::Entry);
+    }
+
+    #[test]
+    fn test_internal_chunk() {
+        test_access_kind("#main internal", Access::Internal);
+    }
+
+    #[test]
+    fn test_hook_chunk() {
+        test_access_kind("#main hook 0", Access::Hook { id: 0 });
+    }
+
+    #[test]
+    fn test_all_chunk() {
+        test_access_kind("#main all", Access::All);
     }
 }

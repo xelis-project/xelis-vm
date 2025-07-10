@@ -5,6 +5,7 @@ use log::{trace, warn};
 use xelis_ast::{
     Expression,
     FunctionType,
+    FunctionVisibility,
     MatchStatement,
     Operator,
     Program,
@@ -926,7 +927,10 @@ impl<'a, M> Compiler<'a, M> {
 
         // Add the chunk to the module
         match function {
-            FunctionType::Declared(_) => self.module.add_chunk(chunk),
+            FunctionType::Declared(f) => match f.visibility() {
+                FunctionVisibility::Public => self.module.add_public_chunk(chunk),
+                FunctionVisibility::Anonymous | FunctionVisibility::Private => self.module.add_internal_chunk(chunk),
+            },
             FunctionType::Entry(_) => self.module.add_entry_chunk(chunk),
             FunctionType::Hook(h) => {
                 if self.module.add_hook_chunk(h.hook_id(), chunk).is_some() {

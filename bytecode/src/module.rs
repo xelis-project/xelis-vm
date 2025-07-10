@@ -2,7 +2,7 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use xelis_types::ValueCell;
 
-use super::Chunk;
+use super::{Chunk, Access};
 
 // A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
@@ -13,10 +13,7 @@ pub struct Module {
     constants: IndexSet<ValueCell>,
     // Available chunks
     #[serde(default)]
-    chunks: Vec<Chunk>,
-    // Chunks callable from external programs
-    #[serde(default)]
-    entry_chunk_ids: IndexSet<usize>,
+    chunks: Vec<(Chunk, Access)>,
     // Hook id => chunk id
     #[serde(default)]
     hook_chunk_ids: IndexMap<u8, usize>,
@@ -28,7 +25,6 @@ impl Module {
         Self {
             constants: IndexSet::new(),
             chunks: Vec::new(),
-            entry_chunk_ids: IndexSet::new(),
             hook_chunk_ids: IndexMap::new()
         }
     }
@@ -36,14 +32,12 @@ impl Module {
     // Create a new module with all needed data
     pub fn with(
         constants: IndexSet<ValueCell>,
-        chunks: Vec<Chunk>,
-        entry_chunk_ids: IndexSet<usize>,
+        chunks: Vec<(Chunk, Access)>,
         hook_chunk_ids: IndexMap<u8, usize>
     ) -> Self {
         Self {
             constants,
             chunks,
-            entry_chunk_ids,
             hook_chunk_ids,
         }
     }
@@ -68,39 +62,47 @@ impl Module {
 
     // Get the chunks declared in the module
     #[inline]
-    pub fn chunks(&self) -> &[Chunk] {
+    pub fn chunks(&self) -> &[(Chunk, Access)] {
         &self.chunks
     }
 
-    // Get the chunks ids callable from externals
-    pub fn chunks_entry_ids(&self) -> &IndexSet<usize> {
-        &self.entry_chunk_ids
-    }
-
-    // Add a chunk to the module
+    // Add a publicly callable chunk to the module
     #[inline]
-    pub fn add_chunk(&mut self, chunk: Chunk) {
-        self.chunks.push(chunk);
+    pub fn add_public_chunk(&mut self, chunk: Chunk) {
+        self.chunks.push((chunk, Access::All));
     }
 
-    // Add a chunk to the module
-    // and mark it as callable from externals (entry)
+    // Add a entry callable chunk to the module
+    // Can only be called as a program main function
     #[inline]
     pub fn add_entry_chunk(&mut self, chunk: Chunk) {
-        let index = self.chunks.len();
-        self.chunks.push(chunk);
-        self.entry_chunk_ids.insert(index);
+        self.chunks.push((chunk, Access::Entry));
+    }
+
+    // Add an internal chunk to the module
+    // Only callable by the program itself
+    #[inline]
+    pub fn add_internal_chunk(&mut self, chunk: Chunk) {
+        self.chunks.push((chunk, Access::Internal));
     }
 
     // Is chunk callable from externals
     #[inline]
     pub fn is_entry_chunk(&self, index: usize) -> bool {
-        self.entry_chunk_ids.contains(&index)
+        self.chunks.get(index)
+            .map_or(false, |(_, a)| matches!(a, Access::Entry))
     }
 
     // Get a chunk at a specific index
-    #[inline]
+    #[inline(always)]
     pub fn get_chunk_at(&self, index: usize) -> Option<&Chunk> {
+        self.get_chunk_access_at(index)
+            .map(|(c, _)| c)
+    }
+
+    // Get a chunk at a specific index
+    #[inline(always)]
+    pub fn get_chunk_access_at(&self, index: usize) -> Option<&(Chunk, Access)> {
         self.chunks.get(index)
     }
 
@@ -108,6 +110,7 @@ impl Module {
     #[inline]
     pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
         self.chunks.get_mut(index)
+            .map(|(c, _)| c)
     }
 
     // Get the hook chunks ids called during an event
@@ -126,7 +129,7 @@ impl Module {
     #[inline]
     pub fn add_hook_chunk(&mut self, id: u8, chunk: Chunk) -> Option<usize> {
         let index = self.chunks.len();
-        self.chunks.push(chunk);
+        self.chunks.push((chunk, Access::Hook { id }));
         self.hook_chunk_ids.insert(id, index)
     }
 }
@@ -137,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_serde_module_json() {
-        let json = r#"{"chunks":[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0]}"#;
-        assert!(serde_json::from_str::<Module>(json).is_ok());
+        let json = r#"{"chunks":[[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}, "internal"]],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0]}"#;
+        serde_json::from_str::<Module>(json).expect("valid json");
     }
 }

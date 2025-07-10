@@ -188,7 +188,7 @@ impl FunctionType {
 
     pub const fn kind(&self) -> FunctionKind {
         match self {
-            Self::Declared(f) => FunctionKind::Declared { public: f.is_public() },
+            Self::Declared(f) => FunctionKind::Declared { public: f.visibility().is_public() },
             Self::Entry(_) => FunctionKind::Entry,
             Self::Hook(_) => FunctionKind::Hook
         }
