@@ -292,14 +292,20 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     }
 
     // Find the chunk manager for the requested chunk id
+    // If we change from one to another module, don't return it
     #[inline]
     fn find_manager_with_chunk_id(&mut self, chunk_id: usize) -> Option<&mut ChunkManager> {
-        self.call_stack.iter_mut()
-            .filter_map(|call_stack| match call_stack {
-                CallStack::Chunk(chunk) | CallStack::Context(chunk) if chunk.chunk_id() == chunk_id => Some(chunk),
-                _ => None,
-            })
-            .next()
+        for call_stack in self.call_stack.iter_mut().rev() {
+            match call_stack {
+                CallStack::Chunk(chunk)
+                | CallStack::Context(chunk)
+                if chunk.chunk_id() == chunk_id => return Some(chunk),
+                CallStack::SwitchModule => break,
+                _ => {},
+            }
+        }
+
+        None
     }
 
     // Run the VM
