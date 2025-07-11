@@ -575,6 +575,24 @@ impl<'a, M> Compiler<'a, M> {
         Ok(())
     }
 
+    // Compile the tuples deconstruct
+    fn compile_tuples(&mut self, chunk: &mut Chunk, tuples: &[TupleStatement]) {
+        for el in tuples.iter() {
+            match el {
+                TupleStatement::Depth => {
+                    chunk.emit_opcode(OpCode::Flatten);
+                },
+                TupleStatement::Deconstruct(ty) => {
+                    if let Some(id) = ty.id {
+                        chunk.emit_opcode(OpCode::MemorySet);
+                        chunk.write_u16(id);
+                    } else {
+                        chunk.emit_opcode(OpCode::Pop);
+                    }
+                }
+            }
+        }
+    }
     // Compile a single statement
     fn compile_statement(&mut self, chunk: &mut Chunk, chunk_id: u16, statement: &Statement) -> Result<(), CompilerError> {
         trace!("compile statement {:?}", statement);
@@ -605,21 +623,7 @@ impl<'a, M> Compiler<'a, M> {
                 self.decrease_values_on_stack()?;
 
                 // Store the values
-                for el in declaration.iter() {
-                    match el {
-                        TupleStatement::Depth => {
-                            chunk.emit_opcode(OpCode::Flatten);
-                        },
-                        TupleStatement::Deconstruct(ty) => {
-                            if let Some(id) = ty.id {
-                                chunk.emit_opcode(OpCode::MemorySet);
-                                chunk.write_u16(id);
-                            } else {
-                                chunk.emit_opcode(OpCode::Pop);
-                            }
-                        }
-                    }
-                }
+                self.compile_tuples(chunk, &declaration);
             },
             Statement::Scope(statements) => {
                 self.push_mem_scope();
@@ -783,7 +787,7 @@ impl<'a, M> Compiler<'a, M> {
 
                 self.end_loop(chunk, start_index, jump_false_addr)?;
             },
-            Statement::ForEach(_, expr_values, statements) => {
+            Statement::ForEach(tuples, expr_values, statements) => {
                 // Compile the expression
                 self.compile_expr(chunk, chunk_id, expr_values)?;
                 // It is used by the IteratorBegin
@@ -798,10 +802,7 @@ impl<'a, M> Compiler<'a, M> {
                 self.push_mem_scope();
 
                 // OpCode IteratorNext will push a value, mark it
-                self.add_value_on_stack(chunk.last_index())?;
-
-                // Store the value
-                self.memstore(chunk)?;
+                self.compile_tuples(chunk, &tuples);
 
                 self.start_loop();
                 // Compile the valid condition

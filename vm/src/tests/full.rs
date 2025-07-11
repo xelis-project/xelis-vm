@@ -1988,3 +1988,21 @@ fn test_callback_from_syscall() {
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(10));
 }
+
+#[test]
+fn test_tuples_for_each() {
+    let code = r#"
+        entry main() {
+            let values: (u32, u32)[] = [(0, 1), (0, 1)]
+
+            foreach (a, b) in values {
+                assert(a == 0);
+                assert(b == 1);
+            }
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 0), Primitive::U64(0));
+}

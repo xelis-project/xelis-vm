@@ -2171,22 +2171,25 @@ impl<'a, M> Parser<'a, M> {
                 }
                 Token::ForEach => { // Example: foreach a in array {}
                     context.begin_scope();
-                    let variable = self.next_identifier()?;
+                    let pattern = self.read_tuple_pattern(&mut HashSet::new())?;
+
                     self.expect_token(Token::In)?;
                     let expr = self.read_expression(context)?;
-                    let expr_type = self.get_type_from_expression(None, &expr, context)?;
+                    let expr_type = self.get_type_from_expression(None, &expr, context)?
+                        .into_owned();
 
                     // verify that we can iter on it
                     if !expr_type.is_iterable() {
-                        return Err(err!(self, ParserErrorKind::NotIterable(expr_type.into_owned())))
+                        return Err(err!(self, ParserErrorKind::NotIterable(expr_type)))
                     }
 
-                    trace!("register foreach variable {:?} {:?} {:?}", expr, expr_type, expr_type.get_inner_type());
-                    let id = self.register_variable(context, variable, expr_type.get_inner_type().clone())?;
+                    let mut tuples = Vec::new();
+                    self.match_pattern_with_type(&pattern, expr_type.get_inner_type(), context, &mut tuples)?;
+
                     let statements = self.read_loop_body(context, return_type)?;
                     context.end_scope();
 
-                    Statement::ForEach(id, expr, statements)
+                    Statement::ForEach(tuples, expr, statements)
                 },
                 Token::While => { // Example: while i < 10 {}
                     let condition = self.read_expression_delimited(&Token::BraceOpen, context)?;
@@ -3325,7 +3328,7 @@ mod tests {
         assert_eq!(
             statements[0],
             Statement::ForEach(
-                0,
+                vec![TupleStatement::Deconstruct(TupleDeconstruction { id: Some(0), value_type: Type::U64 })],
                 Expression::Constant(
                     Primitive::Range(
                         Box::new((Primitive::U64(0), Primitive::U64(10)))

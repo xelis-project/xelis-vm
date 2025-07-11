@@ -38,7 +38,7 @@ pub enum Expression {
 pub enum Statement {
     If(Expression, Vec<Statement>, Option<Vec<Statement>>),
     While(Expression, Vec<Statement>),
-    ForEach(IdentifierType, Expression, Vec<Statement>), // for a in array
+    ForEach(Vec<TupleStatement>, Expression, Vec<Statement>), // for a in array
     For(DeclarationStatement, Expression, Expression, Vec<Statement>), // for i: u64 = 0; i < 10; i++ (; will not be saved)
     Expression(Expression),
     Return(Option<Expression>),
