@@ -685,9 +685,20 @@ impl<'a, M> Parser<'a, M> {
     fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {} on type {:?}", name, on_type);
 
-        let types = self.global_mapper.functions()
-            .get_by_compatible_signature(name, on_type, instance)
-            .map(|f| f.parameters.iter().map(|(_, ty)| ty.map_generic_type(on_type)).collect::<Vec<_>>());
+        let types = if let Some((_, Type::Function(ty))) = context.get_variable(name) {
+            ty.parameters()
+                .iter()
+                .cloned()
+                .map(Some)
+                .collect()
+        } else {
+            self.global_mapper.functions()
+                .get_by_compatible_signature(name, on_type, instance)
+                .map(|f| f.parameters.iter()
+                    .map(|(_, ty)| ty.map_generic_type(on_type))
+                    .collect::<Vec<_>>()
+                )
+        };
 
         trace!("expected params: {:?}", types);
         let (mut parameters, types) = self.read_function_params(context, types)?;
@@ -930,6 +941,7 @@ impl<'a, M> Parser<'a, M> {
     fn read_closure(&mut self, ty: &FnType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read closure with {:?}", ty);
         let params = if ty.parameters().is_empty() {
+            // No token to pop, because it was a || directly
             Vec::new()
         } else {
             let parameters = self.read_parameters()?;
