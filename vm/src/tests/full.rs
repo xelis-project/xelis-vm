@@ -1962,7 +1962,7 @@ fn test_function_assign() {
         }
 
         fn bar(a: u64) -> u64 {
-            return  a + foo()
+            return a + foo()
         }
 
         entry main() {
@@ -2005,4 +2005,25 @@ fn test_tuples_for_each() {
     "#;
 
     assert_eq!(run_code_id(code, 0), Primitive::U64(0));
+}
+
+#[test]
+fn test_tuples_flatten() {
+    let code = r#"
+        fn foo(c: u64) -> (u64, u64) {
+            let a: u64 = c;
+            let b: (u64, u64) = (a, a + 10);
+            debug(b);
+            return b
+        }
+
+        entry main() {
+            let a: u64 = 10;
+            let (a, b): (u64, u64) = foo(a);
+
+            return a + b
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(30));
 }

@@ -1,5 +1,6 @@
 use xelis_types::{StackValue, ValueCell};
 
+use crate::debug;
 use super::VMError;
 
 // 256 elements maximum in the stack:
@@ -23,6 +24,7 @@ impl Stack {
     // clean the pointers
     #[inline]
     pub fn mark_checkpoint(&mut self) {
+        debug!("Marking checkpoint at stack len: {}", self.stack.len());
         self.checkpoints.push(self.stack.len());
     }
 
@@ -31,19 +33,14 @@ impl Stack {
     // This will transform every value as owned
     #[inline]
     pub fn checkpoint_clean(&mut self) -> Result<(), VMError> {
-        let mut checkpoint = self.checkpoints.pop()
+        let checkpoint = self.checkpoints.pop()
             .ok_or(VMError::NoCheckPoint)?;
 
-        // It is possible that some values in our
-        // stack got used by the next chunk
-        // So we skip until the stack left
-        let len = self.stack.len();
-        if checkpoint > len {
-            checkpoint = len.saturating_sub(1);
-        }
-
-        for value in self.stack[checkpoint..].iter_mut() {
-            value.make_owned()?;
+        if let Some(values) = self.stack.get_mut(checkpoint..) {
+            debug!("Cleaning stack until checkpoint: {}", checkpoint);
+            for value in values.iter_mut() {
+                value.make_owned()?;
+            }
         }
 
         Ok(())
@@ -119,6 +116,17 @@ impl Stack {
     // Get the last value from the stack
     #[inline]
     pub fn pop_stack(&mut self) -> Result<StackValue, VMError> {
+        if let Some(checkpoint) = self.checkpoints.last_mut() {
+            let len = self.stack.len();
+            // If the len is now below the latest checkpoint
+            // we should decrement the checkpoint
+            // to prevent any undefined behavior
+            if *checkpoint > 0 && len <= *checkpoint {
+                debug!("Decrementing checkpoint from {}", *checkpoint);
+                *checkpoint -= 1;
+            }
+        }
+
         self.stack.pop().ok_or(VMError::EmptyStack)
     }
 

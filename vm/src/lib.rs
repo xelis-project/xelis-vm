@@ -172,6 +172,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Invoke a chunk using its id
     pub(crate) fn invoke_chunk_id_internal(&mut self, manager: ChunkManager) -> Result<(), VMError> {
+        debug!("Invoking chunk id: {}", manager.chunk_id());
         if self.call_stack_size + 1 >= CALL_STACK_SIZE {
             return Err(VMError::CallStackOverflow);
         }
@@ -278,10 +279,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Called at the end of a call stack
     #[inline]
     fn on_call_stack_end(&mut self, manager: &mut ChunkManager) -> Result<(), VMError> {
+        debug!("on call stack end: {:?}", manager);
         // call stack has been fully consummed
         // don't push it back but clean pointers
         self.call_stack_size -= 1;
         if let Some(origin) = manager.registers_origin() {
+            debug!("Swapping registers for origin: {}", origin);
             // Swap back our registers
             let previous = self.find_manager_with_chunk_id(origin)
                 .ok_or(VMError::ChunkManagerNotFound(origin))?;
