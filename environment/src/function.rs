@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use xelis_bytecode::Module;
-use xelis_types::{StackValue, Type, ValueCell};
+use xelis_types::{Primitive, StackValue, Type, ValueCell};
 use crate::Context;
 
 use super::EnvironmentError;
@@ -26,6 +26,27 @@ pub enum SysCallResult<M> {
 impl<M> SysCallResult<M> {
     pub const fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+}
+
+impl<M> From<Option<Primitive>> for SysCallResult<M> {
+    fn from(value: Option<Primitive>) -> Self {
+        match value {
+            Some(primitive) => SysCallResult::Return(primitive.into()),
+            None => SysCallResult::None,
+        }
+    }
+}
+
+impl<M> From<Primitive> for SysCallResult<M> {
+    fn from(value: Primitive) -> Self {
+        SysCallResult::Return(value.into())
+    }
+}
+
+impl<M> From<ValueCell> for SysCallResult<M> {
+    fn from(value: ValueCell) -> Self {
+        SysCallResult::Return(value)
     }
 }
 
