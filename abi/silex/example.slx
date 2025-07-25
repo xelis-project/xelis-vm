@@ -2,6 +2,12 @@ struct Value {
 	value: string
 }
 
+struct Person {
+  name: string,
+  age: u8,
+  employed: bool
+}
+
 fn (v Value) my_value() -> string {
 	return v.value
 }
@@ -37,5 +43,10 @@ entry get_factorial(a: u64) {
 
 entry address_test(addy: Address, amt: u64) {
   println(addy)
+  return 0
+}
+
+entry person_param_test(person: Person) {
+  println(person)
   return 0
 }

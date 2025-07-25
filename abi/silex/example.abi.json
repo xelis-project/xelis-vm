@@ -1,0 +1,67 @@
+{
+  "data": [
+    {
+      "chunk_id": 2,
+      "name": "path_test",
+      "outputs": "u64",
+      "params": [],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 4,
+      "name": "get_factorial",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "a",
+          "type": "u64"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 5,
+      "name": "address_test",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "addy",
+          "type": "Address"
+        },
+        {
+          "name": "amt",
+          "type": "u64"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 6,
+      "name": "person_param_test",
+      "outputs": "u64",
+      "params": [
+        {
+          "fields": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "age",
+              "type": "u8"
+            },
+            {
+              "name": "employed",
+              "type": "bool"
+            }
+          ],
+          "internalType": "Person",
+          "name": "person",
+          "type": "struct"
+        }
+      ],
+      "type": "entry"
+    }
+  ],
+  "version": "1.0.0"
+}

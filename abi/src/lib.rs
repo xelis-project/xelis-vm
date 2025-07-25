@@ -7,7 +7,7 @@ use xelis_ast::*;
 use xelis_parser::mapper::GlobalMapper;
 use xelis_builder::Builder;
 
-const ABI_VERSION = "1.0.0";
+const ABI_VERSION: &str = "1.0.0";
 
 pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
@@ -104,7 +104,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
         }
     }
 
-    let abi_root = json!({
+    let abi_root = serde_json::json!({
         "version": ABI_VERSION,
         "data": abi_functions
     });
@@ -308,18 +308,25 @@ mod tests {
 
     #[test]
     fn test_abi_from_example_slx() {
-        let code = fs::read_to_string("./silex/example.slx")
+        let slx_path = "./silex/example.slx";
+        let abi_path = "./silex/example.abi.json";
+
+        let code = fs::read_to_string(slx_path)
             .expect("Failed to read example.slx");
+        let expected_abi = fs::read_to_string(abi_path)
+            .expect("Failed to read example.abi.json");
 
         let mut env: EnvironmentBuilder<'_, TestStorage> = EnvironmentBuilder::default();
-
-        // Register only the opaque types used in the contract
         let _ = env.register_opaque::<Address>("Address", true);
 
         match abi_from_silex::<TestStorage>(&code, env) {
-            Ok(abi_json) => {
-                println!("Generated ABI:\n{}", abi_json);
-                assert!(abi_json.contains("entry"));
+            Ok(generated_abi) => {
+                let generated_json: serde_json::Value = serde_json::from_str(&generated_abi).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(&expected_abi).unwrap();
+                assert_eq!(
+                    generated_json, expected_json,
+                    "Generated ABI does not match expected ABI JSON"
+                );
             }
             Err(err) => panic!("Failed to generate ABI: {:?}", err),
         }
