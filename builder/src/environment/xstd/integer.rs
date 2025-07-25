@@ -1,5 +1,6 @@
 use xelis_environment::{
     SysCallResult,
+    FunctionHandler,
     FnInstance,
     FnParams,
     FnReturnType,
@@ -35,7 +36,7 @@ macro_rules! checked_fn {
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 // The function identifier
-                [<checked_ $op _ $f>],
+                FunctionHandler::Sync([<checked_ $op _ $f>]),
                 2,
                 Some(Type::Optional(Box::new(Type::$t)))
             );
@@ -70,7 +71,7 @@ macro_rules! to_endian_array {
                 stringify!([<to_ $endian _array>]),
                 Some(Type::$t),
                 vec![],
-                [<to_ $endian _array_ $f>],
+                FunctionHandler::Sync([<to_ $endian _array_ $f>]),
                 15,
                 Some(Type::Array(Box::new(Type::U8)))
             );
@@ -98,7 +99,7 @@ macro_rules! to_endian_bytes {
                 stringify!([<to_ $endian _bytes>]),
                 Some(Type::$t),
                 vec![],
-                [<to_ $endian _bytes_ $f>],
+                FunctionHandler::Sync([<to_ $endian _bytes_ $f>]),
                 10,
                 Some(Type::Bytes)
             );
@@ -128,7 +129,7 @@ macro_rules! min {
                 "min",
                 Some(Type::$t),
                 vec![],
-                [<min_ $f>],
+                FunctionHandler::Sync([<min_ $f>]),
                 1,
                 Some(Type::Array(Box::new(Type::U8)))
             );
@@ -152,7 +153,7 @@ macro_rules! max {
                 "max",
                 Some(Type::$t),
                 vec![],
-                [<max_ $f>],
+                FunctionHandler::Sync([<max_ $f>]),
                 1,
                 Some(Type::Array(Box::new(Type::U8)))
             );

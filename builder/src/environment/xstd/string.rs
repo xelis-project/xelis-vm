@@ -1,4 +1,4 @@
-use xelis_environment::Context;
+use xelis_environment::{Context, FunctionHandler};
 use xelis_types::{Type, Primitive, ValueCell};
 use super::{
     FnInstance,
@@ -10,25 +10,25 @@ use super::{
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // String
-    env.register_native_function("len", Some(Type::String), vec![], len, 1, Some(Type::U32));
-    env.register_native_function("trim", Some(Type::String), vec![], trim, 1, Some(Type::String));
-    env.register_native_function("contains", Some(Type::String), vec![("value", Type::String)], contains, 1, Some(Type::Bool));
-    env.register_native_function("contains_ignore_case", Some(Type::String), vec![("value", Type::String)], contains_ignore_case, 1, Some(Type::Bool));
-    env.register_native_function("to_uppercase", Some(Type::String), vec![], to_uppercase, 1, Some(Type::String));
-    env.register_native_function("to_lowercase", Some(Type::String), vec![], to_lowercase, 1, Some(Type::String));
-    env.register_native_function("to_bytes", Some(Type::String), vec![], to_bytes, 5, Some(Type::Array(Box::new(Type::U8))));
-    env.register_native_function("index_of", Some(Type::String), vec![("value", Type::String)], index_of, 3, Some(Type::Optional(Box::new(Type::U32))));
-    env.register_native_function("last_index_of", Some(Type::String), vec![("value", Type::String)], last_index_of, 3, Some(Type::Optional(Box::new(Type::U32))));
-    env.register_native_function("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], replace, 5, Some(Type::String));
-    env.register_native_function("starts_with", Some(Type::String), vec![("value", Type::String)], starts_with, 3, Some(Type::Bool));
-    env.register_native_function("ends_with", Some(Type::String), vec![("value", Type::String)], ends_with, 3, Some(Type::Bool));
-    env.register_native_function("split", Some(Type::String), vec![("at", Type::String)], split, 5, Some(Type::Array(Box::new(Type::String))));
-    env.register_native_function("char_at", Some(Type::String), vec![("index", Type::U32)], char_at, 1, Some(Type::Optional(Box::new(Type::String))));
+    env.register_native_function("len", Some(Type::String), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32));
+    env.register_native_function("trim", Some(Type::String), vec![], FunctionHandler::Sync(trim), 1, Some(Type::String));
+    env.register_native_function("contains", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(contains), 1, Some(Type::Bool));
+    env.register_native_function("contains_ignore_case", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(contains_ignore_case), 1, Some(Type::Bool));
+    env.register_native_function("to_uppercase", Some(Type::String), vec![], FunctionHandler::Sync(to_uppercase), 1, Some(Type::String));
+    env.register_native_function("to_lowercase", Some(Type::String), vec![], FunctionHandler::Sync(to_lowercase), 1, Some(Type::String));
+    env.register_native_function("to_bytes", Some(Type::String), vec![], FunctionHandler::Sync(to_bytes), 5, Some(Type::Array(Box::new(Type::U8))));
+    env.register_native_function("index_of", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(index_of), 3, Some(Type::Optional(Box::new(Type::U32))));
+    env.register_native_function("last_index_of", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(last_index_of), 3, Some(Type::Optional(Box::new(Type::U32))));
+    env.register_native_function("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], FunctionHandler::Sync(replace), 5, Some(Type::String));
+    env.register_native_function("starts_with", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(starts_with), 3, Some(Type::Bool));
+    env.register_native_function("ends_with", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(ends_with), 3, Some(Type::Bool));
+    env.register_native_function("split", Some(Type::String), vec![("at", Type::String)], FunctionHandler::Sync(split), 5, Some(Type::Array(Box::new(Type::String))));
+    env.register_native_function("char_at", Some(Type::String), vec![("index", Type::U32)], FunctionHandler::Sync(char_at), 1, Some(Type::Optional(Box::new(Type::String))));
 
-    env.register_native_function("is_empty", Some(Type::String), vec![], is_empty, 1, Some(Type::Bool));
-    env.register_native_function("matches", Some(Type::String), vec![("pattern", Type::String)], string_matches, 50, Some(Type::Array(Box::new(Type::String))));
-    env.register_native_function("substring", Some(Type::String), vec![("value", Type::U32)], string_substring, 3, Some(Type::Optional(Box::new(Type::String))));
-    env.register_native_function("substring_range", Some(Type::String), vec![("value", Type::U32), ("value", Type::U32)], string_substring_range, 3, Some(Type::Optional(Box::new(Type::String))));
+    env.register_native_function("is_empty", Some(Type::String), vec![], FunctionHandler::Sync(is_empty), 1, Some(Type::Bool));
+    env.register_native_function("matches", Some(Type::String), vec![("pattern", Type::String)], FunctionHandler::Sync(string_matches), 50, Some(Type::Array(Box::new(Type::String))));
+    env.register_native_function("substring", Some(Type::String), vec![("value", Type::U32)], FunctionHandler::Sync(string_substring), 3, Some(Type::Optional(Box::new(Type::String))));
+    env.register_native_function("substring_range", Some(Type::String), vec![("value", Type::U32), ("value", Type::U32)], FunctionHandler::Sync(string_substring_range), 3, Some(Type::Optional(Box::new(Type::String))));
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {

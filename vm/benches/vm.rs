@@ -16,7 +16,7 @@ macro_rules! bench {
             b.iter(|| {
                 vm.append_module(&module, &()).expect("module");
                 vm.invoke_entry_chunk($id).expect("entry");
-                vm.run().expect("run");
+                vm.run_blocking().expect("run");
                 vm.context_mut().reset_usage();
             });
         });
