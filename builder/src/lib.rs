@@ -39,7 +39,7 @@ pub enum BuilderError {
 
 #[cfg(test)]
 mod tests {
-    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, SysCallResult};
+    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
     use crate::EnvironmentBuilder;
 
     trait Foo {}
@@ -64,7 +64,7 @@ mod tests {
             "bar",
             None,
             vec![],
-            bar::<(), F>,
+            FunctionHandler::Sync(bar::<(), F>),
             1000,
             None
         );
@@ -82,6 +82,6 @@ mod tests {
         let mut context = Context::new();
         context.insert(FooWrapper(FooImpl));
 
-        assert!(f.call_function(None, vec![], &mut context).unwrap().is_none());
+        assert!(futures::executor::block_on(f.call_function(None, vec![], &mut context)).unwrap().is_none());
     }
 }

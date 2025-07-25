@@ -11,3 +11,6 @@ thiserror = "2.0.1"
 paste = "1.0.15"
 anyhow = "1.0.95"
 log = "0.4.25"
+
+[dev-dependencies]
+futures = "0.3.31"

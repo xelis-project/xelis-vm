@@ -163,12 +163,12 @@ pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize, fro
     })
 }
 
-pub fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub async fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = reader.read_u16()?;
-    internal_syscall(backend, id, stack, context)
+    internal_syscall(backend, id, stack, context).await
 }
 
-fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("syscall: {}", id);
 
     let f = backend.environment.get_functions()
@@ -203,9 +203,10 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
         None => None,
     };
 
-    perform_syscall(backend, f, instance, arguments.into(), stack, context)
+    perform_syscall(backend, f, instance, arguments.into(), stack, context).await
 }
-fn perform_syscall<'a, 'ty, 'r, M>(
+
+async fn perform_syscall<'a, 'ty, 'r, M>(
     backend: &Backend<'a, 'ty, 'r, M>,
     f: &NativeFunction<M>,
     mut instance: Option<&mut ValueCell>,
@@ -216,7 +217,7 @@ fn perform_syscall<'a, 'ty, 'r, M>(
     let mut function = f;
 
     loop {
-        match function.call_function(instance, fn_params, context)? {
+        match function.call_function(instance, fn_params, context).await? {
             SysCallResult::None => return Ok(InstructionResult::Nothing),
             SysCallResult::Return(v) => {
                 let memory_usage = v.calculate_memory_usage(context.memory_left())?;
@@ -277,7 +278,7 @@ fn perform_syscall<'a, 'ty, 'r, M>(
     }
 }
 
-pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub async fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.as_ref()?
         .as_vec()?;
@@ -294,7 +295,7 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
     debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
 
     if syscall {
-        internal_syscall(backend, id, stack, context)
+        internal_syscall(backend, id, stack, context).await
     } else {
         internal_invoke_chunk(stack, id, args, Some(from))
     }

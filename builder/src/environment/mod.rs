@@ -2,7 +2,7 @@ pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, StructType, Type};
-use xelis_environment::{Environment, NativeFunction, OnCallFn};
+use xelis_environment::{Environment, FunctionHandler, NativeFunction};
 use crate::{
     ConstFnCall,
     ConstFunction,
@@ -47,7 +47,7 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         }
     }
 
-    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<M>, cost: u64, return_type: Option<Type>) {
+    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>) {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
         let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone()).unwrap();
         self.env.add_function(NativeFunction::new(on_type, require_instance, params, on_call, cost, return_type));
@@ -55,16 +55,16 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
 
     // Register a native function
     // Panic if the function signature is already registered
-    pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<M>, cost: u64, return_type: Option<Type>) {
+    pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: impl Into<FunctionHandler<M>>, cost: u64, return_type: Option<Type>) {
         let instance = for_type.is_some();
-        self.register_function_internal(name, for_type, instance, parameters, on_call, cost, return_type);
+        self.register_function_internal(name, for_type, instance, parameters, on_call.into(), cost, return_type);
     }
 
     // Register a native static function
     // This is function not accessible from an instance but still behind the type
     // Example: u64::from_be_bytes
     // Panic if the function signature is already registered
-    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: OnCallFn<M>, cost: u64, return_type: Option<Type>) {
+    pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>) {
         self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type);
     }
 

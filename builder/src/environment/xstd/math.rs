@@ -4,6 +4,7 @@ use xelis_environment::{
     FnReturnType,
     Context,
     SysCallResult,
+    FunctionHandler,
 };
 use xelis_types::{Type, Primitive, U256 as u256};
 use paste::paste;
@@ -55,7 +56,7 @@ macro_rules! sqrt_fn {
                 "sqrt",
                 Some(Type::$t),
                 vec![],
-                [<sqrt_ $f>],
+                FunctionHandler::Sync([<sqrt_ $f>]),
                 10,
                 Some(Type::$t)
             );

@@ -154,7 +154,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         table.set_instruction(OpCode::ArrayCall, OpCodeHandler::Sync(array_call), 2);
         table.set_instruction(OpCode::Cast, OpCodeHandler::Sync(cast), 1);
         table.set_instruction(OpCode::InvokeChunk, OpCodeHandler::Sync(invoke_chunk), 5);
-        table.set_instruction(OpCode::SysCall, OpCodeHandler::Sync(syscall), 2);
+        table.set_instruction(OpCode::SysCall, OpCodeHandler::Async(async_handler!(syscall)), 2);
         table.set_instruction(OpCode::NewObject, OpCodeHandler::Sync(new_array), 1);
         table.set_instruction(OpCode::NewRange, OpCodeHandler::Sync(new_range), 1);
         table.set_instruction(OpCode::NewMap, OpCodeHandler::Sync(new_map), 1);
@@ -199,7 +199,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         table.set_instruction(OpCode::Dec, OpCodeHandler::Sync(decrement), 1);
         table.set_instruction(OpCode::Flatten, OpCodeHandler::Sync(flatten), 5);
         table.set_instruction(OpCode::Match, OpCodeHandler::Sync(match_), 2);
-        table.set_instruction(OpCode::DynamicCall, OpCodeHandler::Sync(dynamic_call), 8);
+        table.set_instruction(OpCode::DynamicCall, OpCodeHandler::Async(async_handler!(dynamic_call)), 8);
         table.set_instruction(OpCode::CaptureContext, OpCodeHandler::Sync(capture_context), 5);
 
         table
