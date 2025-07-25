@@ -7,6 +7,8 @@ use xelis_ast::*;
 use xelis_parser::mapper::GlobalMapper;
 use xelis_builder::Builder;
 
+const ABI_VERSION = "1.0.0";
+
 pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
         .into_iter()
@@ -102,7 +104,12 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
         }
     }
 
-    Ok(serde_json::to_string_pretty(&abi_functions)?)
+    let abi_root = json!({
+        "version": ABI_VERSION,
+        "data": abi_functions
+    });
+
+    Ok(serde_json::to_string_pretty(&abi_root)?)
 }
 
 // TODO: re-add import support and switch to something like below
