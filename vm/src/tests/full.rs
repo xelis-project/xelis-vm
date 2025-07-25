@@ -70,7 +70,7 @@ fn test_max_gas() {
     vm.invoke_entry_chunk(0).expect("valid entry chunk");
     vm.context_mut().set_gas_limit(1000);
 
-    assert!(matches!(vm.run(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
+    assert!(matches!(vm.run_blocking(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
 }
 
 #[test]
@@ -1220,13 +1220,13 @@ fn test_opaque_fn_call() {
     let mut env = EnvironmentBuilder::default();
     let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
 
-    env.register_native_function("foo", None, vec![], |_, _, _| {
+    env.register_native_function("foo", None, vec![], FunctionHandler::Sync(|_, _, _| {
         Ok(SysCallResult::Return(Primitive::Opaque(Foo.into()).into()))
-    }, 0, Some(ty.clone()));
+    }), 0, Some(ty.clone()));
 
-    env.register_native_function("call", Some(ty), vec![], |_, _, _| {
+    env.register_native_function("call", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| {
         Ok(SysCallResult::Return(Primitive::U64(0).into()))
-    }, 0, Some(Type::U64));
+    }), 0, Some(Type::U64));
 
     let code = r#"
         entry main() {
@@ -1358,9 +1358,9 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque))))), 0, Some(Type::Any)); 
-    env.register_native_function("a", Some(ty), vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::U64(0)))), 0, Some(Type::Any)); 
-    env.register_static_function("static", Type::Bool, vec![], |_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null))), 0, Some(Type::Optional(Box::new(Type::Bool))));
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)))))), 0, Some(Type::Any)); 
+    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::U64(0))))), 0, Some(Type::Any)); 
+    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null)))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {

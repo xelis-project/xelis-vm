@@ -3,6 +3,10 @@ mod r#impl;
 mod iterator;
 mod constructor;
 mod memory;
+mod syscall;
+
+pub use syscall::*;
+use std::collections::VecDeque;
 
 use operator::*;
 use r#impl::*;
@@ -11,7 +15,8 @@ use constructor::*;
 use memory::*;
 
 use xelis_bytecode::{Module, OpCode};
-use xelis_types::{Primitive, ValueCell};
+use xelis_environment::OnCallAsyncFn;
+use xelis_types::{Primitive, StackValue, ValueCell};
 
 use crate::{ChunkReader, Context, Reference};
 
@@ -36,6 +41,14 @@ macro_rules! trace {
     };
 }
 
+#[macro_export]
+macro_rules! async_handler {
+    ($func: expr) => {
+        move |a, b, c, d, e| {
+          Box::pin($func(a, b, c, d, e))
+        }
+    };
+}
 
 #[derive(Debug)]
 pub enum InstructionResult<'a, M> {
@@ -50,19 +63,28 @@ pub enum InstructionResult<'a, M> {
         module: Reference<'a, Module>,
         metadata: Reference<'a, M>,
         chunk_id: u16
+    },
+    AsyncCall {
+        ptr: OnCallAsyncFn<M>,
+        instance: bool,
+        params: VecDeque<StackValue>,
     }
 }
 
-// A handler is a function pointer to an instruction
-// With its associated cost
-pub type Handler<'a, 'ty, 'r, M> = (fn(&Backend<'a, 'ty, 'r, M>, &mut Stack, &mut ChunkManager, &mut ChunkReader<'_>, &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError>, u64);
+pub type OpCodeHandler<'a, 'ty, 'r, M> = fn(
+    &Backend<'a, 'ty, 'r, M>,
+    &mut Stack,
+    &mut ChunkManager,
+    &mut ChunkReader<'_>,
+    &mut Context<'ty, 'r>,
+) -> Result<InstructionResult<'a, M>, VMError>;
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
 // It is a fixed size array of 256 elements
 // Each element is a function pointer to the instruction
 pub struct InstructionTable<'a: 'r, 'ty: 'a, 'r, M> {
-    instructions: [Handler<'a, 'ty, 'r, M>; 256],
+    instructions: [(OpCodeHandler<'a, 'ty, 'r, M>, u64); 256],
 }
 
 impl<'a: 'r, 'ty: 'a, 'r, M> Default for InstructionTable<'a, 'ty, 'r, M> {
@@ -74,100 +96,105 @@ impl<'a: 'r, 'ty: 'a, 'r, M> Default for InstructionTable<'a, 'ty, 'r, M> {
 impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
-        let mut instructions: [Handler<'a, 'ty, 'r, M>; 256] = [(unimplemented, 0); 256];
+        let mut table = Self {
+            instructions: [((unimplemented), 0); 256],
+        };
 
-        instructions[OpCode::Constant.as_usize()] = (constant, 1);
-        instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
-        instructions[OpCode::MemorySet.as_usize()] = (memory_set, 5);
-        instructions[OpCode::MemoryPop.as_usize()] = (memory_pop, 3);
-        instructions[OpCode::MemoryLen.as_usize()] = (memory_len, 1);
-        instructions[OpCode::MemoryToOwned.as_usize()] = (memory_to_owned, 5);
+        table.set_instruction(OpCode::Constant, constant, 1);
+        table.set_instruction(OpCode::MemoryLoad, memory_load, 5);
+        table.set_instruction(OpCode::MemorySet, memory_set, 5);
+        table.set_instruction(OpCode::MemoryPop, memory_pop, 3);
+        table.set_instruction(OpCode::MemoryLen, memory_len, 1);
+        table.set_instruction(OpCode::MemoryToOwned, memory_to_owned, 5);
 
-        instructions[OpCode::SubLoad.as_usize()] = (subload, 5);
+        table.set_instruction(OpCode::SubLoad, subload, 5);
 
-        instructions[OpCode::Pop.as_usize()] = (pop, 1);
-        instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
-        instructions[OpCode::Copy.as_usize()] = (copy, 1);
-        instructions[OpCode::CopyN.as_usize()] = (copy_n, 1);
-        instructions[OpCode::ToOwned.as_usize()] = (to_owned, 1);
+        table.set_instruction(OpCode::Pop, pop, 1);
+        table.set_instruction(OpCode::PopN, pop_n, 1);
+        table.set_instruction(OpCode::Copy, copy, 1);
+        table.set_instruction(OpCode::CopyN, copy_n, 1);
+        table.set_instruction(OpCode::ToOwned, to_owned, 1);
 
-        instructions[OpCode::Swap.as_usize()] = (swap, 1);
-        instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
-        instructions[OpCode::Jump.as_usize()] = (jump, 2);
-        instructions[OpCode::JumpIfFalse.as_usize()] = (jump_if_false, 3);
+        table.set_instruction(OpCode::Swap, swap, 1);
+        table.set_instruction(OpCode::Swap2, swap2, 1);
+        table.set_instruction(OpCode::Jump, jump, 2);
+        table.set_instruction(OpCode::JumpIfFalse, jump_if_false, 3);
 
-        instructions[OpCode::IterableLength.as_usize()] = (iterable_length, 3);
-        instructions[OpCode::IteratorBegin.as_usize()] = (iterator_begin, 5);
-        instructions[OpCode::IteratorNext.as_usize()] = (iterator_next, 1);
-        instructions[OpCode::IteratorEnd.as_usize()] = (iterator_end, 1);
+        table.set_instruction(OpCode::IterableLength, iterable_length, 3);
+        table.set_instruction(OpCode::IteratorBegin, iterator_begin, 5);
+        table.set_instruction(OpCode::IteratorNext, iterator_next, 1);
+        table.set_instruction(OpCode::IteratorEnd, iterator_end, 1);
 
-        instructions[OpCode::Return.as_usize()] = (return_fn, 1);
+        table.set_instruction(OpCode::Return, return_fn, 1);
 
-        instructions[OpCode::ArrayCall.as_usize()] = (array_call, 2);
-        instructions[OpCode::Cast.as_usize()] = (cast, 1);
-        instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
-        instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
-        instructions[OpCode::NewObject.as_usize()] = (new_array, 1);
-        instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
-        instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
+        table.set_instruction(OpCode::ArrayCall, array_call, 2);
+        table.set_instruction(OpCode::Cast, cast, 1);
+        table.set_instruction(OpCode::InvokeChunk, invoke_chunk, 5);
+        table.set_instruction(OpCode::SysCall, syscall, 2);
+        table.set_instruction(OpCode::NewObject, new_array, 1);
+        table.set_instruction(OpCode::NewRange, new_range, 1);
+        table.set_instruction(OpCode::NewMap, new_map, 1);
 
-        instructions[OpCode::Add.as_usize()] = (add, 1);
-        instructions[OpCode::Sub.as_usize()] = (sub, 1);
-        instructions[OpCode::Mul.as_usize()] = (mul, 3);
-        instructions[OpCode::Div.as_usize()] = (div, 8);
-        instructions[OpCode::Mod.as_usize()] = (rem, 8);
-        instructions[OpCode::Pow.as_usize()] = (pow, 35);
-        instructions[OpCode::And.as_usize()] = (and, 2);
-        instructions[OpCode::Or.as_usize()] = (or, 1);
+        table.set_instruction(OpCode::Add, add, 1);
+        table.set_instruction(OpCode::Sub, sub, 1);
+        table.set_instruction(OpCode::Mul, mul, 3);
+        table.set_instruction(OpCode::Div, div, 8);
+        table.set_instruction(OpCode::Mod, rem, 8);
+        table.set_instruction(OpCode::Pow, pow, 35);
+        table.set_instruction(OpCode::And, and, 2);
+        table.set_instruction(OpCode::Or, or, 1);
 
-        instructions[OpCode::BitwiseAnd.as_usize()] = (bitwise_and, 1);
-        instructions[OpCode::BitwiseOr.as_usize()] = (bitwise_or, 1);
-        instructions[OpCode::BitwiseXor.as_usize()] = (bitwise_xor, 1);
-        instructions[OpCode::BitwiseShl.as_usize()] = (bitwise_shl, 5);
-        instructions[OpCode::BitwiseShr.as_usize()] = (bitwise_shr, 5);
+        table.set_instruction(OpCode::BitwiseAnd, bitwise_and, 1);
+        table.set_instruction(OpCode::BitwiseOr, bitwise_or, 1);
+        table.set_instruction(OpCode::BitwiseXor, bitwise_xor, 1);
+        table.set_instruction(OpCode::BitwiseShl, bitwise_shl, 5);
+        table.set_instruction(OpCode::BitwiseShr, bitwise_shr, 5);
 
-        instructions[OpCode::Eq.as_usize()] = (eq, 2);
-        instructions[OpCode::Neg.as_usize()] = (neg, 1);
-        instructions[OpCode::Gt.as_usize()] = (gt, 2);
-        instructions[OpCode::Lt.as_usize()] = (lt, 2);
-        instructions[OpCode::Gte.as_usize()] = (gte, 2);
-        instructions[OpCode::Lte.as_usize()] = (lte, 2);
+        table.set_instruction(OpCode::Eq, eq, 2);
+        table.set_instruction(OpCode::Neg, neg, 1);
+        table.set_instruction(OpCode::Gt, gt, 2);
+        table.set_instruction(OpCode::Lt, lt, 2);
+        table.set_instruction(OpCode::Gte, gte, 2);
+        table.set_instruction(OpCode::Lte, lte, 2);
 
-        instructions[OpCode::Assign.as_usize()] = (assign, 2);
-        instructions[OpCode::AssignAdd.as_usize()] = (add_assign, 3);
-        instructions[OpCode::AssignSub.as_usize()] = (sub_assign, 3);
-        instructions[OpCode::AssignMul.as_usize()] = (mul_assign, 5);
-        instructions[OpCode::AssignDiv.as_usize()] = (div_assign, 10);
-        instructions[OpCode::AssignMod.as_usize()] = (rem_assign, 10);
-        instructions[OpCode::AssignPow.as_usize()] = (pow_assign, 35);
+        table.set_instruction(OpCode::Assign, assign, 2);
+        table.set_instruction(OpCode::AssignAdd, add_assign, 3);
+        table.set_instruction(OpCode::AssignSub, sub_assign, 3);
+        table.set_instruction(OpCode::AssignMul, mul_assign, 5);
+        table.set_instruction(OpCode::AssignDiv, div_assign, 10);
+        table.set_instruction(OpCode::AssignMod, rem_assign, 10);
+        table.set_instruction(OpCode::AssignPow, pow_assign, 35);
 
-        instructions[OpCode::AssignBitwiseAnd.as_usize()] = (bitwise_and_assign, 3);
-        instructions[OpCode::AssignBitwiseOr.as_usize()] = (bitwise_or_assign, 3);
-        instructions[OpCode::AssignBitwiseXor.as_usize()] = (bitwise_xor_assign, 3);
-        instructions[OpCode::AssignBitwiseShl.as_usize()] = (bitwise_shl_assign, 7);
-        instructions[OpCode::AssignBitwiseShr.as_usize()] = (bitwise_shr_assign, 7);
+        table.set_instruction(OpCode::AssignBitwiseAnd, bitwise_and_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseOr, bitwise_or_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseXor, bitwise_xor_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseShl, bitwise_shl_assign, 7);
+        table.set_instruction(OpCode::AssignBitwiseShr, bitwise_shr_assign, 7);
 
-        instructions[OpCode::Inc.as_usize()] = (increment, 1);
-        instructions[OpCode::Dec.as_usize()] = (decrement, 1);
-        instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
-        instructions[OpCode::Match.as_usize()] = (match_, 2);
-        instructions[OpCode::DynamicCall.as_usize()] = (dynamic_call, 8);
-        instructions[OpCode::CaptureContext.as_usize()] = (capture_context, 5);
+        table.set_instruction(OpCode::Inc, increment, 1);
+        table.set_instruction(OpCode::Dec, decrement, 1);
+        table.set_instruction(OpCode::Flatten, flatten, 5);
+        table.set_instruction(OpCode::Match, match_, 2);
+        table.set_instruction(OpCode::DynamicCall, dynamic_call, 8);
+        table.set_instruction(OpCode::CaptureContext, capture_context, 5);
 
-        Self { instructions }
+        table
     }
 
     // Allow to overwrite a instruction with a custom handler
-    pub fn set_instruction(&mut self, opcode: OpCode, handler: Handler<'a, 'ty, 'r, M>) {
-        self.instructions[opcode.as_usize()] = handler;
+    #[inline(always)]
+    pub const fn set_instruction(&mut self, opcode: OpCode, ptr: OpCodeHandler<'a, 'ty, 'r, M>, cost: u64) {
+        self.instructions[opcode.as_usize()] = (ptr, cost);
     }
 
     // Allow to overwrite the cost of an instruction
-    pub fn set_instruction_cost(&mut self, opcode: OpCode, cost: u64) {
+    #[inline(always)]
+    pub const fn set_instruction_cost(&mut self, opcode: OpCode, cost: u64) {
         self.instructions[opcode.as_usize()].1 = cost;
     }
 
     // Execute an instruction
+    #[inline(always)]
     pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
