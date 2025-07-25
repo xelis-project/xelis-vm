@@ -15,10 +15,10 @@ pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::
     let parser = Parser::with(tokens.into_iter(), &env);
     let (program, mapper) = parser.parse().map_err(|err| anyhow::anyhow!("{:#}", err))?;
 
-    abi_from_parse(program, &mapper, &env)
+    abi_from_parse(&program, &mapper, &env)
 }
 
-pub fn abi_from_parse<M>(program: Program, mapper: &GlobalMapper, environment: &EnvironmentBuilder<M>) -> anyhow::Result<String> {
+pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: &EnvironmentBuilder<M>) -> anyhow::Result<String> {
     // Collect all the available entry functions
     let mut abi_functions: Vec<serde_json::Value> = Vec::new();
     for (i, func) in program.functions().iter().enumerate() {
