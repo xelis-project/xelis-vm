@@ -70,7 +70,7 @@ fn test_max_gas() {
     vm.invoke_entry_chunk(0).expect("valid entry chunk");
     vm.context_mut().set_gas_limit(1000);
 
-    assert!(matches!(vm.run(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
+    assert!(matches!(vm.run_blocking(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
 }
 
 #[test]

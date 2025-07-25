@@ -4,6 +4,7 @@ mod iterator;
 mod constructor;
 mod memory;
 
+use futures::future::LocalBoxFuture;
 use operator::*;
 use r#impl::*;
 use iterator::*;
@@ -36,6 +37,14 @@ macro_rules! trace {
     };
 }
 
+#[macro_export]
+macro_rules! async_handler {
+    ($func: expr) => {
+        move |a, b, c, d, e| {
+          Box::pin($func(a, b, c, d, e))
+        }
+    };
+}
 
 #[derive(Debug)]
 pub enum InstructionResult<'a, M> {
@@ -55,14 +64,21 @@ pub enum InstructionResult<'a, M> {
 
 // A handler is a function pointer to an instruction
 // With its associated cost
-pub type Handler<'a, 'ty, 'r, M> = (fn(&Backend<'a, 'ty, 'r, M>, &mut Stack, &mut ChunkManager, &mut ChunkReader<'_>, &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError>, u64);
+pub type AsyncFn<'a, 'ty, 'r, M> = for<'t> fn(
+        &'t Backend<'a, 'ty, 'r, M>,
+        &'t mut Stack,
+        &'t mut ChunkManager,
+        &'t mut ChunkReader<'_>,
+        &'t mut Context<'ty, 'r>,
+    ) -> LocalBoxFuture<'t, Result<InstructionResult<'a, M>, VMError>>;
+
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
 // It is a fixed size array of 256 elements
 // Each element is a function pointer to the instruction
 pub struct InstructionTable<'a: 'r, 'ty: 'a, 'r, M> {
-    instructions: [Handler<'a, 'ty, 'r, M>; 256],
+    instructions: [(AsyncFn<'a, 'ty, 'r, M>, u64); 256],
 }
 
 impl<'a: 'r, 'ty: 'a, 'r, M> Default for InstructionTable<'a, 'ty, 'r, M> {
@@ -74,126 +90,131 @@ impl<'a: 'r, 'ty: 'a, 'r, M> Default for InstructionTable<'a, 'ty, 'r, M> {
 impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
-        let mut instructions: [Handler<'a, 'ty, 'r, M>; 256] = [(unimplemented, 0); 256];
+        let mut table = Self {
+            instructions: [(async_handler!(unimplemented), 0); 256],
+        };
 
-        instructions[OpCode::Constant.as_usize()] = (constant, 1);
-        instructions[OpCode::MemoryLoad.as_usize()] = (memory_load, 5);
-        instructions[OpCode::MemorySet.as_usize()] = (memory_set, 5);
-        instructions[OpCode::MemoryPop.as_usize()] = (memory_pop, 3);
-        instructions[OpCode::MemoryLen.as_usize()] = (memory_len, 1);
-        instructions[OpCode::MemoryToOwned.as_usize()] = (memory_to_owned, 5);
+        table.set_instruction(OpCode::Constant, async_handler!(constant), 1);
+        table.set_instruction(OpCode::MemoryLoad, async_handler!(memory_load), 5);
+        table.set_instruction(OpCode::MemorySet, async_handler!(memory_set), 5);
+        table.set_instruction(OpCode::MemoryPop, async_handler!(memory_pop), 3);
+        table.set_instruction(OpCode::MemoryLen, async_handler!(memory_len), 1);
+        table.set_instruction(OpCode::MemoryToOwned, async_handler!(memory_to_owned), 5);
 
-        instructions[OpCode::SubLoad.as_usize()] = (subload, 5);
+        table.set_instruction(OpCode::SubLoad, async_handler!(subload), 5);
 
-        instructions[OpCode::Pop.as_usize()] = (pop, 1);
-        instructions[OpCode::PopN.as_usize()] = (pop_n, 1);
-        instructions[OpCode::Copy.as_usize()] = (copy, 1);
-        instructions[OpCode::CopyN.as_usize()] = (copy_n, 1);
-        instructions[OpCode::ToOwned.as_usize()] = (to_owned, 1);
+        table.set_instruction(OpCode::Pop, async_handler!(pop), 1);
+        table.set_instruction(OpCode::PopN, async_handler!(pop_n), 1);
+        table.set_instruction(OpCode::Copy, async_handler!(copy), 1);
+        table.set_instruction(OpCode::CopyN, async_handler!(copy_n), 1);
+        table.set_instruction(OpCode::ToOwned, async_handler!(to_owned), 1);
 
-        instructions[OpCode::Swap.as_usize()] = (swap, 1);
-        instructions[OpCode::Swap2.as_usize()] = (swap2, 1);
-        instructions[OpCode::Jump.as_usize()] = (jump, 2);
-        instructions[OpCode::JumpIfFalse.as_usize()] = (jump_if_false, 3);
+        table.set_instruction(OpCode::Swap, async_handler!(swap), 1);
+        table.set_instruction(OpCode::Swap2, async_handler!(swap2), 1);
+        table.set_instruction(OpCode::Jump, async_handler!(jump), 2);
+        table.set_instruction(OpCode::JumpIfFalse, async_handler!(jump_if_false), 3);
 
-        instructions[OpCode::IterableLength.as_usize()] = (iterable_length, 3);
-        instructions[OpCode::IteratorBegin.as_usize()] = (iterator_begin, 5);
-        instructions[OpCode::IteratorNext.as_usize()] = (iterator_next, 1);
-        instructions[OpCode::IteratorEnd.as_usize()] = (iterator_end, 1);
+        table.set_instruction(OpCode::IterableLength, async_handler!(iterable_length), 3);
+        table.set_instruction(OpCode::IteratorBegin, async_handler!(iterator_begin), 5);
+        table.set_instruction(OpCode::IteratorNext, async_handler!(iterator_next), 1);
+        table.set_instruction(OpCode::IteratorEnd, async_handler!(iterator_end), 1);
 
-        instructions[OpCode::Return.as_usize()] = (return_fn, 1);
+        table.set_instruction(OpCode::Return, async_handler!(return_fn), 1);
 
-        instructions[OpCode::ArrayCall.as_usize()] = (array_call, 2);
-        instructions[OpCode::Cast.as_usize()] = (cast, 1);
-        instructions[OpCode::InvokeChunk.as_usize()] = (invoke_chunk, 5);
-        instructions[OpCode::SysCall.as_usize()] = (syscall, 2);
-        instructions[OpCode::NewObject.as_usize()] = (new_array, 1);
-        instructions[OpCode::NewRange.as_usize()] = (new_range, 1);
-        instructions[OpCode::NewMap.as_usize()] = (new_map, 1);
+        table.set_instruction(OpCode::ArrayCall, async_handler!(array_call), 2);
+        table.set_instruction(OpCode::Cast, async_handler!(cast), 1);
+        table.set_instruction(OpCode::InvokeChunk, async_handler!(invoke_chunk), 5);
+        table.set_instruction(OpCode::SysCall, async_handler!(syscall), 2);
+        table.set_instruction(OpCode::NewObject, async_handler!(new_array), 1);
+        table.set_instruction(OpCode::NewRange, async_handler!(new_range), 1);
+        table.set_instruction(OpCode::NewMap, async_handler!(new_map), 1);
 
-        instructions[OpCode::Add.as_usize()] = (add, 1);
-        instructions[OpCode::Sub.as_usize()] = (sub, 1);
-        instructions[OpCode::Mul.as_usize()] = (mul, 3);
-        instructions[OpCode::Div.as_usize()] = (div, 8);
-        instructions[OpCode::Mod.as_usize()] = (rem, 8);
-        instructions[OpCode::Pow.as_usize()] = (pow, 35);
-        instructions[OpCode::And.as_usize()] = (and, 2);
-        instructions[OpCode::Or.as_usize()] = (or, 1);
+        table.set_instruction(OpCode::Add, async_handler!(add), 1);
+        table.set_instruction(OpCode::Sub, async_handler!(sub), 1);
+        table.set_instruction(OpCode::Mul, async_handler!(mul), 3);
+        table.set_instruction(OpCode::Div, async_handler!(div), 8);
+        table.set_instruction(OpCode::Mod, async_handler!(rem), 8);
+        table.set_instruction(OpCode::Pow, async_handler!(pow), 35);
+        table.set_instruction(OpCode::And, async_handler!(and), 2);
+        table.set_instruction(OpCode::Or, async_handler!(or), 1);
 
-        instructions[OpCode::BitwiseAnd.as_usize()] = (bitwise_and, 1);
-        instructions[OpCode::BitwiseOr.as_usize()] = (bitwise_or, 1);
-        instructions[OpCode::BitwiseXor.as_usize()] = (bitwise_xor, 1);
-        instructions[OpCode::BitwiseShl.as_usize()] = (bitwise_shl, 5);
-        instructions[OpCode::BitwiseShr.as_usize()] = (bitwise_shr, 5);
+        table.set_instruction(OpCode::BitwiseAnd, async_handler!(bitwise_and), 1);
+        table.set_instruction(OpCode::BitwiseOr, async_handler!(bitwise_or), 1);
+        table.set_instruction(OpCode::BitwiseXor, async_handler!(bitwise_xor), 1);
+        table.set_instruction(OpCode::BitwiseShl, async_handler!(bitwise_shl), 5);
+        table.set_instruction(OpCode::BitwiseShr, async_handler!(bitwise_shr), 5);
 
-        instructions[OpCode::Eq.as_usize()] = (eq, 2);
-        instructions[OpCode::Neg.as_usize()] = (neg, 1);
-        instructions[OpCode::Gt.as_usize()] = (gt, 2);
-        instructions[OpCode::Lt.as_usize()] = (lt, 2);
-        instructions[OpCode::Gte.as_usize()] = (gte, 2);
-        instructions[OpCode::Lte.as_usize()] = (lte, 2);
+        table.set_instruction(OpCode::Eq, async_handler!(eq), 2);
+        table.set_instruction(OpCode::Neg, async_handler!(neg), 1);
+        table.set_instruction(OpCode::Gt, async_handler!(gt), 2);
+        table.set_instruction(OpCode::Lt, async_handler!(lt), 2);
+        table.set_instruction(OpCode::Gte, async_handler!(gte), 2);
+        table.set_instruction(OpCode::Lte, async_handler!(lte), 2);
 
-        instructions[OpCode::Assign.as_usize()] = (assign, 2);
-        instructions[OpCode::AssignAdd.as_usize()] = (add_assign, 3);
-        instructions[OpCode::AssignSub.as_usize()] = (sub_assign, 3);
-        instructions[OpCode::AssignMul.as_usize()] = (mul_assign, 5);
-        instructions[OpCode::AssignDiv.as_usize()] = (div_assign, 10);
-        instructions[OpCode::AssignMod.as_usize()] = (rem_assign, 10);
-        instructions[OpCode::AssignPow.as_usize()] = (pow_assign, 35);
+        table.set_instruction(OpCode::Assign, async_handler!(assign), 2);
+        table.set_instruction(OpCode::AssignAdd, async_handler!(add_assign), 3);
+        table.set_instruction(OpCode::AssignSub, async_handler!(sub_assign), 3);
+        table.set_instruction(OpCode::AssignMul, async_handler!(mul_assign), 5);
+        table.set_instruction(OpCode::AssignDiv, async_handler!(div_assign), 10);
+        table.set_instruction(OpCode::AssignMod, async_handler!(rem_assign), 10);
+        table.set_instruction(OpCode::AssignPow, async_handler!(pow_assign), 35);
 
-        instructions[OpCode::AssignBitwiseAnd.as_usize()] = (bitwise_and_assign, 3);
-        instructions[OpCode::AssignBitwiseOr.as_usize()] = (bitwise_or_assign, 3);
-        instructions[OpCode::AssignBitwiseXor.as_usize()] = (bitwise_xor_assign, 3);
-        instructions[OpCode::AssignBitwiseShl.as_usize()] = (bitwise_shl_assign, 7);
-        instructions[OpCode::AssignBitwiseShr.as_usize()] = (bitwise_shr_assign, 7);
+        table.set_instruction(OpCode::AssignBitwiseAnd, async_handler!(bitwise_and_assign), 3);
+        table.set_instruction(OpCode::AssignBitwiseOr, async_handler!(bitwise_or_assign), 3);
+        table.set_instruction(OpCode::AssignBitwiseXor, async_handler!(bitwise_xor_assign), 3);
+        table.set_instruction(OpCode::AssignBitwiseShl, async_handler!(bitwise_shl_assign), 7);
+        table.set_instruction(OpCode::AssignBitwiseShr, async_handler!(bitwise_shr_assign), 7);
 
-        instructions[OpCode::Inc.as_usize()] = (increment, 1);
-        instructions[OpCode::Dec.as_usize()] = (decrement, 1);
-        instructions[OpCode::Flatten.as_usize()] = (flatten, 5);
-        instructions[OpCode::Match.as_usize()] = (match_, 2);
-        instructions[OpCode::DynamicCall.as_usize()] = (dynamic_call, 8);
-        instructions[OpCode::CaptureContext.as_usize()] = (capture_context, 5);
+        table.set_instruction(OpCode::Inc, async_handler!(increment), 1);
+        table.set_instruction(OpCode::Dec, async_handler!(decrement), 1);
+        table.set_instruction(OpCode::Flatten, async_handler!(flatten), 5);
+        table.set_instruction(OpCode::Match, async_handler!(match_), 2);
+        table.set_instruction(OpCode::DynamicCall, async_handler!(dynamic_call), 8);
+        table.set_instruction(OpCode::CaptureContext, async_handler!(capture_context), 5);
 
-        Self { instructions }
+        table
     }
 
     // Allow to overwrite a instruction with a custom handler
-    pub fn set_instruction(&mut self, opcode: OpCode, handler: Handler<'a, 'ty, 'r, M>) {
-        self.instructions[opcode.as_usize()] = handler;
+    #[inline(always)]
+    pub const fn set_instruction(&mut self, opcode: OpCode, ptr: AsyncFn<'a, 'ty, 'r, M>, cost: u64) {
+        self.instructions[opcode.as_usize()] = (ptr, cost);
     }
 
     // Allow to overwrite the cost of an instruction
-    pub fn set_instruction_cost(&mut self, opcode: OpCode, cost: u64) {
+    #[inline(always)]
+    pub const fn set_instruction_cost(&mut self, opcode: OpCode, cost: u64) {
         self.instructions[opcode.as_usize()].1 = cost;
     }
 
     // Execute an instruction
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    #[inline]
+    pub async fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
         context.increase_gas_usage(cost)?;
 
-        instruction(backend, stack, chunk_manager, reader, context)
+        instruction(backend, stack, chunk_manager, reader, context).await
     }
 }
 
-fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Err(VMError::InvalidOpCode)
 }
 
-fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     reader.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
     if !value.as_bool()? {
@@ -202,7 +223,7 @@ fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     Ok(InstructionResult::Nothing)
 }
 
-fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.into_owned()?
         .to_vec()?;
@@ -230,7 +251,7 @@ fn is_value_in_range<T: PartialOrd>(
     }
 }
 
-fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+async fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?
@@ -241,7 +262,7 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
 
         // if its the same, flatten it
         if same {
-            flatten(backend, stack, manager, reader, context)?;
+            flatten(backend, stack, manager, reader, context).await?;
         }
 
         same

@@ -311,10 +311,16 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         None
     }
 
+    // Run the VM in a blocking way
+    #[inline(always)]
+    pub fn run_blocking(&mut self) -> Result<ValueCell, VMError> {
+        futures::executor::block_on(self.run())
+    }
+
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
-    pub fn run(&mut self) -> Result<ValueCell, VMError> {
+    pub async fn run(&mut self) -> Result<ValueCell, VMError> {
         // Freely copy the module has its a reference only
         // We go through every modules injected
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
@@ -344,7 +350,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         // Create the chunk reader for it
                         let mut reader = ChunkReader::new(chunk, manager.ip());
                         'opcodes: while let Some(opcode) = reader.next_u8() {
-                            match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut reader, &mut self.context) {
+                            match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut reader, &mut self.context).await {
                                 Ok(InstructionResult::Nothing) => {},
                                 Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
                                     if m.module.is_entry_chunk(chunk_id) {

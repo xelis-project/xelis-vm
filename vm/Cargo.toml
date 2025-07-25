@@ -10,6 +10,7 @@ xelis-environment = { path = "../environment" }
 thiserror = "2.0.3"
 log = "0.4.26"
 indexmap = "2.8.0"
+futures = "0.3.31"
 
 [dev-dependencies]
 xelis-builder = { path = "../builder" }

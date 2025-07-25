@@ -200,7 +200,7 @@ fn test_struct() {
         vm.append_module(&module, &()).expect("module");
         vm.invoke_chunk_id(0).expect("entry chunk at 0");
         assert_eq!(
-            vm.run().unwrap(),
+            vm.run_blocking().unwrap(),
             ValueCell::Object(
                 vec![
                     Primitive::U8(10).into(),
@@ -248,7 +248,7 @@ fn test_struct() {
     vm.append_module(&module, &()).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
-    assert_eq!(vm.run().unwrap(), Primitive::U16(30).into());
+    assert_eq!(vm.run_blocking().unwrap(), Primitive::U16(30).into());
 }
 
 #[test]
@@ -284,7 +284,7 @@ fn test_function_call() {
     vm.append_module(&module, &()).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
-    assert_eq!(vm.run().unwrap(), Primitive::Boolean(true).into());
+    assert_eq!(vm.run_blocking().unwrap(), Primitive::Boolean(true).into());
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn test_function_call_on_value() {
     vm.append_module(&module, &()).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
-    assert_eq!(vm.run().unwrap(), Primitive::U64(10).into());
+    assert_eq!(vm.run_blocking().unwrap(), Primitive::U64(10).into());
 }
 
 #[test]
