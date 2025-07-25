@@ -7,6 +7,8 @@ use xelis_ast::*;
 use xelis_parser::mapper::GlobalMapper;
 use xelis_builder::Builder;
 
+#[warn(unused_extern_crates)]
+
 const ABI_VERSION: &str = "1.0.0";
 
 pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
@@ -227,7 +229,6 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
 mod tests {
     use super::*;
     use std::fs;
-    use std::marker::PhantomData;
 
     use xelis_builder::{EnvironmentBuilder};
     use xelis_types::{Opaque, traits::{
