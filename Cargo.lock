@@ -820,6 +820,7 @@ name = "xelis-builder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "log",
  "paste",
  "thiserror",
@@ -859,6 +860,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "better_any",
+ "futures",
  "hashbrown",
  "indexmap",
  "thiserror",
