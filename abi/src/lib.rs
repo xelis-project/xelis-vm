@@ -230,7 +230,7 @@ mod tests {
     use std::marker::PhantomData;
 
     use xelis_builder::{EnvironmentBuilder};
-    use xelis_types::{Type, Opaque, OpaqueType, traits::{
+    use xelis_types::{Opaque, traits::{
       DynType, DynEq, DynHash, JSONHelper, Serializable
     }};
 
@@ -296,16 +296,6 @@ mod tests {
     // Dummy type definitions to register opaque types
     impl_dummy_opaque!(Address);
 
-    pub struct TestStorage {
-        _phantom: PhantomData<()>,
-    }
-
-    impl Default for TestStorage {
-        fn default() -> Self {
-            Self { _phantom: PhantomData }
-        }
-    }
-
     #[test]
     fn test_abi_from_example_slx() {
         let slx_path = "./silex/example.slx";
@@ -316,10 +306,10 @@ mod tests {
         let expected_abi = fs::read_to_string(abi_path)
             .expect("Failed to read example.abi.json");
 
-        let mut env: EnvironmentBuilder<'_, TestStorage> = EnvironmentBuilder::default();
+        let mut env: EnvironmentBuilder<'_, ()> = EnvironmentBuilder::default();
         let _ = env.register_opaque::<Address>("Address", true);
 
-        match abi_from_silex::<TestStorage>(&code, env) {
+        match abi_from_silex::<()>(&code, env) {
             Ok(generated_abi) => {
                 let generated_json: serde_json::Value = serde_json::from_str(&generated_abi).unwrap();
                 let expected_json: serde_json::Value = serde_json::from_str(&expected_abi).unwrap();
