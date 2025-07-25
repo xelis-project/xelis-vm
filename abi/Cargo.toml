@@ -1,0 +1,29 @@
+[package]
+name = "xelis-abi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+xelis-types = { path = "../types" }
+xelis-vm = { path = "../vm" }
+xelis-ast = { path = "../ast" }
+xelis-bytecode = { path = "../bytecode" }
+xelis-compiler = { path = "../compiler" }
+xelis-parser = { path = "../parser" }
+xelis-lexer = { path = "../lexer" }
+xelis-builder = { path = "../builder" }
+
+anyhow = "1.0.93"
+web-time = "1.1.0"
+humantime = "2.1.0"
+tokio = { version = "1.42.0", features = ["rt"] }
+wasm-bindgen-futures = "0.4.45"
+indexmap = "2.10.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# [dev-dependencies]
+# xelis-serializer = {}
+
+[lib]
+crate-type = ["cdylib", "rlib"]

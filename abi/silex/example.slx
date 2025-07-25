@@ -1,0 +1,41 @@
+struct Value {
+	value: string
+}
+
+fn (v Value) my_value() -> string {
+	return v.value
+}
+
+struct Message {
+	value: Value
+}
+
+fn (m Message) to_string() -> string {
+	return m.value.value
+}
+
+entry path_test() {
+	let message: Message = Message { value: Value { value: "Hello World!" } }
+	println(message.to_string())
+	message.value.value += " from path"
+	println(message.value.my_value())
+	return 0
+}
+
+fn factorial(n: u64) -> u64 {
+	if n == 0 {
+		return 1
+	}
+	return n * factorial(n - 1)
+}
+
+entry get_factorial(a: u64) {
+	println(factorial(a))
+
+	return 0
+}
+
+entry address_test(addy: Address, amt: u64) {
+  println(addy)
+  return 0
+}
