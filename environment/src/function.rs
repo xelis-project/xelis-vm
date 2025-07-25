@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::LocalBoxFuture;
 use xelis_bytecode::Module;
@@ -10,10 +10,15 @@ use super::EnvironmentError;
 pub enum SysCallResult<M> {
     None,
     Return(ValueCell),
+    AsyncCall {
+        ptr: OnCallAsyncFn<M>,
+        instance: bool,
+        params: VecDeque<StackValue>,
+    },
     DynamicCall {
         // Should contains Vec<u16, bool>
         ptr: ValueCell,
-        params: FnParams
+        params: VecDeque<StackValue>,
     },
     // NOTE: due to the invariant lifetime issue
     // we don't provide any reference
@@ -112,25 +117,40 @@ impl<M> NativeFunction<M> {
     }
 
     // Check if the function requires an instance
-    #[inline]
+    #[inline(always)]
     pub fn is_on_instance(&self) -> bool {
         self.require_instance
     }
 
     // Execute the function
-    pub async fn call_function<'ty, 'r>(&self, instance_value: Option<&mut ValueCell>, parameters: FnParams, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
-        if parameters.len() != self.parameters.len() || (instance_value.is_some() != self.require_instance) {
-            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len(), instance_value.is_some(), self.require_instance));
+    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
+        if parameters.len() != self.parameters.len() + self.require_instance as usize {
+            return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len()));
         }
 
-        let instance = match instance_value {
-            Some(v) => Ok(v),
-            None => Err(EnvironmentError::FnExpectedInstance)
-        };
-
+        // Raw call to the function if its a sync function
+        // otherwise return the async call
         match self.on_call {
-            FunctionHandler::Sync(on_call) => (on_call)(instance, parameters, context),
-            FunctionHandler::Async(on_call) => on_call(instance, parameters, context).await
+            FunctionHandler::Sync(on_call) => {
+                let mut on_value = if self.is_on_instance() {
+                    Some(parameters.pop_front()
+                        .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                } else {
+                    None
+                };
+
+                let instance = on_value.as_mut()
+                    .map(|v| v.as_mut())
+                    .transpose()?
+                    .ok_or(EnvironmentError::FnExpectedInstance);
+
+                (on_call)(instance, parameters.into(), context)
+            },
+            FunctionHandler::Async(ptr) => Ok(SysCallResult::AsyncCall {
+                ptr,
+                instance: self.is_on_instance(),
+                params: parameters
+            })
         }
     }
 

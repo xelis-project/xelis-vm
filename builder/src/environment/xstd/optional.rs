@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use xelis_types::{FnType, Primitive, Type, ValueError};
 use xelis_environment::{
     Context,
@@ -51,7 +53,7 @@ fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context
         Some(value) => Ok(SysCallResult::Return(value)),
         None => Ok(SysCallResult::DynamicCall {
             ptr: default.into_owned()?,
-            params: Vec::new()
+            params: VecDeque::new()
         })
     }
 }

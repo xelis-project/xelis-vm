@@ -1,17 +1,15 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{NativeFunction, SysCallResult};
-use xelis_types::{StackValue, ValueCell};
-
 use crate::{
     debug,
+    perform_syscall,
     stack::Stack,
     Backend,
     ChunkContext,
     ChunkManager,
     ChunkReader,
     Context,
-    VMError,
+    VMError
 };
 use super::InstructionResult;
 
@@ -163,12 +161,12 @@ pub fn internal_invoke_chunk<'a, M>(stack: &mut Stack, id: u16, args: usize, fro
     })
 }
 
-pub async fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = reader.read_u16()?;
-    internal_syscall(backend, id, stack, context).await
+    internal_syscall(backend, id, stack, context)
 }
 
-async fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("syscall: {}", id);
 
     let f = backend.environment.get_functions()
@@ -179,106 +177,14 @@ async fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r,
 
     let args = f.get_parameters().len();
     let mut arguments = VecDeque::with_capacity(args);
-    for _ in 0..args {
+    for _ in 0..args + f.is_on_instance() as usize {
         arguments.push_front(stack.pop_stack()?);
     }
 
-    let mut on_value = if f.is_on_instance() {
-        Some(stack.pop_stack()?)
-    } else {
-        None
-    };
-
-    // We need to find if we are using two times the same instance
-
-    let instance = match on_value.as_mut() {
-        Some(v) => {
-            let ptr = v.ptr();
-            for argument in arguments.iter_mut() {
-                argument.make_owned_if_same_ptr(ptr)?;
-            }
-
-            Some(v.as_mut()?)
-        },
-        None => None,
-    };
-
-    perform_syscall(backend, f, instance, arguments.into(), stack, context).await
+    perform_syscall(backend, f, arguments, stack, context)
 }
 
-async fn perform_syscall<'a, 'ty, 'r, M>(
-    backend: &Backend<'a, 'ty, 'r, M>,
-    f: &NativeFunction<M>,
-    mut instance: Option<&mut ValueCell>,
-    mut fn_params: Vec<StackValue>,
-    stack: &mut Stack,
-    context: &mut Context<'ty, 'r>,
-) -> Result<InstructionResult<'a, M>, VMError> {
-    let mut function = f;
-
-    loop {
-        match function.call_function(instance, fn_params, context).await? {
-            SysCallResult::None => return Ok(InstructionResult::Nothing),
-            SysCallResult::Return(v) => {
-                let memory_usage = v.calculate_memory_usage(context.memory_left())?;
-                context.increase_memory_usage_unchecked(memory_usage)?;
-                stack.push_stack(v.into())?;
-
-                return Ok(InstructionResult::Nothing);
-            },
-            SysCallResult::DynamicCall { ptr, params } => {
-                let values = ptr.as_vec()?;
-
-                if values.len() != 3 {
-                    return Err(VMError::InvalidDynamicCall);
-                }
-
-                let id = values[0].as_u16()?;
-                let syscall = values[1].as_bool()?;
-                let from = values[2].as_u16()?;
-
-                if syscall {
-                    let f = backend
-                        .environment
-                        .get_functions()
-                        .get(id as usize)
-                        .ok_or(VMError::UnknownSysCall(id))?;
-
-                    // We currently don't support on instance
-                    if f.is_on_instance() {
-                        return Err(VMError::InstanceCallback);
-                    }
-
-                    context.increase_gas_usage(f.get_cost())?;
-
-                    // Loop back again with new function and parameters
-                    function = f;
-                    instance = None;
-                    fn_params = params;
-
-                    continue;
-                } else {
-                    stack.extend_stack(params.into_iter().map(Into::into))?;
-                    return Ok(InstructionResult::InvokeDynamicChunk {
-                        chunk_id: id as _,
-                        from: from as _,
-                    });
-                }
-            },
-            SysCallResult::ModuleCall {
-                module,
-                metadata,
-                chunk,
-            } => return Ok(InstructionResult::AppendModule {
-                module: module.into(),
-                metadata: metadata.into(),
-                chunk_id: chunk,
-            })
-        }
-    }
-}
-
-pub async fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.as_ref()?
         .as_vec()?;
@@ -295,7 +201,7 @@ pub async fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r,
     debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
 
     if syscall {
-        internal_syscall(backend, id, stack, context).await
+        internal_syscall(backend, id, stack, context)
     } else {
         internal_invoke_chunk(stack, id, args, Some(from))
     }

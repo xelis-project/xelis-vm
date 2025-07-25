@@ -3,8 +3,11 @@ mod r#impl;
 mod iterator;
 mod constructor;
 mod memory;
+mod syscall;
 
-use futures::future::LocalBoxFuture;
+pub use syscall::*;
+use std::collections::VecDeque;
+
 use operator::*;
 use r#impl::*;
 use iterator::*;
@@ -12,7 +15,8 @@ use constructor::*;
 use memory::*;
 
 use xelis_bytecode::{Module, OpCode};
-use xelis_types::{Primitive, ValueCell};
+use xelis_environment::OnCallAsyncFn;
+use xelis_types::{Primitive, StackValue, ValueCell};
 
 use crate::{ChunkReader, Context, Reference};
 
@@ -59,49 +63,21 @@ pub enum InstructionResult<'a, M> {
         module: Reference<'a, Module>,
         metadata: Reference<'a, M>,
         chunk_id: u16
+    },
+    AsyncCall {
+        ptr: OnCallAsyncFn<M>,
+        instance: bool,
+        params: VecDeque<StackValue>,
     }
 }
 
-// A handler is a function pointer to an instruction
-// With its associated cost
-pub type AsyncFn<'a, 'ty, 'r, M> = for<'t> fn(
-        &'t Backend<'a, 'ty, 'r, M>,
-        &'t mut Stack,
-        &'t mut ChunkManager,
-        &'t mut ChunkReader<'_>,
-        &'t mut Context<'ty, 'r>,
-    ) -> LocalBoxFuture<'t, Result<InstructionResult<'a, M>, VMError>>;
-
-pub type SyncFn<'a, 'ty, 'r, M> = fn(
+pub type OpCodeHandler<'a, 'ty, 'r, M> = fn(
     &Backend<'a, 'ty, 'r, M>,
     &mut Stack,
     &mut ChunkManager,
     &mut ChunkReader<'_>,
     &mut Context<'ty, 'r>,
 ) -> Result<InstructionResult<'a, M>, VMError>;
-
-pub enum OpCodeHandler<'a: 'r, 'ty: 'a, 'r, M> {
-    Async(AsyncFn<'a, 'ty, 'r, M>),
-    Sync(SyncFn<'a, 'ty, 'r, M>),
-}
-
-impl<'a: 'r, 'ty: 'a, 'r, M> OpCodeHandler<'a, 'ty, 'r, M> {
-    pub const fn is_async(&self) -> bool {
-        matches!(self, OpCodeHandler::Async(_))
-    }
-}
-
-
-impl<'a: 'r, 'ty: 'a, 'r, M> Clone for OpCodeHandler<'a, 'ty, 'r, M> {
-    fn clone(&self) -> Self {
-        match self {
-            OpCodeHandler::Async(f) => OpCodeHandler::Async(*f),
-            OpCodeHandler::Sync(f) => OpCodeHandler::Sync(*f),
-        }
-    }
-}
-
-impl<'a: 'r, 'ty: 'a, 'r, M> Copy for OpCodeHandler<'a, 'ty, 'r, M> {}
 
 // Table of instructions
 // It contains all the instructions that the VM can execute
@@ -121,86 +97,86 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     // Create a new instruction table with all the instructions
     pub const fn new() -> Self {
         let mut table = Self {
-            instructions: [(OpCodeHandler::Sync(unimplemented), 0); 256],
+            instructions: [((unimplemented), 0); 256],
         };
 
-        table.set_instruction(OpCode::Constant, OpCodeHandler::Sync(constant), 1);
-        table.set_instruction(OpCode::MemoryLoad, OpCodeHandler::Sync(memory_load), 5);
-        table.set_instruction(OpCode::MemorySet, OpCodeHandler::Sync(memory_set), 5);
-        table.set_instruction(OpCode::MemoryPop, OpCodeHandler::Sync(memory_pop), 3);
-        table.set_instruction(OpCode::MemoryLen, OpCodeHandler::Sync(memory_len), 1);
-        table.set_instruction(OpCode::MemoryToOwned, OpCodeHandler::Sync(memory_to_owned), 5);
+        table.set_instruction(OpCode::Constant, constant, 1);
+        table.set_instruction(OpCode::MemoryLoad, memory_load, 5);
+        table.set_instruction(OpCode::MemorySet, memory_set, 5);
+        table.set_instruction(OpCode::MemoryPop, memory_pop, 3);
+        table.set_instruction(OpCode::MemoryLen, memory_len, 1);
+        table.set_instruction(OpCode::MemoryToOwned, memory_to_owned, 5);
 
-        table.set_instruction(OpCode::SubLoad, OpCodeHandler::Sync(subload), 5);
+        table.set_instruction(OpCode::SubLoad, subload, 5);
 
-        table.set_instruction(OpCode::Pop, OpCodeHandler::Sync(pop), 1);
-        table.set_instruction(OpCode::PopN, OpCodeHandler::Sync(pop_n), 1);
-        table.set_instruction(OpCode::Copy, OpCodeHandler::Sync(copy), 1);
-        table.set_instruction(OpCode::CopyN, OpCodeHandler::Sync(copy_n), 1);
-        table.set_instruction(OpCode::ToOwned, OpCodeHandler::Sync(to_owned), 1);
+        table.set_instruction(OpCode::Pop, pop, 1);
+        table.set_instruction(OpCode::PopN, pop_n, 1);
+        table.set_instruction(OpCode::Copy, copy, 1);
+        table.set_instruction(OpCode::CopyN, copy_n, 1);
+        table.set_instruction(OpCode::ToOwned, to_owned, 1);
 
-        table.set_instruction(OpCode::Swap, OpCodeHandler::Sync(swap), 1);
-        table.set_instruction(OpCode::Swap2, OpCodeHandler::Sync(swap2), 1);
-        table.set_instruction(OpCode::Jump, OpCodeHandler::Sync(jump), 2);
-        table.set_instruction(OpCode::JumpIfFalse, OpCodeHandler::Sync(jump_if_false), 3);
+        table.set_instruction(OpCode::Swap, swap, 1);
+        table.set_instruction(OpCode::Swap2, swap2, 1);
+        table.set_instruction(OpCode::Jump, jump, 2);
+        table.set_instruction(OpCode::JumpIfFalse, jump_if_false, 3);
 
-        table.set_instruction(OpCode::IterableLength, OpCodeHandler::Sync(iterable_length), 3);
-        table.set_instruction(OpCode::IteratorBegin, OpCodeHandler::Sync(iterator_begin), 5);
-        table.set_instruction(OpCode::IteratorNext, OpCodeHandler::Sync(iterator_next), 1);
-        table.set_instruction(OpCode::IteratorEnd, OpCodeHandler::Sync(iterator_end), 1);
+        table.set_instruction(OpCode::IterableLength, iterable_length, 3);
+        table.set_instruction(OpCode::IteratorBegin, iterator_begin, 5);
+        table.set_instruction(OpCode::IteratorNext, iterator_next, 1);
+        table.set_instruction(OpCode::IteratorEnd, iterator_end, 1);
 
-        table.set_instruction(OpCode::Return, OpCodeHandler::Sync(return_fn), 1);
+        table.set_instruction(OpCode::Return, return_fn, 1);
 
-        table.set_instruction(OpCode::ArrayCall, OpCodeHandler::Sync(array_call), 2);
-        table.set_instruction(OpCode::Cast, OpCodeHandler::Sync(cast), 1);
-        table.set_instruction(OpCode::InvokeChunk, OpCodeHandler::Sync(invoke_chunk), 5);
-        table.set_instruction(OpCode::SysCall, OpCodeHandler::Async(async_handler!(syscall)), 2);
-        table.set_instruction(OpCode::NewObject, OpCodeHandler::Sync(new_array), 1);
-        table.set_instruction(OpCode::NewRange, OpCodeHandler::Sync(new_range), 1);
-        table.set_instruction(OpCode::NewMap, OpCodeHandler::Sync(new_map), 1);
+        table.set_instruction(OpCode::ArrayCall, array_call, 2);
+        table.set_instruction(OpCode::Cast, cast, 1);
+        table.set_instruction(OpCode::InvokeChunk, invoke_chunk, 5);
+        table.set_instruction(OpCode::SysCall, syscall, 2);
+        table.set_instruction(OpCode::NewObject, new_array, 1);
+        table.set_instruction(OpCode::NewRange, new_range, 1);
+        table.set_instruction(OpCode::NewMap, new_map, 1);
 
-        table.set_instruction(OpCode::Add, OpCodeHandler::Sync(add), 1);
-        table.set_instruction(OpCode::Sub, OpCodeHandler::Sync(sub), 1);
-        table.set_instruction(OpCode::Mul, OpCodeHandler::Sync(mul), 3);
-        table.set_instruction(OpCode::Div, OpCodeHandler::Sync(div), 8);
-        table.set_instruction(OpCode::Mod, OpCodeHandler::Sync(rem), 8);
-        table.set_instruction(OpCode::Pow, OpCodeHandler::Sync(pow), 35);
-        table.set_instruction(OpCode::And, OpCodeHandler::Sync(and), 2);
-        table.set_instruction(OpCode::Or, OpCodeHandler::Sync(or), 1);
+        table.set_instruction(OpCode::Add, add, 1);
+        table.set_instruction(OpCode::Sub, sub, 1);
+        table.set_instruction(OpCode::Mul, mul, 3);
+        table.set_instruction(OpCode::Div, div, 8);
+        table.set_instruction(OpCode::Mod, rem, 8);
+        table.set_instruction(OpCode::Pow, pow, 35);
+        table.set_instruction(OpCode::And, and, 2);
+        table.set_instruction(OpCode::Or, or, 1);
 
-        table.set_instruction(OpCode::BitwiseAnd, OpCodeHandler::Sync(bitwise_and), 1);
-        table.set_instruction(OpCode::BitwiseOr, OpCodeHandler::Sync(bitwise_or), 1);
-        table.set_instruction(OpCode::BitwiseXor, OpCodeHandler::Sync(bitwise_xor), 1);
-        table.set_instruction(OpCode::BitwiseShl, OpCodeHandler::Sync(bitwise_shl), 5);
-        table.set_instruction(OpCode::BitwiseShr, OpCodeHandler::Sync(bitwise_shr), 5);
+        table.set_instruction(OpCode::BitwiseAnd, bitwise_and, 1);
+        table.set_instruction(OpCode::BitwiseOr, bitwise_or, 1);
+        table.set_instruction(OpCode::BitwiseXor, bitwise_xor, 1);
+        table.set_instruction(OpCode::BitwiseShl, bitwise_shl, 5);
+        table.set_instruction(OpCode::BitwiseShr, bitwise_shr, 5);
 
-        table.set_instruction(OpCode::Eq, OpCodeHandler::Sync(eq), 2);
-        table.set_instruction(OpCode::Neg, OpCodeHandler::Sync(neg), 1);
-        table.set_instruction(OpCode::Gt, OpCodeHandler::Sync(gt), 2);
-        table.set_instruction(OpCode::Lt, OpCodeHandler::Sync(lt), 2);
-        table.set_instruction(OpCode::Gte, OpCodeHandler::Sync(gte), 2);
-        table.set_instruction(OpCode::Lte, OpCodeHandler::Sync(lte), 2);
+        table.set_instruction(OpCode::Eq, eq, 2);
+        table.set_instruction(OpCode::Neg, neg, 1);
+        table.set_instruction(OpCode::Gt, gt, 2);
+        table.set_instruction(OpCode::Lt, lt, 2);
+        table.set_instruction(OpCode::Gte, gte, 2);
+        table.set_instruction(OpCode::Lte, lte, 2);
 
-        table.set_instruction(OpCode::Assign, OpCodeHandler::Sync(assign), 2);
-        table.set_instruction(OpCode::AssignAdd, OpCodeHandler::Sync(add_assign), 3);
-        table.set_instruction(OpCode::AssignSub, OpCodeHandler::Sync(sub_assign), 3);
-        table.set_instruction(OpCode::AssignMul, OpCodeHandler::Sync(mul_assign), 5);
-        table.set_instruction(OpCode::AssignDiv, OpCodeHandler::Sync(div_assign), 10);
-        table.set_instruction(OpCode::AssignMod, OpCodeHandler::Sync(rem_assign), 10);
-        table.set_instruction(OpCode::AssignPow, OpCodeHandler::Sync(pow_assign), 35);
+        table.set_instruction(OpCode::Assign, assign, 2);
+        table.set_instruction(OpCode::AssignAdd, add_assign, 3);
+        table.set_instruction(OpCode::AssignSub, sub_assign, 3);
+        table.set_instruction(OpCode::AssignMul, mul_assign, 5);
+        table.set_instruction(OpCode::AssignDiv, div_assign, 10);
+        table.set_instruction(OpCode::AssignMod, rem_assign, 10);
+        table.set_instruction(OpCode::AssignPow, pow_assign, 35);
 
-        table.set_instruction(OpCode::AssignBitwiseAnd, OpCodeHandler::Sync(bitwise_and_assign), 3);
-        table.set_instruction(OpCode::AssignBitwiseOr, OpCodeHandler::Sync(bitwise_or_assign), 3);
-        table.set_instruction(OpCode::AssignBitwiseXor, OpCodeHandler::Sync(bitwise_xor_assign), 3);
-        table.set_instruction(OpCode::AssignBitwiseShl, OpCodeHandler::Sync(bitwise_shl_assign), 7);
-        table.set_instruction(OpCode::AssignBitwiseShr, OpCodeHandler::Sync(bitwise_shr_assign), 7);
+        table.set_instruction(OpCode::AssignBitwiseAnd, bitwise_and_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseOr, bitwise_or_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseXor, bitwise_xor_assign, 3);
+        table.set_instruction(OpCode::AssignBitwiseShl, bitwise_shl_assign, 7);
+        table.set_instruction(OpCode::AssignBitwiseShr, bitwise_shr_assign, 7);
 
-        table.set_instruction(OpCode::Inc, OpCodeHandler::Sync(increment), 1);
-        table.set_instruction(OpCode::Dec, OpCodeHandler::Sync(decrement), 1);
-        table.set_instruction(OpCode::Flatten, OpCodeHandler::Sync(flatten), 5);
-        table.set_instruction(OpCode::Match, OpCodeHandler::Sync(match_), 2);
-        table.set_instruction(OpCode::DynamicCall, OpCodeHandler::Async(async_handler!(dynamic_call)), 8);
-        table.set_instruction(OpCode::CaptureContext, OpCodeHandler::Sync(capture_context), 5);
+        table.set_instruction(OpCode::Inc, increment, 1);
+        table.set_instruction(OpCode::Dec, decrement, 1);
+        table.set_instruction(OpCode::Flatten, flatten, 5);
+        table.set_instruction(OpCode::Match, match_, 2);
+        table.set_instruction(OpCode::DynamicCall, dynamic_call, 8);
+        table.set_instruction(OpCode::CaptureContext, capture_context, 5);
 
         table
     }
@@ -219,17 +195,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
 
     // Execute an instruction
     #[inline(always)]
-    pub async fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
         context.increase_gas_usage(cost)?;
 
-        match instruction {
-            OpCodeHandler::Async(instruction) => instruction(backend, stack, chunk_manager, reader, context).await,
-            OpCodeHandler::Sync(instruction) => instruction(backend, stack, chunk_manager, reader, context)
-        }
+        instruction(backend, stack, chunk_manager, reader, context)
     }
 }
 

@@ -350,8 +350,36 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         // Create the chunk reader for it
                         let mut reader = ChunkReader::new(chunk, manager.ip());
                         'opcodes: while let Some(opcode) = reader.next_u8() {
-                            match self.backend.table.execute(opcode, &self.backend, &mut self.stack, &mut manager, &mut reader, &mut self.context).await {
+                            match self.backend.table.execute(
+                                opcode,
+                                &self.backend,
+                                &mut self.stack,
+                                &mut manager,
+                                &mut reader,
+                                &mut self.context
+                            ) {
                                 Ok(InstructionResult::Nothing) => {},
+                                Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) => {
+                                    let mut on_value = if instance {
+                                        Some(params.pop_front()
+                                            .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                                    } else {
+                                        None
+                                    };
+
+                                    let instance = on_value.as_mut()
+                                        .map(|v| v.as_mut())
+                                        .transpose()?
+                                        .ok_or(EnvironmentError::FnExpectedInstance);
+
+                                    let res = ptr(instance, params.into(), &mut self.context).await?;
+                                    let result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
+                                        Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
+                                        Ok(PerformSysCallHelper::End(res)) => Ok(res),
+                                        Err(e) => Err(e)
+                                    }?;
+
+                                },
                                 Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
                                     if m.module.is_entry_chunk(chunk_id) {
                                         return Err(VMError::EntryChunkCalled);
@@ -409,9 +437,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     // Jump to the next module
                                     continue 'modules;
                                 },
-                                Ok(InstructionResult::Break) => {
-                                    break 'opcodes;
-                                },
+                                Ok(InstructionResult::Break) => break 'opcodes,
                                 Err(e) => {
                                     trace!("Error: {:?}", e);
                                     trace!("Stack: {:?}", self.stack.get_inner());
@@ -420,7 +446,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     trace!("Current registers: {:?}", manager.get_registers());
                                     return Err(e);
                                 }
-                            }
+                            };
                         }
 
                         self.on_call_stack_end(&mut manager)?;
