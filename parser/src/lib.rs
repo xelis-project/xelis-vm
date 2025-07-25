@@ -1,6 +1,6 @@
 mod context;
 mod error;
-mod mapper;
+pub mod mapper;
 
 use std::{
     borrow::Cow,
