@@ -218,13 +218,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     }
 
     // Execute an instruction
-    #[inline]
+    #[inline(always)]
     pub async fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
-        let (instruction, cost) = &self.instructions[opcode as usize];
+        let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
-        context.increase_gas_usage(*cost)?;
+        context.increase_gas_usage(cost)?;
 
         match instruction {
             OpCodeHandler::Async(instruction) => instruction(backend, stack, chunk_manager, reader, context).await,
