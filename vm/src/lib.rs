@@ -320,6 +320,9 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Run the VM
     // It will execute the bytecode
     // First chunk executed should always return a value
+    // Due to the `async` support, VM is 10-20% slower
+    // than its full `sync` mode.
+    // TODO: provide a `sync` only mode for performance
     pub async fn run(&mut self) -> Result<ValueCell, VMError> {
         // Freely copy the module has its a reference only
         // We go through every modules injected
@@ -350,103 +353,117 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         // Create the chunk reader for it
                         let mut reader = ChunkReader::new(chunk, manager.ip());
                         'opcodes: while let Some(opcode) = reader.next_u8() {
-                            match self.backend.table.execute(
+                            let mut result = self.backend.table.execute(
                                 opcode,
                                 &self.backend,
                                 &mut self.stack,
                                 &mut manager,
                                 &mut reader,
                                 &mut self.context
-                            ) {
-                                Ok(InstructionResult::Nothing) => {},
-                                Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) => {
-                                    let mut on_value = if instance {
-                                        Some(params.pop_front()
-                                            .ok_or(EnvironmentError::MissingInstanceFnCall)?)
-                                    } else {
-                                        None
-                                    };
+                            );
 
-                                    let instance = on_value.as_mut()
-                                        .map(|v| v.as_mut())
-                                        .transpose()?
-                                        .ok_or(EnvironmentError::FnExpectedInstance);
+                            // Loop is required in the case of recursive async call
+                            // And to prevent duplicated code for the final result
+                            // This still cause us a 10-20% performance downgrade
+                            loop {
+                                match result {
+                                    Ok(InstructionResult::Nothing) => {},
+                                    Ok(InstructionResult::AsyncCall { .. }) => {
+                                        while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
+                                            let mut on_value = if instance {
+                                                Some(params.pop_front()
+                                                    .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                                            } else {
+                                                None
+                                            };
+        
+                                            let instance = on_value.as_mut()
+                                                .map(|v| v.as_mut())
+                                                .transpose()?
+                                                .ok_or(EnvironmentError::FnExpectedInstance);
+        
+                                            let res = ptr(instance, params.into(), &mut self.context).await?;
+                                            result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
+                                                Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
+                                                Ok(PerformSysCallHelper::End(res)) => Ok(res),
+                                                Err(e) => Err(e)
+                                            };
+                                        }
 
-                                    let res = ptr(instance, params.into(), &mut self.context).await?;
-                                    let result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
-                                        Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
-                                        Ok(PerformSysCallHelper::End(res)) => Ok(res),
-                                        Err(e) => Err(e)
-                                    }?;
-
-                                },
-                                Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
-                                    if m.module.is_entry_chunk(chunk_id) {
-                                        return Err(VMError::EntryChunkCalled);
+                                        // Skip the break at the end of the loop to handle
+                                        // our new result
+                                        continue;
+                                    },
+                                    Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
+                                        if m.module.is_entry_chunk(chunk_id) {
+                                            return Err(VMError::EntryChunkCalled);
+                                        }
+    
+                                        let mut new = ChunkManager::with(
+                                            chunk_id,
+                                            None,
+                                            Vec::new()
+                                        );
+    
+                                        if let Some(previous) = self.find_manager_with_chunk_id(from) {
+                                            new.swap_registers(previous);
+                                            previous.set_context(ChunkContext::Used);
+                                        } else {
+                                            trace!("No chunk manager found for origin {}, skipping it", from);
+                                            new.set_registers_origin(None);
+                                        }
+    
+                                        self.push_back_call_stack(manager, reader)?;
+    
+                                        // Add our new chunk
+                                        self.invoke_chunk_id_internal(new)?;
+    
+                                        // Jump to the next call stack
+                                        continue 'call_stack;
+                                    },
+                                    Ok(InstructionResult::InvokeChunk(id)) => {
+                                        if m.module.is_entry_chunk(id as usize) {
+                                            return Err(VMError::EntryChunkCalled);
+                                        }
+    
+                                        self.push_back_call_stack(manager, reader)?;
+                                        self.invoke_chunk_id(id as _)?;
+    
+                                        // Jump to the next call stack
+                                        continue 'call_stack;
+                                    },
+                                    Ok(InstructionResult::AppendModule {
+                                        module: new_module,
+                                        metadata,
+                                        chunk_id
+                                    }) => {
+                                        // Can only call entry chunks from new module
+                                        if !new_module.is_entry_chunk(chunk_id as usize) {
+                                            return Err(VMError::EntryChunkCalled);
+                                        }
+    
+                                        // Push back the current callstack
+                                        self.push_back_call_stack(manager, reader)?;
+    
+                                        self.append_module(new_module, metadata)?;
+                                        self.invoke_chunk_id(chunk_id as _)?;
+    
+                                        // Jump to the next module
+                                        continue 'modules;
+                                    },
+                                    Ok(InstructionResult::Break) => break 'opcodes,
+                                    Err(e) => {
+                                        trace!("Error: {:?}", e);
+                                        trace!("Stack: {:?}", self.stack.get_inner());
+                                        trace!("Call stack left: {}", self.call_stack.len());
+                                        trace!("Call stack size: {}", self.call_stack_size);
+                                        trace!("Current registers: {:?}", manager.get_registers());
+                                        return Err(e);
                                     }
+                                };
 
-                                    let mut new = ChunkManager::with(
-                                        chunk_id,
-                                        None,
-                                        Vec::new()
-                                    );
-
-                                    if let Some(previous) = self.find_manager_with_chunk_id(from) {
-                                        new.swap_registers(previous);
-                                        previous.set_context(ChunkContext::Used);
-                                    } else {
-                                        trace!("No chunk manager found for origin {}, skipping it", from);
-                                        new.set_registers_origin(None);
-                                    }
-
-                                    self.push_back_call_stack(manager, reader)?;
-
-                                    // Add our new chunk
-                                    self.invoke_chunk_id_internal(new)?;
-
-                                    // Jump to the next call stack
-                                    continue 'call_stack;
-                                },
-                                Ok(InstructionResult::InvokeChunk(id)) => {
-                                    if m.module.is_entry_chunk(id as usize) {
-                                        return Err(VMError::EntryChunkCalled);
-                                    }
-
-                                    self.push_back_call_stack(manager, reader)?;
-                                    self.invoke_chunk_id(id as _)?;
-
-                                    // Jump to the next call stack
-                                    continue 'call_stack;
-                                },
-                                Ok(InstructionResult::AppendModule {
-                                    module: new_module,
-                                    metadata,
-                                    chunk_id
-                                }) => {
-                                    // Can only call entry chunks from new module
-                                    if !new_module.is_entry_chunk(chunk_id as usize) {
-                                        return Err(VMError::EntryChunkCalled);
-                                    }
-
-                                    // Push back the current callstack
-                                    self.push_back_call_stack(manager, reader)?;
-
-                                    self.append_module(new_module, metadata)?;
-                                    self.invoke_chunk_id(chunk_id as _)?;
-
-                                    // Jump to the next module
-                                    continue 'modules;
-                                },
-                                Ok(InstructionResult::Break) => break 'opcodes,
-                                Err(e) => {
-                                    trace!("Error: {:?}", e);
-                                    trace!("Stack: {:?}", self.stack.get_inner());
-                                    trace!("Call stack left: {}", self.call_stack.len());
-                                    trace!("Call stack size: {}", self.call_stack_size);
-                                    trace!("Current registers: {:?}", manager.get_registers());
-                                    return Err(e);
-                                }
-                            };
+                                break;
+                            }
                         }
 
                         self.on_call_stack_end(&mut manager)?;
