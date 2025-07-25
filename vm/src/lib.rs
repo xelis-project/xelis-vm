@@ -329,22 +329,6 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(call_stack) = self.call_stack.pop() {
                 match call_stack {
-                    CallStack::SwitchModule => break 'call_stack,
-                    CallStack::Context(manager) => {
-                        if matches!(manager.context(), ChunkContext::Pending) {
-                            // If our previous call stack isn't a chunk, return an error
-                            if self.call_stack.last().map_or(true, |v| !matches!(v, CallStack::Chunk(_))) {
-                                return Err(VMError::CallStackUnderflow)
-                            }
-
-                            // re-inject it to the previous one over and over until its finally used
-                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
-                        } else {
-                            self.call_stack_size -= 1;
-                        }
-
-                        continue 'call_stack;
-                    },
                     CallStack::Chunk(mut manager) => {
                         // Retrieve the required chunk
                         let chunk = m.module.get_chunk_at(manager.chunk_id())
@@ -368,31 +352,17 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             loop {
                                 match result {
                                     Ok(InstructionResult::Nothing) => {},
-                                    Ok(InstructionResult::AsyncCall { .. }) => {
-                                        while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
-                                            let mut on_value = if instance {
-                                                Some(params.pop_front()
-                                                    .ok_or(EnvironmentError::MissingInstanceFnCall)?)
-                                            } else {
-                                                None
-                                            };
-        
-                                            let instance = on_value.as_mut()
-                                                .map(|v| v.as_mut())
-                                                .transpose()?
-                                                .ok_or(EnvironmentError::FnExpectedInstance);
-        
-                                            let res = ptr(instance, params.into(), &mut self.context).await?;
-                                            result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
-                                                Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
-                                                Ok(PerformSysCallHelper::End(res)) => Ok(res),
-                                                Err(e) => Err(e)
-                                            };
+                                    Ok(InstructionResult::Break) => break 'opcodes,
+                                    Ok(InstructionResult::InvokeChunk(id)) => {
+                                        if m.module.is_entry_chunk(id as usize) {
+                                            return Err(VMError::EntryChunkCalled);
                                         }
-
-                                        // Skip the break at the end of the loop to handle
-                                        // our new result
-                                        continue;
+    
+                                        self.push_back_call_stack(manager, reader)?;
+                                        self.invoke_chunk_id(id as _)?;
+    
+                                        // Jump to the next call stack
+                                        continue 'call_stack;
                                     },
                                     Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
                                         if m.module.is_entry_chunk(chunk_id) {
@@ -421,16 +391,31 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         // Jump to the next call stack
                                         continue 'call_stack;
                                     },
-                                    Ok(InstructionResult::InvokeChunk(id)) => {
-                                        if m.module.is_entry_chunk(id as usize) {
-                                            return Err(VMError::EntryChunkCalled);
+                                    Ok(InstructionResult::AsyncCall { .. }) => {
+                                        while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
+                                            let mut on_value = if instance {
+                                                Some(params.pop_front()
+                                                    .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                                            } else {
+                                                None
+                                            };
+        
+                                            let instance = on_value.as_mut()
+                                                .map(|v| v.as_mut())
+                                                .transpose()?
+                                                .ok_or(EnvironmentError::FnExpectedInstance);
+        
+                                            let res = ptr(instance, params.into(), &mut self.context).await?;
+                                            result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
+                                                Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
+                                                Ok(PerformSysCallHelper::End(res)) => Ok(res),
+                                                Err(e) => Err(e)
+                                            };
                                         }
-    
-                                        self.push_back_call_stack(manager, reader)?;
-                                        self.invoke_chunk_id(id as _)?;
-    
-                                        // Jump to the next call stack
-                                        continue 'call_stack;
+
+                                        // Skip the break at the end of the loop to handle
+                                        // our new result
+                                        continue;
                                     },
                                     Ok(InstructionResult::AppendModule {
                                         module: new_module,
@@ -451,7 +436,6 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         // Jump to the next module
                                         continue 'modules;
                                     },
-                                    Ok(InstructionResult::Break) => break 'opcodes,
                                     Err(e) => {
                                         trace!("Error: {:?}", e);
                                         trace!("Stack: {:?}", self.stack.get_inner());
@@ -476,7 +460,23 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             // We keep it to prevent any DoS using closures
                             self.call_stack_size += 1;
                         }
-                    }
+                    },
+                    CallStack::SwitchModule => break 'call_stack,
+                    CallStack::Context(manager) => {
+                        if matches!(manager.context(), ChunkContext::Pending) {
+                            // If our previous call stack isn't a chunk, return an error
+                            if self.call_stack.last().map_or(true, |v| !matches!(v, CallStack::Chunk(_))) {
+                                return Err(VMError::CallStackUnderflow)
+                            }
+
+                            // re-inject it to the previous one over and over until its finally used
+                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
+                        } else {
+                            self.call_stack_size -= 1;
+                        }
+
+                        continue 'call_stack;
+                    },
                 };
             }
 
