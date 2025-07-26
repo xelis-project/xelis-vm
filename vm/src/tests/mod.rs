@@ -10,7 +10,6 @@ mod op_code;
 /// (Lexer, Parser, Compiler) to produce a valid Module.
 mod full;
 
-
 #[track_caller]
 fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator

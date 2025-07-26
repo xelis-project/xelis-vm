@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt, sync::Arc};
 
-use futures::future::LocalBoxFuture;
+use futures::future::BoxFuture;
 use xelis_bytecode::Module;
 use xelis_types::{Primitive, StackValue, Type, ValueCell};
 use crate::Context;
@@ -39,7 +39,7 @@ pub enum SysCallResult<M> {
 
 // WARNING: Only safe if the StackValue::Pointer are only
 // from the VM
-unsafe impl<M> Send for SysCallResult<M> {}
+unsafe impl<M: Send> Send for SysCallResult<M> {}
 
 impl<M> SysCallResult<M> {
     pub const fn is_none(&self) -> bool {
@@ -83,7 +83,7 @@ pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
         &'a mut Context<'ty, 'r>,
-    ) -> LocalBoxFuture<'a, FnReturnType<M>>;
+    ) -> BoxFuture<'a, FnReturnType<M>>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum FunctionHandler<M> {
@@ -206,5 +206,17 @@ impl<'ty, M> fmt::Debug for NativeFunction<M> {
             .field("return_type", &self.return_type)
             .field("cost", &self.cost)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::SysCallResult;
+
+    fn assert_send<T: Send>(_: T) {}
+
+    #[test]
+    fn test_syscall_is_send() {
+        assert_send(SysCallResult::None::<()>);
     }
 }
