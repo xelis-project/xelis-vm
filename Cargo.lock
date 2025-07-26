@@ -813,6 +813,7 @@ name = "xelis-abi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde_json",
  "xelis-ast",
  "xelis-builder",
  "xelis-compiler",
