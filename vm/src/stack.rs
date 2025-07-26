@@ -1,4 +1,4 @@
-use xelis_types::{StackValue, ValueCell};
+use xelis_types::{StackValue, ValuePointer};
 
 use crate::debug;
 use super::VMError;
@@ -58,7 +58,7 @@ impl Stack {
         Ok(())
     }
 
-    pub fn verify_pointers(&mut self, ptr: *mut ValueCell) -> Result<(), VMError> {
+    pub fn verify_pointers(&mut self, ptr: ValuePointer) -> Result<(), VMError> {
         for v in self.stack.iter_mut() {
             v.make_owned_if_same_ptr(ptr)?;
         }

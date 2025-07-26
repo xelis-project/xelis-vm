@@ -9,8 +9,6 @@ use super::EnvironmentError;
 
 // SysCall Result represent all possible actions
 // from a SysCall
-// WARNING: This is NOT safe for Send if used outside of the VM
-// or passing bad pointers in AsyncCall / DynamicCall variants
 pub enum SysCallResult<M> {
     // Do nothing
     None,
@@ -36,10 +34,6 @@ pub enum SysCallResult<M> {
         chunk: u16,
     }
 }
-
-// WARNING: Only safe if the StackValue::Pointer are only
-// from the VM
-unsafe impl<M: Send> Send for SysCallResult<M> {}
 
 impl<M> SysCallResult<M> {
     pub const fn is_none(&self) -> bool {

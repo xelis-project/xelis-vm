@@ -3,13 +3,39 @@ use std::mem;
 use crate::{values::ValueError, Constant, Primitive, Type};
 use super::ValueCell;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValuePointer(*mut ValueCell);
+
+impl ValuePointer {
+    // WARNING: Put only ValueCell that is managed by one thread only
+    pub unsafe fn new(cell: &mut ValueCell) -> Self {
+        Self(cell as _)
+    }
+
+    #[inline(always)]
+    pub unsafe fn as_mut<'a>(self) -> Result<&'a mut ValueCell, ValueError> {
+        self.0.as_mut()
+            .ok_or(ValueError::InvalidPointer)
+    }
+
+    #[inline(always)]
+    pub unsafe fn as_ref<'a>(self) -> Result<&'a ValueCell, ValueError> {
+        self.0.as_ref()
+            .ok_or(ValueError::InvalidPointer)
+    }
+}
+
+// SAFETY: it is up to the caller to ensure
+// a ValuePointer is safe to be Send
+unsafe impl Send for ValuePointer {}
+
 #[derive(Debug)]
 pub enum StackValue {
     // Value is on stack directly
     Owned(ValueCell),
     Pointer {
-        origin: Option<*mut ValueCell>,
-        ptr: *mut ValueCell,
+        origin: Option<ValuePointer>,
+        ptr: ValuePointer,
         depth: usize
     }
 }
@@ -57,8 +83,7 @@ impl StackValue {
                 Ok(Self::Owned(at_index))
             },
             Self::Pointer { origin, ptr, depth } => unsafe {
-                let cell = ptr.as_mut()
-                    .ok_or(ValueError::InvalidPointer)?;
+                let cell = ptr.as_mut()?;
 
                 Ok(match cell {
                     ValueCell::Object(values) => {
@@ -69,7 +94,7 @@ impl StackValue {
 
                         Self::Pointer {
                             origin: origin.or(Some(ptr)),
-                            ptr: at_index as *mut ValueCell,
+                            ptr: ValuePointer::new(at_index),
                             depth: depth + 1
                         }
                     },
@@ -90,7 +115,8 @@ impl StackValue {
         match self {
             Self::Owned(value) => Self::Pointer {
                 origin: None,
-                ptr: value as *mut ValueCell,
+                // SAFETY: We actually own the value
+                ptr: unsafe { ValuePointer::new(value) },
                 depth: 0
             },
             Self::Pointer { origin, ptr, depth } => Self::Pointer {
@@ -114,7 +140,6 @@ impl StackValue {
             Self::Owned(v) => Ok(v),
             Self::Pointer { ptr, .. } => unsafe {
                 ptr.as_ref()
-                    .ok_or(ValueError::InvalidPointer)
                     .cloned()
             }
         }
@@ -125,8 +150,7 @@ impl StackValue {
     pub fn take_ownership(&mut self) -> Result<(), ValueError> {
         if let Self::Pointer { ptr, .. } = self {
             unsafe {
-                let cell = ptr.as_mut()
-                    .ok_or(ValueError::InvalidPointer)?;
+                let cell = ptr.as_mut()?;
                 let owned = mem::take(cell);
                 *self = owned.into();
             }
@@ -136,12 +160,11 @@ impl StackValue {
     }
 
     // Make the path owned if the pointer is the same
-    pub fn make_owned_if_same_ptr(&mut self, other: *mut ValueCell) -> Result<(), ValueError> {
+    pub fn make_owned_if_same_ptr(&mut self, other: ValuePointer) -> Result<(), ValueError> {
         if let Self::Pointer { origin, ptr,  .. } = self {
             unsafe {
                 if *ptr == other || *origin == Some(other) {
-                    let cell = ptr.as_ref()
-                        .ok_or(ValueError::InvalidPointer)?;
+                    let cell = ptr.as_ref()?;
                     *self = cell.clone().into();
                 }
             }
@@ -155,8 +178,7 @@ impl StackValue {
     pub fn make_owned(&mut self) -> Result<bool, ValueError> {
         if let Self::Pointer { ptr, .. } = self {
             unsafe {
-                let cell = ptr.as_ref()
-                    .ok_or(ValueError::InvalidPointer)?;
+                let cell = ptr.as_ref()?;
                 *self = cell.clone().into();
             }
 
@@ -172,7 +194,7 @@ impl StackValue {
         Ok(match self {
             Self::Owned(v) => v,
             Self::Pointer { ptr, .. } => unsafe {
-                ptr.as_ref().ok_or(ValueError::InvalidPointer)?
+                ptr.as_ref()?
             }
         })
     }
@@ -183,15 +205,16 @@ impl StackValue {
         Ok(match self {
             Self::Owned(v) => v,
             Self::Pointer { ptr, .. } => unsafe {
-                ptr.as_mut().ok_or(ValueError::InvalidPointer)?
+                ptr.as_mut()?
             }
         })
     }
 
     #[inline(always)]
-    pub fn ptr(&mut self) -> *mut ValueCell {
+    pub fn ptr(&mut self) -> ValuePointer {
         match self {
-            Self::Owned(v) => v as _,
+            // SAFETY: we own the value
+            Self::Owned(v) => unsafe { ValuePointer::new(v) },
             Self::Pointer { ptr, .. } => *ptr
         }
     }
