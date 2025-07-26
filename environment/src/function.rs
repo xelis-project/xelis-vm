@@ -7,16 +7,24 @@ use crate::Context;
 
 use super::EnvironmentError;
 
+// SysCall Result represent all possible actions
+// from a SysCall
+// WARNING: This is NOT safe for Send if used outside of the VM
+// or passing bad pointers in AsyncCall / DynamicCall variants
 pub enum SysCallResult<M> {
+    // Do nothing
     None,
+    // Add to the VM stack the returned value
     Return(ValueCell),
+    // Async Call instruction
     AsyncCall {
         ptr: OnCallAsyncFn<M>,
         instance: bool,
         params: VecDeque<StackValue>,
     },
+    // Call dynamically a chunk or a syscall fn
     DynamicCall {
-        // Should contains Vec<u16, bool>
+        // Should contains [id: u16, is_syscall bool, from: u16]
         ptr: ValueCell,
         params: VecDeque<StackValue>,
     },
@@ -28,6 +36,10 @@ pub enum SysCallResult<M> {
         chunk: u16,
     }
 }
+
+// WARNING: Only safe if the StackValue::Pointer are only
+// from the VM
+unsafe impl<M> Send for SysCallResult<M> {}
 
 impl<M> SysCallResult<M> {
     pub const fn is_none(&self) -> bool {
