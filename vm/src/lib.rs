@@ -500,4 +500,4 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
 // SAFETY: it is safe to move it between threads
 // because no pointer is available from our API
-unsafe impl<'a: 'r, 'ty: 'a, 'r, M: Send + 'static> Send for VM<'a, 'ty, 'r, M> {}
+// unsafe impl<'a: 'r, 'ty: 'a, 'r, M: Send + 'static> Send for VM<'a, 'ty, 'r, M> {}

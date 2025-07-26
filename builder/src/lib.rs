@@ -44,7 +44,7 @@ mod tests {
     use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
     use crate::EnvironmentBuilder;
 
-    trait Foo {}
+    trait Foo: Send + Sync {}
 
     struct FooImpl;
     tid!(FooImpl);

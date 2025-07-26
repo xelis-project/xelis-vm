@@ -1,28 +1,48 @@
 use std::any::Any;
 use better_any::{Tid, TidExt};
 
+// Ensure Tid is Send
+pub trait ShareableTid<'a>: Tid<'a> + Send + Sync {}
+
+impl<'a, T: Tid<'a> + Send + Sync> ShareableTid<'a> for T {}
+
 // Data is a wrapper around Any that allows for borrowed and mutable references.
 pub enum Data<'ty, 'r> {
-    Owned(Box<dyn Tid<'ty>>),
-    Borrowed(&'r dyn Tid<'ty>),
-    Mut(&'r mut dyn Tid<'ty>),
+    Owned(Box<dyn ShareableTid<'ty>>),
+    Borrowed(&'r dyn ShareableTid<'ty>),
+    Mut(&'r mut dyn ShareableTid<'ty>),
 }
 
 impl<'ty, 'r> Data<'ty, 'r> {
     // downcast_any allows for immutable access to the underlying value.
     pub fn downcast_ref_any<'b, T: Any>(&'b self) -> Option<&'b T> {
         match self {
-            Data::Owned(value) => (**value).downcast_any_ref(),
-            Data::Borrowed(value) => (*value).downcast_any_ref(),
-            Data::Mut(value) => (*value).downcast_any_ref(),
+            Data::Owned(value) => {
+                let v: &dyn Tid<'ty> = &**value;
+                v.downcast_any_ref()
+            },
+            Data::Borrowed(value) => {
+                let v: &dyn Tid<'ty> = &**value;
+                v.downcast_any_ref()
+            },
+            Data::Mut(value) => {
+                let v: &dyn Tid<'ty> = &**value;
+                v.downcast_any_ref()
+            },
         }
     }
 
     // downcast_any_mut allows for mutable access to the underlying value.
     pub fn downcast_mut_any<'b, T: Any>(&'b mut self) -> Option<&'b mut T> {
         match self {
-            Data::Owned(value) => (**value).downcast_any_mut(),
-            Data::Mut(value) => (*value).downcast_any_mut(),
+            Data::Owned(value) => {
+                let v: &mut dyn Tid<'ty> = &mut **value;
+                v.downcast_any_mut()
+            },
+            Data::Mut(value) => {
+                let v: &mut dyn Tid<'ty> = &mut **value;
+                v.downcast_any_mut()
+            },
             _ => None,
         }
     }

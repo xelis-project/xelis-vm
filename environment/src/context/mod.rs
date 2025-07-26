@@ -4,9 +4,8 @@ use std::{
     any::TypeId,
     hash::{BuildHasherDefault, Hasher}
 };
-use crate::EnvironmentError;
+use crate::{context::data::ShareableTid, EnvironmentError};
 
-use better_any::Tid;
 pub use data::Data;
 use hashbrown::HashMap;
 
@@ -171,19 +170,19 @@ impl<'ty, 'r> Context<'ty, 'r> {
 
     // Insert a borrowed value into the Context
     #[inline]
-    pub fn insert_ref<T: Tid<'ty>>(&mut self, value: &'r T) {
+    pub fn insert_ref<T: ShareableTid<'ty>>(&mut self, value: &'r T) {
         self.data.insert(T::id(), Data::Borrowed(value));
     }
 
     // Insert a mutable value into the Context
     #[inline]
-    pub fn insert_mut<T: Tid<'ty>>(&mut self, value: &'r mut T) {
+    pub fn insert_mut<T: ShareableTid<'ty>>(&mut self, value: &'r mut T) {
         self.data.insert(T::id(), Data::Mut(value));
     }
 
     // Insert an owned value into the Context
     #[inline]
-    pub fn insert<T: Tid<'ty>>(&mut self, value: T) {
+    pub fn insert<T: ShareableTid<'ty>>(&mut self, value: T) {
         self.data.insert(T::id(), Data::Owned(Box::new(value)));
     }
 
@@ -191,8 +190,8 @@ impl<'ty, 'r> Context<'ty, 'r> {
     // Going through the Any trait to allow for downcasting to a generic type
     // and skip the lifetime constraints
     #[inline]
-    pub fn insert_any_ref<T: Tid<'ty> + 'static>(&mut self, any: &'r T) {
-        let r: &'r dyn Tid<'ty> = any.into();
+    pub fn insert_any_ref<T: ShareableTid<'ty> + 'static>(&mut self, any: &'r T) {
+        let r: &'r dyn ShareableTid<'ty> = any;
         self.data.insert(T::id(), Data::Borrowed(r));
     }
 
@@ -200,20 +199,20 @@ impl<'ty, 'r> Context<'ty, 'r> {
     // Going through the Any trait to allow for downcasting to a generic type
     // and skip the lifetime constraints
     #[inline]
-    pub fn insert_any_mut<T: Tid<'ty> + 'static>(&mut self, any: &'r mut T) {
-        let r: &'r mut dyn Tid<'ty> = any.into();
+    pub fn insert_any_mut<T: ShareableTid<'ty> + 'static>(&mut self, any: &'r mut T) {
+        let r: &'r mut dyn ShareableTid<'ty> = any;
         self.data.insert(T::id(), Data::Mut(r));
     }
 
     // Get a borrowed value from the Context
     #[inline]
-    pub fn get<'b, T: Tid<'ty>>(&'b self) -> Option<&'b T> {
+    pub fn get<'b, T: ShareableTid<'ty>>(&'b self) -> Option<&'b T> {
         self.data.get(&T::id()).map(|v| v.downcast_ref()).flatten()
     }
 
     // Get a mutable value from the Context
     #[inline]
-    pub fn get_mut<'b, T: Tid<'ty>>(&'b mut self) -> Option<&'b mut T> {
+    pub fn get_mut<'b, T: ShareableTid<'ty>>(&'b mut self) -> Option<&'b mut T> {
         self.data.get_mut(&T::id()).map(|v| v.downcast_mut()).flatten()
     }
 
@@ -237,7 +236,7 @@ impl<'ty, 'r> Context<'ty, 'r> {
 
     // Get an owned value from the Context
     #[inline]
-    pub fn take<T: Tid<'ty>>(&mut self) -> Option<T> {
+    pub fn take<T: ShareableTid<'ty>>(&mut self) -> Option<T> {
         let id = T::id();
         match self.data.remove(&id) {
             Some(data) => data.try_take_owned::<T>().ok(),
@@ -247,13 +246,13 @@ impl<'ty, 'r> Context<'ty, 'r> {
 
     // remove a value from the Context and returns it.
     #[inline]
-    pub fn remove<T: Tid<'ty>>(&mut self) -> Option<Data<'ty, 'r>> {
+    pub fn remove<T: ShareableTid<'ty>>(&mut self) -> Option<Data<'ty, 'r>> {
         self.data.remove(&T::id())
     }
 
     // Check if the Context contains a value of a specific type.
     #[inline]
-    pub fn contains<T: Tid<'ty>>(&self) -> bool {
+    pub fn contains<T: ShareableTid<'ty>>(&self) -> bool {
         self.data.contains_key(&T::id())
     }
 
@@ -273,7 +272,7 @@ impl<'ty, 'r> Context<'ty, 'r> {
 
 #[cfg(test)]
 mod tests {
-    use better_any::tid;
+    use better_any::{tid, Tid};
 
     use super::*;
 

@@ -32,8 +32,9 @@ fn run(module: Module) -> Primitive {
 fn assert_send<T: Send>(_: &T) {}
 
 #[test]
-fn vm_is_send<'a: 'r, 'ty: 'a, 'r>() {
-    let vm = VM::new(&Environment::default());
+fn vm_is_send() {
+    let environment = Environment::default();
+    let mut vm: VM<'_, '_, '_, ()> = VM::new(&environment);
     assert_send(&vm);
     assert_send(&vm.run());
 }
