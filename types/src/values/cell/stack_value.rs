@@ -3,11 +3,13 @@ use std::mem;
 use crate::{values::ValueError, Constant, Primitive, Type};
 use super::ValueCell;
 
+// ValuePointer is a simple wrapper around the raw mut pointer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ValuePointer(*mut ValueCell);
 
 impl ValuePointer {
     // WARNING: Put only ValueCell that is managed by one thread only
+    #[inline(always)]
     pub unsafe fn new(cell: &mut ValueCell) -> Self {
         Self(cell as _)
     }
@@ -244,5 +246,21 @@ impl From<Primitive> for StackValue {
 impl From<Constant> for StackValue {
     fn from(value: Constant) -> Self {
         Self::Owned(value.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{StackValue, ValueCell, ValuePointer};
+
+    fn assert_send<T: Send>(_: T) {}
+
+    #[test]
+    fn assertions_send() {
+        assert_send(ValueCell::default());
+        assert_send(StackValue::Owned(ValueCell::default()));
+
+        let ptr = unsafe { ValuePointer::new(&mut ValueCell::default()) };
+        assert_send(ptr);
     }
 }
