@@ -156,11 +156,11 @@ impl<'a> FunctionMapper<'a> {
         expressions: &mut [Expression]
     ) -> bool {
         let mut updated_expressions = Vec::new();
-        for (i, (a, b)) in params.zip(detected_types).enumerate() {
-            trace!("Checking parameter {} with types {:?} and {:?}", i, a, b);
-            let Some(b) = b else {
+        for (i, (expected_param_type, current_param_type)) in params.zip(detected_types).enumerate() {
+            trace!("Checking parameter {} with types {:?} and {:?}", i, expected_param_type, current_param_type);
+            let Some(current_param_type) = current_param_type else {
                 // We don't know the type of the parameter, we can't cast it
-                if !a.allow_null() {
+                if !expected_param_type.allow_null() {
                     trace!("Parameter {} is not nullable", i);
                     return false;
                 } else {
@@ -168,30 +168,30 @@ impl<'a> FunctionMapper<'a> {
                 }
             };
 
-            if let Some(instance) = on_type.filter(|v| v.contains_sub_type() && a.is_generic()) {
-                if !a.is_generic_compatible_with(instance, b) {
-                    trace!("Parameter {} is not generic compatible with instance {} and {}", a, instance, b);
+            if let Some(instance) = on_type.filter(|v| v.contains_sub_type() && expected_param_type.is_generic()) {
+                if !expected_param_type.is_generic_compatible_with(instance, current_param_type) {
+                    trace!("Parameter {} is not generic compatible with instance {} and {}", expected_param_type, instance, current_param_type);
                     return false;
                 }
             }
 
-            let mut cast_to_type = on_type
+            let mut inner_type = on_type
                 .map(Type::get_inner_type)
-                .filter(|t| b.is_castable_to(t));
+                .filter(|t| expected_param_type.is_generic() && current_param_type.is_castable_to(t));
 
-            if cast_to_type.is_none() && !a.is_compatible_with(b) {
+            if inner_type.is_none() && !expected_param_type.is_compatible_with(current_param_type) {
                 // If our parameter is castable to the signature parameter, cast it
-                if b.is_castable_to(a) {
-                    cast_to_type = Some(a);
-                } else if a != b {
+                if current_param_type.is_castable_to(expected_param_type) {
+                    inner_type = Some(expected_param_type);
+                } else if expected_param_type != current_param_type {
                     // If the parameter is optional and its the exact same type inside
                     // we allow to pass it
-                    if let Type::Optional(inner) = a {
-                        if !inner.is_compatible_with(b) {
-                            trace!("inner {} is not compatible with {}", inner, b);
+                    if let Type::Optional(inner) = expected_param_type {
+                        if !inner.is_compatible_with(current_param_type) {
+                            trace!("inner {} is not compatible with {}", inner, current_param_type);
                             return false;
                         }
-                    } else if a.map_generic_type(on_type) != *b {
+                    } else if expected_param_type.map_generic_type(on_type) != *current_param_type {
                         trace!("not optional, invalid");
                         return false;
                     }
@@ -199,7 +199,7 @@ impl<'a> FunctionMapper<'a> {
             }
 
             // If cast is needed, cast it, if we fail, we continue to the next signature
-            if let Some(a) = cast_to_type {
+            if let Some(a) = inner_type {
                 // We can only cast hardcoded values
                 if let Expression::Constant(value) = &expressions[i] {
                     let cloned = value.clone();
