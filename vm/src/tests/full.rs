@@ -2027,3 +2027,22 @@ fn test_tuples_flatten() {
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(30));
 }
+
+#[test]
+fn test_access_removed_value() {
+        let code = r#"
+        entry main() {
+            let a: u64[] = [10];
+            let b: u64 = a[0];
+            debug(b);
+            a.remove(0);
+            debug(b);
+            debug(a);
+            assert(b == 10);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
