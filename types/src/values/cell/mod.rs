@@ -1,5 +1,6 @@
 mod stack_value;
 mod serde_map;
+mod pointer;
 
 use std::{
     borrow::Cow,
@@ -10,10 +11,20 @@ use std::{
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use crate::{opaque::OpaqueWrapper, DefinedType, Opaque, Type, U256};
+use crate::{
+    opaque::OpaqueWrapper,
+    values::cell::pointer::ValuePointer,
+    DefinedType,
+    Opaque,
+    Type,
+    U256
+};
 use super::{Constant, Primitive, ValueError};
 
 pub use stack_value::*;
+
+pub type CellArray = Vec<ValuePointer>;
+pub type CellMap = IndexMap<ValueCell, ValuePointer>;
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
@@ -23,14 +34,30 @@ pub use stack_value::*;
 pub enum ValueCell {
     Default(Primitive),
     Bytes(Vec<u8>),
-    Object(Vec<ValueCell>),
+    Object(CellArray),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
     #[serde(
         serialize_with = "serde_map::serialize",
         deserialize_with = "serde_map::deserialize"
     )]
-    Map(Box<IndexMap<ValueCell, ValueCell>>),
+    Map(Box<CellMap>),
+}
+
+pub enum ValueCellRef<'a> {
+    Owned(ValueCell),
+    Ref(&'a ValueCell),
+    Pointer(ValuePointer),
+}
+
+impl<'a> ValueCellRef<'a> {
+    pub fn value(&self) -> &ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Ref(v) => v,
+            Self::Pointer(v) => v.as_ref(),
+        }
+    }
 }
 
 #[cfg(feature = "infinite-cell-depth")]
@@ -92,13 +119,13 @@ impl Hash for ValueCell {
             return;
         }
 
-        let mut stack = vec![self];
+        let mut stack = vec![ValueCellRef::Ref(self)];
         while let Some(value) = stack.pop() {
-            match value {
+            match value.value() {
                 Self::Default(v) => v.hash(state),
                 Self::Object(values) => {
                     12u8.hash(state);
-                    stack.extend(values);
+                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
                 },
                 Self::Bytes(values) => {
                     13u8.hash(state);
@@ -106,7 +133,10 @@ impl Hash for ValueCell {
                 }
                 Self::Map(map) => {
                     14u8.hash(state);
-                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]))
+                    stack.extend(
+                        map.iter()
+                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                    )
                 }
             }
         }
@@ -166,7 +196,7 @@ impl ValueCell {
             return Ok(0);
         }
 
-        let mut stack = vec![(self, 0)];
+        let mut stack = vec![(ValueCellRef::Ref(self), 0)];
         let mut biggest_depth = 0;
 
         while let Some((next, depth)) = stack.pop() {
@@ -178,23 +208,24 @@ impl ValueCell {
                 biggest_depth = depth;
             }
 
-            match next {
+            match next.value() {
                 ValueCell::Default(_) => {},
                 ValueCell::Bytes(_) => {},
                 ValueCell::Object(values) => {
-                    for value in values {
-                        stack.push((value, depth + 1));
-                    }
+                    let depth = depth + 1;
+                    stack.extend(values.iter().cloned().map(|v| (ValueCellRef::Pointer(v), depth)));
                 },
                 ValueCell::Map(map) => {
-                    for (_, v) in map.iter() {
-                        stack.push((v, depth + 1));
-                    }
+                    let depth = depth + 1;
+                    stack.extend(
+                        map.iter()
+                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
+                    )
                 }
             };
         }
 
-        Ok(biggest_depth)
+        Ok(0)
     }
 
     // Calculate the depth of the value
@@ -204,7 +235,7 @@ impl ValueCell {
             return Ok(v.get_memory_usage());
         }
 
-        let mut stack = vec![self];
+        let mut stack = vec![ValueCellRef::Ref(self)];
         let mut memory = 0;
 
         while let Some(next) = stack.pop() {
@@ -212,7 +243,7 @@ impl ValueCell {
                 return Err(ValueError::MaxMemoryReached(memory, max_memory));
             }
 
-            match next {
+            match next.value() {
                 ValueCell::Default(v) => {
                     memory += 1;
                     memory += v.get_memory_usage();
@@ -223,11 +254,14 @@ impl ValueCell {
                 },
                 ValueCell::Object(values) => {
                     memory += 32;
-                    stack.extend(values);
+                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
                 },
                 ValueCell::Map(map) => {
                     memory += 64;
-                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
+                    stack.extend(
+                        map.iter()
+                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                    )
                 }
             };
         }
@@ -324,7 +358,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&IndexMap<ValueCell, ValueCell>, ValueError> {
+    pub fn as_map(&self) -> Result<&CellMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct)
@@ -332,7 +366,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<ValueCell, ValueCell>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut CellMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedStruct),
@@ -340,7 +374,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValueCell>, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a CellArray, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -348,7 +382,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValueCell>, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut CellArray, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -356,7 +390,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_vec<'a>(&'a mut self) -> Result<Vec<ValueCell>, ValueError> {
+    pub fn to_vec<'a>(&'a mut self) -> Result<CellArray, ValueError> {
         match mem::take(self) {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
@@ -704,17 +738,16 @@ impl ValueCell {
             Bytes(Vec<u8>)
         }
 
-        let mut stack = vec![self];
+        let mut stack = vec![ValueCellRef::Ref(self)];
         let mut queue = Vec::new();
 
         // Disassemble
         while let Some(value) = stack.pop() {
-            match value {
+            match value.value() {
                 Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
                 Self::Object(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
-                    stack.reserve(values.len());
-                    stack.extend(values);
+                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
                 },
                 Self::Bytes(bytes) => {
                     queue.push(QueueItem::Bytes(bytes.clone()));
@@ -722,7 +755,7 @@ impl ValueCell {
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
                     stack.reserve(map.len() * 2);
-                    stack.extend(map.iter().flat_map(|(k, v)| [k, v]));
+                    stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())]));
                 }
             }
         };
@@ -736,7 +769,7 @@ impl ValueCell {
                 },
                 QueueItem::Array { len } => {
                     let values = stack.split_off(stack.len() - len);
-                    stack.push(ValueCell::Object(values));
+                    stack.push(ValueCell::Object(values.into_iter().map(Into::into).collect()));
                 },
                 QueueItem::Bytes(bytes) => {
                     stack.push(ValueCell::Bytes(bytes));
@@ -745,6 +778,7 @@ impl ValueCell {
                     let map = stack.split_off(stack.len() - len * 2)
                         .into_iter()
                         .tuples()
+                        .map(|(k, v)| (k, v.into()))
                         .collect();
 
                     stack.push(ValueCell::Map(Box::new(map)));
@@ -762,14 +796,14 @@ impl fmt::Display for ValueCell {
         match self {
             Self::Default(v) => write!(f, "{}", v),
             Self::Object(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                let s: Vec<String> = values.iter().map(|v| format!("{}", v.as_ref())).collect();
                 write!(f, "[{}]", s.join(", "))
             },
             Self::Bytes(bytes) => {
                 write!(f, "bytes[{:?}]", bytes)
             },
             Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
                 write!(f, "map{}{}{}", "{", s.join(", "), "}")
             }
         }

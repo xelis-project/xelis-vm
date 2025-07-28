@@ -13,7 +13,7 @@ pub enum SysCallResult<M> {
     // Do nothing
     None,
     // Add to the VM stack the returned value
-    Return(ValueCell),
+    Return(StackValue),
     // Async Call instruction
     AsyncCall {
         ptr: OnCallAsyncFn<M>,
@@ -23,7 +23,7 @@ pub enum SysCallResult<M> {
     // Call dynamically a chunk or a syscall fn
     DynamicCall {
         // Should contains [id: u16, is_syscall bool, from: u16]
-        ptr: ValueCell,
+        ptr: StackValue,
         params: VecDeque<StackValue>,
     },
     // NOTE: due to the invariant lifetime issue
@@ -58,7 +58,13 @@ impl<M> From<Primitive> for SysCallResult<M> {
 
 impl<M> From<ValueCell> for SysCallResult<M> {
     fn from(value: ValueCell) -> Self {
-        SysCallResult::Return(value)
+        SysCallResult::Return(value.into())
+    }
+}
+
+impl<M> From<StackValue> for SysCallResult<M> {
+    fn from(value: StackValue) -> Self {
+        SysCallResult::Return(value.into())
     }
 }
 
@@ -147,7 +153,6 @@ impl<M> NativeFunction<M> {
 
                 let instance = on_value.as_mut()
                     .map(|v| v.as_mut())
-                    .transpose()?
                     .ok_or(EnvironmentError::FnExpectedInstance);
 
                 (on_call)(instance, parameters.into(), context)
@@ -200,17 +205,5 @@ impl<'ty, M> fmt::Debug for NativeFunction<M> {
             .field("return_type", &self.return_type)
             .field("cost", &self.cost)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::SysCallResult;
-
-    fn assert_send<T: Send>(_: T) {}
-
-    #[test]
-    fn test_syscall_is_send() {
-        assert_send(SysCallResult::None::<()>);
     }
 }

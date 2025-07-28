@@ -34,15 +34,15 @@ fn is_some<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M>
 
 fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let opt = zelf?.take_as_optional()?.ok_or(ValueError::OptionalIsNull)?;
-    Ok(SysCallResult::Return(opt))
+    Ok(SysCallResult::Return(opt.into()))
 }
 
 fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let optional = zelf?.take_as_optional()?;
     match optional {
-        Some(value) => Ok(SysCallResult::Return(value)),
-        None => Ok(SysCallResult::Return(default.into_owned()?))
+        Some(value) => Ok(SysCallResult::Return(value.into())),
+        None => Ok(SysCallResult::Return(default))
     }
 }
 
@@ -50,9 +50,9 @@ fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context
     let default = parameters.remove(0);
     let optional = zelf?.take_as_optional()?;
     match optional {
-        Some(value) => Ok(SysCallResult::Return(value)),
+        Some(value) => Ok(SysCallResult::Return(value.into())),
         None => Ok(SysCallResult::DynamicCall {
-            ptr: default.into_owned()?,
+            ptr: default,
             params: VecDeque::new()
         })
     }
@@ -60,7 +60,7 @@ fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context
 
 fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let mut param = parameters.remove(0)
-        .into_owned()?;
+        .into_owned();
     let msg = param.into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
@@ -70,5 +70,5 @@ fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnR
     let opt = zelf?.take_as_optional()?
         .ok_or(EnvironmentError::Expect(msg))?;
 
-    Ok(SysCallResult::Return(opt))
+    Ok(SysCallResult::Return(opt.into()))
 }

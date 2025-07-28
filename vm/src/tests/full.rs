@@ -634,8 +634,10 @@ fn test_array_slice() {
             let x: u64[] = [10, 20, 30, 40, 50];
             let y: u64[] = x.slice(1..4);
 
-            assert(!is_same_ptr(y[0], x[1]));
+            // Slice are connected
+            assert(is_same_ptr(y[0], x[1]));
             y.push(60);
+            assert(x.len() == 5);
             assert(!is_same_ptr(y[3], x[4]));
 
             y.push(x[4]);
@@ -1358,9 +1360,9 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)))))), 0, Some(Type::Any)); 
-    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::U64(0))))), 0, Some(Type::Any)); 
-    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null)))), 0, Some(Type::Optional(Box::new(Type::Bool))));
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)).into()))), 0, Some(Type::Any)); 
+    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::U64(0).into()))), 0, Some(Type::Any)); 
+    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {
@@ -2026,4 +2028,21 @@ fn test_tuples_flatten() {
     "#;
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(30));
+}
+
+#[test]
+fn test_access_removed_value() {
+        let code = r#"
+        entry main() {
+            let a: u64[] = [10];
+            let b: u64 = a[0];
+            a.remove(0);
+            a.push(50);
+            a.push(70);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
 }

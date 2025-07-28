@@ -16,7 +16,7 @@ macro_rules! checked_fn {
         paste! {
             fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
-                let other = parameters.remove(0).into_owned()?.[<as_ $f>]()?;
+                let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
                 // Perform the operation with `checked_$op` as a method name
@@ -64,7 +64,7 @@ macro_rules! to_endian_array {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
-                Ok(SysCallResult::Return(ValueCell::Object(vec)))
+                Ok(SysCallResult::Return(ValueCell::Object(vec).into()))
             }
 
             $env.register_native_function(
@@ -92,7 +92,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec())))
+                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
             }
 
             $env.register_native_function(
@@ -119,7 +119,7 @@ macro_rules! min {
         paste! {
             fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
-                let other = params[0].as_ref()?.[<as_ $f>]()?;
+                let other = params[0].as_ref().[<as_ $f>]()?;
 
                 let min = value.min(other);
                 Ok(SysCallResult::Return(Primitive::$t(min).into()))
@@ -143,7 +143,7 @@ macro_rules! max {
         paste! {
             fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
-                let other = params[0].as_ref()?.[<as_ $f>]()?;
+                let other = params[0].as_ref().[<as_ $f>]()?;
 
                 let min = value.max(other);
                 Ok(SysCallResult::Return(Primitive::$t(min).into()))

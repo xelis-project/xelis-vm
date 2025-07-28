@@ -33,7 +33,7 @@ pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     let path = stack.pop_stack()?;
     let sub = path.get_at_index(index as usize)?;
 
-    let memory_usage = sub.as_ref()?
+    let memory_usage = sub.as_ref()
         .calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
@@ -46,11 +46,11 @@ pub fn copy<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     debug!("copy");
     let value = stack.last_stack()?;
 
-    let memory_usage = value.as_ref()?
+    let memory_usage = value.as_ref()
         .calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
-    stack.push_stack(value.to_owned()?)?;
+    stack.push_stack(value.to_owned())?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -61,11 +61,11 @@ pub fn copy_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
 
     let value = stack.get_stack_at(index as usize)?;
 
-    let memory_usage = value.as_ref()?
+    let memory_usage = value.as_ref()
         .calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
-    stack.push_stack(value.to_owned()?)?;
+    stack.push_stack(value.to_owned())?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -74,8 +74,8 @@ pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut
     debug!("to_owned");
 
     let value = stack.last_mut_stack()?;
-    if value.make_owned()? {
-        let memory = value.as_ref()?.calculate_memory_usage(context.memory_left())?;
+    if value.make_owned() {
+        let memory = value.as_ref().calculate_memory_usage(context.memory_left())?;
         context.increase_memory_usage_unchecked(memory)?;
     }
 
@@ -123,7 +123,7 @@ pub fn array_call<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
     let value = stack.pop_stack()?;
     let sub = value.get_at_index(index as usize)?;
 
-    let memory_usage = sub.as_ref()?
+    let memory_usage = sub.as_ref()
         .calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
@@ -186,7 +186,7 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let values = value.as_ref()?
+    let values = value.as_ref()
         .as_vec()?;
 
     if values.len() != 3 {

@@ -27,7 +27,7 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -38,7 +38,7 @@ fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) 
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -48,7 +48,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         .cloned();
 
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.to_owned().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -56,7 +56,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
-    let key = param.into_owned()?;
+    let key = param.into_owned();
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -66,6 +66,9 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
             .saturating_sub(key_depth.saturating_add(1))
     )?;
 
+    // prevent the key from being mutable
+    let key = key.deep_clone();
+
     let map = zelf?.as_mut_map()?;
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
@@ -73,7 +76,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
 
     let param = parameters.remove(0);
     let value_depth = param.depth();
-    let value = param.into_owned()?;
+    let value = param.into_owned();
 
     value.calculate_depth(
         context.max_value_depth()
@@ -81,10 +84,10 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
     )?;
 
     let previous = map
-        .insert(key, value);
+        .insert(key, value.into());
 
     Ok(SysCallResult::Return(match previous {
-        Some(v) => v,
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -92,7 +95,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
 fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -103,7 +106,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
 
     let value = map.shift_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -111,7 +114,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
 fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -119,7 +122,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     let value = zelf?.as_mut_map()?
         .swap_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -139,7 +142,7 @@ fn keys<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
         .map(|key| key.clone().into())
         .collect::<Vec<_>>();
 
-    Ok(SysCallResult::Return(ValueCell::Object(keys)))
+    Ok(SysCallResult::Return(ValueCell::Object(keys).into()))
 }
 
 fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
@@ -149,8 +152,8 @@ fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
     let values = map.values()
-        .map(|v| v.clone())
+        .cloned()
         .collect::<Vec<_>>();
 
-    Ok(SysCallResult::Return(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }

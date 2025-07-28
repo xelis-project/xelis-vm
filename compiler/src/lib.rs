@@ -978,7 +978,7 @@ mod tests {
     use xelis_environment::{FunctionHandler, SysCallResult};
     use xelis_lexer::Lexer;
     use xelis_parser::Parser;
-    use xelis_types::{Primitive, Type, ValueCell};
+    use xelis_types::{Primitive, Type};
 
     use super::*;
 
@@ -1356,7 +1356,7 @@ mod tests {
     #[test]
     fn test_static_function_call() {
         let mut env = EnvironmentBuilder::new();
-        env.register_static_function("test", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null)))), 0, Some(Type::Bool));
+        env.register_static_function("test", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Bool));
 
         let module = prepare_program_with_env("fn main() -> bool { return bool::test() }", &env);
 

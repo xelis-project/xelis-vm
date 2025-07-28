@@ -5,7 +5,7 @@ use serde::{Deserializer, Serializer};
 use std::fmt;
 
 pub fn serialize<S>(
-    map: &IndexMap<ValueCell, ValueCell>,
+    map: &CellMap,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -20,14 +20,14 @@ where
 
 pub fn deserialize<'de, D>(
     deserializer: D,
-) -> Result<Box<IndexMap<ValueCell, ValueCell>>, D::Error>
+) -> Result<Box<CellMap>, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct MapVecVisitor;
 
     impl<'de> Visitor<'de> for MapVecVisitor {
-        type Value = Box<IndexMap<ValueCell, ValueCell>>;
+        type Value = Box<CellMap>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a list of key-value pairs")
@@ -39,8 +39,9 @@ where
         {
             let mut map = IndexMap::new();
             while let Some((k, v)) = seq.next_element::<(ValueCell, ValueCell)>()? {
-                map.insert(k, v);
+                map.insert(k, v.into());
             }
+
             Ok(Box::new(map))
         }
     }

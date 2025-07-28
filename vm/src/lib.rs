@@ -177,7 +177,6 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             return Err(VMError::CallStackOverflow);
         }
 
-        self.stack.mark_checkpoint();
         self.call_stack.push(CallStack::Chunk(manager));
         self.call_stack_size += 1;
 
@@ -291,7 +290,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             previous.swap_registers(manager);
         }
 
-        self.stack.checkpoint_clean()
+        Ok(())
     }
 
     // Find the chunk manager for the requested chunk id
@@ -402,7 +401,6 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         
                                             let instance = on_value.as_mut()
                                                 .map(|v| v.as_mut())
-                                                .transpose()?
                                                 .ok_or(EnvironmentError::FnExpectedInstance);
         
                                             let res = ptr(instance, params.into(), &mut self.context).await?;
@@ -489,7 +487,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         debug_assert!(self.call_stack_size == 0, "call stack size is not zero");
 
         let end_value = self.stack.pop_stack()?
-            .into_owned()?;
+            .into_owned();
         if self.stack.count() != 0 {
             return Err(VMError::StackNotCleaned(self.stack.count()));
         }

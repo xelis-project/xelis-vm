@@ -29,12 +29,15 @@ fn run(module: Module) -> Primitive {
     run_internal(module, &environment, 0).unwrap()
 }
 
-fn assert_send<T: Send>(_: &T) {}
+fn assert_send<T: Send>(_: T) {}
 
 #[test]
-fn vm_is_send() {
-    let environment = Environment::default();
-    let mut vm: VM<'_, '_, '_, ()> = VM::new(&environment);
+fn assert_thread_safe() {
+    assert_send(ValueCell::default());
+
+    let e: Environment<()> = Environment::new();
+    let mut vm = VM::new(&e);
     assert_send(&vm);
-    assert_send(&vm.run());
+    assert_send(vm.run());
+    assert_send(vm.run_blocking());
 }

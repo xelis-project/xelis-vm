@@ -42,7 +42,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
 fn println<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
-    println!("{}", param.as_ref()?);
+    println!("{}", param.as_ref());
 
     Ok(SysCallResult::None)
 }
@@ -56,7 +56,7 @@ fn debug<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnTyp
 
 fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let value = param.into_owned()?;
+    let value = param.into_owned();
 
     Err(EnvironmentError::Panic(format!("{:#}", value)))
 }
@@ -73,8 +73,8 @@ fn assert<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnTy
 }
 
 fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
-    let left = parameters[0].as_ref()?;
-    let right = parameters[1].as_ref()?;
+    let left = parameters[0].as_ref();
+    let right = parameters[1].as_ref();
     let same = ptr::from_ref(left) == ptr::from_ref(right);
 
     Ok(SysCallResult::Return(Primitive::Boolean(same).into()))
@@ -82,7 +82,7 @@ fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &mut Context) -> FnRet
 
 fn require<M>(_: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let msg = parameters.remove(1)
-        .into_owned()?
+        .into_owned()
         .into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
@@ -104,8 +104,7 @@ fn clone<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTyp
 
     let memory = zelf.calculate_memory_usage(context.memory_left())?;
     // Double cost: computation for cloning and memory allocation?
-    // context.increase_gas_usage(memory as _)?;
     context.increase_memory_usage_unchecked(memory)?;
 
-    Ok(SysCallResult::Return(zelf.clone()))
+    Ok(SysCallResult::Return(zelf.deep_clone().into()))
 }
