@@ -27,13 +27,13 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
             params,
         })),
         SysCallResult::Return(v) => {
-            let memory_usage = v.as_ref()?.calculate_memory_usage(context.memory_left())?;
+            let memory_usage = v.as_ref().calculate_memory_usage(context.memory_left())?;
             context.increase_memory_usage_unchecked(memory_usage)?;
             stack.push_stack(v)?;
             Ok(PerformSysCallHelper::End(InstructionResult::Nothing))
         },
         SysCallResult::DynamicCall { ptr, params } => {
-            let values = ptr.as_ref()?.as_vec()?;
+            let values = ptr.as_ref().as_vec()?;
             if values.len() != 3 {
                 return Err(VMError::InvalidDynamicCall);
             }

@@ -14,40 +14,44 @@ impl ValuePointer {
     }
 
     #[inline(always)]
-    pub fn as_mut<'a>(&'a mut self) -> Result<&'a mut ValueCell, ValueError> {
+    pub fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
         let ptr = self.0.get();
+        // SAFETY: the pointer is valid as long as it is
+        // borrowed
         unsafe {
-            Ok(ptr.as_mut().unwrap())
+            ptr.as_mut().unwrap_unchecked()
         }
     }
 
     #[inline(always)]
-    pub fn as_ref<'a>(&'a self) -> Result<&'a ValueCell, ValueError> {
+    pub fn as_ref<'a>(&'a self) -> &'a ValueCell {
         let ptr = self.0.get();
+        // SAFETY: the pointer is valid as long as it is
+        // borrowed
         unsafe {
-            Ok(ptr.as_ref().unwrap())
+            ptr.as_ref().unwrap_unchecked()
         }
     }
 
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
-        self.as_ref().and_then(ValueCell::as_u16)
+        self.as_ref().as_u16()
     }
 
     #[inline]
     pub fn as_bool(&self) -> Result<bool, ValueError> {
-        self.as_ref().and_then(ValueCell::as_bool)
+        self.as_ref().as_bool()
     }
 
     #[inline]
-    pub fn into_owned(&self) -> Result<ValueCell, ValueError> {
-        self.as_ref().map(ValueCell::deep_clone)
+    pub fn into_owned(&self) -> ValueCell {
+        self.as_ref().deep_clone()
     }
 }
 
 impl PartialEq for ValuePointer {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0) || self.as_ref().unwrap() == other.as_ref().unwrap()
+        Rc::ptr_eq(&self.0, &other.0) || self.as_ref() == other.as_ref()
     }
 }
 
@@ -58,9 +62,7 @@ impl Serialize for ValuePointer {
     where
         S: Serializer,
     {
-        self.as_ref()
-            .map_err(|e| serde::ser::Error::custom(e.to_string()))?
-            .serialize(serializer)
+        self.as_ref().serialize(serializer)
     }
 }
 

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{Primitive, ValueCell, ValueError};
+use xelis_types::{Primitive, ValueCell, ValueCellRef, ValueError};
 use xelis_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
@@ -69,22 +69,21 @@ impl<'a, M> ModuleValidator<'a, M> {
 
     // Verify a constant and return the memory usage
     pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError> {
-        let mut stack = vec![(constant, 0)];
+        let mut stack = vec![(ValueCellRef::Ref(constant), 0)];
 
         while let Some((value, depth)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
             }
 
-            match value {
+            match value.value() {
                 ValueCell::Object(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
-                    for element in elements {
-                        stack.push((element, depth + 1));
-                    }
+                    let depth = depth + 1;
+                    stack.extend(elements.iter().map(|v| (ValueCellRef::Pointer(v.clone()), depth)));
                 },
                 ValueCell::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
@@ -96,14 +95,12 @@ impl<'a, M> ModuleValidator<'a, M> {
                         return Err(ValidatorError::TooManyConstants);
                     }
 
-                    for (key, value) in map.iter() {
-                        if key.is_map() {
-                            return Err(ValidatorError::MapAsKeyNotAllowed);
-                        }
 
-                        stack.push((key, depth + 1));
-                        stack.push((value, depth + 1));
-                    }
+                    let depth = depth + 1;
+                    stack.extend(
+                        map.iter()
+                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
+                    );
                 },
                 ValueCell::Default(v) => match v {
                     Primitive::Range(range) => {

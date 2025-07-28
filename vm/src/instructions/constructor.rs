@@ -13,7 +13,7 @@ pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(pop.into_owned()?.into());
+        array.push_front(pop.into_owned().into());
     }
 
     let value = ValueCell::Object(array.into());
@@ -26,8 +26,8 @@ pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
 
 pub fn new_range<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("new range");
-    let mut end = stack.pop_stack()?.into_owned()?;
-    let mut start = stack.pop_stack()?.into_owned()?;
+    let mut end = stack.pop_stack()?.into_owned();
+    let mut start = stack.pop_stack()?.into_owned();
 
     if !start.is_number() || !end.is_number() {
         return Err(VMError::InvalidRangeType);
@@ -53,12 +53,12 @@ pub fn new_map<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     let mut map = IndexMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
-        let key = stack.pop_stack()?.into_owned()?;
+        let key = stack.pop_stack()?.into_owned();
         if key.is_map() {
             return Err(EnvironmentError::InvalidKeyType.into());
         }
 
-        map.insert(key, value.into_owned()?.into());
+        map.insert(key, value.into_owned().into());
     }
 
     let map = ValueCell::Map(Box::new(map));

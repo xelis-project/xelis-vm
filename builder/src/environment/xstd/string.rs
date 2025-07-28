@@ -43,7 +43,7 @@ fn trim<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     let s = zelf?.as_string()?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.contains(value)).into()))
@@ -51,7 +51,7 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
 
 fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?.to_lowercase();
     let s: String = zelf?.as_string()?.to_lowercase();
     Ok(SysCallResult::Return(Primitive::Boolean(s.contains(&value)).into()))
@@ -73,7 +73,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturn
     let values = s.as_bytes();
     context.increase_gas_usage(values.len() as _)?;
 
-    let mut bytes = values.into_iter()
+    let bytes = values.into_iter()
         .map(|v| Primitive::U8(*v).into())
         .collect();
 
@@ -83,7 +83,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturn
 fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.find(value) {
         let inner = Primitive::U32(index as u32).into();
@@ -96,7 +96,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
 fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     if let Some(index) = s.rfind(value) {
         let inner = Primitive::U32(index as u32).into();
@@ -110,8 +110,8 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> Fn
     let s = zelf?.as_string()?;
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
-    let handle1 = param1.as_ref()?;
-    let handle2 = param2.as_ref()?;
+    let handle1 = param1.as_ref();
+    let handle2 = param2.as_ref();
     let old = handle1.as_string()?;
     let new = handle2.as_string()?;
     let s = s.replace(old, new);
@@ -121,7 +121,7 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> Fn
 fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.starts_with(value)).into()))
 }
@@ -129,7 +129,7 @@ fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
 fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.ends_with(value)).into()))
 }
@@ -137,7 +137,7 @@ fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> 
 fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
     let values = s.split(value)
         .map(|s| Primitive::String(s.to_string()).into())
@@ -168,7 +168,7 @@ fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut C
     context.increase_gas_usage(s.len() as u64 * 5)?;
 
     let param = parameters.remove(0);
-    let handle = param.as_ref()?;
+    let handle = param.as_ref();
     let value = handle.as_string()?;
 
     let m = s.matches(value);

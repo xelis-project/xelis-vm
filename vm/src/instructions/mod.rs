@@ -231,7 +231,7 @@ fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
 
 fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let values = value.into_owned()?
+    let values = value.into_owned()
         .to_vec()?;
 
     context.increase_gas_usage(values.len() as _)?;
@@ -261,7 +261,7 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?
-            .as_ref()?;
+            .as_ref();
 
         // Check if the magic byte is the same
         let same = actual.as_vec()?.get(0) == Some(&Primitive::U8(magic_byte - 1).into());
@@ -275,9 +275,9 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
     } else {
         let expected = stack.pop_stack()?;
         let actual = stack.last_stack()?
-            .as_ref()?;
+            .as_ref();
     
-        let expected_ref = expected.as_ref()?;
+        let expected_ref = expected.as_ref();
         if let ValueCell::Default(v) = actual {
             macro_rules! match_range {
                 ($prim:ident, $val:ident) => {

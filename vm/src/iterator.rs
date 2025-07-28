@@ -8,7 +8,7 @@ pub struct ValueIterator {
 
 impl ValueIterator {
     pub fn new(inner: StackValue) -> Result<Self, ValueError> {
-        let index = match inner.as_ref()? {
+        let index = match inner.as_ref() {
             ValueCell::Default(Primitive::Range(range)) => range.0.clone(),
             _ => Primitive::U32(0),
         };
@@ -20,7 +20,7 @@ impl ValueIterator {
         let index = self.index.clone();
         self.index.increment()?;
 
-        let value = self.inner.as_ref()?;
+        let value = self.inner.as_ref();
         Ok(match value {
             ValueCell::Object(v) => {
                 let index = index.to_u32()? as usize;

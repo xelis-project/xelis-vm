@@ -153,7 +153,6 @@ impl<M> NativeFunction<M> {
 
                 let instance = on_value.as_mut()
                     .map(|v| v.as_mut())
-                    .transpose()?
                     .ok_or(EnvironmentError::FnExpectedInstance);
 
                 (on_call)(instance, parameters.into(), context)

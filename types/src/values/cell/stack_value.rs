@@ -21,17 +21,17 @@ pub enum StackValue {
 impl StackValue {
     #[inline(always)]
     pub fn as_bool<'a>(&'a self) -> Result<bool, ValueError> {
-        self.as_ref()?.as_bool()
+        self.as_ref().as_bool()
     }
 
     #[inline(always)]
     pub fn as_u32<'a>(&'a self) -> Result<u32, ValueError> {
-        self.as_ref()?.as_u32()
+        self.as_ref().as_u32()
     }
 
     #[inline(always)]
     pub fn as_u64<'a>(&'a self) -> Result<u64, ValueError> {
-        self.as_ref()?.as_u64()
+        self.as_ref().as_u64()
     }
 
     // Get the sub value at index requested
@@ -57,7 +57,7 @@ impl StackValue {
                 _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
             },
             Self::Pointer { ptr, depth } => {
-                let cell = ptr.as_ref()?;
+                let cell = ptr.as_ref();
 
                 Ok(match cell {
                     ValueCell::Object(values) => {
@@ -99,72 +99,68 @@ impl StackValue {
 
     // Get an owned variant from it
     #[inline(always)]
-    pub fn to_owned(&self) -> Result<Self, ValueError> {
-        Ok(Self::Owned(self.as_ref()?.deep_clone()))
+    pub fn to_owned(&self) -> Self {
+        Self::Owned(self.as_ref().deep_clone())
     }
 
     // Get the value of the path
     #[inline(always)]
-    pub fn into_owned(self) -> Result<ValueCell, ValueError> {
+    pub fn into_owned(self) -> ValueCell {
         match self {
-            Self::Owned(v) => Ok(v.deep_clone()),
-            Self::Pointer { ptr, .. } => ptr.as_ref().map(ValueCell::deep_clone)
+            Self::Owned(v) => v.deep_clone(),
+            Self::Pointer { ptr, .. } => ptr.as_ref().deep_clone()
         }
     }
 
     // Take the ownership by stealing the value from the pointer
     // and replace our current pointer as a owned value
-    pub fn take_ownership(&mut self) -> Result<(), ValueError> {
+    pub fn take_ownership(&mut self) {
         if let Self::Pointer { ptr, .. } = self {
-            let cell = ptr.as_mut()?;
+            let cell = ptr.as_mut();
             let owned = mem::take(cell);
             *self = owned.into();
         }
-
-        Ok(())
     }
 
     // Make the path owned if the pointer is the same
-    pub fn make_owned_if_same_ptr(&mut self, other: ValuePointer) -> Result<(), ValueError> {
+    pub fn make_owned_if_same_ptr(&mut self, other: ValuePointer) {
         if let Self::Pointer { ptr,  .. } = self {
             if *ptr == other {
-                let cell = ptr.as_ref()?;
+                let cell = ptr.as_ref();
                 *self = cell.deep_clone().into();
             }
         }
-
-        Ok(())
     }
 
     // Transform the StackValue into an Owned variant if its a pointer
     // Do nothing if its a Owned variant already
-    pub fn make_owned(&mut self) -> Result<bool, ValueError> {
+    pub fn make_owned(&mut self) -> bool {
         if let Self::Pointer { ptr, .. } = self {
-            let cell = ptr.as_ref()?;
+            let cell = ptr.as_ref();
             *self = cell.deep_clone().into();
 
-            Ok(true)
+            true
         } else {
-            Ok(false)
+            false
         }
     }
 
     // Get a reference to the value
     #[inline(always)]
-    pub fn as_ref<'b>(&'b self) -> Result<&'b ValueCell, ValueError> {
-        Ok(match self {
+    pub fn as_ref<'b>(&'b self) -> &'b ValueCell {
+        match self {
             Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_ref()?
-        })
+            Self::Pointer { ptr, .. } => ptr.as_ref()
+        }
     }
 
     // Get a mutable reference to the value
     #[inline(always)]
-    pub fn as_mut<'b>(&'b mut self) -> Result<&'b mut ValueCell, ValueError> {
-        Ok(match self {
+    pub fn as_mut<'b>(&'b mut self) -> &'b mut ValueCell {
+        match self {
             Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_mut()?
-        })
+            Self::Pointer { ptr, .. } => ptr.as_mut()
+        }
     }
 
     // Retrieve the depth of the pointer

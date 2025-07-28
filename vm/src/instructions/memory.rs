@@ -33,7 +33,7 @@ pub fn memory_pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
     debug!("memory pop");
 
     let v = manager.pop_register()?;
-    let memory_usage = v.as_ref()?
+    let memory_usage = v.as_ref()
         .calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
@@ -58,8 +58,8 @@ pub fn memory_to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &
 
     let index = reader.read_u16()?;
     let value = manager.from_register(index as _)?;
-    if value.make_owned()? {
-        let memory = value.as_ref()?.calculate_memory_usage(context.memory_left())?;
+    if value.make_owned() {
+        let memory = value.as_ref().calculate_memory_usage(context.memory_left())?;
         context.increase_memory_usage_unchecked(memory)?;
     }
 

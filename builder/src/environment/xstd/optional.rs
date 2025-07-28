@@ -60,7 +60,7 @@ fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context
 
 fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let mut param = parameters.remove(0)
-        .into_owned()?;
+        .into_owned();
     let msg = param.into_string()?;
 
     if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {

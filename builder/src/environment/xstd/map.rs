@@ -27,7 +27,7 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -38,7 +38,7 @@ fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) 
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -56,7 +56,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
-    let key = param.into_owned()?;
+    let key = param.into_owned();
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -73,7 +73,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
 
     let param = parameters.remove(0);
     let value_depth = param.depth();
-    let value = param.into_owned()?;
+    let value = param.into_owned();
 
     value.calculate_depth(
         context.max_value_depth()
@@ -92,7 +92,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
 fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -111,7 +111,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
 fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
-    let k = key.as_ref()?;
+    let k = key.as_ref();
     if k.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }

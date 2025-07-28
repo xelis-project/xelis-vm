@@ -40,7 +40,7 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRet
     }
 
     let param = parameters.remove(0);
-    let mut value = param.into_owned()?;
+    let mut value = param.into_owned();
 
     array.push(value.into_value()?.to_u8()?);
 
@@ -72,7 +72,7 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let range = param.as_ref()?;
+    let range = param.as_ref();
     let (start, end) = range.as_range()?;
 
     let start = start.as_u32()?;
@@ -93,7 +93,7 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
-    let handle = value.as_ref()?.as_u8()?;
+    let handle = value.as_ref().as_u8()?;
     let vec = zelf?.as_bytes()?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage

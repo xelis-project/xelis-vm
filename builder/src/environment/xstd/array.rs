@@ -67,7 +67,7 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) ->
 
     let param = parameters.remove(0);
     let depth = param.depth();
-    let value = param.into_owned()?;
+    let value = param.into_owned();
 
     value.calculate_depth(
         context.max_value_depth()
@@ -104,7 +104,7 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let range = param.as_ref()?;
+    let range = param.as_ref();
     let (start, end) = range.as_range()?;
 
     let start = start.as_u32()?;
@@ -133,13 +133,13 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
-    let handle = value.as_ref()?;
+    let handle = value.as_ref();
     let vec = zelf?.as_vec()?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| *v.as_ref().unwrap() == *handle).is_some()).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| *v.as_ref() == *handle).is_some()).into()))
 }
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
@@ -172,7 +172,7 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 
 fn extend<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let other = parameters.remove(0)
-        .into_owned()?
+        .into_owned()
         .to_vec()?;
 
     context.increase_gas_usage(other.len() as _)?;
@@ -193,7 +193,7 @@ fn concat<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
 
     let mut result = Vec::new();
     for el in vec.iter() {
-        let v = el.as_ref()?.as_vec()?;
+        let v = el.as_ref().as_vec()?;
 
         context.increase_gas_usage(v.len() as u64)?;
         // Check len is <= u32::MAX
@@ -221,7 +221,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturn
     context.increase_gas_usage(len as _)?;
 
     let bytes = values.iter()
-        .map(|v| v.as_ref().and_then(ValueCell::as_u8))
+        .map(|v| v.as_ref().as_u8())
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
