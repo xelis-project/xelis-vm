@@ -18,6 +18,12 @@ pub enum StackValue {
     }
 }
 
+impl Default for StackValue {
+    fn default() -> Self {
+        Self::Owned(Default::default())
+    }
+}
+
 impl StackValue {
     #[inline(always)]
     pub fn as_bool<'a>(&'a self) -> Result<bool, ValueError> {
