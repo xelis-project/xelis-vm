@@ -104,8 +104,7 @@ fn clone<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTyp
 
     let memory = zelf.calculate_memory_usage(context.memory_left())?;
     // Double cost: computation for cloning and memory allocation?
-    // context.increase_gas_usage(memory as _)?;
     context.increase_memory_usage_unchecked(memory)?;
 
-    Ok(SysCallResult::Return(zelf.clone()))
+    Ok(SysCallResult::Return(zelf.deep_clone()))
 }

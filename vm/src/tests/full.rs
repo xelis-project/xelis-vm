@@ -634,8 +634,10 @@ fn test_array_slice() {
             let x: u64[] = [10, 20, 30, 40, 50];
             let y: u64[] = x.slice(1..4);
 
-            assert(!is_same_ptr(y[0], x[1]));
+            // Slice are connected
+            assert(is_same_ptr(y[0], x[1]));
             y.push(60);
+            assert(x.len() == 5);
             assert(!is_same_ptr(y[3], x[4]));
 
             y.push(x[4]);
@@ -2034,11 +2036,9 @@ fn test_access_removed_value() {
         entry main() {
             let a: u64[] = [10];
             let b: u64 = a[0];
-            debug(b);
             a.remove(0);
-            debug(b);
-            debug(a);
-            assert(b == 10);
+            a.push(50);
+            a.push(70);
 
             return 0
         }

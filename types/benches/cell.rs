@@ -27,9 +27,9 @@ fn bench_drop(c: &mut Criterion) {
     group.bench_function("array", |bench| {
         bench.iter(|| {
             let cell = ValueCell::Object(vec![
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42))
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into()
             ]);
 
             drop(cell);
@@ -41,20 +41,20 @@ fn bench_drop(c: &mut Criterion) {
             // We don't use clone as we bench it too
             let cell = ValueCell::Object(vec![
                 ValueCell::Object(vec![
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42))
-                ]),
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into()
+                ]).into(),
                 ValueCell::Object(vec![
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42))
-                ]),
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into()
+                ]).into(),
                 ValueCell::Object(vec![
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42)),
-                    ValueCell::Default(Primitive::U64(42))
-                ])
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into(),
+                    Primitive::U64(42).into()
+                ]).into()
             ]);
 
             drop(cell);
@@ -88,9 +88,9 @@ fn bench_clone(c: &mut Criterion) {
 
     group.bench_function("array", |bench| {
         let cell = ValueCell::Object(vec![
-            ValueCell::Default(Primitive::U64(42)),
-            ValueCell::Default(Primitive::U64(42)),
-            ValueCell::Default(Primitive::U64(42))
+            Primitive::U64(42).into(),
+            Primitive::U64(42).into(),
+            Primitive::U64(42).into()
         ]);
         bench.iter(|| {
             let _ = cell.clone();
@@ -101,20 +101,20 @@ fn bench_clone(c: &mut Criterion) {
     group.bench_function("array double depth", |bench| {
         let cell = ValueCell::Object(vec![
             ValueCell::Object(vec![
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42))
-            ]),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into()
+            ]).into(),
             ValueCell::Object(vec![
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42))
-            ]),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into()
+            ]).into(),
             ValueCell::Object(vec![
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42)),
-                ValueCell::Default(Primitive::U64(42))
-            ])
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into(),
+                Primitive::U64(42).into()
+            ]).into()
         ]);
         bench.iter(|| {
             let _ = cell.clone();

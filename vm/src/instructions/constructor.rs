@@ -13,7 +13,7 @@ pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     let mut array = VecDeque::with_capacity(length as usize);
     for _ in 0..length {
         let pop = stack.pop_stack()?;
-        array.push_front(pop.into_owned()?);
+        array.push_front(pop.into_owned()?.into());
     }
 
     let value = ValueCell::Object(array.into());
