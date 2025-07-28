@@ -28,3 +28,16 @@ fn run(module: Module) -> Primitive {
     let environment = EnvironmentBuilder::default().build();
     run_internal(module, &environment, 0).unwrap()
 }
+
+fn assert_send<T: Send>(_: T) {}
+
+#[test]
+fn assert_thread_safe() {
+    assert_send(ValueCell::default());
+
+    let e: Environment<()> = Environment::new();
+    let mut vm = VM::new(&e);
+    assert_send(&vm);
+    assert_send(vm.run());
+    assert_send(vm.run_blocking());
+}

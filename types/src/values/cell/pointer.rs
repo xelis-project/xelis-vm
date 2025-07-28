@@ -1,15 +1,20 @@
-use std::{cell::UnsafeCell, rc::Rc};
+use std::{cell::UnsafeCell, sync::Arc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{Constant, Primitive, ValueCell, ValueError};
 
 // ValuePointer is a simple wrapper around the raw mut pointer
 #[derive(Debug, Clone)]
-pub struct ValuePointer(Rc<UnsafeCell<ValueCell>>);
+pub struct ValuePointer(Arc<UnsafeCell<ValueCell>>);
+
+// SAFETY: ValueCell is Sync + Send
+// https://github.com/rust-lang/rust/issues/95439
+unsafe impl Sync for ValuePointer {}
+unsafe impl Send for ValuePointer {}
 
 impl ValuePointer {
     #[inline(always)]
     pub fn new(cell: ValueCell) -> Self {
-        Self(Rc::new(UnsafeCell::new(cell as _)))
+        Self(Arc::new(UnsafeCell::new(cell as _)))
     }
 
     #[inline(always)]
@@ -55,7 +60,7 @@ impl ValuePointer {
 
 impl PartialEq for ValuePointer {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0) || self.as_ref() == other.as_ref()
+        Arc::ptr_eq(&self.0, &other.0) || self.as_ref() == other.as_ref()
     }
 }
 
