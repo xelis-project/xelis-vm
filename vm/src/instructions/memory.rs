@@ -24,7 +24,7 @@ pub fn memory_set<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
     debug!("memory set at {}", index);
 
     let value = stack.pop_stack()?;
-    manager.set_register(index as usize, value, stack)?;
+    manager.set_register(index as usize, value)?;
 
     Ok(InstructionResult::Nothing)
 }

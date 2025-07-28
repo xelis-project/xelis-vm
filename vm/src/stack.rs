@@ -1,6 +1,5 @@
-use xelis_types::{StackValue, ValuePointer};
+use xelis_types::StackValue;
 
-use crate::debug;
 use super::VMError;
 
 // 256 elements maximum in the stack:
@@ -8,42 +7,14 @@ use super::VMError;
 const STACK_SIZE: usize = 256;
 
 pub struct Stack {
-    checkpoints: Vec<usize>,
     stack: Vec<StackValue>
 }
 
 impl Stack {
     pub fn new() -> Self {
         Self {
-            checkpoints: Vec::with_capacity(4),
             stack: Vec::with_capacity(16)
         }
-    }
-
-    // Mark as a checkpoint until which len we should
-    // clean the pointers
-    #[inline]
-    pub fn mark_checkpoint(&mut self) {
-        debug!("Marking checkpoint at stack len: {}", self.stack.len());
-        self.checkpoints.push(self.stack.len());
-    }
-
-    // Clean all our stack to prevent any undefined behavior with
-    // raw pointers
-    // This will transform every value as owned
-    #[inline]
-    pub fn checkpoint_clean(&mut self) -> Result<(), VMError> {
-        let checkpoint = self.checkpoints.pop()
-            .ok_or(VMError::NoCheckPoint)?;
-
-        if let Some(values) = self.stack.get_mut(checkpoint..) {
-            debug!("Cleaning stack until checkpoint: {}", checkpoint);
-            for value in values.iter_mut() {
-                value.make_owned()?;
-            }
-        }
-
-        Ok(())
     }
 
     // Push a value to the stack
@@ -54,14 +25,6 @@ impl Stack {
         }
 
         self.push_stack_unchecked(value);
-
-        Ok(())
-    }
-
-    pub fn verify_pointers(&mut self, ptr: ValuePointer) -> Result<(), VMError> {
-        for v in self.stack.iter_mut() {
-            v.make_owned_if_same_ptr(ptr)?;
-        }
 
         Ok(())
     }
@@ -116,17 +79,6 @@ impl Stack {
     // Get the last value from the stack
     #[inline]
     pub fn pop_stack(&mut self) -> Result<StackValue, VMError> {
-        if let Some(checkpoint) = self.checkpoints.last_mut() {
-            let len = self.stack.len();
-            // If the len is now below the latest checkpoint
-            // we should decrement the checkpoint
-            // to prevent any undefined behavior
-            if *checkpoint > 0 && len <= *checkpoint {
-                debug!("Decrementing checkpoint from {}", *checkpoint);
-                *checkpoint -= 1;
-            }
-        }
-
         self.stack.pop().ok_or(VMError::EmptyStack)
     }
 

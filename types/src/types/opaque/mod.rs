@@ -305,8 +305,8 @@ mod tests {
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let mut map = IndexMap::new();
-        map.insert(ValueCell::Default(Primitive::Opaque(opaque)), ValueCell::Default(Primitive::String("hello world".to_owned())));
-        map.insert(ValueCell::Default(Primitive::String("key test".to_owned())), ValueCell::Default(Primitive::String("hello world 2".to_owned())));
+        map.insert(ValueCell::Default(Primitive::Opaque(opaque)), ValueCell::Default(Primitive::String("hello world".to_owned())).into());
+        map.insert(ValueCell::Default(Primitive::String("key test".to_owned())), ValueCell::Default(Primitive::String("hello world 2".to_owned())).into());
 
         let map = ValueCell::Map(Box::new(map));
         let json = serde_json::to_string(&map).unwrap();

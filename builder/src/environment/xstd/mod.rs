@@ -106,5 +106,5 @@ fn clone<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTyp
     // Double cost: computation for cloning and memory allocation?
     context.increase_memory_usage_unchecked(memory)?;
 
-    Ok(SysCallResult::Return(zelf.deep_clone()))
+    Ok(SysCallResult::Return(zelf.deep_clone().into()))
 }

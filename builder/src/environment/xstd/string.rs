@@ -67,15 +67,17 @@ fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnTy
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
 
-    let mut bytes = Vec::new();
-    for b in s.as_bytes() {
-        bytes.push(Primitive::U8(*b).into());
-    }
+    let values = s.as_bytes();
+    context.increase_gas_usage(values.len() as _)?;
 
-    Ok(SysCallResult::Return(ValueCell::Object(bytes)))
+    let mut bytes = values.into_iter()
+        .map(|v| Primitive::U8(*v).into())
+        .collect();
+
+    Ok(SysCallResult::Return(ValueCell::Object(bytes).into()))
 }
 
 fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
@@ -141,7 +143,7 @@ fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRe
         .map(|s| Primitive::String(s.to_string()).into())
         .collect();
 
-    Ok(SysCallResult::Return(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }
 
 fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
@@ -161,13 +163,16 @@ fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M
     Ok(SysCallResult::Return(Primitive::Boolean(s.is_empty()).into()))
 }
 
-fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
     let s = zelf?.as_string()?;
+    context.increase_gas_usage(s.len() as u64 * 5)?;
+
     let param = parameters.remove(0);
     let handle = param.as_ref()?;
     let value = handle.as_string()?;
+
     let m = s.matches(value);
-    Ok(SysCallResult::Return(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect())))
+    Ok(SysCallResult::Return(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect()).into()))
 }
 
 fn string_substring<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {

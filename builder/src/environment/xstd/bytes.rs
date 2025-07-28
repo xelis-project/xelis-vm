@@ -88,7 +88,7 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
     let slice = vec[start as usize..end as usize].into();
-    Ok(SysCallResult::Return(ValueCell::Bytes(slice)))
+    Ok(SysCallResult::Return(ValueCell::Bytes(slice).into()))
 }
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
@@ -139,5 +139,5 @@ fn to_array<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturn
         .map(|v| Primitive::U8(*v).into())
         .collect();
 
-    Ok(SysCallResult::Return(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }

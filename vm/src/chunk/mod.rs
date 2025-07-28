@@ -4,7 +4,7 @@ use std::{cmp::Ordering, mem};
 use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
 
-use super::{Stack, iterator::ValueIterator, VMError};
+use super::{iterator::ValueIterator, VMError};
 
 pub use reader::ChunkReader;
 
@@ -131,7 +131,7 @@ impl ChunkManager {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, mut value: StackValue, stack: &mut Stack) -> Result<(), VMError> {
+    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<(), VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -143,29 +143,6 @@ impl ChunkManager {
                 Ok(())
             },
             Ordering::Greater => {
-                let old_ptr = self.registers[index].ptr();
-
-                // Check if we try to replace an element with the same (or sub) pointer
-                if let StackValue::Pointer { origin, ptr, .. } = &value {
-                    // If we try to store the same, skip it
-                    if old_ptr == *ptr {
-                        return Ok(())
-                    }
-
-                    // If we try to store a sub pointer, check if the origin is the same
-                    if *origin == Some(old_ptr) {
-                        // We're overwriting from our origin ptr
-                        // We need to make the new value owned
-                        value.make_owned()?;
-                    }
-                }
-
-                for register in self.registers.iter_mut() {
-                    register.make_owned_if_same_ptr(old_ptr)?;
-                }
-
-                stack.verify_pointers(old_ptr)?;
-
                 self.registers[index] = value;
 
                 Ok(())

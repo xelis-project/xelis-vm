@@ -39,7 +39,7 @@ macro_rules! collect {
 
                     let vec = (*$start..*$end).map(|i| Primitive::$t(i).into()).collect();
                     ValueCell::Object(vec)
-                }
+                }.into()
             }
         }
     };
@@ -108,7 +108,7 @@ fn collect<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnT
                 }
             }
 
-            ValueCell::Object(vec)
+            ValueCell::Object(vec).into()
         }
         _ => return Err(EnvironmentError::InvalidType)
     }))

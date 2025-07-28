@@ -1360,9 +1360,9 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)))))), 0, Some(Type::Any)); 
-    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::U64(0))))), 0, Some(Type::Any)); 
-    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(ValueCell::Default(Primitive::Null)))), 0, Some(Type::Optional(Box::new(Type::Bool))));
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)).into()))), 0, Some(Type::Any)); 
+    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::U64(0).into()))), 0, Some(Type::Any)); 
+    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {

@@ -64,7 +64,7 @@ macro_rules! to_endian_array {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
-                Ok(SysCallResult::Return(ValueCell::Object(vec)))
+                Ok(SysCallResult::Return(ValueCell::Object(vec).into()))
             }
 
             $env.register_native_function(
@@ -92,7 +92,7 @@ macro_rules! to_endian_bytes {
             fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec())))
+                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
             }
 
             $env.register_native_function(

@@ -48,7 +48,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         .cloned();
 
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.clone().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -81,10 +81,10 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
     )?;
 
     let previous = map
-        .insert(key, value);
+        .insert(key, value.into());
 
     Ok(SysCallResult::Return(match previous {
-        Some(v) => v,
+        Some(v) => v.clone().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -103,7 +103,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
 
     let value = map.shift_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.clone().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -119,7 +119,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     let value = zelf?.as_mut_map()?
         .swap_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v,
+        Some(v) => v.clone().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -139,7 +139,7 @@ fn keys<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
         .map(|key| key.clone().into())
         .collect::<Vec<_>>();
 
-    Ok(SysCallResult::Return(ValueCell::Object(keys)))
+    Ok(SysCallResult::Return(ValueCell::Object(keys).into()))
 }
 
 fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
@@ -152,5 +152,5 @@ fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
         .map(|v| v.clone())
         .collect::<Vec<_>>();
 
-    Ok(SysCallResult::Return(ValueCell::Object(values)))
+    Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }

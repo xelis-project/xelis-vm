@@ -90,13 +90,13 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
     // moving all elements after the index to the left is costly
     context.increase_gas_usage((array.len() as u64) * 5)?;
 
-    Ok(SysCallResult::Return(array.remove(index)))
+    Ok(SysCallResult::Return(array.remove(index).into()))
 }
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let array = zelf?.as_mut_vec()?;
     if let Some(value) = array.pop() {
-        Ok(SysCallResult::Return(value))
+        Ok(SysCallResult::Return(value.into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -122,14 +122,13 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -
     let mut slice = Vec::new();
     for i in start..end {
         // due to ValuePointer, slice are connected.
-        let value = match vec.get_mut(i as usize) {
-            Some(v) => v.clone(), // TODO
-            None => return Err(EnvironmentError::NoValueFoundAtIndex(i))
-        };
+        let value = vec.get(i as usize)
+            .cloned()
+            .ok_or(EnvironmentError::NoValueFoundAtIndex(i))?;
         slice.push(value);
     }
 
-    Ok(SysCallResult::Return(ValueCell::Object(slice)))
+    Ok(SysCallResult::Return(ValueCell::Object(slice).into()))
 }
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
@@ -140,14 +139,14 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| **v == *handle).is_some()).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| *v.as_ref().unwrap() == *handle).is_some()).into()))
 }
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(SysCallResult::Return(value.clone()))
+        Ok(SysCallResult::Return(value.clone().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -156,7 +155,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 fn first<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(SysCallResult::Return(value.clone()))
+        Ok(SysCallResult::Return(value.clone().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -165,7 +164,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 fn last<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(SysCallResult::Return(value.clone()))
+        Ok(SysCallResult::Return(value.clone().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -194,7 +193,7 @@ fn concat<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
 
     let mut result = Vec::new();
     for el in vec.iter() {
-        let v = el.as_vec()?;
+        let v = el.as_ref()?.as_vec()?;
 
         context.increase_gas_usage(v.len() as u64)?;
         // Check len is <= u32::MAX
@@ -205,7 +204,7 @@ fn concat<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
         result.extend(v.iter().cloned());
     }
 
-    Ok(SysCallResult::Return(ValueCell::Object(result)))
+    Ok(SysCallResult::Return(ValueCell::Object(result).into()))
 }
 
 fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
@@ -222,8 +221,8 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturn
     context.increase_gas_usage(len as _)?;
 
     let bytes = values.iter()
-        .map(|v| v.as_u8())
+        .map(|v| v.as_ref().and_then(ValueCell::as_u8))
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(SysCallResult::Return(ValueCell::Bytes(bytes)))
+    Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
 }
