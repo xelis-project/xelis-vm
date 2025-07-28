@@ -48,7 +48,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
         .cloned();
 
     Ok(SysCallResult::Return(match value {
-        Some(v) => v.clone().into(),
+        Some(v) => v.to_owned().into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -65,6 +65,9 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
         context.max_value_depth()
             .saturating_sub(key_depth.saturating_add(1))
     )?;
+
+    // prevent the key from being mutable
+    let key = key.deep_clone();
 
     let map = zelf?.as_mut_map()?;
     if map.len() >= u32::MAX as usize {
@@ -84,7 +87,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
         .insert(key, value.into());
 
     Ok(SysCallResult::Return(match previous {
-        Some(v) => v.clone().into(),
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -103,7 +106,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
 
     let value = map.shift_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v.clone().into(),
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -119,7 +122,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     let value = zelf?.as_mut_map()?
         .swap_remove(k);
     Ok(SysCallResult::Return(match value {
-        Some(v) => v.clone().into(),
+        Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
@@ -149,7 +152,7 @@ fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnTy
     context.increase_gas_usage((map.len() as u64) * 5)?;
 
     let values = map.values()
-        .map(|v| v.clone())
+        .cloned()
         .collect::<Vec<_>>();
 
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))

@@ -146,7 +146,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     let index = parameters.remove(0).as_u32()? as usize;
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.get(index) {
-        Ok(SysCallResult::Return(value.clone().into()))
+        Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -155,7 +155,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
 fn first<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.first() {
-        Ok(SysCallResult::Return(value.clone().into()))
+        Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -164,7 +164,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
 fn last<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
     let vec = zelf?.as_vec()?;
     if let Some(value) = vec.last() {
-        Ok(SysCallResult::Return(value.clone().into()))
+        Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }

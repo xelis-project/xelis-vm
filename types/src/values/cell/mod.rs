@@ -212,9 +212,8 @@ impl ValueCell {
                 ValueCell::Default(_) => {},
                 ValueCell::Bytes(_) => {},
                 ValueCell::Object(values) => {
-                    for value in values {
-                        stack.push((ValueCellRef::Pointer(value.clone()), depth + 1));
-                    }
+                    let depth = depth + 1;
+                    stack.extend(values.iter().cloned().map(|v| (ValueCellRef::Pointer(v), depth)));
                 },
                 ValueCell::Map(map) => {
                     let depth = depth + 1;

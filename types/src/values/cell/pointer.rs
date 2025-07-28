@@ -7,7 +7,6 @@ use crate::{Constant, Primitive, ValueCell, ValueError};
 pub struct ValuePointer(Rc<UnsafeCell<ValueCell>>);
 
 impl ValuePointer {
-    // WARNING: Put only ValueCell that is managed by one thread only
     #[inline(always)]
     pub fn new(cell: ValueCell) -> Self {
         Self(Rc::new(UnsafeCell::new(cell as _)))
@@ -33,19 +32,24 @@ impl ValuePointer {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         self.as_ref().as_u16()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn as_bool(&self) -> Result<bool, ValueError> {
         self.as_ref().as_bool()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn into_owned(&self) -> ValueCell {
         self.as_ref().deep_clone()
+    }
+
+    #[inline(always)]
+    pub fn to_owned(&self) -> ValueCell {
+        self.as_ref().clone()
     }
 }
 
