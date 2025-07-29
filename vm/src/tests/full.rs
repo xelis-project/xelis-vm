@@ -1178,6 +1178,29 @@ fn test_self_reference_declared_2() {
     test_code_id_expect_return(code, Primitive::U64(200), 1);
 }
 
+#[test]
+fn test_self_reference_declared_inside() {
+    let code = r#"
+        struct Test {
+            a: u64,
+            b: u64
+        }
+
+        fn (t Test) checked_add(o: Test) -> u64 {
+            t.a = (t.a + o.a);
+            return t.a + o.a
+        }
+
+        entry main() {
+            let t: Test = Test { a: 100, b: 0 };
+            t.b = t.a;
+            let b: Test = t;
+            return t.checked_add(b)
+        }
+    "#;
+
+    test_code_id_expect_return(code, Primitive::U64(400), 1);
+}
 
 #[test]
 fn test_self_reference_declared_no_instance() {

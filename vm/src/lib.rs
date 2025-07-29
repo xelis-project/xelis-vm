@@ -393,8 +393,19 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     Ok(InstructionResult::AsyncCall { .. }) => {
                                         while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
                                             let mut on_value = if instance {
-                                                Some(params.pop_front()
-                                                    .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                                                let instance = params.pop_front()
+                                                    .ok_or(EnvironmentError::MissingInstanceFnCall)?;
+
+                                                // Required to prevent having a BorrowMut & BorrowRef at same time
+                                                if !instance.is_owned() {
+                                                    for param in params.iter_mut() {
+                                                        if param.ptr_eq(&param) {
+                                                            *param = param.to_owned();
+                                                        }
+                                                    }
+                                                }
+
+                                                Some(instance)
                                             } else {
                                                 None
                                             };

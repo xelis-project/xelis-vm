@@ -1,9 +1,10 @@
+use core::fmt;
 use std::{cell::UnsafeCell, sync::Arc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{Constant, Primitive, ValueCell, ValueError};
 
 // ValuePointer is a simple wrapper around the raw mut pointer
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ValuePointer(Arc<UnsafeCell<ValueCell>>);
 
 // SAFETY: ValueCell is Sync + Send
@@ -105,5 +106,11 @@ impl From<Primitive> for ValuePointer {
 impl From<ValueCell> for ValuePointer {
     fn from(value: ValueCell) -> Self {
         Self::new(value)
+    }
+}
+
+impl fmt::Debug for ValuePointer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ValuePointer({:?})", self.0.get())
     }
 }
