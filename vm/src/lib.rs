@@ -398,11 +398,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             } else {
                                                 None
                                             };
-        
+
                                             let instance = on_value.as_mut()
                                                 .map(|v| v.as_mut())
                                                 .ok_or(EnvironmentError::FnExpectedInstance);
-        
+
                                             let res = ptr(instance, params.into(), &mut self.context).await?;
                                             result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
                                                 Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),

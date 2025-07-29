@@ -56,11 +56,16 @@ impl ValuePointer {
     pub fn to_owned(&self) -> ValueCell {
         self.as_ref().clone()
     }
+
+    #[inline(always)]
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl PartialEq for ValuePointer {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) || self.as_ref() == other.as_ref()
+        self.ptr_eq(other) || self.as_ref() == other.as_ref()
     }
 }
 

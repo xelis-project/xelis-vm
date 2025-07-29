@@ -169,6 +169,22 @@ impl StackValue {
         }
     }
 
+    // Is it a owned value
+    #[inline(always)]
+    pub fn is_owned(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
+
+    // Verify if two stack value have the same pointer
+    #[inline]
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        if let (Self::Pointer { ptr: a, .. }, Self::Pointer { ptr: b, .. }) = (self, other) {
+            a.ptr_eq(b)
+        } else {
+            false
+        }
+    }
+
     // Retrieve the depth of the pointer
     #[inline(always)]
     pub fn depth(&self) -> usize {

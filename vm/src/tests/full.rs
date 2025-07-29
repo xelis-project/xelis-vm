@@ -418,6 +418,7 @@ fn test_range_type() {
     );
 }
 
+#[cfg(not(miri))]
 #[test]
 fn test_stackoverflow() {
     let code = r#"
@@ -1151,6 +1152,49 @@ fn test_self_reference_declared() {
         entry main() {
             let t: Test = Test { a: 100 };
             return t.checked_add(t)
+        }
+    "#;
+
+    test_code_id_expect_return(code, Primitive::U64(200), 1);
+}
+
+#[test]
+fn test_self_reference_declared_2() {
+    let code = r#"
+        struct Test {
+            a: u64
+        }
+
+        fn (t Test) checked_add(v: u64) -> u64 {
+            return t.a + v
+        }
+
+        entry main() {
+            let t: Test = Test { a: 100 };
+            return t.checked_add(t.a)
+        }
+    "#;
+
+    test_code_id_expect_return(code, Primitive::U64(200), 1);
+}
+
+
+#[test]
+fn test_self_reference_declared_no_instance() {
+    let code = r#"
+        struct Test {
+            a: u64,
+            b: u64
+        }
+
+        fn checked_add(t: Test) -> u64 {
+            return t.a + t.b
+        }
+
+        entry main() {
+            let t: Test = Test { a: 100, b: 0 };
+            t.b = t.a;
+            return checked_add(t)
         }
     "#;
 

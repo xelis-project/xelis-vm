@@ -145,8 +145,18 @@ impl<M> NativeFunction<M> {
         match self.on_call {
             FunctionHandler::Sync(on_call) => {
                 let mut on_value = if self.is_on_instance() {
-                    Some(parameters.pop_front()
-                        .ok_or(EnvironmentError::MissingInstanceFnCall)?)
+                    let instance = parameters.pop_front()
+                        .ok_or(EnvironmentError::MissingInstanceFnCall)?;
+
+                    if !instance.is_owned() {
+                        for param in parameters.iter_mut() {
+                            if param.ptr_eq(&param) {
+                                *param = param.to_owned();
+                            }
+                        }
+                    }
+
+                    Some(instance)
                 } else {
                     None
                 };

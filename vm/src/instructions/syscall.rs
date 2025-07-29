@@ -79,7 +79,7 @@ pub fn perform_syscall<'a, 'ty, 'r, M>(
     let mut function = f;
 
     loop {
-        let res = function.call_function(fn_params.into(), context)?;
+        let res = function.call_function(fn_params, context)?;
         match handle_perform_syscall(backend, stack, context, res)? {
             PerformSysCallHelper::Next { f, params } => {
                 fn_params = params;
