@@ -76,12 +76,14 @@ pub type FnParams = Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
+        &M,
         &'a mut Context<'ty, 'r>,
     ) -> FnReturnType<M>;
 
 pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
+        &M,
         &'a mut Context<'ty, 'r>,
     ) -> BoxFuture<'a, FnReturnType<M>>;
 
@@ -135,7 +137,7 @@ impl<M> NativeFunction<M> {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &M, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len()));
         }
@@ -165,7 +167,7 @@ impl<M> NativeFunction<M> {
                     .map(|v| v.as_mut())
                     .ok_or(EnvironmentError::FnExpectedInstance);
 
-                (on_call)(instance, parameters.into(), context)
+                (on_call)(instance, parameters.into(), metadata, context)
             },
             FunctionHandler::Async(ptr) => Ok(SysCallResult::AsyncCall {
                 ptr,

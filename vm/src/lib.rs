@@ -367,7 +367,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         if m.module.is_entry_chunk(chunk_id) {
                                             return Err(VMError::EntryChunkCalled);
                                         }
-    
+
                                         let mut new = ChunkManager::with(
                                             chunk_id,
                                             None,
@@ -414,7 +414,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 .map(|v| v.as_mut())
                                                 .ok_or(EnvironmentError::FnExpectedInstance);
 
-                                            let res = ptr(instance, params.into(), &mut self.context).await?;
+                                            let res = ptr(instance, params.into(), &m.metadata, &mut self.context).await?;
                                             result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
                                                 Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),
