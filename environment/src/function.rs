@@ -83,7 +83,7 @@ pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
 pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
-        &M,
+        &'a M,
         &'a mut Context<'ty, 'r>,
     ) -> BoxFuture<'a, FnReturnType<M>>;
 
