@@ -20,12 +20,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("values", Some(_type.clone()), vec![], FunctionHandler::Sync(values), 20, Some(Type::Array(Box::new(value_type.clone()))));
 }
 
-fn len<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let len = zelf?.as_map()?.len();
     Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
     if k.is_map() {
@@ -36,7 +36,7 @@ fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) 
     Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
     if k.is_map() {
@@ -53,7 +53,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnRetu
     }))
 }
 
-fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
+fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
     let key = param.into_owned();
@@ -92,7 +92,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) 
     }))
 }
 
-fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Context) -> FnReturnType<M> {
+fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
     let k = key.as_ref();
@@ -111,7 +111,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, context: &mut Con
     }))
 }
 
-fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let key = parameters.remove(0);
 
     let k = key.as_ref();
@@ -127,12 +127,12 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -
     }))
 }
 
-fn clear<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn clear<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     zelf?.as_mut_map()?.clear();
     Ok(SysCallResult::None)
 }
 
-fn keys<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
+fn keys<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let map = zelf?.as_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
@@ -145,7 +145,7 @@ fn keys<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType
     Ok(SysCallResult::Return(ValueCell::Object(keys).into()))
 }
 
-fn values<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
+fn values<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let map = zelf?.as_mut_map()?;
 
     // we need to go through all elements, thus we increase the gas usage

@@ -65,7 +65,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("count", Some(_type.clone()), vec![], FunctionHandler::Sync(count), 5, Some(Type::T(Some(0))));
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let zelf = zelf?;
     let (start, end) = zelf.as_range()?;
@@ -82,7 +82,7 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> F
     }))
 }
 
-fn collect<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnType<M> {
+fn collect<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let (start, end) = zelf.as_range()?;
     Ok(SysCallResult::Return(match (start, end) {
@@ -114,19 +114,19 @@ fn collect<M>(zelf: FnInstance, _: FnParams, context: &mut Context) -> FnReturnT
     }))
 }
 
-fn max<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn max<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let (_, end) = zelf.as_range()?;
     Ok(SysCallResult::Return(end.clone().into()))
 }
 
-fn min<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn min<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let (start, _) = zelf.as_range()?;
     Ok(SysCallResult::Return(start.clone().into()))
 }
 
-fn count<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+fn count<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let (start, end) = zelf.as_range()?;
 

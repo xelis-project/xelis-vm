@@ -1356,7 +1356,7 @@ mod tests {
     #[test]
     fn test_static_function_call() {
         let mut env = EnvironmentBuilder::new();
-        env.register_static_function("test", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Bool));
+        env.register_static_function("test", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Bool));
 
         let module = prepare_program_with_env("fn main() -> bool { return bool::test() }", &env);
 
@@ -1483,7 +1483,7 @@ mod tests {
         "#;
 
         let mut env = EnvironmentBuilder::new();
-        env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], FunctionHandler::Sync(|_, _, _| { todo!() }), 0, Some(Type::U64));
+        env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], FunctionHandler::Sync(|_, _, _, _| { todo!() }), 0, Some(Type::U64));
         let module = prepare_program_with_env(code, &env);
 
         assert_eq!(

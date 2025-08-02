@@ -14,7 +14,7 @@ use crate::EnvironmentBuilder;
 macro_rules! checked_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident) => {
         paste! {
-            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, mut parameters: FnParams, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
                 let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -60,7 +60,7 @@ macro_rules! register_checked_fns {
 macro_rules! to_endian_array {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _array_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+            fn [<to_ $endian _array_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
@@ -89,7 +89,7 @@ macro_rules! register_to_endian_array {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &mut Context) -> FnReturnType<M> {
+            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
@@ -117,7 +117,7 @@ macro_rules! register_to_endian_bytes {
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
+            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
@@ -141,7 +141,7 @@ macro_rules! min {
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &mut Context) -> FnReturnType<M> {
+            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 

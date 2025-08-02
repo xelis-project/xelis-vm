@@ -4243,7 +4243,7 @@ mod tests {
     #[test]
     fn test_optional_fn_param() {
         let mut env = EnvironmentBuilder::<()>::new();
-        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], FunctionHandler::Sync(|_, _, _| Ok(SysCallResult::None)), 0, None);
+        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
 
         // test(null)
         let tokens = vec![
@@ -4306,13 +4306,13 @@ mod tests {
         let fields: [(&str, Type); 0] = [];
         let ty = Type::Struct(env.register_structure::<0>("Foo", fields));
         // register a static function on it
-        env.register_static_function("bar", ty, Vec::new(), FunctionHandler::Sync(|_, _, _| todo!()), 0, Some(Type::U64));
+        env.register_static_function("bar", ty, Vec::new(), FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::U64));
 
         // Try also on a enum type
         let fields: [(&str, EnumVariant); 0] = [];
         let ty = Type::Enum(env.register_enum("Bar", fields));
         // register a static function on it
-        env.register_static_function("foo", ty, Vec::new(), FunctionHandler::Sync(|_, _, _| todo!()), 0, Some(Type::U64));
+        env.register_static_function("foo", ty, Vec::new(), FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::U64));
 
         // Foo::bar()
         let tokens = vec![
@@ -4362,7 +4362,7 @@ mod tests {
     #[test]
     fn test_assign_optional_to_type() {
         let mut env = EnvironmentBuilder::<()>::default();
-        env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _| todo!()), 0, Some(Type::Optional(Box::new(Type::Bool))));
+        env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
         // let _: bool = test();
         let tokens = vec![
