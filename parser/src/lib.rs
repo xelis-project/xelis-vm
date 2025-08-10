@@ -2773,7 +2773,12 @@ impl<'a, M> Parser<'a, M> {
                     continue;
                 }
                 Token::Const => self.read_const(&mut context)?,
-                Token::Pub => self.read_function(FunctionKind::Declared { public: true }, &mut context)?,
+                Token::Pub => {
+                    self.expect_token(Token::Function)?;
+
+                    // Public functions are declared with `pub fn`
+                    self.read_function(FunctionKind::Declared { public: true }, &mut context)?
+                },
                 Token::Function => self.read_function(FunctionKind::Declared { public: false }, &mut context)?,
                 Token::Entry => self.read_function(FunctionKind::Entry, &mut context)?,
                 Token::Hook => self.read_function(FunctionKind::Hook, &mut context)?,
