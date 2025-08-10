@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{borrow::Cow, ops::Deref, sync::Arc};
 
 #[derive(Debug)]
 pub enum Reference<'a, T> {
@@ -11,6 +11,18 @@ impl<'a, T> Clone for Reference<'a, T> {
         match self {
             Self::Borrowed(v) => Self::Borrowed(v),
             Self::Shared(v) => Self::Shared(v.clone())
+        }
+    }
+}
+
+impl<'a, T: ToOwned> From<Cow<'a, T>> for Reference<'a, T>
+where
+    T::Owned: Into<T>,
+{
+    fn from(value: Cow<'a, T>) -> Self {
+        match value {
+            Cow::Borrowed(v) => Self::Borrowed(v),
+            Cow::Owned(v) => Self::Shared(Arc::new(v.into())),
         }
     }
 }
