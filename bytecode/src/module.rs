@@ -86,11 +86,25 @@ impl Module {
         self.chunks.push((chunk, Access::Internal));
     }
 
-    // Is chunk callable from externals
+    // Is chunk callable by a user as an entrypoint
     #[inline]
     pub fn is_entry_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
             .map_or(false, |(_, a)| matches!(a, Access::Entry))
+    }
+
+    // Is chunk callable (not an entry or hook)
+    #[inline]
+    pub fn is_callable_chunk(&self, index: usize) -> bool {
+        self.chunks.get(index)
+            .map_or(false, |(_, a)| matches!(a, Access::All | Access::Internal))
+    }
+
+    // Is chunk callable as a public function
+    #[inline]
+    pub fn is_public_chunk(&self, index: usize) -> bool {
+        self.chunks.get(index)
+            .map_or(false, |(_, a)| matches!(a, Access::All))
     }
 
     // Get a chunk at a specific index

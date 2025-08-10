@@ -26,8 +26,10 @@ pub enum VMError {
     InvalidReturnValue,
     #[error("division by zero")]
     DivisionByZero,
-    #[error("illegal call: entry chunk")]
-    EntryChunkCalled,
+    #[error("illegal call: expected a public chunk")]
+    ExpectedPublicChunk,
+    #[error("illegal call: expected a normal chunk")]
+    ExpectedNormalChunk,
     #[error("string too large")]
     StringTooLarge,
     #[error("out of bounds")]

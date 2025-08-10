@@ -353,8 +353,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     Ok(InstructionResult::Nothing) => {},
                                     Ok(InstructionResult::Break) => break 'opcodes,
                                     Ok(InstructionResult::InvokeChunk(id)) => {
-                                        if m.module.is_entry_chunk(id as usize) {
-                                            return Err(VMError::EntryChunkCalled);
+                                        if !m.module.is_callable_chunk(id as usize) {
+                                            return Err(VMError::ExpectedNormalChunk);
                                         }
     
                                         self.push_back_call_stack(manager, reader)?;
@@ -364,8 +364,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         continue 'call_stack;
                                     },
                                     Ok(InstructionResult::InvokeDynamicChunk { chunk_id, from }) => {
-                                        if m.module.is_entry_chunk(chunk_id) {
-                                            return Err(VMError::EntryChunkCalled);
+                                        if !m.module.is_callable_chunk(chunk_id) {
+                                            return Err(VMError::ExpectedNormalChunk);
                                         }
 
                                         let mut new = ChunkManager::with(
@@ -431,11 +431,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         metadata,
                                         chunk_id
                                     }) => {
-                                        // Can only call entry chunks from new module
-                                        if !new_module.is_entry_chunk(chunk_id as usize) {
-                                            return Err(VMError::EntryChunkCalled);
+                                        // Can only call public chunks from new module
+                                        // This allow for a module to be fully private if wanted
+                                        if !new_module.is_public_chunk(chunk_id as usize) {
+                                            return Err(VMError::ExpectedPublicChunk);
                                         }
-    
+
                                         // Push back the current callstack
                                         self.push_back_call_stack(manager, reader)?;
     
