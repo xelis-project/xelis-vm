@@ -61,11 +61,14 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                 }))
             }
         },
-        SysCallResult::ModuleCall { module, metadata, chunk } => Ok(PerformSysCallHelper::End(InstructionResult::AppendModule {
-            module: module.into(),
-            metadata: metadata.into(),
-            chunk_id: chunk,
-        })),
+        SysCallResult::ModuleCall { module, metadata, chunk, params } => {
+            stack.extend_stack(params.into_iter())?;
+            Ok(PerformSysCallHelper::End(InstructionResult::AppendModule {
+                module: module.into(),
+                metadata: metadata.into(),
+                chunk_id: chunk,
+            }))
+        },
     }
 }
 

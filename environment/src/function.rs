@@ -32,6 +32,9 @@ pub enum SysCallResult<M> {
         module: Arc<Module>,
         metadata: Arc<M>,
         chunk: u16,
+        // It must be a list of parameters
+        // that will be passed to the chunk
+        params: VecDeque<StackValue>,
     }
 }
 
