@@ -182,7 +182,7 @@ impl Constant {
     pub fn as_map(&self) -> Result<&IndexMap<Self, Self>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
-            _ => Err(ValueError::ExpectedStruct)
+            _ => Err(ValueError::ExpectedMap)
         }
     }
 
@@ -190,7 +190,7 @@ impl Constant {
     pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<Self, Self>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
-            _ => Err(ValueError::ExpectedStruct)
+            _ => Err(ValueError::ExpectedMap)
         }
     }
 

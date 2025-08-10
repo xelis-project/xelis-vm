@@ -26,8 +26,8 @@ pub enum ValueError {
     ExpectedValueOfType(Type),
     #[error("Expected opaque value")]
     ExpectedOpaque,
-    #[error("expected a struct")]
-    ExpectedStruct,
+    #[error("expected a map")]
+    ExpectedMap,
     #[error("Invalid cast type: {0:?}")]
     InvalidCastType(Type),
     #[error("Operation not supported on non-number type")]

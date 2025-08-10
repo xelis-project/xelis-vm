@@ -361,7 +361,7 @@ impl ValueCell {
     pub fn as_map(&self) -> Result<&CellMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
-            _ => Err(ValueError::ExpectedStruct)
+            _ => Err(ValueError::ExpectedMap)
         }
     }
 
@@ -369,7 +369,15 @@ impl ValueCell {
     pub fn as_mut_map(&mut self) -> Result<&mut CellMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
-            _ => Err(ValueError::ExpectedStruct),
+            _ => Err(ValueError::ExpectedMap),
+        }
+    }
+
+    #[inline]
+    pub fn to_map<'a>(&'a mut self) -> Result<CellMap, ValueError> {
+        match mem::take(self) {
+            Self::Map(n) => Ok(*n),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Map(Box::new(Type::T(Some(0))), Box::new(Type::T(Some(1))))))
         }
     }
 
@@ -377,7 +385,7 @@ impl ValueCell {
     pub fn as_vec<'a>(&'a self) -> Result<&'a CellArray, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
         }
     }
 
@@ -385,7 +393,7 @@ impl ValueCell {
     pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut CellArray, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
         }
     }
 
@@ -393,10 +401,9 @@ impl ValueCell {
     pub fn to_vec<'a>(&'a mut self) -> Result<CellArray, ValueError> {
         match mem::take(self) {
             Self::Object(n) => Ok(n),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
         }
     }
-
 
     #[inline]
     pub fn as_bytes<'a>(&'a self) -> Result<&'a Vec<u8>, ValueError> {
