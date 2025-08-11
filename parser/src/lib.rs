@@ -349,6 +349,7 @@ impl<'a, M> Parser<'a, M> {
             Token::Optional => Type::Optional(Box::new(self.get_single_inner_type()?)),
             Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
             Token::Bytes => Type::Bytes,
+            Token::Any => Type::Any,
             Token::Map => {
                 let key = self.get_generic_type()?;
                 if key.is_map() {
@@ -1340,13 +1341,13 @@ impl<'a, M> Parser<'a, M> {
                         None => {
                             // require at least one value in a array constructor
                             let mut elements: Vec<Expression> = Vec::new();
-                            let mut array_type: Option<Type> = None;
+                            let mut array_type: Option<Type> = expected_type.map(|t| t.get_inner_type().clone());
                             while self.peek_is_not(Token::BracketClose) {
                                 let expr = self.read_expr(None, on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
                                 match &array_type { // array values must have the same type
                                     Some(t) => {
                                         let _type = self.get_type_from_expression(on_type, &expr, context)?;
-                                        if *_type != *t {
+                                        if *_type != *t && *t != Type::Any {
                                             return Err(err!(self, ParserErrorKind::InvalidTypeInArray(_type.into_owned(), t.clone())))
                                         }
                                     },

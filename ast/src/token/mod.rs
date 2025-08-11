@@ -129,6 +129,7 @@ impl<'a> fmt::Display for Token<'a> {
           Match => "match",
           FatArrow => "=>",
           Pub => "pub",
+          Any => "any",
 
           // Values and types
           Value(Literal::Null) => "null",
@@ -250,6 +251,7 @@ pub enum Token<'a> {
     Match,
     FatArrow,
     Pub,
+    Any,
 }
 
 impl Token<'_> {
@@ -345,6 +347,7 @@ impl Token<'_> {
             "match" => Match,
             "=>" => FatArrow,
             "pub" => Pub,
+            "any" => Any,
 
             e => Number(NumberType::value_of(e)?),
         })

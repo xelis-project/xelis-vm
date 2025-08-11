@@ -2113,3 +2113,18 @@ fn test_access_removed_value() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_array_any() {
+    let code = r#"
+        entry main() {
+            let v: any[] = [1, "aaa", false];
+            v.push([6, 5]);
+
+            let inner: u64[] = v[3];
+            return (v[3] as u64[])[0] + inner[1];
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(11));
+}
