@@ -423,6 +423,14 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn to_bytes<'a>(&'a mut self) -> Result<Vec<u8>, ValueError> {
+        match mem::take(self) {
+            Self::Bytes(bytes) => Ok(bytes),
+            _ => Err(ValueError::ExpectedBytes)
+        }
+    }
+
+    #[inline]
     pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
             Self::Default(Primitive::Null) => Ok(None),
