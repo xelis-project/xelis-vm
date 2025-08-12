@@ -713,7 +713,7 @@ impl ValueCell {
     pub fn as_value(&self) -> Result<&Primitive, ValueError> {
         match self {
             Self::Default(v) => Ok(v),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Any))
+            _ => Err(ValueError::InvalidPrimitiveType)
         }
     }
 
@@ -721,7 +721,7 @@ impl ValueCell {
     pub fn into_value(&mut self) -> Result<Primitive, ValueError> {
         match self {
             Self::Default(v) => Ok(mem::take(v)),
-            _ => Err(ValueError::ExpectedValueOfType(Type::Any))
+            _ => Err(ValueError::InvalidPrimitiveType)
         }
     }
 

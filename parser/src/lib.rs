@@ -561,10 +561,14 @@ impl<'a, M> Parser<'a, M> {
                 None => return Ok(None)
             },
             Expression::ArrayCall(path, _) => {
+                trace!("Array call on path: {:?}", path);
                 match self.get_type_from_expression(on_type, path, context)?.into_owned() {
                     Type::Array(_type) => Cow::Owned(*_type),
                     Type::Bytes => Cow::Owned(Type::U8),
-                    _ => return Err(err!(self, ParserErrorKind::InvalidArrayCall))
+                    ty => {
+                        trace!("Type {:?} does not support array call", ty);
+                        return Err(err!(self, ParserErrorKind::InvalidArrayCall))
+                    }
                 }
             },
             Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
@@ -1327,7 +1331,9 @@ impl<'a, M> Parser<'a, M> {
                     match queue.pop() {
                         Some(QueueItem::Expression(v)) => {
                             trace!("previous: {:?}", v);
-                            if !self.get_type_from_expression(on_type, &v, context)?.support_array_call() {
+                            let ty = self.get_type_from_expression(on_type, &v, context)?;
+                            if !ty.support_array_call() && *ty != Type::Any {
+                                trace!("expr {:?} type {:?} does not support array call", v, ty);
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
 
@@ -1610,11 +1616,11 @@ impl<'a, M> Parser<'a, M> {
                         if !left_type.is_castable_to(&right_type) {
                             return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
                         }
-    
+
                         if !right_type.is_primitive() {
                             return Err(err!(self, ParserErrorKind::CastPrimitiveError(left_type, right_type)))
                         }
-        
+
                         Expression::Cast(Box::new(prev_expr), right_type)
                     }
                 },

@@ -2130,6 +2130,25 @@ fn test_array_any() {
 }
 
 #[test]
+fn test_any_cast_array() {
+    let code = r#"
+        entry main() {
+            let a: any = [42];
+
+            for i: u64 = 0; i < 3; i += 1 {
+                a = [a];
+            }
+
+            assert((a as u64[][][][])[0][0][0][0] == 42);
+            (a as u64[][][])[0][0][0] = 50;
+
+            return (a as u64[][][])[0][0][0];
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(50));
+}
+
+#[test]
 fn test_max_array_depth() {
     let code = r#"
         entry main() {
@@ -2151,13 +2170,17 @@ fn test_max_array_depth() {
     // 17, cannot work because default max depth is 16
     let code = r#"
         entry main() {
-            let a: any[] = null;
+            let a: any = [42];
 
-            for i: u64 = 0; i <= 64; i += 1 {
+            for i: u64 = 0; i < 15; i += 1 {
                 a = [a];
             }
 
-            return 1;
+            // 16 depth, + 1 added
+            (a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0] = [50];
+
+            // 17 depth
+            return 0 //(a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
         }
     "#;
     assert!(try_run_code(code, 0).is_err());
