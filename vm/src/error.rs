@@ -92,6 +92,8 @@ pub enum VMError {
     Static(&'static str),
     #[error("Error, memory not cleaned, we have {0} bytes left")]
     MemoryNotCleaned(usize),
+    #[error(transparent)]
+    Any(#[from] anyhow::Error)
 }
 
 impl From<EnvironmentError> for VMError {

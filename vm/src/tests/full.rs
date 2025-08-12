@@ -2128,3 +2128,191 @@ fn test_array_any() {
 
     assert_eq!(run_code(code), Primitive::U64(11));
 }
+
+#[test]
+fn test_max_array_depth() {
+    let code = r#"
+        entry main() {
+            let a: u64[][][][][][][][][][][][][][][][] = [[[[[[[[[[[[[[[[42]]]]]]]]]]]]]]]];
+            return a[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+
+    // 17, cannot work because default max depth is 16
+    let code = r#"
+        entry main() {
+            let a: u64[][][][][][][][][][][][][][][][][] = [[[[[[[[[[[[[[[[[42]]]]]]]]]]]]]]]]];
+            return a[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
+        }
+    "#;
+    assert!(try_run_code(code, 0).is_err());
+
+    // 17, cannot work because default max depth is 16
+    let code = r#"
+        entry main() {
+            let a: any[] = null;
+
+            for i: u64 = 0; i <= 64; i += 1 {
+                a = [a];
+            }
+
+            return 1;
+        }
+    "#;
+    assert!(try_run_code(code, 0).is_err());
+}
+
+
+#[test]
+fn test_max_map_depth() {
+    let code = r#"
+        entry main() {
+            let a: map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, u64>>>>>>>>>>>>>>>> = {
+                0: {
+                    0: {
+                        0: {
+                            0: {
+                                0: {
+                                    0: {
+                                        0: {
+                                            0: {
+                                                0: {
+                                                    0: {
+                                                        0: {
+                                                            0: {
+                                                                0: {
+                                                                    0: {
+                                                                        0: {
+                                                                            0: 42
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            return a.get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+
+    let code = r#"
+        entry main() {
+            let a: map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, map<u64, u64>>>>>>>>>>>>>>>>> = {
+                0: {
+                    0: {
+                        0: {
+                            0: {
+                                0: {
+                                    0: {
+                                        0: {
+                                            0: {
+                                                0: {
+                                                    0: {
+                                                        0: {
+                                                            0: {
+                                                                0: {
+                                                                    0: {
+                                                                        0: {
+                                                                            0: {
+                                                                                0: 42
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            return a.get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .get(0)
+                .unwrap()
+        }
+    "#;
+
+    assert!(try_run_code(code, 0).is_err());
+}

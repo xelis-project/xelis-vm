@@ -1300,9 +1300,23 @@ impl<'a, M> Parser<'a, M> {
                     return false
                 }
 
-                required_operator == peek.is_operator()
-                    || ((matches!(peek, Token::BracketOpen | Token::OperatorOr | Token::OperatorBitwiseOr)) && queue.is_empty())
+                if !(
+                    required_operator == peek.is_operator()
+                    || (
+                        matches!(peek, Token::BracketOpen | Token::OperatorOr | Token::OperatorBitwiseOr)
+                        && queue.is_empty()
+                    )
+                ) && !(
+                    !required_operator
+                    && matches!(peek, Token::BracketOpen)
+                    && queue.last().map_or(false, |v| !matches!(v, QueueItem::Expression(_)))
+                ) {
+                    trace!("required operator: {}, peek: {:?}", required_operator, peek);
+                    trace!("not accepting bracket open or bitwise or, queue: {:?}", queue);
+                    return false
+                }
 
+                true
             }).is_some()
         {
             let token = self.advance()?;
@@ -1312,6 +1326,7 @@ impl<'a, M> Parser<'a, M> {
                 Token::BracketOpen => {
                     match queue.pop() {
                         Some(QueueItem::Expression(v)) => {
+                            trace!("previous: {:?}", v);
                             if !self.get_type_from_expression(on_type, &v, context)?.support_array_call() {
                                 return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                             }
@@ -1338,7 +1353,7 @@ impl<'a, M> Parser<'a, M> {
                             required_operator = !required_operator;
                             expr
                         },
-                        None => {
+                        _ => {
                             // require at least one value in a array constructor
                             let mut elements: Vec<Expression> = Vec::new();
                             let mut array_type: Option<Type> = expected_type.map(|t| t.get_inner_type().clone());
@@ -1365,7 +1380,6 @@ impl<'a, M> Parser<'a, M> {
                             self.expect_token(Token::BracketClose)?;
                             Expression::ArrayConstructor(elements)
                         },
-                        _ => return Err(err!(self, ParserErrorKind::InvalidArrayCall))
                     }
                 },
                 Token::ParenthesisOpen => {
@@ -1661,6 +1675,7 @@ impl<'a, M> Parser<'a, M> {
 
                         queue.push(QueueItem::Separator);
                         required_operator = false;
+                        trace!("pushed operator in queue: {:?}", queue);
                         continue;
                     }
                 }
@@ -1888,7 +1903,7 @@ impl<'a, M> Parser<'a, M> {
                     None => if value_type.contains_sub_type() {
                         Cow::Owned(value_type.clone())
                     } else {
-                        return Err(err!(self, ParserErrorKind::NoValueType))
+                        return Err(err!(self, ParserErrorKind::NoSubType))
                     }
                 },
                 Err(e) => match e.kind { // support empty array declaration

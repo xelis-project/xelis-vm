@@ -11,6 +11,7 @@ thiserror = "2.0.3"
 log = "0.4.26"
 indexmap = "2.8.0"
 futures = "0.3.31"
+anyhow = "*"
 
 [dev-dependencies]
 xelis-builder = { path = "../builder" }
@@ -18,7 +19,6 @@ xelis-lexer ={ path = "../lexer" }
 xelis-parser = { path = "../parser" }
 xelis-compiler = { path = "../compiler" }
 criterion = "0.5.1"
-anyhow = "*"
 serde_json = "*"
 
 [[bench]]

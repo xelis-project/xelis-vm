@@ -14,7 +14,8 @@ mod full;
 fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator
     let validator = ModuleValidator::new(&module, environment);
-    validator.verify().unwrap();
+    validator.verify()
+        .map_err(|e| VMError::Any(e.into()))?;
 
     let mut vm = VM::new(environment);
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
