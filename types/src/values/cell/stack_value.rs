@@ -1,10 +1,7 @@
 use std::mem;
 
 use crate::{
-    values::{cell::pointer::ValuePointer, ValueError},
-    Constant,
-    Primitive,
-    Type
+    values::{cell::pointer::ValuePointer, ValueError}, Constant, Opaque, OpaqueWrapper, Primitive, Type
 };
 use super::ValueCell;
 
@@ -216,5 +213,17 @@ impl From<Constant> for StackValue {
 impl From<ValuePointer> for StackValue {
     fn from(ptr: ValuePointer) -> Self {
         Self::Pointer { ptr, depth: 0 }
+    }
+}
+
+impl<T: Opaque> From<T> for StackValue {
+    fn from(value: T) -> Self {
+        Self::Owned(ValueCell::Default(Primitive::Opaque(value.into())))
+    }
+}
+
+impl From<OpaqueWrapper> for StackValue {
+    fn from(value: OpaqueWrapper) -> Self {
+        Self::Owned(ValueCell::Default(Primitive::Opaque(value)))
     }
 }
