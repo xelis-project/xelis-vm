@@ -2,7 +2,7 @@ use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{DefinedType, Type, U256};
+use crate::{DefinedType, Opaque, OpaqueWrapper, Type, U256};
 use super::{Primitive, ValueError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -498,6 +498,17 @@ impl fmt::Display for Constant {
     }
 }
 
+impl<T: Opaque> From<T> for Constant {
+    fn from(value: T) -> Self {
+        Self::Default(Primitive::Opaque(value.into()))
+    }
+}
+
+impl From<OpaqueWrapper> for Constant {
+    fn from(value: OpaqueWrapper) -> Self {
+        Self::Default(Primitive::Opaque(value))
+    }
+}
 #[cfg(test)]
 mod tests {
     use std::hash::DefaultHasher;
