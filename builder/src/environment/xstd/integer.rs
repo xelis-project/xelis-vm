@@ -57,35 +57,6 @@ macro_rules! register_checked_fns {
     };
 }
 
-macro_rules! to_endian_array {
-    ($env: expr, $t: ident, $f: ident, $endian: ident) => {
-        paste! {
-            fn [<to_ $endian _array_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
-                let bytes = value.[<to_ $endian _bytes>]();
-                let vec = bytes.iter().map(|b| Primitive::U8(*b).into()).collect();
-                Ok(SysCallResult::Return(ValueCell::Object(vec).into()))
-            }
-
-            $env.register_native_function(
-                stringify!([<to_ $endian _array>]),
-                Some(Type::$t),
-                vec![],
-                FunctionHandler::Sync([<to_ $endian _array_ $f>]),
-                15,
-                Some(Type::Array(Box::new(Type::U8)))
-            );
-        }
-    };
-}
-
-macro_rules! register_to_endian_array {
-    ($env: expr, $t: ident, $f: ident) => {
-        to_endian_array!($env, $t, $f, be);
-        to_endian_array!($env, $t, $f, le);
-    };
-}
-
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
@@ -102,6 +73,67 @@ macro_rules! to_endian_bytes {
                 FunctionHandler::Sync([<to_ $endian _bytes_ $f>]),
                 10,
                 Some(Type::Bytes)
+            );
+        }
+    };
+}
+
+macro_rules! register_leading_zeros {
+    ($env: expr, $t: ident, $f: ident) => {
+        paste! {
+            fn [<leading_zeros_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>]()?;
+                Ok(SysCallResult::Return(Primitive::U32(value.leading_zeros()).into()))
+            }
+
+            $env.register_native_function(
+                "leading_zeros",
+                Some(Type::$t),
+                vec![],
+                FunctionHandler::Sync([<leading_zeros_ $f>]),
+                10,
+                Some(Type::U32)
+            );
+        }
+    };
+}
+
+
+macro_rules! register_leading_ones {
+    ($env: expr, $t: ident, $f: ident) => {
+        paste! {
+            fn [<leading_ones_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>]()?;
+                Ok(SysCallResult::Return(Primitive::U32(value.leading_ones()).into()))
+            }
+
+            $env.register_native_function(
+                "leading_ones",
+                Some(Type::$t),
+                vec![],
+                FunctionHandler::Sync([<leading_ones_ $f>]),
+                10,
+                Some(Type::U32)
+            );
+        }
+    };
+}
+
+macro_rules! register_reverse_bits {
+    ($env: expr, $t: ident, $f: ident) => {
+        paste! {
+            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>]()?;
+                Ok(SysCallResult::Return(Primitive::$t(value.reverse_bits()).into()))
+            }
+
+            $env.register_native_function(
+                "reverse_bits",
+                Some(Type::$t),
+                vec![],
+                FunctionHandler::Sync([<reverse_bits_ $f>]),
+                10,
+                Some(Type::$t)
             );
         }
     };
@@ -136,7 +168,6 @@ macro_rules! min {
         }
     };
 }
-
 
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
@@ -199,20 +230,36 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     register_constants_min_max!(env, U256, u256);
 
     // Register all 'to endian bytes' (be/le) functions for all types
-    // Returns a Type::Array(T)
-    register_to_endian_array!(env, U16, u16);
-    register_to_endian_array!(env, U32, u32);
-    register_to_endian_array!(env, U64, u64);
-    register_to_endian_array!(env, U128, u128);
-    register_to_endian_array!(env, U256, u256);
-
-    // Register all 'to endian bytes' (be/le) functions for all types
     // Returns a Bytes type
     register_to_endian_bytes!(env, U16, u16);
     register_to_endian_bytes!(env, U32, u32);
     register_to_endian_bytes!(env, U64, u64);
     register_to_endian_bytes!(env, U128, u128);
     register_to_endian_bytes!(env, U256, u256);
+
+    // Register leading zeros functions for all types
+    register_leading_zeros!(env, U8, u8);
+    register_leading_zeros!(env, U16, u16);
+    register_leading_zeros!(env, U32, u32);
+    register_leading_zeros!(env, U64, u64);
+    register_leading_zeros!(env, U128, u128);
+    register_leading_zeros!(env, U256, u256);
+
+    // Register leading zeros functions for all types
+    register_leading_ones!(env, U8, u8);
+    register_leading_ones!(env, U16, u16);
+    register_leading_ones!(env, U32, u32);
+    register_leading_ones!(env, U64, u64);
+    register_leading_ones!(env, U128, u128);
+    register_leading_ones!(env, U256, u256);
+
+    // Register reverse bits functions for all types
+    register_reverse_bits!(env, U8, u8);
+    register_reverse_bits!(env, U16, u16);
+    register_reverse_bits!(env, U32, u32);
+    register_reverse_bits!(env, U64, u64);
+    register_reverse_bits!(env, U128, u128);
+    register_reverse_bits!(env, U256, u256);
 
     register_min_max!(env, U8, u8);
     register_min_max!(env, U16, u16);

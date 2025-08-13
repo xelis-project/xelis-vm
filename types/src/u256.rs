@@ -54,12 +54,33 @@ impl U256 {
         U256([lowest, low, high, highest])
     }
 
+    /// Reverse the bits of this U256 value
+    pub fn reverse_bits(self) -> U256 {
+        U256([
+            self.0[3].reverse_bits(),
+            self.0[2].reverse_bits(),
+            self.0[1].reverse_bits(),
+            self.0[0].reverse_bits(),
+        ])
+    }
+
     /// Returns the number of leading zeros in this U256 value
     #[inline]
     pub fn leading_zeros(&self) -> u32 {
         for i in (0..4).rev() {
             if self.0[i] != 0 {
                 return ((3 - i) as u32) * 64 + self.0[i].leading_zeros();
+            }
+        }
+        256
+    }
+
+    /// Returns the number of leading ones in this U256 value
+    #[inline]
+    pub fn leading_ones(&self) -> u32 {
+        for i in (0..4).rev() {
+            if self.0[i] != u64::MAX {
+                return ((3 - i) as u32) * 64 + self.0[i].leading_ones();
             }
         }
         256
@@ -1204,5 +1225,39 @@ mod tests {
         // Test little-endian roundtrip
         let bytes = value.to_le_bytes();
         assert_eq!(U256::from_le_bytes(bytes), value);
+    }
+
+    #[test]
+    fn test_reverse_bits_single_bit() {
+        // LSB of entire 256-bit integer set
+        let x = U256::new(1, 0, 0, 0);
+        let reversed = x.reverse_bits();
+        // Should move to MSB of last limb
+        assert_eq!(reversed, U256::new(0, 0, 0, 1u64 << 63));
+    }
+
+    #[test]
+    fn test_reverse_bits_all_ones() {
+        let x = U256::MAX;
+        let reversed = x.reverse_bits();
+        assert_eq!(reversed, U256::MAX);
+    }
+
+    #[test]
+    fn test_reverse_bits_palindrome() {
+        // Palindromic bit pattern: reversing should yield same value
+        let x = U256::new(0x8000_0000_0000_0001, 0, 0, 0x8000_0000_0000_0001);
+        let reversed = x.reverse_bits();
+        assert_eq!(x, reversed);
+    }
+
+    #[test]
+    fn test_leading_bits() {
+        let x = U256::new(0, 0, 0, 1 << 63);
+        assert_eq!(x.leading_zeros(), 0); // MSB set
+        let y = U256::new(0, 0, 0, 0);
+        assert_eq!(y.leading_zeros(), 256); // all zero
+        let z = U256::new(0, 0, 0, u64::MAX >> 1);
+        assert_eq!(z.leading_ones(), 0); // starts with 0
     }
 }
