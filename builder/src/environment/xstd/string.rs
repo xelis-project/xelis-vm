@@ -16,7 +16,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("contains_ignore_case", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(contains_ignore_case), 1, Some(Type::Bool));
     env.register_native_function("to_uppercase", Some(Type::String), vec![], FunctionHandler::Sync(to_uppercase), 1, Some(Type::String));
     env.register_native_function("to_lowercase", Some(Type::String), vec![], FunctionHandler::Sync(to_lowercase), 1, Some(Type::String));
-    env.register_native_function("to_bytes", Some(Type::String), vec![], FunctionHandler::Sync(to_bytes), 5, Some(Type::Array(Box::new(Type::U8))));
+    env.register_native_function("to_bytes", Some(Type::String), vec![], FunctionHandler::Sync(to_bytes), 5, Some(Type::Bytes));
     env.register_native_function("index_of", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(index_of), 3, Some(Type::Optional(Box::new(Type::U32))));
     env.register_native_function("last_index_of", Some(Type::String), vec![("value", Type::String)], FunctionHandler::Sync(last_index_of), 3, Some(Type::Optional(Box::new(Type::U32))));
     env.register_native_function("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], FunctionHandler::Sync(replace), 5, Some(Type::String));
@@ -73,11 +73,8 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> F
     let values = s.as_bytes();
     context.increase_gas_usage(values.len() as _)?;
 
-    let bytes = values.into_iter()
-        .map(|v| Primitive::U8(*v).into())
-        .collect();
-
-    Ok(SysCallResult::Return(ValueCell::Object(bytes).into()))
+    let bytes = values.to_vec();
+    Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
 }
 
 fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
