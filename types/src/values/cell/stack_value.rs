@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, ops::{Deref, DerefMut}};
 
 use crate::{
     values::{cell::pointer::ValuePointer, ValueError}, Constant, Opaque, OpaqueWrapper, Primitive, Type
@@ -148,24 +148,6 @@ impl StackValue {
         }
     }
 
-    // Get a reference to the value
-    #[inline(always)]
-    pub fn as_ref<'b>(&'b self) -> &'b ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_ref()
-        }
-    }
-
-    // Get a mutable reference to the value
-    #[inline(always)]
-    pub fn as_mut<'b>(&'b mut self) -> &'b mut ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_mut()
-        }
-    }
-
     // Is it a owned value
     #[inline(always)]
     pub fn is_owned(&self) -> bool {
@@ -225,5 +207,41 @@ impl<T: Opaque> From<T> for StackValue {
 impl From<OpaqueWrapper> for StackValue {
     fn from(value: OpaqueWrapper) -> Self {
         Self::Owned(ValueCell::Default(Primitive::Opaque(value)))
+    }
+}
+
+impl Deref for StackValue {
+    type Target = ValueCell;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl DerefMut for StackValue {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
+impl AsRef<ValueCell> for StackValue {
+    #[inline(always)]
+    fn as_ref(&self) -> &ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Pointer { ptr, .. } => ptr.as_ref()
+        }
+    }
+}
+
+impl AsMut<ValueCell> for StackValue {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Pointer { ptr, .. } => ptr.as_mut()
+        }
     }
 }

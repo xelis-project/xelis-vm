@@ -34,7 +34,8 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType
 }
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let array =  zelf?.as_bytes_mut()?;
+    let mut zelf = zelf?;
+    let array =  zelf.as_bytes_mut()?;
     if array.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -50,7 +51,8 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -
 fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
-    let array = zelf?.as_bytes_mut()?;
+    let mut zelf = zelf?;
+    let array = zelf.as_bytes_mut()?;
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
@@ -62,7 +64,8 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
 }
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let array = zelf?.as_bytes_mut()?;
+    let mut zelf = zelf?;
+    let array = zelf.as_bytes_mut()?;
     if let Some(value) = array.pop() {
         Ok(SysCallResult::Return(Primitive::U8(value).into()))
     } else {
@@ -78,7 +81,8 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Con
     let start = start.as_u32()?;
     let end = end.as_u32()?;
 
-    let vec = zelf?.as_bytes()?;
+    let mut zelf = zelf?;
+    let vec = zelf.as_bytes_mut()?;
     let len = vec.len() as u32;
     if start >= len || end >= len || start >= end {
         return Err(EnvironmentError::InvalidRange(start, end))
@@ -94,7 +98,8 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Con
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref().as_u8()?;
-    let vec = zelf?.as_bytes()?;
+    let zelf = zelf?;
+    let vec = zelf.as_bytes()?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
@@ -104,7 +109,8 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut 
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
-    let vec = zelf?.as_bytes()?;
+    let zelf = zelf?;
+    let vec = zelf.as_bytes()?;
     if let Some(value) = vec.get(index).copied() {
         Ok(SysCallResult::Return(Primitive::U8(value).into()))
     } else {
@@ -113,7 +119,8 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) ->
 }
 
 fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_bytes()?;
+    let zelf = zelf?;
+    let vec = zelf.as_bytes()?;
     if let Some(value) = vec.first().copied() {
         Ok(SysCallResult::Return(Primitive::U8(value).into()))
     } else {
@@ -122,7 +129,8 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTy
 }
 
 fn last<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_bytes()?;
+    let zelf = zelf?;
+    let vec = zelf.as_bytes()?;
     if let Some(value) = vec.last().copied() {
         Ok(SysCallResult::Return(Primitive::U8(value).into()))
     } else {
@@ -131,7 +139,8 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTyp
 }
 
 fn to_array<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_bytes()?;
+    let zelf = zelf?;
+    let vec = zelf.as_bytes()?;
 
     context.increase_gas_usage(vec.len() as _)?;
 

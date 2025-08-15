@@ -32,8 +32,8 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
-    Ok(SysCallResult::Return(Primitive::U32(s.len() as u32).into()))
+    let len = zelf?.as_string()?.len();
+    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
 fn trim<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
@@ -45,8 +45,12 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Contex
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
-    let s = zelf?.as_string()?;
-    Ok(SysCallResult::Return(Primitive::Boolean(s.contains(value)).into()))
+
+    let contains = zelf?
+        .as_string()?
+        .contains(value);
+
+    Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
 fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
@@ -68,7 +72,9 @@ fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnR
 }
 
 fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
 
     let values = s.as_bytes();
     context.increase_gas_usage(values.len() as _)?;
@@ -78,7 +84,10 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> F
 }
 
 fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -91,7 +100,10 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Contex
 }
 
 fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -104,7 +116,10 @@ fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut C
 }
 
 fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
     let handle1 = param1.as_ref();
@@ -116,15 +131,21 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context
 }
 
 fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
-    let param = parameters.remove(0);
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
+        let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.starts_with(value)).into()))
 }
 
 fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -132,7 +153,10 @@ fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Conte
 }
 
 fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -146,7 +170,11 @@ fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) 
 fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let param =  parameters.remove(0);
     let index = param.as_u32()? as usize;
-    let s = zelf?.as_string()?;
+
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     if let Some(c) = s.chars().nth(index) {
         let inner = Primitive::String(c.to_string()).into();
         Ok(SysCallResult::Return(inner))
@@ -156,12 +184,18 @@ fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context
 }
 
 fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     Ok(SysCallResult::Return(Primitive::Boolean(s.is_empty()).into()))
 }
 
 fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     context.increase_gas_usage(s.len() as u64 * 5)?;
 
     let param = parameters.remove(0);
@@ -173,7 +207,10 @@ fn string_matches<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context:
 }
 
 fn string_substring<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param = parameters.remove(0);
     let start = param.as_u32()? as usize;
     if let Some(s) = s.get(start..) {
@@ -185,7 +222,10 @@ fn string_substring<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mu
 }
 
 fn string_substring_range<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let s = zelf?.as_string()?;
+    let zelf = zelf?;
+    let s = zelf.as_ref()
+        .as_string()?;
+
     let param1 = parameters.remove(0);
     let param2 = parameters.remove(0);
     let start = param1.as_u32()? as usize;

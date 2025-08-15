@@ -60,7 +60,8 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType
 }
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let array =  zelf?.as_mut_vec()?;
+    let mut zelf = zelf?;
+    let array =  zelf.as_mut_vec()?;
     if array.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -82,7 +83,8 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Cont
 fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
-    let array = zelf?.as_mut_vec()?;
+    let mut zelf = zelf?;
+    let array = zelf.as_mut_vec()?;
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
@@ -94,7 +96,8 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
 }
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let array = zelf?.as_mut_vec()?;
+    let mut zelf = zelf?;
+    let array = zelf.as_mut_vec()?;
     if let Some(value) = array.pop() {
         Ok(SysCallResult::Return(value.into()))
     } else {
@@ -110,7 +113,8 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Con
     let start = start.as_u32()?;
     let end = end.as_u32()?;
 
-    let vec = zelf?.as_mut_vec()?;
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut_vec()?;
     let len = vec.len() as u32;
     if start >= len || end >= len || start >= end {
         return Err(EnvironmentError::InvalidRange(start, end))
@@ -134,7 +138,8 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Con
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref();
-    let vec = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
@@ -144,7 +149,8 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut 
 
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
-    let vec = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
     if let Some(value) = vec.get(index) {
         Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
@@ -153,7 +159,8 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) ->
 }
 
 fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
     if let Some(value) = vec.first() {
         Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
@@ -162,7 +169,8 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTy
 }
 
 fn last<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
     if let Some(value) = vec.last() {
         Ok(SysCallResult::Return(value.to_owned().into()))
     } else {
@@ -177,7 +185,8 @@ fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
 
     context.increase_gas_usage(other.len() as _)?;
 
-    let vec = zelf?.as_mut_vec()?;
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut_vec()?;
     if other.len() as u64 + vec.len() as u64 > u32::MAX as u64 {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -188,7 +197,8 @@ fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
 }
 
 fn concat<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let vec = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
     context.increase_gas_usage(vec.len() as u64)?;
 
     let mut result = Vec::new();
@@ -215,7 +225,8 @@ fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
 }
 
 fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let values = zelf?.as_vec()?;
+    let zelf = zelf?;
+    let values = zelf.as_vec()?;
     let len = values.len();
 
     context.increase_gas_usage(len as _)?;

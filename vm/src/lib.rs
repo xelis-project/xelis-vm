@@ -392,7 +392,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     },
                                     Ok(InstructionResult::AsyncCall { .. }) => {
                                         while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
-                                            let mut on_value = if instance {
+                                            let on_value = if instance {
                                                 let instance = params.pop_front()
                                                     .ok_or(EnvironmentError::MissingInstanceFnCall)?;
 
@@ -405,16 +405,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                     }
                                                 }
 
-                                                Some(instance)
+                                                Ok(instance)
                                             } else {
-                                                None
+                                                Err(EnvironmentError::FnExpectedInstance)
                                             };
 
-                                            let instance = on_value.as_mut()
-                                                .map(|v| v.as_mut())
-                                                .ok_or(EnvironmentError::FnExpectedInstance);
-
-                                            let res = ptr(instance, params.into(), &m.metadata, &mut self.context).await?;
+                                            let res = ptr(on_value, params.into(), &m.metadata, &mut self.context).await?;
                                             result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
                                                 Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),

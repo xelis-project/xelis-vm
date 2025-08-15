@@ -74,12 +74,12 @@ impl<M> From<StackValue> for SysCallResult<M> {
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
-pub type FnInstance<'a> = Result<&'a mut ValueCell, EnvironmentError>;
+pub type FnInstance<'a> = Result<StackValue, EnvironmentError>;
 pub type FnParams = Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
-        &M,
+        &'a M,
         &'a mut Context<'ty, 'r>,
     ) -> FnReturnType<M>;
 
@@ -149,7 +149,7 @@ impl<M> NativeFunction<M> {
         // otherwise return the async call
         match self.on_call {
             FunctionHandler::Sync(on_call) => {
-                let mut on_value = if self.is_on_instance() {
+                let on_value = if self.is_on_instance() {
                     let instance = parameters.pop_front()
                         .ok_or(EnvironmentError::MissingInstanceFnCall)?;
 
@@ -161,16 +161,12 @@ impl<M> NativeFunction<M> {
                         }
                     }
 
-                    Some(instance)
+                    Ok(instance)
                 } else {
-                    None
+                    Err(EnvironmentError::FnExpectedInstance)
                 };
 
-                let instance = on_value.as_mut()
-                    .map(|v| v.as_mut())
-                    .ok_or(EnvironmentError::FnExpectedInstance);
-
-                (on_call)(instance, parameters.into(), metadata, context)
+                (on_call)(on_value, parameters.into(), metadata, context)
             },
             FunctionHandler::Async(ptr) => Ok(SysCallResult::AsyncCall {
                 ptr,

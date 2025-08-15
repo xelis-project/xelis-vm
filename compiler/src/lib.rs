@@ -1416,7 +1416,7 @@ mod tests {
                 // 10
                 OpCode::Constant.as_byte(), 1, 0,
                 // insert
-                OpCode::SysCall.as_byte(), 116, 0,
+                OpCode::SysCall.as_byte(), 124, 0,
                 // Expected POP
                 OpCode::Pop.as_byte(),
                 // x.get("a")
@@ -1425,7 +1425,7 @@ mod tests {
                 // a
                 OpCode::Constant.as_byte(), 0, 0,
                 // get
-                OpCode::SysCall.as_byte(), 115, 0,
+                OpCode::SysCall.as_byte(), 123, 0,
                 // unwrap (u16 id)
                 OpCode::SysCall.as_byte(), 24, 0,
                 // let dummy: u64 = x.get("a").unwrap();
@@ -1438,7 +1438,7 @@ mod tests {
                 // Load dummy
                 OpCode::MemoryLoad.as_byte(), 1, 0,
                 // insert (u16 id)
-                OpCode::SysCall.as_byte(), 116, 0,
+                OpCode::SysCall.as_byte(), 124, 0,
                 // Expected POP
                 OpCode::Pop.as_byte(),
 

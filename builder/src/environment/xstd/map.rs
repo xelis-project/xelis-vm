@@ -69,7 +69,9 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
     // prevent the key from being mutable
     let key = key.deep_clone();
 
-    let map = zelf?.as_mut_map()?;
+    let mut zelf = zelf?;
+    let map = zelf.as_mut()
+        .as_mut_map()?;
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -100,7 +102,10 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let map = zelf?.as_mut_map()?;
+    let mut zelf = zelf?;
+    let map = zelf.as_mut()
+        .as_mut_map()?;
+
     // pay based on O(N)
     context.increase_gas_usage(map.len() as _)?;
 
@@ -133,7 +138,8 @@ fn clear<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTy
 }
 
 fn keys<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let map = zelf?.as_map()?;
+    let zelf = zelf?;
+    let map = zelf.as_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
     context.increase_gas_usage((map.len() as u64) * 8)?;
@@ -146,7 +152,8 @@ fn keys<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnRet
 }
 
 fn values<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let map = zelf?.as_mut_map()?;
+    let mut zelf = zelf?;
+    let map = zelf.as_mut_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
     context.increase_gas_usage((map.len() as u64) * 5)?;
