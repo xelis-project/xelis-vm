@@ -194,7 +194,8 @@ impl Type {
             Type::T(Some(id)) => instance.get_generic_type(*id).map_or(false, |t| t == other),
             Type::T(None) => instance == self,
             Type::Any => true,
-            _ => other.is_compatible_with(instance)
+            // No need to use instance because we don't have generic here
+            _ => self.is_compatible_with(other)
         }
     }
 
@@ -324,6 +325,11 @@ impl Type {
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
             },
+            Type::Tuples(types) => match self {
+                Type::Tuples(types2) => types.iter().zip(types2.iter()).all(|(a, b)| a.is_compatible_with(b)),
+                Type::Any | Type::T(None) => true,
+                _ => *self == *other
+            }
             _ => *self == *other || self.is_generic(),
         }
     }
@@ -511,6 +517,14 @@ mod tests {
 
         let struct_type = StructType::new(0, "Foo", Vec::new());
         assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_assign_compatible_with(&Type::Struct(struct_type.clone())));
+    }
+
+    #[test]
+    fn test_compatibility_deep_types() {
+        let expected = Type::Array(Box::new(Type::Tuples(vec![Type::String, Type::U64])));
+        let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
+
+        assert!(expected.is_compatible_with(&ty));
     }
 
     #[test]
