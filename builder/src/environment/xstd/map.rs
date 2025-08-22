@@ -1,7 +1,13 @@
 use xelis_environment::{
-    Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult
+    Context,
+    EnvironmentError,
+    FnInstance,
+    FnParams,
+    FnReturnType,
+    FunctionHandler,
+    SysCallResult
 };
-use xelis_types::{Type, Primitive, ValueCell};
+use xelis_types::{Type, Primitive, ValueCell, ValuePointer};
 
 use crate::EnvironmentBuilder;
 
@@ -18,6 +24,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("clear", Some(_type.clone()), vec![], FunctionHandler::Sync(clear), 5, None);
     env.register_native_function("keys", Some(_type.clone()), vec![], FunctionHandler::Sync(keys), 20, Some(Type::Array(Box::new(key_type.clone()))));
     env.register_native_function("values", Some(_type.clone()), vec![], FunctionHandler::Sync(values), 20, Some(Type::Array(Box::new(value_type.clone()))));
+    env.register_native_function("entries", Some(_type.clone()), vec![], FunctionHandler::Sync(entries), 40, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))));
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
@@ -152,8 +159,8 @@ fn keys<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnRet
 }
 
 fn values<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
-    let mut zelf = zelf?;
-    let map = zelf.as_mut_map()?;
+    let zelf = zelf?;
+    let map = zelf.as_map()?;
 
     // we need to go through all elements, thus we increase the gas usage
     context.increase_gas_usage((map.len() as u64) * 5)?;
@@ -163,4 +170,18 @@ fn values<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnR
         .collect::<Vec<_>>();
 
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))
+}
+
+fn entries<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+    let zelf = zelf?;
+    let map = zelf.as_map()?;
+
+    // we need to go through all elements, thus we increase the gas usage
+    context.increase_gas_usage((map.len() as u64) * 10)?;
+
+    let entries = map.iter()
+        .map(|(k, v)| ValuePointer::new(ValueCell::Object(vec![ValuePointer::new(k.clone()), v.clone()])))
+        .collect::<Vec<_>>();
+
+    Ok(SysCallResult::Return(ValueCell::Object(entries).into()))
 }

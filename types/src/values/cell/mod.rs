@@ -13,7 +13,6 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use crate::{
     opaque::OpaqueWrapper,
-    values::cell::pointer::ValuePointer,
     DefinedType,
     Opaque,
     Type,
@@ -22,6 +21,7 @@ use crate::{
 use super::{Constant, Primitive, ValueError};
 
 pub use stack_value::*;
+pub use pointer::*;
 
 pub type CellArray = Vec<ValuePointer>;
 pub type CellMap = IndexMap<ValueCell, ValuePointer>;
