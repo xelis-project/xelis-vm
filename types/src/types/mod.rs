@@ -277,7 +277,11 @@ impl Type {
                         f2.return_type().expect("f2 type")
                     ),
                 _ => self.is_compatible_with(other)
-            }
+            },
+            Self::Tuples(tuples) => match other {
+                Self::Tuples(tuples2) => tuples.iter().zip(tuples2.iter()).all(|(a, b)| a.is_assign_compatible_with(b)),
+                _ => self.is_compatible_with(other)
+            },
             _ => other.is_compatible_with(self)
         }
     }
@@ -525,6 +529,7 @@ mod tests {
         let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
 
         assert!(expected.is_compatible_with(&ty));
+        assert!(expected.is_assign_compatible_with(&ty));
     }
 
     #[test]
