@@ -354,7 +354,7 @@ impl<'a, M> Compiler<'a, M> {
                 chunk.emit_opcode(OpCode::DynamicCall);
                 chunk.write_u8(params.len() as _);
             },
-            Expression::FunctionCall(expr_on, id, params) => {
+            Expression::FunctionCall(expr_on, id, params, _) => {
                 if let Some(expr_on) = expr_on {
                     self.compile_expr(chunk, chunk_id, expr_on)?;
                 }
@@ -501,8 +501,12 @@ impl<'a, M> Compiler<'a, M> {
 
     // Push the next register store id
     fn push_mem_scope(&mut self) {
-        trace!("Pushing memory scope");
-        self.memstore_ids.push(self.memstore_ids.last().copied().unwrap_or(0));
+        let last_id = self.memstore_ids.last()
+            .copied()
+            .unwrap_or(0);
+
+        trace!("Pushing memory scope with last id {last_id}");
+        self.memstore_ids.push(last_id);
         self.values_on_stack.push(Vec::new());
     }
 
@@ -576,22 +580,28 @@ impl<'a, M> Compiler<'a, M> {
     }
 
     // Compile the tuples deconstruct
-    fn compile_tuples(&mut self, chunk: &mut Chunk, tuples: &[TupleStatement]) {
+    fn compile_tuples(&mut self, chunk: &mut Chunk, tuples: &[TupleStatement]) -> Result<(), CompilerError> {
         for el in tuples.iter() {
             match el {
-                TupleStatement::Depth => {
+                TupleStatement::Depth(len) => {
                     chunk.emit_opcode(OpCode::Flatten);
+
+                    if *len > 1 {
+                        self.add_values_on_stack(chunk.last_index(), *len - 1)?;
+                    }
                 },
                 TupleStatement::Deconstruct(ty) => {
-                    if let Some(id) = ty.id {
-                        chunk.emit_opcode(OpCode::MemorySet);
-                        chunk.write_u16(id);
+                    if ty.id.is_some() {
+                        self.memstore(chunk)?;
                     } else {
                         chunk.emit_opcode(OpCode::Pop);
+                        self.decrease_values_on_stack()?;
                     }
                 }
             }
         }
+
+        Ok(())
     }
     // Compile a single statement
     fn compile_statement(&mut self, chunk: &mut Chunk, chunk_id: u16, statement: &Statement) -> Result<(), CompilerError> {
@@ -619,11 +629,8 @@ impl<'a, M> Compiler<'a, M> {
                 // Compile the value
                 self.compile_expr(chunk, chunk_id, value)?;
 
-                // We need to pop the value
-                self.decrease_values_on_stack()?;
-
                 // Store the values
-                self.compile_tuples(chunk, &declaration);
+                self.compile_tuples(chunk, &declaration)?;
             },
             Statement::Scope(statements) => {
                 self.push_mem_scope();
@@ -790,24 +797,28 @@ impl<'a, M> Compiler<'a, M> {
             Statement::ForEach(tuples, expr_values, statements) => {
                 // Compile the expression
                 self.compile_expr(chunk, chunk_id, expr_values)?;
+
                 // It is used by the IteratorBegin
                 self.decrease_values_on_stack()?;
 
                 chunk.emit_opcode(OpCode::IteratorBegin);
                 let start_index = chunk.index();
                 chunk.emit_opcode(OpCode::IteratorNext);
+
+                let iterator_index = chunk.last_index();
                 chunk.write_u32(INVALID_ADDR);
                 let jump_end = chunk.last_index();
 
                 self.push_mem_scope();
+                // IteratorNext is adding a value on stack if not
+                self.add_value_on_stack(iterator_index)?;
 
                 // OpCode IteratorNext will push a value, mark it
-                self.compile_tuples(chunk, &tuples);
+                self.compile_tuples(chunk, &tuples)?;
 
                 self.start_loop();
                 // Compile the valid condition
                 self.compile_statements(chunk, chunk_id, statements)?;
-
                 self.pop_mem_scope(chunk)?;
 
                 // Jump back to the start
@@ -1513,6 +1524,7 @@ mod tests {
                 OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Constant.as_byte(), 2, 0,
                 OpCode::NewObject.as_byte(), 3,
+                // flatten in 3 vars
                 OpCode::Flatten.as_byte(),
                 // We store a
                 OpCode::MemorySet.as_byte(), 0, 0,
