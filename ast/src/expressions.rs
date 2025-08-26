@@ -10,7 +10,7 @@ use super::Operator;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
-    FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>), // path, function name, parameters
+    FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>, Option<Type>), // path, function name, parameters, return type mapped
     DynamicCall(IdentifierType, Vec<Expression>, bool), // var_id, parameters, return value
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
@@ -27,6 +27,7 @@ pub enum Expression {
     IsNot(Box<Expression>), // !expr (where expr is a bool)
     Ternary(Box<Expression>, Box<Expression>, Box<Expression>), // bool expr, if true expr, else expr
     Cast(Box<Expression>, Type), // expr, type
+    // This does nothing except forcing the type for Parser type resolution
     ForceType(Box<Expression>, Type),
     // Each sub variable/attribute of the enum, its type
     EnumPattern(Vec<Expression>, EnumValueType),
@@ -62,7 +63,7 @@ pub enum MatchStatement {
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum TupleStatement {
     Deconstruct(TupleDeconstruction),
-    Depth
+    Depth(usize)
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]

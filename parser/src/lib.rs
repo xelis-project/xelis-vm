@@ -539,20 +539,23 @@ impl<'a, M> Parser<'a, M> {
                 Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
                 _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
             },
-            Expression::FunctionCall(path, name, _) => {
-                let f = self.get_function(*name)?;
-                let return_type = f.return_type();
+            Expression::FunctionCall(path, name, _, ty) => match ty {
+                Some(ty) => Cow::Borrowed(ty),
+                None => {
+                    let f = self.get_function(*name)?;
+                    let return_type = f.return_type();
 
-                match return_type {
-                    Some(ref v) => {
-                        if let Some(path) = path.as_ref().filter(|_| f.is_instance()) {
-                            let ty = self.get_type_from_expression(None, path, context)?;
-                            Cow::Owned(self.get_from_generic_type(Some(&ty), v, None, context)?)
-                        } else {
-                            Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?)
+                    match return_type {
+                        Some(ref v) => {
+                            if let Some(path) = path.as_ref().filter(|_| f.is_instance()) {
+                                let ty = self.get_type_from_expression(None, path, context)?;
+                                Cow::Owned(self.get_from_generic_type(Some(&ty), v, None, context)?)
+                            } else {
+                                Cow::Owned(self.get_from_generic_type(on_type, v, path.as_deref(), context)?)
+                            }
                         }
+                        None => return Err(err!(self, ParserErrorKind::FunctionNoReturnType))
                     }
-                    None => return Err(err!(self, ParserErrorKind::FunctionNoReturnType))
                 }
             },
             // we have to clone everything due to this
@@ -733,7 +736,7 @@ impl<'a, M> Parser<'a, M> {
             return Err(err!(self, ParserErrorKind::FunctionIsNotCallable))
         }
 
-        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters))
+        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters, f.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
     }
 
     // Read fields of a constructor with the following syntax:
@@ -1542,12 +1545,12 @@ impl<'a, M> Parser<'a, M> {
                             } else {
                                 // Read a variable access OR a function call
                                 let right_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
-                                if let Expression::FunctionCall(path, name, params) = right_expr {
+                                if let Expression::FunctionCall(path, name, params, ty) = right_expr {
                                     if path.is_some() {
                                         return Err(err!(self, ParserErrorKind::UnexpectedPathInFunctionCall))
                                     }
 
-                                    Expression::FunctionCall(Some(Box::new(value)), name, params)
+                                    Expression::FunctionCall(Some(Box::new(value)), name, params, ty)
                                 } else {
                                     Expression::Path(Box::new(value), Box::new(right_expr))
                                 }
@@ -1990,7 +1993,7 @@ impl<'a, M> Parser<'a, M> {
                     return Err(err!(self, ParserErrorKind::InvalidTupleDeconstruction));
                 }
 
-                statements.push(TupleStatement::Depth);
+                statements.push(TupleStatement::Depth(sub_patterns.len()));
                 for (p, t) in sub_patterns.iter().zip(sub_types).rev() {
                     self.match_pattern_with_type(p, t, context, statements)?;
                 }
@@ -3458,7 +3461,8 @@ mod tests {
                 Box::new(Expression::FunctionCall(
                     Some(Box::new(Expression::Variable(0))),
                     0,
-                    Vec::new()
+                    Vec::new(),
+                    Some(Type::U32),
                 ))
             )))
         ];
