@@ -154,7 +154,7 @@ impl ChunkManager {
     // Get a value from the registers
     #[inline(always)]
     pub fn from_register(&mut self, index: usize) -> Result<&mut StackValue, VMError> {
-        self.registers.get_mut(index).ok_or(VMError::RegisterNotFound)
+        self.registers.get_mut(index).ok_or(VMError::RegisterNotFound(index))
     }
 
     // Pop a value from the registers

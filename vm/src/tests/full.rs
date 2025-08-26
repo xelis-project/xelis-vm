@@ -2186,7 +2186,6 @@ fn test_max_array_depth() {
     assert!(try_run_code(code, 0).is_err());
 }
 
-
 #[test]
 fn test_max_map_depth() {
     let code = r#"
@@ -2338,4 +2337,28 @@ fn test_max_map_depth() {
     "#;
 
     assert!(try_run_code(code, 0).is_err());
+}
+
+#[test]
+fn test_generic_types_foreach() {
+    let code = r#"
+        entry main() {
+            let v: map<string, u64> = {
+                "hello": 10,
+                "world": 25,
+            };
+
+            let total: u64 = 0;
+            foreach (_, v) in v.entries() {
+                // local context declaration
+                let tmp: u64 = 0;
+                tmp += v;
+                total += tmp;
+            }
+
+            return total
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(35));
 }

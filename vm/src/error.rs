@@ -58,8 +58,8 @@ pub enum VMError {
     InvalidOpCode,
     #[error("invalid primitive type")]
     InvalidPrimitiveType,
-    #[error("register was not found")]
-    RegisterNotFound,
+    #[error("register {0} was not found")]
+    RegisterNotFound(usize),
     #[error("empty register")]
     EmptyRegister,
     #[error("constant not found")]
