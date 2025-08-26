@@ -63,6 +63,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) ->
 fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
+    // Key is deep cloned here
     let key = param.into_owned();
     if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
@@ -72,9 +73,6 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
         context.max_value_depth()
             .saturating_sub(key_depth.saturating_add(1))
     )?;
-
-    // prevent the key from being mutable
-    let key = key.deep_clone();
 
     let mut zelf = zelf?;
     let map = zelf.as_mut()

@@ -99,6 +99,7 @@ impl Eq for OpaqueWrapper {}
 impl OpaqueWrapper {
     /// Create a new OpaqueWrapper
     /// OpaqueType id is the index of the type in the OpaqueManager
+    #[inline]
     pub fn new<T: Opaque>(value: T) -> Self {
         Self {
             inner: Box::new(value)
@@ -106,6 +107,7 @@ impl OpaqueWrapper {
     }
 
     /// Get the TypeId of the OpaqueWrapper
+    #[inline]
     pub fn get_type_id(&self) -> TypeId {
         self.inner.get_type()
     }
@@ -132,14 +134,22 @@ impl OpaqueWrapper {
             .map_err(|_| ValueError::InvalidOpaqueTypeMismatch)
     }
 
+    #[inline]
     pub fn is_serializable(&self) -> bool {
         self.inner.is_serializable()
     }
 
+    #[inline]
+    pub fn is_json_serializable(&self) -> bool {
+        self.inner.is_json_supported()
+    }
+
+    #[inline]
     pub fn get_size(&self) -> usize {
         self.inner.get_size()
     }
 
+    #[inline]
     pub fn inner(&self) -> &dyn Opaque {
         self.inner.as_ref()
     }

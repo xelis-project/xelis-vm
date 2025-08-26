@@ -107,6 +107,8 @@ impl StackValue {
     }
 
     // Get the value of the path
+    // This is doing a `deep_clone` to be free
+    // from any reference link
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
         match self {

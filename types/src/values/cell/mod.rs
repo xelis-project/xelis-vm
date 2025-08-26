@@ -189,6 +189,37 @@ impl ValueCell {
         }
     }
 
+    fn check_serializability<F>(&self, check_opaque: F) -> bool
+    where
+        F: Fn(&OpaqueWrapper) -> bool,
+    {
+        let mut stack = vec![ValueCellRef::Ref(self)];
+        while let Some(next) = stack.pop() {
+            let v = next.value();
+            match v {
+                ValueCell::Default(Primitive::Opaque(obj)) if !check_opaque(obj) => return false,
+                ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
+                ValueCell::Map(map) => stack.extend(
+                    map.iter()
+                        .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                ),
+                _ => {}
+            }
+        }
+
+        true
+    }
+
+    #[inline]
+    pub fn is_json_serializable(&self) -> bool {
+        self.check_serializability(OpaqueWrapper::is_json_serializable)
+    }
+
+    #[inline]
+    pub fn is_serializable(&self) -> bool {
+        self.check_serializability(OpaqueWrapper::is_serializable)
+    }
+
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
@@ -542,14 +573,6 @@ impl ValueCell {
         match mem::take(self) {
             Self::Default(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
-        }
-    }
-
-    #[inline]
-    pub fn is_serializable(&self) -> bool {
-        match self {
-            Self::Default(Primitive::Opaque(op)) => op.is_serializable(),
-            _ => true
         }
     }
 
