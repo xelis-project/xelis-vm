@@ -1,6 +1,5 @@
-use std::str::FromStr;
-
-use xelis_bytecode::{Chunk, OpCode};
+use std::{fmt, str::FromStr};
+use xelis_bytecode::{Chunk, ChunkReader, ChunkReaderError, OpCode};
 
 // OpCode with Args
 #[derive(Debug)]
@@ -17,6 +16,15 @@ pub enum OpCodeWithArgs {
     },
     // pop last value from stack, set in registers[index]
     MemorySet {
+        register_index: u16
+    },
+    // Pop from register to push it to stack
+    MemoryPop,
+    // Returns U32 how many registers are stored
+    MemoryLen,
+    // Transform the stored value at registers[index]
+    // into an owned value (similar to Copy)
+    MemoryToOwned {
         register_index: u16
     },
     // load from stack, load u16, load sub value, push
@@ -38,6 +46,10 @@ pub enum OpCodeWithArgs {
     CopyN {
         stack_index: u8
     },
+    // Make the top stack value an owned variant
+    // Parameters passed through chunks may be pointers
+    // and people may want to NOT modify "upper" value
+    ToOwned,
     // Swap top and N value
     Swap {
         stack_index: u8
@@ -198,11 +210,15 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Constant { .. } => OpCode::Constant,
             OpCodeWithArgs::MemoryLoad { .. } => OpCode::MemoryLoad,
             OpCodeWithArgs::MemorySet { .. } => OpCode::MemorySet,
+            OpCodeWithArgs::MemoryPop => OpCode::MemoryPop,
+            OpCodeWithArgs::MemoryLen => OpCode::MemoryLen,
+            OpCodeWithArgs::MemoryToOwned { .. } => OpCode::MemoryToOwned,
             OpCodeWithArgs::SubLoad { .. } => OpCode::SubLoad,
             OpCodeWithArgs::Pop => OpCode::Pop,
             OpCodeWithArgs::PopN { .. } => OpCode::PopN,
             OpCodeWithArgs::Copy => OpCode::Copy,
             OpCodeWithArgs::CopyN { .. } => OpCode::CopyN,
+            OpCodeWithArgs::ToOwned => OpCode::ToOwned,
             OpCodeWithArgs::Swap { .. } => OpCode::Swap,
             OpCodeWithArgs::Swap2 { .. } => OpCode::Swap2,
             OpCodeWithArgs::Jump { .. } => OpCode::Jump,
@@ -267,6 +283,118 @@ impl OpCodeWithArgs {
         }
     }
 
+    // Convert an OpCode to an OpCodeWithArgs by reading its params from ChunkReader
+    pub fn from_opcode(opcode: OpCode, reader: &mut ChunkReader) -> Result<Self, ChunkReaderError> {
+        Ok(match opcode {
+            OpCode::Constant => OpCodeWithArgs::Constant {
+                index: reader.read_u16()?
+            },
+            OpCode::MemoryLoad => OpCodeWithArgs::MemoryLoad {
+                register_index: reader.read_u16()?
+            },
+            OpCode::MemorySet => OpCodeWithArgs::MemorySet {
+                register_index: reader.read_u16()?
+            },
+            OpCode::MemoryPop => OpCodeWithArgs::MemoryPop,
+            OpCode::MemoryLen => OpCodeWithArgs::MemoryLen,
+            OpCode::MemoryToOwned => OpCodeWithArgs::MemoryToOwned {
+                register_index: reader.read_u16()?
+            },
+            OpCode::SubLoad => OpCodeWithArgs::SubLoad {
+                index: reader.read_u8()?
+            },
+            OpCode::Pop => OpCodeWithArgs::Pop,
+            OpCode::PopN => OpCodeWithArgs::PopN {
+                count: reader.read_u8()?
+            },
+            OpCode::Copy => OpCodeWithArgs::Copy,
+            OpCode::CopyN => OpCodeWithArgs::CopyN {
+                stack_index: reader.read_u8()?
+            },
+            OpCode::ToOwned => OpCodeWithArgs::ToOwned,
+            OpCode::Swap => OpCodeWithArgs::Swap {
+                stack_index: reader.read_u8()?
+            },
+            OpCode::Swap2 => OpCodeWithArgs::Swap2 {
+                a_stack_index: reader.read_u8()?,
+                b_stack_index: reader.read_u8()?,
+            },
+            OpCode::Jump => OpCodeWithArgs::Jump {
+                addr: reader.read_u32()?
+            },
+            OpCode::JumpIfFalse => OpCodeWithArgs::JumpIfFalse {
+                addr: reader.read_u32()?
+            },
+            OpCode::IterableLength => OpCodeWithArgs::IterableLength,
+            OpCode::IteratorBegin => OpCodeWithArgs::IteratorBegin,
+            OpCode::IteratorNext => OpCodeWithArgs::IteratorNext {
+                addr: reader.read_u32()?
+            },
+            OpCode::IteratorEnd => OpCodeWithArgs::IteratorEnd,
+            OpCode::Return => OpCodeWithArgs::Return,
+            OpCode::ArrayCall => OpCodeWithArgs::ArrayCall,
+            OpCode::Cast => OpCodeWithArgs::Cast {
+                primitive_type_id: reader.read_u8()?
+            },
+            OpCode::InvokeChunk => OpCodeWithArgs::InvokeChunk {
+                chunk_id: reader.read_u16()?,
+                args_count: reader.read_u8()?,
+            },
+            OpCode::SysCall => OpCodeWithArgs::SysCall {
+                sys_call_id: reader.read_u16()?
+            },
+            OpCode::NewObject => OpCodeWithArgs::NewObject {
+                length: reader.read_u8()?
+            },
+            OpCode::NewRange => OpCodeWithArgs::NewRange,
+            OpCode::NewMap => OpCodeWithArgs::NewMap {
+                length: reader.read_u8()?
+            },
+            OpCode::Add => OpCodeWithArgs::Add,
+            OpCode::Sub => OpCodeWithArgs::Sub,
+            OpCode::Mul => OpCodeWithArgs::Mul,
+            OpCode::Div => OpCodeWithArgs::Div,
+            OpCode::Mod => OpCodeWithArgs::Mod,
+            OpCode::Pow => OpCodeWithArgs::Pow,
+            OpCode::BitwiseAnd => OpCodeWithArgs::BitwiseAnd,
+            OpCode::BitwiseOr => OpCodeWithArgs::BitwiseOr,
+            OpCode::BitwiseXor => OpCodeWithArgs::BitwiseXor,
+            OpCode::BitwiseShl => OpCodeWithArgs::BitwiseShl,
+            OpCode::BitwiseShr => OpCodeWithArgs::BitwiseShr,
+            OpCode::And => OpCodeWithArgs::And,
+            OpCode::Or => OpCodeWithArgs::Or,
+            OpCode::Eq => OpCodeWithArgs::Eq,
+            OpCode::Neg => OpCodeWithArgs::Neg,
+            OpCode::Gt => OpCodeWithArgs::Gt,
+            OpCode::Lt => OpCodeWithArgs::Lt,
+            OpCode::Gte => OpCodeWithArgs::Gte,
+            OpCode::Lte => OpCodeWithArgs::Lte,
+            OpCode::Assign => OpCodeWithArgs::Assign,
+            OpCode::AssignAdd => OpCodeWithArgs::AssignAdd,
+            OpCode::AssignSub => OpCodeWithArgs::AssignSub,
+            OpCode::AssignMul => OpCodeWithArgs::AssignMul,
+            OpCode::AssignDiv => OpCodeWithArgs::AssignDiv,
+            OpCode::AssignMod => OpCodeWithArgs::AssignMod,
+            OpCode::AssignPow => OpCodeWithArgs::AssignPow,
+            OpCode::AssignBitwiseAnd => OpCodeWithArgs::AssignBitwiseAnd,
+            OpCode::AssignBitwiseOr => OpCodeWithArgs::AssignBitwiseOr,
+            OpCode::AssignBitwiseXor => OpCodeWithArgs::AssignXor,
+            OpCode::AssignBitwiseShl => OpCodeWithArgs::AssignShl,
+            OpCode::AssignBitwiseShr => OpCodeWithArgs::AssignShr,
+            OpCode::Inc => OpCodeWithArgs::Inc,
+            OpCode::Dec => OpCodeWithArgs::Dec,
+            OpCode::Flatten => OpCodeWithArgs::Flatten,
+            OpCode::Match => OpCodeWithArgs::Match {
+                magic_byte: reader.read_u8()?,
+                addr: reader.read_u32()?
+            },
+            OpCode::DynamicCall => OpCodeWithArgs::DynamicCall {
+                args_count: reader.read_u8()?
+            },
+            OpCode::CaptureContext => OpCodeWithArgs::CaptureContext,
+        })
+    }
+
     // Write the OpCodeWithArgs to a chunk
     pub fn write_to_chunk(&self, chunk: &mut Chunk) {
         chunk.emit_opcode(self.as_opcode());
@@ -274,6 +402,7 @@ impl OpCodeWithArgs {
             OpCodeWithArgs::Constant { index } => chunk.write_u16(*index),
             OpCodeWithArgs::MemoryLoad { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::MemorySet { register_index } => chunk.write_u16(*register_index),
+            OpCodeWithArgs::MemoryToOwned { register_index } => chunk.write_u16(*register_index),
             OpCodeWithArgs::SubLoad { index } => chunk.write_u8(*index),
             OpCodeWithArgs::PopN { count } => chunk.write_u8(*count),
             OpCodeWithArgs::CopyN { stack_index } => chunk.write_u8(*stack_index),
@@ -336,7 +465,30 @@ impl OpCodeWithArgs {
                 OpCodeWithArgs::MemorySet {
                     register_index: args[0].parse().map_err(|_| "Invalid register index")?
                 }
-            }
+            },
+            "MEMORY_POP" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::MemoryPop
+            },
+            "MEMORY_LEN" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::MemoryLen
+            },
+            "MEMORY_TO_OWNED" => {
+                if args.len() != 1 {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::MemoryToOwned {
+                    register_index: args[0].parse().map_err(|_| "Invalid register index")?
+                }
+            },
             "SUBLOAD" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
@@ -368,7 +520,14 @@ impl OpCodeWithArgs {
                 }
 
                 OpCodeWithArgs::Copy
-            }
+            },
+            "TO_OWNED" => {
+                if !args.is_empty() {
+                    return Err("Invalid args count");
+                }
+
+                OpCodeWithArgs::ToOwned
+            },
             "COPY_N" => {
                 if args.len() != 1 {
                     return Err("Invalid args count");
@@ -812,5 +971,83 @@ impl FromStr for OpCodeWithArgs {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         OpCodeWithArgs::from_str_with_labels(s, &[], &[])
+    }
+}
+
+impl fmt::Display for OpCodeWithArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpCodeWithArgs::Constant { index } => write!(f, "CONSTANT {}", index),
+            OpCodeWithArgs::MemoryLoad { register_index } => write!(f, "MEMORY_LOAD {}", register_index),
+            OpCodeWithArgs::MemorySet { register_index } => write!(f, "MEMORY_SET {}", register_index),
+            OpCodeWithArgs::MemoryPop => write!(f, "MEMORY_POP"),
+            OpCodeWithArgs::MemoryLen => write!(f, "MEMORY_LEN"),
+            OpCodeWithArgs::MemoryToOwned { register_index } => write!(f, "MEMORY_TO_OWNED {}", register_index),
+            OpCodeWithArgs::SubLoad { index } => write!(f, "SUBLOAD {}", index),
+            OpCodeWithArgs::Pop => write!(f, "POP"),
+            OpCodeWithArgs::PopN { count } => write!(f, "POP_N {}", count),
+            OpCodeWithArgs::Copy => write!(f, "COPY"),
+            OpCodeWithArgs::CopyN { stack_index } => write!(f, "COPY_N {}", stack_index),
+            OpCodeWithArgs::ToOwned => write!(f, "TO_OWNED"),
+            OpCodeWithArgs::Swap { stack_index } => write!(f, "SWAP {}", stack_index),
+            OpCodeWithArgs::Swap2 { a_stack_index, b_stack_index } => write!(f, "SWAP2 {} {}", a_stack_index, b_stack_index),
+            OpCodeWithArgs::Jump { addr } => write!(f, "JUMP {}", addr),
+            OpCodeWithArgs::JumpIfFalse { addr } => write!(f, "JUMP_IF_FALSE {}", addr),
+            OpCodeWithArgs::IterableLength => write!(f, "ITERABLE_LENGTH"),
+            OpCodeWithArgs::IteratorBegin => write!(f, "ITERATOR_BEGIN"),
+            OpCodeWithArgs::IteratorNext { addr } => write!(f, "ITERATOR_NEXT {}", addr),
+            OpCodeWithArgs::IteratorEnd => write!(f, "ITERATOR_END"),
+            OpCodeWithArgs::Return => write!(f, "RETURN"),
+            OpCodeWithArgs::ArrayCall => write!(f, "ARRAY_CALL"),
+            OpCodeWithArgs::Cast { primitive_type_id } => write!(f, "CAST {}", primitive_type_id),
+            OpCodeWithArgs::InvokeChunk { chunk_id, args_count } => write!(f, "INVOKE_CHUNK {} {}", chunk_id, args_count),
+            OpCodeWithArgs::SysCall { sys_call_id } => write!(f, "SYS_CALL {}", sys_call_id),
+            OpCodeWithArgs::NewObject { length } => write!(f, "NEW_OBJECT {}", length),
+            OpCodeWithArgs::NewRange => write!(f, "NEW_RANGE"),
+            OpCodeWithArgs::NewMap { length } => write!(f, "NEW_MAP {}", length),
+
+            // Operators
+            OpCodeWithArgs::Add => write!(f, "ADD"),
+            OpCodeWithArgs::Sub => write!(f, "SUB"),
+            OpCodeWithArgs::Mul => write!(f, "MUL"),
+            OpCodeWithArgs::Div => write!(f, "DIV"),
+            OpCodeWithArgs::Mod => write!(f, "MOD"),
+            OpCodeWithArgs::Pow => write!(f, "POW"),
+            OpCodeWithArgs::BitwiseAnd => write!(f, "BITWISE_AND"),
+            OpCodeWithArgs::BitwiseOr => write!(f, "BITWISE_OR"),
+            OpCodeWithArgs::BitwiseXor => write!(f, "BITWISE_XOR"),
+            OpCodeWithArgs::BitwiseShl => write!(f, "BITWISE_SHL"),
+            OpCodeWithArgs::BitwiseShr => write!(f, "BITWISE_SHR"),
+
+            OpCodeWithArgs::And => write!(f, "AND"),
+            OpCodeWithArgs::Or => write!(f, "OR"),
+            OpCodeWithArgs::Eq => write!(f, "EQ"),
+            OpCodeWithArgs::Neg => write!(f, "NEG"),
+            OpCodeWithArgs::Gt => write!(f, "GT"),
+            OpCodeWithArgs::Lt => write!(f, "LT"),
+            OpCodeWithArgs::Gte => write!(f, "GTE"),
+            OpCodeWithArgs::Lte => write!(f, "LTE"),
+
+            // Assign operators
+            OpCodeWithArgs::Assign => write!(f, "ASSIGN"),
+            OpCodeWithArgs::AssignAdd => write!(f, "ASSIGN_ADD"),
+            OpCodeWithArgs::AssignSub => write!(f, "ASSIGN_SUB"),
+            OpCodeWithArgs::AssignMul => write!(f, "ASSIGN_MUL"),
+            OpCodeWithArgs::AssignDiv => write!(f, "ASSIGN_DIV"),
+            OpCodeWithArgs::AssignMod => write!(f, "ASSIGN_MOD"),
+            OpCodeWithArgs::AssignPow => write!(f, "ASSIGN_POW"),
+            OpCodeWithArgs::AssignBitwiseAnd => write!(f, "ASSIGN_AND"),
+            OpCodeWithArgs::AssignBitwiseOr => write!(f, "ASSIGN_OR"),
+            OpCodeWithArgs::AssignXor => write!(f, "ASSIGN_XOR"),
+            OpCodeWithArgs::AssignShl => write!(f, "ASSIGN_SHL"),
+            OpCodeWithArgs::AssignShr => write!(f, "ASSIGN_SHR"),
+
+            OpCodeWithArgs::Inc => write!(f, "INC"),
+            OpCodeWithArgs::Dec => write!(f, "DEC"),
+            OpCodeWithArgs::Flatten => write!(f, "FLATTEN"),
+            OpCodeWithArgs::Match { magic_byte, addr } => write!(f, "MATCH {} {}", magic_byte, addr),
+            OpCodeWithArgs::DynamicCall { args_count } => write!(f, "DYNAMIC_CALL {}", args_count),
+            OpCodeWithArgs::CaptureContext => write!(f, "CAPTURE_CONTEXT"),
+        }
     }
 }

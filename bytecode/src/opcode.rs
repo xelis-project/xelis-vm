@@ -8,7 +8,7 @@ pub enum OpCode {
     // pop, set in registers[index]
     MemorySet,
     // pop from registers and push in stack
-    // If there is no 
+    // If there is no register, panic
     MemoryPop,
     // Return u16 memory len
     // u32 is returned because memory/pointers can't be bigger than that
@@ -184,7 +184,7 @@ impl OpCode {
             1 => OpCode::MemoryLoad,
             2 => OpCode::MemorySet,
             3 => OpCode::MemoryPop,
-            4 => OpCode::MemoryPop,
+            4 => OpCode::MemoryLen,
             5 => OpCode::MemoryToOwned,
 
             6 => OpCode::SubLoad,

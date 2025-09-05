@@ -1,4 +1,5 @@
 mod opcode;
+mod disassembler;
 
 use log::{debug, trace};
 use opcode::OpCodeWithArgs;
@@ -6,6 +7,8 @@ use opcode::OpCodeWithArgs;
 use thiserror::Error;
 use xelis_types::Constant;
 use xelis_bytecode::{Access, Chunk, Module};
+
+pub use disassembler::*;
 
 #[derive(Debug, Error)]
 pub enum AssemblerError<'a> {

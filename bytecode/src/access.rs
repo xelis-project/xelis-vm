@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -14,4 +16,15 @@ pub enum Access {
     },
     // Program entry
     Entry,
+}
+
+impl fmt::Display for Access {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::All => writeln!(f, "all"),
+            Self::Entry => writeln!(f, "entry"),
+            Self::Internal => writeln!(f, "internal"),
+            Self::Hook { id } => writeln!(f, "hook {id}"),
+        }
+    }
 }
