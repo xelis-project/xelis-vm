@@ -21,10 +21,10 @@ pub enum Access {
 impl fmt::Display for Access {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::All => writeln!(f, "all"),
-            Self::Entry => writeln!(f, "entry"),
-            Self::Internal => writeln!(f, "internal"),
-            Self::Hook { id } => writeln!(f, "hook {id}"),
+            Self::All => write!(f, "all"),
+            Self::Entry => write!(f, "entry"),
+            Self::Internal => write!(f, "internal"),
+            Self::Hook { id } => write!(f, "hook {id}"),
         }
     }
 }

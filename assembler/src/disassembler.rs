@@ -62,7 +62,7 @@ mod tests {
     use crate::{Assembler, Disassembler};
 
     #[test]
-    fn test_assemble() {
+    fn test_disassemble() {
         let source = "
             #chunk0 internal
             CONSTANT 0
