@@ -53,7 +53,7 @@ impl fmt::Display for Dump {
             .collect::<Vec<String>>()
             .join("\n");
         
-        writeln!(f, "{}", v)
+        write!(f, "{}", v)
     }
 }
 
@@ -63,12 +63,12 @@ mod tests {
 
     #[test]
     fn test_assemble() {
-        let source = r#"
-            #main
+        let source = "
+            #chunk0 internal
             CONSTANT 0
             COPY
             ADD
-        "#;
+        ";
 
         let assembler = Assembler::new(source);
         let module = assembler.assemble().unwrap();
@@ -76,6 +76,6 @@ mod tests {
         let mut disassembler = Disassembler::new(&module);
         let result = disassembler.disasemble().unwrap();
 
-        println!("{}", result.to_string());
+        assert_eq!(result.to_string(), source.trim().replace("  ", ""));
     }
 }
