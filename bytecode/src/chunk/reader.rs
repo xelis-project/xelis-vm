@@ -1,6 +1,7 @@
-use xelis_bytecode::OpCode;
+use thiserror::Error;
 use xelis_types::Type;
-use crate::VMError;
+use crate::OpCode;
+
 use super::Chunk;
 
 // Read instructions from a chunk
@@ -8,6 +9,18 @@ use super::Chunk;
 pub struct ChunkReader<'a> {
     chunk: &'a Chunk,
     ip: usize
+}
+
+#[derive(Debug, Clone, Copy, Error)]
+pub enum ChunkReaderError {
+    #[error("invalid opcode")]
+    InvalidOpCode,
+    #[error("unexpected end of chunk")]
+    EndOfChunk,
+    #[error("missing instruction at requested index")]
+    MissingInstruction,
+    #[error("invalid primitive type from byte")]
+    InvalidPrimitiveType,
 }
 
 impl<'a> ChunkReader<'a> {
@@ -27,9 +40,9 @@ impl<'a> ChunkReader<'a> {
 
     // Set the current index in our reader
     #[inline]
-    pub fn set_index(&mut self, index: usize) -> Result<(), VMError> {
+    pub fn set_index(&mut self, index: usize) -> Result<(), ChunkReaderError> {
         if self.chunk.get_instructions().len() < index {
-            return Err(VMError::OutOfBounds);
+            return Err(ChunkReaderError::EndOfChunk);
         }
 
         self.ip = index;
@@ -39,9 +52,9 @@ impl<'a> ChunkReader<'a> {
     // Advance the index by a given amount
     // Check that we don't go out of bounds
     #[inline]
-    pub fn advance(&mut self, amount: usize) -> Result<(), VMError> {
+    pub fn advance(&mut self, amount: usize) -> Result<(), ChunkReaderError> {
         if self.ip + amount > self.chunk.get_instructions().len() {
-            return Err(VMError::OutOfBounds);
+            return Err(ChunkReaderError::EndOfChunk);
         }
 
         self.ip += amount;
@@ -50,14 +63,14 @@ impl<'a> ChunkReader<'a> {
 
     // Get the op code at the given index
     #[inline]
-    pub fn read_op_code(&mut self) -> Result<OpCode, VMError> {
+    pub fn read_op_code(&mut self) -> Result<OpCode, ChunkReaderError> {
         let byte = self.read_u8()?;
-        OpCode::from_byte(byte).ok_or(VMError::InvalidOpCode)
+        OpCode::from_byte(byte).ok_or(ChunkReaderError::InvalidOpCode)
     }
 
     // Read a bool from the instructions
     #[inline]
-    pub fn read_bool(&mut self) -> Result<bool, VMError> {
+    pub fn read_bool(&mut self) -> Result<bool, ChunkReaderError> {
         self.read_u8().map(|v| v == 1)
     }
 
@@ -78,10 +91,10 @@ impl<'a> ChunkReader<'a> {
 
     // Read a u8 from the instructions
     #[inline]
-    pub fn read_u8(&mut self) -> Result<u8, VMError> {
+    pub fn read_u8(&mut self) -> Result<u8, ChunkReaderError> {
         let byte = self.chunk.get_instruction_at(self.ip)
             .copied()
-            .ok_or(VMError::MissingInstruction)?;
+            .ok_or(ChunkReaderError::MissingInstruction)?;
 
         self.ip += 1;
 
@@ -90,32 +103,32 @@ impl<'a> ChunkReader<'a> {
 
     // Read a &[u8] from the instructions
     #[inline]
-    pub fn read_bytes(&mut self, length: usize) -> Result<&[u8], VMError> {
+    pub fn read_bytes(&mut self, length: usize) -> Result<&[u8], ChunkReaderError> {
         let bytes = self.chunk.get_instructions_at(self.ip, length)
-            .ok_or(VMError::MissingInstruction)?;
+            .ok_or(ChunkReaderError::MissingInstruction)?;
         self.ip += length;
         Ok(bytes)
     }
 
     // Read a u16 from the instructions
     #[inline]
-    pub fn read_u16(&mut self) -> Result<u16, VMError> {
+    pub fn read_u16(&mut self) -> Result<u16, ChunkReaderError> {
         let bytes = self.read_bytes(2)?;
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
     }
 
     // Read a u32 from the instructions
     #[inline]
-    pub fn read_u32(&mut self) -> Result<u32, VMError> {
+    pub fn read_u32(&mut self) -> Result<u32, ChunkReaderError> {
         let bytes = self.read_bytes(4)?;
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     // Read a primitive type from the instructions
     #[inline]
-    pub fn read_type(&mut self) -> Result<Type, VMError> {
+    pub fn read_type(&mut self) -> Result<Type, ChunkReaderError> {
         let type_id = self.read_u8()?;
-        Type::primitive_type_from_byte(type_id).ok_or(VMError::InvalidPrimitiveType)
+        Type::primitive_type_from_byte(type_id).ok_or(ChunkReaderError::InvalidPrimitiveType)
     }
 
     // Check if we have another instruction to execute

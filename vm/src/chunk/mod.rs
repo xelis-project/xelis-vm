@@ -1,12 +1,7 @@
-mod reader;
-
 use std::{cmp::Ordering, mem};
-use xelis_bytecode::Chunk;
 use xelis_types::StackValue;
 
 use super::{iterator::ValueIterator, VMError};
-
-pub use reader::ChunkReader;
 
 // u16::MAX registers maximum
 const REGISTERS_SIZE: usize = u16::MAX as usize;

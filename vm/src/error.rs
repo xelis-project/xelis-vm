@@ -1,9 +1,14 @@
 use thiserror::Error;
+use xelis_bytecode::ChunkReaderError;
 use xelis_environment::EnvironmentError;
 use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error(transparent)]
+    ChunkError(#[from] ChunkReaderError),
+    #[error("unknown op code called")]
+    UnknownOpCode,
     #[error("iterator overflow")]
     IteratorOverflow,
     #[error("chunk manager not found with id {0}")]
@@ -52,12 +57,6 @@ pub enum VMError {
     ChunkNotEntry,
     #[error("struct was not found")]
     StructNotFound,
-    #[error("missing instruction in module")]
-    MissingInstruction,
-    #[error("invalid opcode")]
-    InvalidOpCode,
-    #[error("invalid primitive type")]
-    InvalidPrimitiveType,
     #[error("register {0} was not found")]
     RegisterNotFound(usize),
     #[error("empty register")]

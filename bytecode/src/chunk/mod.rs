@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+mod reader;
 
+use serde::{Deserialize, Serialize};
 use super::OpCode;
+pub use self::reader::*;
 
 // Each chunk is a collection of opcodes and constants
 // It represent a function or a block of code
