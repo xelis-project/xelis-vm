@@ -2362,3 +2362,25 @@ fn test_generic_types_foreach() {
 
     assert_eq!(run_code(code), Primitive::U64(35));
 }
+
+#[test]
+fn test_pop_injection_on_jump() {
+    // key.len() returns a value which has to be popped
+    // it is done by our automatic dangling values handler
+    // but because the if is configured as a jump, it may create
+    // a shift in the actual index of the instructions
+    let code = r#"
+        entry main() {
+            let key: string = "hello"
+            key.len();
+
+            if key == "aaaa" {
+                key.len();
+            }
+
+            return 0;
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}

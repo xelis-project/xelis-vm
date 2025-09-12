@@ -468,9 +468,10 @@ impl<'a, M> Compiler<'a, M> {
                         if op.is_assignation() {
                             self.function_param_copy_on_assign(chunk, left);
                         }
-                        self.compile_expr(chunk, chunk_id, left)?;
 
+                        self.compile_expr(chunk, chunk_id, left)?;
                         self.compile_expr(chunk, chunk_id, right)?;
+
                         let opcode = Self::map_operator_to_opcode(op)?;
                         chunk.emit_opcode(opcode);
 
@@ -512,7 +513,7 @@ impl<'a, M> Compiler<'a, M> {
 
     // Handle dangling values on the stack if any
     fn handle_dangle_values_on_stack(&mut self, chunk: &mut Chunk) -> Result<(), CompilerError> {
-        let on_stack = self.values_on_stack.pop()
+        let mut on_stack = self.values_on_stack.pop()
             .ok_or(CompilerError::ExpectedStackScope)?;
 
         // if we have dangling values on the stack
@@ -525,20 +526,27 @@ impl<'a, M> Compiler<'a, M> {
 
             trace!("Previous stack: {}, Current stack: {}", previous_stack, stack_len);
 
-            let dangling = stack_len.checked_sub(previous_stack)
-                .ok_or(CompilerError::LessValueOnStackThanPrevious)?;
-            
-            if dangling > 0 {
-                warn!("Dangling values on the stack: {}", dangling);
-                if dangling > u8::MAX as usize {
-                    return Err(CompilerError::TooMuchDanglingValueOnStack);
-                }
+            Self::handle_dangle_values_internal(&mut on_stack, previous_stack, chunk)?;
+        }
 
-                // Reverse it, otherwise it will be shifted
-                for index in on_stack.into_iter().take(dangling).rev() {
-                    trace!("inject OpCode Pop at {}", index + 1);
-                    chunk.inject_opcode_at(OpCode::Pop, index + 1);
-                }
+        Ok(())
+    }
+
+    fn handle_dangle_values_internal(on_stack: &mut Vec<usize>, previous_stack: usize, chunk: &mut Chunk) -> Result<(), CompilerError> {
+        let stack_len = on_stack.len();
+        let dangling = stack_len.checked_sub(previous_stack)
+            .ok_or(CompilerError::LessValueOnStackThanPrevious)?;
+
+        if dangling > 0 {
+            warn!("Dangling values on the stack: {}", dangling);
+            if dangling > u8::MAX as usize {
+                return Err(CompilerError::TooMuchDanglingValueOnStack);
+            }
+
+            // Reverse it, otherwise it will be shifted
+            for index in on_stack.drain(..dangling).rev() {
+                trace!("inject OpCode Pop at {}", index + 1);
+                chunk.inject_opcode_at(OpCode::Pop, index + 1);
             }
         }
 
@@ -603,6 +611,7 @@ impl<'a, M> Compiler<'a, M> {
 
         Ok(())
     }
+
     // Compile a single statement
     fn compile_statement(&mut self, chunk: &mut Chunk, chunk_id: u16, statement: &Statement) -> Result<(), CompilerError> {
         trace!("compile statement {:?}", statement);
@@ -707,7 +716,6 @@ impl<'a, M> Compiler<'a, M> {
                     chunk.emit_opcode(OpCode::Pop);
                     self.decrease_values_on_stack()?;
                 }
-
 
                 // Patch every pattern in case of success
                 let jump_addr = chunk.index();
@@ -889,6 +897,27 @@ impl<'a, M> Compiler<'a, M> {
                 last.push(chunk.last_index());
             }
         };
+
+        // Prevent dangling values between statements
+        // for that we basically do the same thing as when popping a scope
+        // but without popping the stack scope
+        // we handle every potential dangling values that happened
+        // in the current statement
+        let stack_len = self.values_on_stack.last()
+            .map(|v| v.len());
+
+        let previous_stack = stack_len.and_then(|stack_len| stack_len.checked_sub(1)
+            .and_then(|v| {
+                self.values_on_stack.get(v)
+                    .map(|v| v.len())
+                    .filter(|v| *v != stack_len)
+            }))
+            .unwrap_or(0);
+
+        let on_stack = self.values_on_stack.last_mut()
+            .ok_or(CompilerError::ExpectedStackScope)?;
+
+        Self::handle_dangle_values_internal(on_stack, previous_stack, chunk)?;
 
         Ok(())
     }

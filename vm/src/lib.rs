@@ -48,7 +48,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
     pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
         self.modules.last()
             .and_then(|m| m.module.get_constant_at(id))
-            .ok_or(VMError::ConstantNotFound)
+            .ok_or(VMError::ConstantNotFound(id))
     }
 
     // Get the current module with its associated metadata

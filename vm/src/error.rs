@@ -61,8 +61,8 @@ pub enum VMError {
     RegisterNotFound(usize),
     #[error("empty register")]
     EmptyRegister,
-    #[error("constant not found")]
-    ConstantNotFound,
+    #[error("constant not found at {0}")]
+    ConstantNotFound(usize),
     #[error("unsupported cast type")]
     UnsupportedCastType,
     #[error("unsupported syscall operation '{0}'")]
