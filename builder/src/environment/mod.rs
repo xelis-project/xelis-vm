@@ -151,17 +151,17 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     }
 
     // functions mapper, used to find the function id
-    pub fn get_functions_mapper(&self) -> &FunctionMapper {
+    pub fn get_functions_mapper(&self) -> &FunctionMapper<'a> {
         &self.functions_mapper
     }
 
     // struct manager, used to find the struct id
-    pub fn get_struct_manager(&self) -> &StructManager {
+    pub fn get_struct_manager(&self) -> &StructManager<'a> {
         &self.struct_manager
     }
 
     // enum manager, used to find the enum id
-    pub fn get_enum_manager(&self) -> &EnumManager {
+    pub fn get_enum_manager(&self) -> &EnumManager<'a> {
         &self.enum_manager
     }
 

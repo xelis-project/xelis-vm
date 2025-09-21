@@ -254,8 +254,8 @@ pub enum Token<'a> {
     Any,
 }
 
-impl Token<'_> {
-    pub fn value_of(s: &str) -> Option<Token> {
+impl<'a> Token<'a> {
+    pub fn value_of(s: &'a str) -> Option<Token<'a>> {
         use Token::*;
 
         Some(match s {

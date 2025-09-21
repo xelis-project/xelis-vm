@@ -109,7 +109,7 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // This look for the exact signature and for a signature on type T(0)
-    pub fn get_by_compatible_signature(&self, name: &str, on_type: Option<&Type>, instance: bool) -> Option<&Function> {
+    pub fn get_by_compatible_signature<'b>(&'b self, name: &'b str, on_type: Option<&'b Type>, instance: bool) -> Option<&'b Function<'a>> {
         if let Ok(id) = self.get_by_signature(name, on_type) {
             return self.get_function(&id)
         }

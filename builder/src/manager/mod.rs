@@ -119,7 +119,7 @@ impl<'a, T: Builder> TypeManager<'a, T> {
         self.types.iter().find(|v| v.get_type() == _type).ok_or(BuilderError::TypeNotFound)   
     }
 
-    pub fn get_name_by_ref(&self, _type: &T::Type) -> Result<&Cow<str>, BuilderError> {
+    pub fn get_name_by_ref<'b>(&'b self, _type: &T::Type) -> Result<&'b Cow<'a, str>, BuilderError> {
         if let Some(parent) = self.parent {
             if let Ok(s) = parent.get_name_by_ref(_type) {
                 return Ok(s);
