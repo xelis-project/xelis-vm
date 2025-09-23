@@ -659,10 +659,12 @@ impl<'a, M> Compiler<'a, M> {
                         MatchStatement::Cond(expr) => {
                             self.compile_expr(chunk, chunk_id, expr)?;
                             chunk.emit_opcode(OpCode::Match);
+                            // magic byte set to zero for conditions
                             chunk.write_u8(0);
                         },
                         MatchStatement::Variant(_, ty) => {
                             chunk.emit_opcode(OpCode::Match);
+                            // magic byte set to > 0 for variant id
                             chunk.write_u8(ty.variant_id() + 1);
                         }
                     }
@@ -681,10 +683,10 @@ impl<'a, M> Compiler<'a, M> {
                             self.memstore(chunk)?;
                         }
 
-                        // pop the magic byte is also popped with following
-                        // opcode
                     }
 
+                    // pop the magic byte is also popped with following
+                    // opcode
                     chunk.emit_opcode(OpCode::Pop);
                     // One is used for the jump if false
                     self.decrease_values_on_stack()?;
