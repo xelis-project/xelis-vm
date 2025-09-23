@@ -73,6 +73,27 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.max_gas = gas;
     }
 
+    // Increase the gas limit by N
+    #[inline(always)]
+    pub fn increase_gas_limit(&mut self, gas: u64) -> Result<(), EnvironmentError> {
+         self.max_gas = self.max_gas.checked_add(gas)
+            .ok_or(EnvironmentError::GasOverflow)?;
+
+        Ok(())
+    }
+
+    // Get current gas limit
+    #[inline(always)]
+    pub fn get_gas_limit(&self) -> u64 {
+        self.max_gas
+    }
+
+    // Get gas left
+    #[inline(always)]
+    pub fn get_gas_left(&self) -> u64 {
+        self.max_gas - self.current_gas
+    }
+
     // Set the price per byte of memory
     #[inline(always)]
     pub fn set_memory_price_per_byte(&mut self, price: u64) {
