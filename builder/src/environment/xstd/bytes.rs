@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
 use xelis_types::{Constant, Primitive, Type, ValueCell};
 
@@ -15,6 +16,9 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("first", Some(Type::Bytes), vec![], FunctionHandler::Sync(first), 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("last", Some(Type::Bytes), vec![], FunctionHandler::Sync(last), 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("to_array", Some(Type::Bytes), vec![], FunctionHandler::Sync(to_array), 1, Some(Type::Array(Box::new(Type::U8))));
+    
+    env.register_native_function("to_hex", Some(Type::Bytes), vec![], FunctionHandler::Sync(to_hex), 1, Some(Type::String));
+    env.register_static_function("from_hex", Type::Bytes, vec![("value", Type::String)], FunctionHandler::Sync(from_hex), 1, Some(Type::Bytes));
 
     env.register_const_function("new", Type::Bytes, vec![], |_| Ok(Constant::Bytes(Vec::new())));
     env.register_const_function("from", Type::Bytes, vec![("values", Type::Array(Box::new(Type::U8)))], |values| {
@@ -149,4 +153,25 @@ fn to_array<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> F
         .collect();
 
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))
+}
+
+fn from_hex<M>(_: FnInstance, params: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+    let value = params[0].as_string()?;
+
+    context.increase_gas_usage(value.len() as _)?;
+
+    let values = hex::decode(&value)
+        .context("decoding hex")?;
+
+    Ok(SysCallResult::Return(ValueCell::Bytes(values).into()))
+}
+
+fn to_hex<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+    let zelf = zelf?;
+    let bytes = zelf.as_bytes()?;
+
+    context.increase_gas_usage(bytes.len() as _)?;
+
+    let encoded = hex::encode(&bytes);
+    Ok(SysCallResult::Return(Primitive::String(encoded).into()))
 }
