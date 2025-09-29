@@ -92,7 +92,7 @@ macro_rules! from_endian_bytes {
             $env.register_static_function(
                 stringify!([<from_ $endian _bytes>]),
                 Type::$t,
-                vec![],
+                vec![("bytes", Type::Bytes)],
                 FunctionHandler::Sync([<from_ $endian _bytes_ $f>]),
                 10,
                 Some(Type::$t)
