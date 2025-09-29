@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use xelis_environment::{
     SysCallResult,
     FunctionHandler,
@@ -78,6 +79,28 @@ macro_rules! to_endian_bytes {
     };
 }
 
+macro_rules! from_endian_bytes {
+    ($env: expr, $t: ident, $f: ident, $endian: ident) => {
+        paste! {
+            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+                let value = params[0].as_bytes()?;
+                let slice: &[u8] = &value;
+                let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().context("invalid bytes size")?);
+                Ok(SysCallResult::Return(Primitive::$t(v).into()))
+            }
+
+            $env.register_static_function(
+                stringify!([<from_ $endian _bytes>]),
+                Type::$t,
+                vec![],
+                FunctionHandler::Sync([<from_ $endian _bytes_ $f>]),
+                10,
+                Some(Type::$t)
+            );
+        }
+    };
+}
+
 macro_rules! register_leading_zeros {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
@@ -97,7 +120,6 @@ macro_rules! register_leading_zeros {
         }
     };
 }
-
 
 macro_rules! register_leading_ones {
     ($env: expr, $t: ident, $f: ident) => {
@@ -139,10 +161,13 @@ macro_rules! register_reverse_bits {
     };
 }
 
-macro_rules! register_to_endian_bytes {
+macro_rules! register_endian_bytes {
     ($env: expr, $t: ident, $f: ident) => {
         to_endian_bytes!($env, $t, $f, be);
         to_endian_bytes!($env, $t, $f, le);
+
+        from_endian_bytes!($env, $t, $f, be);
+        from_endian_bytes!($env, $t, $f, le);
     };
 }
 
@@ -231,11 +256,11 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
     // Register all 'to endian bytes' (be/le) functions for all types
     // Returns a Bytes type
-    register_to_endian_bytes!(env, U16, u16);
-    register_to_endian_bytes!(env, U32, u32);
-    register_to_endian_bytes!(env, U64, u64);
-    register_to_endian_bytes!(env, U128, u128);
-    register_to_endian_bytes!(env, U256, u256);
+    register_endian_bytes!(env, U16, u16);
+    register_endian_bytes!(env, U32, u32);
+    register_endian_bytes!(env, U64, u64);
+    register_endian_bytes!(env, U128, u128);
+    register_endian_bytes!(env, U256, u256);
 
     // Register leading zeros functions for all types
     register_leading_zeros!(env, U8, u8);
