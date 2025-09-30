@@ -6,6 +6,18 @@ The name of the language used is **Silex**, which its syntax is inspired by Rust
 Unlike other VMs, XVM is designed to be fully customizable (including the default std!), allowing you to define your own types, functions, structures, enums.
 It is also designed to directly include primitive types.
 
+XVM is designed to be fully deterministic, stable and correctly sandboxed to ensure performance and security without limiting its usage.
+It is also compatible with `async` operations for better integration within your systems.
+
+All the verifications are mainly made at the level of the Parser and compiler to check the conformity of the code to ensure correct code compilation into op codes program.
+Nonetheless, there is still a Validator available next to the VM to ensures types and programs are still well-formed against a required Environment before any execution.
+
+Thanks to this fully customizable Environment, you can define your own types, functions, structures, enums, and even override the default std functions if required.
+
+For more flexibility, an Opaque type is also available to handle your whole logic in Rust directly increasing performances and allowing to expose a clean API.
+
+File extension is `.slx` for the source code.
+
 ## Tasks
 
 Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
@@ -24,13 +36,16 @@ The faster the VM is, the more we can have reduced cost for running a Smart Cont
 
 ## Crates
 
-- `vm` is the main crate that contains Virtual Machine to execute a (op-code) compiled program.
-- `assembler` is the crate that contains the assembler to convert an source code of raw instructions into a program.
-- `compiler` is the crate that contains the compiler to convert an AST (Abstract Syntax Tree) program into an op-code program.
-- `parser` is the crate that contains the parser to convert a list of tokens into an AST (Abstract Syntax Tree) program.
-- `lexer` is the crate that contains the lexer to convert a source code into a list of tokens.
+- `vm`: Virtual Machine to execute a (op-code) compiled program.
+- `assembler`: Assembler to convert an source code of raw instructions into a program.
+- `ast`: Convert a source code file into a AST (Abstract Syntax Tree) to create a program of statements/expressions.
+- `compiler`: Compiler to convert an AST (Abstract Syntax Tree) program into an op-code program.
+- `parser`: Parser to convert a list of tokens into an AST (Abstract Syntax Tree) program.
+- `lexer`: Lexer to convert a source code into a list of tokens.
+- `environment`: Environment types used by the VM, Compiler and Parser to support a program based on the std provided.
+- `builder`: Environment builder to create your own std, with a (limited) default one included.
 
-All the verifications are mainly made at the level of the Parser to check the conformity of the code to be interpreted.
+## Types
 
 The different primitive types are:
 - `u8` (unsigned 8 bits)
@@ -49,11 +64,6 @@ The different primitive types are:
 - `bytes` is a raw data type allowing to store any kind of data (like images, files..) but also to do faster computations. Its representing a `Vec<u8>` efficiently.
 
 Arrays of any type are also supported, but they must contain only one type of value (example: `u64[]` and with multi-depth too).
-
-Also note that thanks to the fully customizable Environment, you can define your own types, functions, structures, enums, and even override the default std functions.
-And for more flexibility, an Opaque type is also available to handle your whole logic in Rust directly.
-
-File extension is `.slx` for the source code.
 
 ## OpCodes
 
