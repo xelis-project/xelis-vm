@@ -120,6 +120,60 @@ impl U256 {
         self.0.iter().map(|&x| x.count_zeros()).sum()
     }
 
+    /// Rotates the bits to the left by `shift` amount.
+    #[inline]
+    pub fn rotate_left(self, shift: u32) -> U256 {
+        let s = shift % 256;
+        if s == 0 {
+            return self;
+        }
+
+        let word_shift = (s / 64) as usize;
+        let bit_shift = (s % 64) as u32;
+
+        let mut result = [0u64; 4];
+
+        for i in 0..4 {
+            // source index wraps around
+            let src = (i + 4 - word_shift) % 4;
+            result[i] = self.0[src] << bit_shift;
+
+            if bit_shift > 0 {
+                let src2 = (src + 3) % 4; // next lower chunk (wrapping around)
+                result[i] |= self.0[src2] >> (64 - bit_shift);
+            }
+        }
+
+        U256(result)
+    }
+
+    /// Rotates the bits to the right by `shift` amount.
+    #[inline]
+    pub fn rotate_right(self, shift: u32) -> U256 {
+        let s = shift % 256;
+        if s == 0 {
+            return self;
+        }
+
+        let word_shift = (s / 64) as usize;
+        let bit_shift = (s % 64) as u32;
+
+        let mut result = [0u64; 4];
+
+        for i in 0..4 {
+            // source index wraps around
+            let src = (i + word_shift) % 4;
+            result[i] = self.0[src] >> bit_shift;
+
+            if bit_shift > 0 {
+                let src2 = (src + 1) % 4; // next higher chunk (wrapping around)
+                result[i] |= self.0[src2] << (64 - bit_shift);
+            }
+        }
+
+        U256(result)
+    }
+
     /// Returns the number of bits needed to represent this number
     #[inline]
     pub fn bits(&self) -> u32 {

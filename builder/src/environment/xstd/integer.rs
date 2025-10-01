@@ -63,7 +63,7 @@ macro_rules! register_checked_fns {
     };
 }
 
-macro_rules! saturating_fn {
+macro_rules! integer_param_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
         paste! {
             fn [<saturating_ $op _ $f>]<M>(
@@ -77,7 +77,7 @@ macro_rules! saturating_fn {
                 let value = zelf?.[<as_ $f>]()?;
 
                 // Perform the operation with `saturating_$op`
-                let result = value.[<saturating_ $op>](other);
+                let result = value.[<$op>](other);
 
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
             }
@@ -98,11 +98,11 @@ macro_rules! saturating_fn {
 macro_rules! register_saturating_fns {
     ($env: expr, $t: ident, $f: ident) => {
         {
-            saturating_fn!($env, add, $t, $f, $f, 1);
-            saturating_fn!($env, sub, $t, $f, $f, 1);
-            saturating_fn!($env, mul, $t, $f, $f, 3);
-            saturating_fn!($env, div, $t, $f, $f, 3);
-            saturating_fn!($env, pow, $t, $f, u32, 35);
+            integer_param_fn!($env, saturating_add, $t, $f, $f, 1);
+            integer_param_fn!($env, saturating_sub, $t, $f, $f, 1);
+            integer_param_fn!($env, saturating_mul, $t, $f, $f, 3);
+            integer_param_fn!($env, saturating_div, $t, $f, $f, 3);
+            integer_param_fn!($env, saturating_pow, $t, $f, u32, 35);
         }
     };
 }
@@ -150,7 +150,7 @@ macro_rules! from_endian_bytes {
     };
 }
 
-macro_rules! integer_fn {
+macro_rules! integer_no_param_fn {
     ($env: expr, $t: ident, $f: ident, $func: ident) => {
         paste! {
             fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
@@ -172,13 +172,16 @@ macro_rules! integer_fn {
 
 macro_rules! integer_numbers {
     ($env: expr, $t: ident, $f: ident) => {
-        integer_fn!($env, $t, $f, leading_ones);
-        integer_fn!($env, $t, $f, trailing_ones);
-        integer_fn!($env, $t, $f, count_ones);
+        integer_no_param_fn!($env, $t, $f, leading_ones);
+        integer_no_param_fn!($env, $t, $f, trailing_ones);
+        integer_no_param_fn!($env, $t, $f, count_ones);
 
-        integer_fn!($env, $t, $f, leading_zeros);
-        integer_fn!($env, $t, $f, trailing_zeros);
-        integer_fn!($env, $t, $f, count_zeros);
+        integer_no_param_fn!($env, $t, $f, leading_zeros);
+        integer_no_param_fn!($env, $t, $f, trailing_zeros);
+        integer_no_param_fn!($env, $t, $f, count_zeros);
+
+        integer_param_fn!($env, rotate_left, $t, $f, u32, 20);
+        integer_param_fn!($env, rotate_right, $t, $f, u32, 20);
     };
 }
 
