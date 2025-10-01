@@ -86,6 +86,40 @@ impl U256 {
         256
     }
 
+    /// Returns the number of trailing zeros in this U256 value
+    #[inline]
+    pub fn trailing_zeros(&self) -> u32 {
+        for i in 0..4 {
+            if self.0[i] != 0 {
+                return (i as u32) * 64 + self.0[i].trailing_zeros();
+            }
+        }
+        256
+    }
+
+    /// Returns the number of trailing ones in this U256 value
+    #[inline]
+    pub fn trailing_ones(&self) -> u32 {
+        for i in 0..4 {
+            if self.0[i] != u64::MAX {
+                return (i as u32) * 64 + self.0[i].trailing_ones();
+            }
+        }
+        256
+    }
+
+    /// Returns the number of ones in the binary representation of this U256
+    #[inline]
+    pub fn count_ones(&self) -> u32 {
+        self.0.iter().map(|&x| x.count_ones()).sum()
+    }
+
+    /// Returns the number of zeros in the binary representation of this U256
+    #[inline]
+    pub fn count_zeros(&self) -> u32 {
+        self.0.iter().map(|&x| x.count_zeros()).sum()
+    }
+
     /// Returns the number of bits needed to represent this number
     #[inline]
     pub fn bits(&self) -> u32 {

@@ -150,43 +150,35 @@ macro_rules! from_endian_bytes {
     };
 }
 
-macro_rules! register_leading_zeros {
-    ($env: expr, $t: ident, $f: ident) => {
+macro_rules! integer_fn {
+    ($env: expr, $t: ident, $f: ident, $func: ident) => {
         paste! {
-            fn [<leading_zeros_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
-                Ok(SysCallResult::Return(Primitive::U32(value.leading_zeros()).into()))
+                Ok(SysCallResult::Return(Primitive::U32(value.[<$func>]()).into()))
             }
 
             $env.register_native_function(
-                "leading_zeros",
+                stringify!($func),
                 Some(Type::$t),
                 vec![],
-                FunctionHandler::Sync([<leading_zeros_ $f>]),
-                10,
+                FunctionHandler::Sync([<$f _ $func>]),
+                3,
                 Some(Type::U32)
             );
         }
     };
 }
 
-macro_rules! register_leading_ones {
+macro_rules! integer_numbers {
     ($env: expr, $t: ident, $f: ident) => {
-        paste! {
-            fn [<leading_ones_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
-                Ok(SysCallResult::Return(Primitive::U32(value.leading_ones()).into()))
-            }
+        integer_fn!($env, $t, $f, leading_ones);
+        integer_fn!($env, $t, $f, trailing_ones);
+        integer_fn!($env, $t, $f, count_ones);
 
-            $env.register_native_function(
-                "leading_ones",
-                Some(Type::$t),
-                vec![],
-                FunctionHandler::Sync([<leading_ones_ $f>]),
-                10,
-                Some(Type::U32)
-            );
-        }
+        integer_fn!($env, $t, $f, leading_zeros);
+        integer_fn!($env, $t, $f, trailing_zeros);
+        integer_fn!($env, $t, $f, count_zeros);
     };
 }
 
@@ -319,21 +311,13 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     register_endian_bytes!(env, U128, u128);
     register_endian_bytes!(env, U256, u256);
 
-    // Register leading zeros functions for all types
-    register_leading_zeros!(env, U8, u8);
-    register_leading_zeros!(env, U16, u16);
-    register_leading_zeros!(env, U32, u32);
-    register_leading_zeros!(env, U64, u64);
-    register_leading_zeros!(env, U128, u128);
-    register_leading_zeros!(env, U256, u256);
-
-    // Register leading zeros functions for all types
-    register_leading_ones!(env, U8, u8);
-    register_leading_ones!(env, U16, u16);
-    register_leading_ones!(env, U32, u32);
-    register_leading_ones!(env, U64, u64);
-    register_leading_ones!(env, U128, u128);
-    register_leading_ones!(env, U256, u256);
+    // Register zeros/ones functions
+    integer_numbers!(env, U8, u8);
+    integer_numbers!(env, U16, u16);
+    integer_numbers!(env, U32, u32);
+    integer_numbers!(env, U64, u64);
+    integer_numbers!(env, U128, u128);
+    integer_numbers!(env, U256, u256);
 
     // Register reverse bits functions for all types
     register_reverse_bits!(env, U8, u8);
