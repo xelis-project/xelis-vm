@@ -13,11 +13,13 @@ use paste::paste;
 use crate::EnvironmentBuilder;
 
 macro_rules! checked_fn {
-    ($env: expr, $op: ident, $t: ident, $f: ident) => {
+    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
         paste! {
-            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
-                let other = parameters.remove(0).into_owned().[<as_ $f>]()?;
+                let other = parameters[0]
+                    .as_ref()
+                    .[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
                 // Perform the operation with `checked_$op` as a method name
@@ -38,22 +40,26 @@ macro_rules! checked_fn {
                 vec![("other", Type::$t)],
                 // The function identifier
                 FunctionHandler::Sync([<checked_ $op _ $f>]),
-                2,
+                $cost,
                 Some(Type::Optional(Box::new(Type::$t)))
             );
         }
     };
 }
 
+
 // macro to register multiple operations for a specific type
 macro_rules! register_checked_fns {
     ($env: expr, $t: ident, $f: ident) => {
         {
-            checked_fn!($env, add, $t, $f);
-            checked_fn!($env, sub, $t, $f);
-            checked_fn!($env, mul, $t, $f);
-            checked_fn!($env, div, $t, $f);
-            checked_fn!($env, rem, $t, $f);
+            checked_fn!($env, add, $t, $f, $f, 1);
+            checked_fn!($env, sub, $t, $f, $f, 1);
+            checked_fn!($env, mul, $t, $f, $f, 3);
+            checked_fn!($env, div, $t, $f, $f, 8);
+            checked_fn!($env, rem, $t, $f, $f, 8);
+            checked_fn!($env, pow, $t, $f, u32, 35);
+            checked_fn!($env, shr, $t, $f, u32, 5);
+            checked_fn!($env, shl, $t, $f, u32, 5);
         }
     };
 }

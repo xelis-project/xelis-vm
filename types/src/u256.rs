@@ -119,6 +119,28 @@ impl U256 {
         result
     }
 
+    /// Raises self to the power of `exp`, returning `None` if overflow occurs.
+    pub fn checked_pow(self, exp: u32) -> Option<U256> {
+        if exp == 0 {
+            return Some(U256::ONE);
+        }
+
+        let mut base = self;
+        let mut result = U256::ONE;
+        let mut exp_remaining = exp;
+
+        while exp_remaining > 0 {
+            if exp_remaining & 1 == 1 {
+                result = result.checked_mul(base)?;
+            }
+
+            base = base.checked_mul(base)?;
+            exp_remaining >>= 1;
+        }
+
+        Some(result)
+    }
+
     /// Create a new U256 from a string and a radix.
     pub fn from_str_radix(s: &str, radix: u32) -> Result<U256, ()> {
         let mut result = U256::ZERO;
@@ -441,6 +463,46 @@ impl U256 {
     pub fn low_u128(&self) -> u128 {
         (self.0[0] as u128) | ((self.0[1] as u128) << 64)
     }
+
+    #[inline]
+    pub fn checked_shr(self, shift: u32) -> Option<Self> {
+        if shift >= 256 {
+            return None;
+        }
+
+        let mut result = [0u64; 4];
+        let word_shift = (shift / 64) as usize;
+        let bit_shift = (shift % 64) as u32;
+
+        for i in 0..(4 - word_shift) {
+            result[i] = self.0[i + word_shift] >> bit_shift;
+            if bit_shift > 0 && i + word_shift + 1 < 4 {
+                result[i] |= self.0[i + word_shift + 1] << (64 - bit_shift);
+            }
+        }
+
+        Some(U256(result))
+    }
+
+    #[inline]
+    pub fn checked_shl(self, shift: u32) -> Option<Self> {
+        if shift >= 256 {
+            return None;
+        }
+
+        let mut result = [0u64; 4];
+        let word_shift = (shift / 64) as usize;
+        let bit_shift = (shift % 64) as u32;
+
+        for i in (word_shift..4).rev() {
+            result[i] = self.0[i - word_shift] << bit_shift;
+            if bit_shift > 0 && i > word_shift {
+                result[i] |= self.0[i - word_shift - 1] >> (64 - bit_shift);
+            }
+        }
+
+        Some(U256(result))
+    }
 }
 
 impl FromStr for U256 {
@@ -533,22 +595,7 @@ impl Shr<u32> for U256 {
 
     #[inline]
     fn shr(self, shift: u32) -> Self {
-        if shift >= 256 {
-            return U256([0; 4]);
-        }
-
-        let mut result = [0u64; 4];
-        let word_shift = (shift / 64) as usize;
-        let bit_shift = shift % 64;
-
-        for i in 0..(4 - word_shift) {
-            result[i] = self.0[i + word_shift] >> bit_shift;
-            if bit_shift > 0 && i + word_shift + 1 < 4 {
-                result[i] |= self.0[i + word_shift + 1] << (64 - bit_shift);
-            }
-        }
-
-        U256(result)
+        self.checked_shr(shift).unwrap_or(U256::ZERO)
     }
 }
 
@@ -557,22 +604,7 @@ impl Shl<u32> for U256 {
 
     #[inline]
     fn shl(self, shift: u32) -> Self {
-        if shift >= 256 {
-            return U256([0; 4]);
-        }
-
-        let mut result = [0u64; 4];
-        let word_shift = (shift / 64) as usize;
-        let bit_shift = shift % 64;
-
-        for i in (word_shift..4).rev() {
-            result[i] = self.0[i - word_shift] << bit_shift;
-            if bit_shift > 0 && i > 0 {
-                result[i] |= self.0[i - word_shift - 1] >> (64 - bit_shift);
-            }
-        }
-
-        U256(result)
+        self.checked_shl(shift).unwrap_or(U256::ZERO)
     }
 }
 
@@ -582,23 +614,10 @@ impl Shr for U256 {
     #[inline]
     fn shr(self, shift: Self) -> Self {
         if shift >= U256::from(256u64) {
-            return U256([0; 4]);
+            return U256::ZERO;
         }
 
-        let mut result = [0u64; 4];
-        let v: U256 = 64u64.into();
-        let word_shift: u32 = (shift / v).into();
-        let bit_shift: u64 = (shift % v).into();
-
-        let word_shift = word_shift as usize;
-        for i in 0..(4 - word_shift) {
-            result[i] = self.0[i + word_shift] >> bit_shift;
-            if bit_shift > 0 && i + word_shift + 1 < 4 {
-                result[i] |= self.0[i + word_shift + 1] << (64 - bit_shift);
-            }
-        }
-
-        U256(result)
+        self.checked_shr(shift.into()).unwrap_or(U256::ZERO)
     }
 }
 
@@ -608,23 +627,11 @@ impl Shl for U256 {
     #[inline]
     fn shl(self, shift: Self) -> Self {
         if shift >= U256::from(256u64) {
-            return U256([0; 4]);
+            return U256::ZERO;
         }
 
-        let mut result = [0u64; 4];
-        let v: U256 = 64u64.into();
-        let word_shift: u32 = (shift / v).into();
-        let bit_shift: u64 = (shift % v).into();
 
-        let word_shift = word_shift as usize;
-        for i in (word_shift..4).rev() {
-            result[i] = self.0[i - word_shift] << bit_shift;
-            if bit_shift > 0 && i > 0 {
-                result[i] |= self.0[i - word_shift - 1] >> (64 - bit_shift);
-            }
-        }
-
-        U256(result)
+        self.checked_shl(shift.into()).unwrap_or(U256::ZERO)
     }
 }
 
