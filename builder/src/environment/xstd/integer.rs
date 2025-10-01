@@ -47,7 +47,6 @@ macro_rules! checked_fn {
     };
 }
 
-
 // macro to register multiple operations for a specific type
 macro_rules! register_checked_fns {
     ($env: expr, $t: ident, $f: ident) => {
@@ -60,6 +59,50 @@ macro_rules! register_checked_fns {
             checked_fn!($env, pow, $t, $f, u32, 35);
             checked_fn!($env, shr, $t, $f, u32, 5);
             checked_fn!($env, shl, $t, $f, u32, 5);
+        }
+    };
+}
+
+macro_rules! saturating_fn {
+    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
+        paste! {
+            fn [<saturating_ $op _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &M,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Perform the operation with `saturating_$op`
+                let result = value.[<saturating_ $op>](other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                stringify!([<saturating_ $op>]),
+                Some(Type::$t),
+                vec![("other", Type::$t)],
+                FunctionHandler::Sync([<saturating_ $op _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
+}
+
+macro_rules! register_saturating_fns {
+    ($env: expr, $t: ident, $f: ident) => {
+        {
+            saturating_fn!($env, add, $t, $f, $f, 1);
+            saturating_fn!($env, sub, $t, $f, $f, 1);
+            saturating_fn!($env, mul, $t, $f, $f, 3);
+            saturating_fn!($env, div, $t, $f, $f, 3);
+            saturating_fn!($env, pow, $t, $f, u32, 35);
         }
     };
 }
@@ -251,6 +294,14 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     register_checked_fns!(env, U64, u64);
     register_checked_fns!(env, U128, u128);
     register_checked_fns!(env, U256, u256);
+
+    // Saturating functions
+    register_saturating_fns!(env, U8, u8);
+    register_saturating_fns!(env, U16, u16);
+    register_saturating_fns!(env, U32, u32);
+    register_saturating_fns!(env, U64, u64);
+    register_saturating_fns!(env, U128, u128);
+    register_saturating_fns!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);

@@ -374,6 +374,88 @@ impl U256 {
         }
     }
 
+    /// Saturating addition. Returns MAX on overflow.
+    #[inline]
+    pub fn saturating_add(self, other: U256) -> U256 {
+        let (res, overflow) = self.overflowing_add(other);
+        if overflow {
+            U256::MAX
+        } else {
+            res
+        }
+    }
+
+    /// Saturating subtraction. Returns ZERO on underflow.
+    #[inline]
+    pub fn saturating_sub(self, other: U256) -> U256 {
+        let (res, overflow) = self.overflowing_sub(other);
+        if overflow {
+            U256::ZERO
+        } else {
+            res
+        }
+    }
+
+    /// Saturating multiplication. Returns MAX on overflow.
+    #[inline]
+    pub fn saturating_mul(self, other: U256) -> U256 {
+        let (res, overflow) = self.overflowing_mul(other);
+        if overflow {
+            U256::MAX
+        } else {
+            res
+        }
+    }
+
+    /// Saturating left shift. Returns MAX on overflow.
+    #[inline]
+    pub fn saturating_shl(self, shift: u32) -> U256 {
+        match self.checked_shl(shift) {
+            Some(v) => v,
+            None => U256::MAX,
+        }
+    }
+
+    /// Saturating right shift. Returns ZERO on overflow.
+    #[inline]
+    pub fn saturating_shr(self, shift: u32) -> U256 {
+        match self.checked_shr(shift) {
+            Some(v) => v,
+            None => U256::ZERO,
+        }
+    }
+
+    /// Saturating division. Returns MAX on division by zero.
+    #[inline]
+    pub fn saturating_div(self, divisor: U256) -> U256 {
+        if divisor.is_zero() {
+            // Division by zero saturates to MAX
+            return U256::MAX;
+        }
+
+        let (res, _overflow) = self.overflowing_div(divisor);
+        res
+    }
+
+    /// Saturating remainder. Returns self on division by zero.
+    #[inline]
+    pub fn saturating_rem(self, divisor: U256) -> U256 {
+        if divisor.is_zero() {
+            // Saturating remainder returns the dividend itself
+            return self;
+        }
+
+        // remainder can be derived from quotient and divisor
+        let quotient = self / divisor;
+        self - quotient * divisor
+    }
+
+    /// Raises self to the power of `exp`, saturating at MAX on overflow.
+    #[inline]
+    pub fn saturating_pow(self, exp: u32) -> U256 {
+        self.checked_pow(exp).unwrap_or(U256::MAX)
+    }
+
     /// Export the data as a big-endian byte array
     #[inline]
     pub fn to_be_bytes(&self) -> [u8; 32] {
