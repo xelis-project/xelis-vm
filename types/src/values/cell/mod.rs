@@ -256,7 +256,7 @@ impl ValueCell {
             };
         }
 
-        Ok(0)
+        Ok(biggest_depth)
     }
 
     // Calculate the depth of the value
@@ -855,9 +855,14 @@ impl Clone for ValueCell {
     }
 }
 
-#[cfg(all(feature = "infinite-cell-depth", test))]
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "infinite-cell-depth")]
+    const MAX_ITERS: usize = 100_000;
+    #[cfg(not(feature = "infinite-cell-depth"))]
+    const MAX_ITERS: usize = 100;
 
     #[test]
     fn test_drop_and_clone() {
@@ -865,25 +870,25 @@ mod tests {
         drop(v.clone());
         drop(v);
 
-        let v = ValueCell::Object(vec![ValueCell::default()]);
+        let v = ValueCell::Object(vec![Default::default()]);
         drop(v.clone());
         drop(v);
 
         // Create a array with a huge depth of 100000
-        let mut v = ValueCell::Object(vec![ValueCell::default()]);
-        for _ in 0..100_000 {
-            v = ValueCell::Object(vec![v]);
+        let mut v = ValueCell::Object(vec![Default::default()]);
+        for _ in 0..MAX_ITERS {
+            v = ValueCell::Object(vec![v.into()]);
         }
 
         drop(v.clone());
         drop(v);
 
         // Create a map with a huge depth of 100000
-        let mut v = ValueCell::Map(HashMap::new());
-        for _ in 0..100_000 {
-            let mut inner_map = HashMap::new();
-            inner_map.insert(Primitive::U8(10).into(), v);
-            v = ValueCell::Map(inner_map);
+        let mut v = ValueCell::Map(Box::new(IndexMap::new()));
+        for _ in 0..MAX_ITERS {
+            let mut inner_map = IndexMap::new();
+            inner_map.insert(Primitive::U8(10).into(), v.into());
+            v = ValueCell::Map(Box::new(inner_map));
         }
 
         drop(v.clone());
@@ -892,25 +897,25 @@ mod tests {
 
     #[test]
     fn test_max_depth() {
-        let mut map = ValueCell::Map(HashMap::new());
-        for _ in 0..100 {
-            let mut inner_map = HashMap::new();
+        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
+        for _ in 0..MAX_ITERS {
+            let mut inner_map = IndexMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(inner_map);
+            map = ValueCell::Map(Box::new(inner_map));
         }
 
-        assert!(matches!(map.calculate_depth(100), Ok(100)));
-        assert!(matches!(map.calculate_depth(99), Err(ValueError::MaxDepthReached)));
+        assert!(matches!(map.calculate_depth(MAX_ITERS), Ok(MAX_ITERS)));
+        assert!(matches!(map.calculate_depth(MAX_ITERS - 1), Err(ValueError::MaxDepthReached)));
     }
 
     #[test]
     fn test_std_hash() {
         // Create a map that contains a map that contains a map...
-        let mut map = ValueCell::Map(HashMap::new());
-        for _ in 0..100_000 {
-            let mut inner_map = HashMap::new();
+        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
+        for _ in 0..MAX_ITERS {
+            let mut inner_map = IndexMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
-            map = ValueCell::Map(inner_map);
+            map = ValueCell::Map(Box::new(inner_map));
         }
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

@@ -64,6 +64,12 @@ impl ValuePointer {
     }
 }
 
+impl Default for ValuePointer {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+
 impl PartialEq for ValuePointer {
     fn eq(&self, other: &Self) -> bool {
         self.ptr_eq(other) || self.as_ref() == other.as_ref()
