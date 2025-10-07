@@ -21,9 +21,9 @@ impl<'a> Disassembler<'a> {
 
     pub fn disasemble(&mut self) -> Result<Dump, ChunkReaderError> {
         let mut chunks = Vec::with_capacity(self.module.chunks().len());
-        for (chunk, access) in self.module.chunks() {
+        for entry in self.module.chunks() {
             let mut opcodes = Vec::new();
-            let mut reader = ChunkReader::new(chunk, 0);
+            let mut reader = ChunkReader::new(&entry.chunk, 0);
             while reader.has_next() {
                 let opcode = reader.read_op_code()?;
 
@@ -31,7 +31,7 @@ impl<'a> Disassembler<'a> {
                 opcodes.push(v);
             }
 
-            chunks.push((opcodes, *access));
+            chunks.push((opcodes, entry.access));
         }
 
         Ok(Dump { chunks })

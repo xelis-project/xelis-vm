@@ -205,7 +205,7 @@ mod tests {
 
         assert_eq!(module.chunks().len(), 2);
         assert_eq!(
-            module.chunks().last().unwrap().0.get_instructions(),
+            module.chunks().last().unwrap().chunk.get_instructions(),
             &[OpCode::InvokeChunk.as_byte(), 0, 0, 0]
         );
     }
@@ -226,7 +226,7 @@ mod tests {
 
         assert_eq!(module.chunks().len(), 1);
         assert_eq!(
-            module.chunks().last().unwrap().0.get_instructions(),
+            module.chunks().last().unwrap().chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Copy.as_byte(),
@@ -241,8 +241,8 @@ mod tests {
         let module = assembler.assemble().unwrap();
 
         assert_eq!(module.chunks().len(), 1);
-        let (_, access) = module.chunks().last().unwrap();
-        assert!(*access == expected);
+        let access = module.chunks().last().unwrap().access;
+        assert!(access == expected);
     }
 
     #[test]

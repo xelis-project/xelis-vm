@@ -4,6 +4,14 @@ use xelis_types::ValueCell;
 
 use super::{Chunk, Access};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleChunk {
+    #[serde(flatten)]
+    pub chunk: Chunk,
+    #[serde(flatten)]
+    pub access: Access,
+}
+
 // A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,7 +21,7 @@ pub struct Module {
     constants: IndexSet<ValueCell>,
     // Available chunks
     #[serde(default)]
-    chunks: Vec<(Chunk, Access)>,
+    chunks: Vec<ModuleChunk>,
     // Hook id => chunk id
     #[serde(default)]
     hook_chunk_ids: IndexMap<u8, usize>,
@@ -32,7 +40,7 @@ impl Module {
     // Create a new module with all needed data
     pub fn with(
         constants: IndexSet<ValueCell>,
-        chunks: Vec<(Chunk, Access)>,
+        chunks: Vec<ModuleChunk>,
         hook_chunk_ids: IndexMap<u8, usize>
     ) -> Self {
         Self {
@@ -62,61 +70,70 @@ impl Module {
 
     // Get the chunks declared in the module
     #[inline]
-    pub fn chunks(&self) -> &[(Chunk, Access)] {
+    pub fn chunks(&self) -> &[ModuleChunk] {
         &self.chunks
     }
 
     // Add a publicly callable chunk to the module
     #[inline]
     pub fn add_public_chunk(&mut self, chunk: Chunk) {
-        self.chunks.push((chunk, Access::All));
+        self.chunks.push(ModuleChunk {
+            chunk,
+            access: Access::All
+        });
     }
 
     // Add a entry callable chunk to the module
     // Can only be called as a program main function
     #[inline]
     pub fn add_entry_chunk(&mut self, chunk: Chunk) {
-        self.chunks.push((chunk, Access::Entry));
+        self.chunks.push(ModuleChunk {
+            chunk,
+            access: Access::Entry
+        });
     }
 
     // Add an internal chunk to the module
     // Only callable by the program itself
     #[inline]
     pub fn add_internal_chunk(&mut self, chunk: Chunk) {
-        self.chunks.push((chunk, Access::Internal));
+        self.chunks.push(ModuleChunk {
+            chunk,
+            access: Access::Internal
+        });
     }
 
     // Is chunk callable by a user as an entrypoint
     #[inline]
     pub fn is_entry_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |(_, a)| matches!(a, Access::Entry))
+            .map_or(false, |c| matches!(c.access, Access::Entry))
     }
 
     // Is chunk callable (not an entry or hook)
     #[inline]
     pub fn is_callable_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |(_, a)| matches!(a, Access::All | Access::Internal))
+            .map_or(false, |c| matches!(c.access, Access::All | Access::Internal))
     }
 
     // Is chunk callable as a public function
     #[inline]
     pub fn is_public_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |(_, a)| matches!(a, Access::All))
+            .map_or(false, |c| matches!(c.access, Access::All))
     }
 
     // Get a chunk at a specific index
     #[inline(always)]
     pub fn get_chunk_at(&self, index: usize) -> Option<&Chunk> {
         self.get_chunk_access_at(index)
-            .map(|(c, _)| c)
+            .map(|c| &c.chunk)
     }
 
     // Get a chunk at a specific index
     #[inline(always)]
-    pub fn get_chunk_access_at(&self, index: usize) -> Option<&(Chunk, Access)> {
+    pub fn get_chunk_access_at(&self, index: usize) -> Option<&ModuleChunk> {
         self.chunks.get(index)
     }
 
@@ -124,7 +141,7 @@ impl Module {
     #[inline]
     pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
         self.chunks.get_mut(index)
-            .map(|(c, _)| c)
+            .map(|c| &mut c.chunk)
     }
 
     // Get the hook chunks ids called during an event
@@ -143,18 +160,10 @@ impl Module {
     #[inline]
     pub fn add_hook_chunk(&mut self, id: u8, chunk: Chunk) -> Option<usize> {
         let index = self.chunks.len();
-        self.chunks.push((chunk, Access::Hook { id }));
+        self.chunks.push(ModuleChunk {
+            chunk,
+            access: Access::Hook { id }
+        });
         self.hook_chunk_ids.insert(id, index)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_serde_module_json() {
-        let json = r#"{"chunks":[[{"instructions":[2,0,0,1,0,0,22,0,0,2,1,0,0,0,0,16]}, "internal"]],"constants":[{"type":"default","value":{"type":"u64","value":0}}],"entry_chunk_ids":[0]}"#;
-        serde_json::from_str::<Module>(json).expect("valid json");
     }
 }

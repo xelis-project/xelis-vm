@@ -164,29 +164,29 @@ impl<'a, M> ModuleValidator<'a, M> {
         let mut hook_ids = HashSet::new();
 
         // Verify all the chunks
-        for (i, (chunk, access)) in self.module.chunks().iter().enumerate() {
-            match access {
+        for (i, entry) in self.module.chunks().iter().enumerate() {
+            match entry.access {
                 Access::Entry => {
                     if !used_ids.insert(i) {
                         return Err(ValidatorError::ChunkIdAlreadyUsed(i))
                     }
                 },
                 Access::Hook { id } => {
-                    if !hook_ids.insert(*id) {
-                        return Err(ValidatorError::InvalidHookId(*id, i));
+                    if !hook_ids.insert(id) {
+                        return Err(ValidatorError::InvalidHookId(id, i));
                     }
 
                     // Ensure both pointers are pointing to each others
                     if !self.module.hook_chunk_ids()
-                        .get(id)
+                        .get(&id)
                         .map_or(false, |id| *id == i) {
-                        return Err(ValidatorError::InvalidHookId(*id, i));
+                        return Err(ValidatorError::InvalidHookId(id, i));
                     }
                 },
                 _ => {}
             }
 
-            let mut reader = ChunkReader::new(chunk, 0);
+            let mut reader = ChunkReader::new(&entry.chunk, 0);
             while let Some(instruction) = reader.next_u8() {
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
@@ -200,7 +200,7 @@ impl<'a, M> ModuleValidator<'a, M> {
 
                         // Make sure the chunk id is valid
                         if chunk_id >= len || !self.module.get_chunk_access_at(chunk_id)
-                            .map_or(false, |(_, a)| match a {
+                            .map_or(false, |entry| match entry.access {
                                 Access::Entry | Access::Hook { .. } => false,
                                 _ => true,
                             })
@@ -228,7 +228,7 @@ impl<'a, M> ModuleValidator<'a, M> {
                             .map_err(|_| ValidatorError::InvalidOpCode)?;
 
                         // Make sure the address is valid
-                        if addr as usize >= chunk.index() {
+                        if addr as usize >= entry.chunk.index() {
                             return Err(ValidatorError::InvalidEntryId(addr as usize));
                         }
 

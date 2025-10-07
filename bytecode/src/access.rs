@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "type", content = "value")]
 pub enum Access {
     // Can be called by anything
     All,
