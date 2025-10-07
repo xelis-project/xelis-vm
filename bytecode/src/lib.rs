@@ -5,7 +5,7 @@ mod reference;
 mod access;
 
 pub use chunk::*;
-pub use opcode::OpCode;
-pub use module::Module;
-pub use reference::Reference;
-pub use access::Access;
+pub use opcode::*;
+pub use module::*;
+pub use reference::*;
+pub use access::*;
