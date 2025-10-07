@@ -33,6 +33,7 @@ pub type CellMap = IndexMap<ValueCell, ValuePointer>;
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Default(Primitive),
+    #[serde(with = "hex::serde")]
     Bytes(Vec<u8>),
     Object(CellArray),
     // Map cannot be used as a key in another map

@@ -9,6 +9,7 @@ pub use self::reader::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk {
     // All the opcodes defined in the chunk
+    #[serde(with = "hex::serde")]
     instructions: Vec<u8>
 }
 
