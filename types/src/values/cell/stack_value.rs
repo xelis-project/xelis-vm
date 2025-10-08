@@ -55,7 +55,7 @@ impl StackValue {
                         return Err(ValueError::OutOfBounds(index, len))
                     }
 
-                    Ok(Self::Owned(ValueCell::Default(Primitive::U8(bytes.swap_remove(index)))))
+                    Ok(Self::Owned(ValueCell::Primitive(Primitive::U8(bytes.swap_remove(index)))))
                 },
                 _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
             },
@@ -79,7 +79,7 @@ impl StackValue {
                             .copied()
                             .ok_or_else(|| ValueError::OutOfBounds(index, bytes.len()))?;
 
-                        Self::Owned(ValueCell::Default(Primitive::U8(at_index)))
+                        Self::Owned(ValueCell::Primitive(Primitive::U8(at_index)))
                     },
                     _ => return Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
                 })
@@ -202,13 +202,13 @@ impl From<ValuePointer> for StackValue {
 
 impl<T: Opaque> From<T> for StackValue {
     fn from(value: T) -> Self {
-        Self::Owned(ValueCell::Default(Primitive::Opaque(value.into())))
+        Self::Owned(ValueCell::Primitive(Primitive::Opaque(value.into())))
     }
 }
 
 impl From<OpaqueWrapper> for StackValue {
     fn from(value: OpaqueWrapper) -> Self {
-        Self::Owned(ValueCell::Default(Primitive::Opaque(value)))
+        Self::Owned(ValueCell::Primitive(Primitive::Opaque(value)))
     }
 }
 

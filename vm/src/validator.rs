@@ -102,7 +102,7 @@ impl<'a, M> ModuleValidator<'a, M> {
                             .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
                     );
                 },
-                ValueCell::Default(v) => match v {
+                ValueCell::Primitive(v) => match v {
                     Primitive::Range(range) => {
                         if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);

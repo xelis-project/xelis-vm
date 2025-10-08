@@ -9,7 +9,7 @@ pub struct ValueIterator {
 impl ValueIterator {
     pub fn new(inner: StackValue) -> Result<Self, ValueError> {
         let index = match inner.as_ref() {
-            ValueCell::Default(Primitive::Range(range)) => range.0.clone(),
+            ValueCell::Primitive(Primitive::Range(range)) => range.0.clone(),
             _ => Primitive::U32(0),
         };
 
@@ -32,7 +32,7 @@ impl ValueIterator {
                 v.get(index)
                     .map(|v| Primitive::U8(*v).into())
             },
-            ValueCell::Default(Primitive::Range(range)) => {
+            ValueCell::Primitive(Primitive::Range(range)) => {
                 // Only need to check top bound, because index is init by low bound
                 if index < range.1 {
                     Some(index.into())

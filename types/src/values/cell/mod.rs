@@ -32,7 +32,7 @@ pub type CellMap = IndexMap<ValueCell, ValuePointer>;
 #[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
-    Default(Primitive),
+    Primitive(Primitive),
     #[serde(with = "hex::serde")]
     Bytes(Vec<u8>),
     Object(CellArray),
@@ -103,7 +103,7 @@ impl Drop for ValueCell {
 impl PartialEq for ValueCell {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Default(a), Self::Default(b)) => a == b,
+            (Self::Primitive(a), Self::Primitive(b)) => a == b,
             (Self::Bytes(a), Self::Bytes(b)) => a == b,
             (Self::Object(a), Self::Object(b)) => a == b,
             (Self::Map(a), Self::Map(b)) => a == b,
@@ -115,7 +115,7 @@ impl PartialEq for ValueCell {
 impl Hash for ValueCell {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // Fast path
-        if let Self::Default(v) = self {
+        if let Self::Primitive(v) = self {
             v.hash(state);
             return;
         }
@@ -123,7 +123,7 @@ impl Hash for ValueCell {
         let mut stack = vec![ValueCellRef::Ref(self)];
         while let Some(value) = stack.pop() {
             match value.value() {
-                Self::Default(v) => v.hash(state),
+                Self::Primitive(v) => v.hash(state),
                 Self::Object(values) => {
                     12u8.hash(state);
                     stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
@@ -146,20 +146,20 @@ impl Hash for ValueCell {
 
 impl Default for ValueCell {
     fn default() -> Self {
-        Self::Default(Default::default())
+        Self::Primitive(Default::default())
     }
 }
 
 impl From<Primitive> for ValueCell {
     fn from(value: Primitive) -> Self {
-        Self::Default(value)
+        Self::Primitive(value)
     }
 }
 
 impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
-            Constant::Default(v) => Self::Default(v),
+            Constant::Default(v) => Self::Primitive(v),
             Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
@@ -198,7 +198,7 @@ impl ValueCell {
         while let Some(next) = stack.pop() {
             let v = next.value();
             match v {
-                ValueCell::Default(Primitive::Opaque(obj)) if !check_opaque(obj) => return false,
+                ValueCell::Primitive(Primitive::Opaque(obj)) if !check_opaque(obj) => return false,
                 ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
                 ValueCell::Map(map) => stack.extend(
                     map.iter()
@@ -224,7 +224,7 @@ impl ValueCell {
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
-        if matches!(self, Self::Default(_)) {
+        if matches!(self, Self::Primitive(_)) {
             return Ok(0);
         }
 
@@ -241,7 +241,7 @@ impl ValueCell {
             }
 
             match next.value() {
-                ValueCell::Default(_) => {},
+                ValueCell::Primitive(_) => {},
                 ValueCell::Bytes(_) => {},
                 ValueCell::Object(values) => {
                     let depth = depth + 1;
@@ -263,7 +263,7 @@ impl ValueCell {
     // Calculate the depth of the value
     pub fn calculate_memory_usage<'a>(&'a self, max_memory: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
-        if let Self::Default(v) = self {
+        if let Self::Primitive(v) = self {
             return Ok(v.get_memory_usage());
         }
 
@@ -276,7 +276,7 @@ impl ValueCell {
             }
 
             match next.value() {
-                ValueCell::Default(v) => {
+                ValueCell::Primitive(v) => {
                     memory += 1;
                     memory += v.get_memory_usage();
                 },
@@ -304,7 +304,7 @@ impl ValueCell {
     #[inline]
     pub fn is_null(&self) -> bool {
         match &self {
-            Self::Default(Primitive::Null) => true,
+            Self::Primitive(Primitive::Null) => true,
             _ => false
         }
     }
@@ -312,7 +312,7 @@ impl ValueCell {
     #[inline]
     pub fn is_string(&self) -> bool {
         match &self {
-            Self::Default(Primitive::String(_)) => true,
+            Self::Primitive(Primitive::String(_)) => true,
             _ => false
         }
     }
@@ -328,7 +328,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Default(Primitive::U8(n)) => Ok(*n),
+            Self::Primitive(Primitive::U8(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
@@ -336,7 +336,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Default(Primitive::U16(n)) => Ok(*n),
+            Self::Primitive(Primitive::U16(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
@@ -344,7 +344,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Default(Primitive::U32(n)) => Ok(*n),
+            Self::Primitive(Primitive::U32(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
@@ -352,7 +352,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Default(Primitive::U64(n)) => Ok(*n),
+            Self::Primitive(Primitive::U64(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
@@ -360,7 +360,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Default(Primitive::U128(n)) => Ok(*n),
+            Self::Primitive(Primitive::U128(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
@@ -368,7 +368,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Default(Primitive::U256(n)) => Ok(*n),
+            Self::Primitive(Primitive::U256(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
@@ -376,7 +376,7 @@ impl ValueCell {
     #[inline]
     pub fn as_string(&self) -> Result<&str, ValueError> {
         match self {
-            Self::Default(Primitive::String(n)) => Ok(n),
+            Self::Primitive(Primitive::String(n)) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
@@ -384,7 +384,7 @@ impl ValueCell {
     #[inline]
     pub fn as_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Self::Default(Primitive::Boolean(n)) => Ok(*n),
+            Self::Primitive(Primitive::Boolean(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
@@ -465,7 +465,7 @@ impl ValueCell {
     #[inline]
     pub fn take_as_optional(&mut self) -> Result<Option<Self>, ValueError> {
         match self {
-            Self::Default(Primitive::Null) => Ok(None),
+            Self::Primitive(Primitive::Null) => Ok(None),
             v => {
                 let value = std::mem::take(v);
                 Ok(Some(value))
@@ -476,7 +476,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Default(Primitive::U8(n)) => Ok(*n),
+            Self::Primitive(Primitive::U8(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
@@ -484,7 +484,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Default(Primitive::U16(n)) => Ok(*n),
+            Self::Primitive(Primitive::U16(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
@@ -492,7 +492,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Default(Primitive::U32(n)) => Ok(*n),
+            Self::Primitive(Primitive::U32(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
@@ -500,7 +500,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Default(Primitive::U64(n)) => Ok(*n),
+            Self::Primitive(Primitive::U64(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
@@ -508,7 +508,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Default(Primitive::U128(n)) => Ok(*n),
+            Self::Primitive(Primitive::U128(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
@@ -516,7 +516,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Default(Primitive::U256(n)) => Ok(*n),
+            Self::Primitive(Primitive::U256(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
@@ -524,7 +524,7 @@ impl ValueCell {
     #[inline]
     pub fn to_bool(&self) -> Result<bool, ValueError> {
         match self {
-            Self::Default(Primitive::Boolean(n)) => Ok(*n),
+            Self::Primitive(Primitive::Boolean(n)) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
@@ -532,7 +532,7 @@ impl ValueCell {
     #[inline]
     pub fn into_string(&mut self) -> Result<String, ValueError> {
         match self {
-            Self::Default(Primitive::String(v)) => Ok(mem::take(v)),
+            Self::Primitive(Primitive::String(v)) => Ok(mem::take(v)),
             _ => Err(ValueError::ExpectedValueOfType(Type::Bool))
         }
     }
@@ -540,7 +540,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
         match self {
-            Self::Default(Primitive::Opaque(opaque)) => Ok(opaque),
+            Self::Primitive(Primitive::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -548,7 +548,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
-            Self::Default(Primitive::Opaque(opaque)) => Ok(opaque),
+            Self::Primitive(Primitive::Opaque(opaque)) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -556,7 +556,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
         match self {
-            Self::Default(Primitive::Opaque(opaque)) => opaque.as_ref::<T>(),
+            Self::Primitive(Primitive::Opaque(opaque)) => opaque.as_ref::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -564,7 +564,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
         match self {
-            Self::Default(Primitive::Opaque(opaque)) => opaque.as_mut::<T>(),
+            Self::Primitive(Primitive::Opaque(opaque)) => opaque.as_mut::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -572,7 +572,7 @@ impl ValueCell {
     #[inline]
     pub fn into_opaque_type<T: Opaque>(&mut self) -> Result<T, ValueError> {
         match mem::take(self) {
-            Self::Default(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
+            Self::Primitive(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -591,7 +591,7 @@ impl ValueCell {
     #[inline]
     pub fn is_number(&self) -> bool {
         match self {
-            Self::Default(v) => v.is_number(),
+            Self::Primitive(v) => v.is_number(),
             _ => false
         }
     }
@@ -599,7 +599,7 @@ impl ValueCell {
     // Increment the value
     pub fn increment(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Self::Default(v) => v.increment()?,
+            Self::Primitive(v) => v.increment()?,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -607,7 +607,7 @@ impl ValueCell {
     // Decrement the value
     pub fn decrement(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Self::Default(v) => v.decrement()?,
+            Self::Primitive(v) => v.decrement()?,
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -622,7 +622,7 @@ impl ValueCell {
     #[inline]
     pub fn as_string_formatted<'a>(&'a self) -> Result<Cow<'a, str>, ValueError> {
         match self {
-            Self::Default(v) => v.as_string_formatted(),
+            Self::Primitive(v) => v.as_string_formatted(),
             _ => Err(ValueError::ExpectedValueOfType(Type::String))
         }
     }
@@ -660,7 +660,7 @@ impl ValueCell {
                 Ok(Primitive::Range(Box::new((start, end))))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
-        }.map(Self::Default)
+        }.map(Self::Primitive)
     }
 
     // Cast to u8, return an error if value is too big
@@ -744,7 +744,7 @@ impl ValueCell {
     #[inline(always)]
     pub fn as_value(&self) -> Result<&Primitive, ValueError> {
         match self {
-            Self::Default(v) => Ok(v),
+            Self::Primitive(v) => Ok(v),
             _ => Err(ValueError::InvalidPrimitiveType)
         }
     }
@@ -752,7 +752,7 @@ impl ValueCell {
     #[inline(always)]
     pub fn into_value(&mut self) -> Result<Primitive, ValueError> {
         match self {
-            Self::Default(v) => Ok(mem::take(v)),
+            Self::Primitive(v) => Ok(mem::take(v)),
             _ => Err(ValueError::InvalidPrimitiveType)
         }
     }
@@ -761,7 +761,7 @@ impl ValueCell {
     pub fn deep_clone(&self) -> Self {
         match self {
             Self::Bytes(v) => return Self::Bytes(v.clone()),
-            Self::Default(v) => return Self::Default(v.clone()),
+            Self::Primitive(v) => return Self::Primitive(v.clone()),
             _ => {}
         };
 
@@ -783,7 +783,7 @@ impl ValueCell {
         // Disassemble
         while let Some(value) = stack.pop() {
             match value.value() {
-                Self::Default(v) => queue.push(QueueItem::Primitive(v.clone())),
+                Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
                 Self::Object(values) => {
                     queue.push(QueueItem::Array { len: values.len() });
                     stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
@@ -804,7 +804,7 @@ impl ValueCell {
         while let Some(item) = queue.pop() {
             match item {
                 QueueItem::Primitive(v) => {
-                    stack.push(ValueCell::Default(v));
+                    stack.push(ValueCell::Primitive(v));
                 },
                 QueueItem::Array { len } => {
                     let values = stack.split_off(stack.len() - len);
@@ -833,7 +833,7 @@ impl ValueCell {
 impl fmt::Display for ValueCell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Default(v) => write!(f, "{}", v),
+            Self::Primitive(v) => write!(f, "{}", v),
             Self::Object(values) => {
                 let s: Vec<String> = values.iter().map(|v| format!("{}", v.as_ref())).collect();
                 write!(f, "[{}]", s.join(", "))
@@ -865,7 +865,7 @@ mod tests {
     #[cfg(feature = "infinite-cell-depth")]
     const MAX_ITERS: usize = 100_000;
     #[cfg(not(feature = "infinite-cell-depth"))]
-    const MAX_ITERS: usize = 100;
+    const MAX_ITERS: usize = 1000;
 
     #[test]
     fn test_drop_and_clone() {
@@ -928,12 +928,27 @@ mod tests {
     #[test]
     fn test_serde() {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..MAX_ITERS {
+        for _ in 0..200 {
             let mut inner_map = IndexMap::new();
             inner_map.insert(Primitive::U8(10).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
+        let serialized = serde_json::to_value(&map).unwrap();
+
+        let got: ValueCell = serde_json::from_value(serialized).unwrap();
+        assert_eq!(map, got);
+    }
+
+    #[test]
+    fn test_serde_huge_map() {
+        let mut map: IndexMap<ValueCell, ValuePointer> = IndexMap::new();
+        for i in 0..MAX_ITERS * 1000 {
+            let inner_map = IndexMap::new();
+            map.insert(Primitive::U64(i as u64).into(), ValueCell::Map(Box::new(inner_map)).into());
+        }
+
+        let map = ValueCell::Map(Box::new(map));
         let serialized = json!(map);
 
         let got: ValueCell = serde_json::from_value(serialized).unwrap();
@@ -942,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_serde_stackoverflow() {
-        let v = r#"{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"default","value":{"type":"u8","value":10}},{"type":"map","value":[]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}"#;
+        let v = r#"{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}"#;
         assert!(serde_json::from_str::<ValueCell>(v).is_err_and(|e| e.to_string().contains("recursion limit exceeded")));
     }
 }

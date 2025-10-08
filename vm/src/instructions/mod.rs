@@ -246,7 +246,7 @@ fn is_value_in_range<T: PartialOrd>(
     range_matcher: fn(&Box<(Primitive, Primitive)>) -> Option<(T, T)>
 ) -> bool {
     match expected_ref {
-        ValueCell::Default(Primitive::Range(range)) => {
+        ValueCell::Primitive(Primitive::Range(range)) => {
             if let Some((min, max)) = range_matcher(range) {
                 value >= min && value <= max
             } else {
@@ -278,7 +278,7 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
             .as_ref();
     
         let expected_ref = expected.as_ref();
-        if let ValueCell::Default(v) = actual {
+        if let ValueCell::Primitive(v) = actual {
             macro_rules! match_range {
                 ($prim:ident, $val:ident) => {
                     is_value_in_range(*$val, expected_ref, |range| {

@@ -14,7 +14,7 @@ use super::InstructionResult;
 macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
                 (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
                 (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
@@ -31,7 +31,7 @@ macro_rules! op {
 macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
                 (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
                 (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
@@ -49,7 +49,7 @@ macro_rules! op_bool {
 macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
                 (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
                 (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
@@ -95,7 +95,7 @@ macro_rules! op_string {
 macro_rules! op_bool_res {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
                 (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
                 (Primitive::U16(a), Primitive::U16(b)) => Primitive::Boolean(a $op b),
@@ -131,7 +131,7 @@ macro_rules! opcode_op {
 macro_rules! op_div {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => match (a, b) {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::U8(a), Primitive::U8(b)) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
@@ -257,7 +257,7 @@ pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     let right = stack.pop_stack()?.into_owned();
     let left = stack.pop_stack()?.into_owned();
     let result = match (&left, &right) {
-        (ValueCell::Default(a), ValueCell::Default(b)) => {
+        (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
             let pow_n = b.as_u32()?;
             match a {
                 Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
@@ -282,7 +282,7 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
     let mut left = stack.pop_stack()?;
     let result = {
         match (left.as_ref(), right.as_ref()) {
-            (ValueCell::Default(a), ValueCell::Default(b)) => {
+            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
                     Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
