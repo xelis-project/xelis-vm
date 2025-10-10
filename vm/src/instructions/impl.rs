@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use xelis_types::Either;
+
 use crate::{
     debug,
     perform_syscall,
@@ -186,24 +188,30 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let values = value.as_ref()
-        .as_vec()?;
-
-    if values.len() != 3 {
-        return Err(VMError::InvalidDynamicCall)
-    }
-
-    let id = values[0].as_u16()?;
-    let syscall = values[1].as_bool()?;
-    let from = values[2].as_u16()?;
+    let ptr = value.as_ref()
+        .as_fn_ptr()?;
 
     let args = reader.read_u8()? as usize;
-    debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
 
-    if syscall {
-        internal_syscall(backend, id, stack, context)
-    } else {
-        internal_invoke_chunk(stack, id, args, Some(from))
+    match ptr {
+        Either::Left(chunk_id) => internal_invoke_chunk(stack, chunk_id, args, None),
+        Either::Right(values) => {
+            if values.len() != 3 {
+                return Err(VMError::InvalidDynamicCall)
+            }
+
+            let id = values[0].as_u16()?;
+            let syscall = values[1].as_bool()?;
+            let from = values[2].as_u16()?;
+
+            debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
+
+            if syscall {
+                internal_syscall(backend, id, stack, context)
+            } else {
+                internal_invoke_chunk(stack, id, args, Some(from))
+            }
+        }
     }
 }
 

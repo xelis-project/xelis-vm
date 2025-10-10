@@ -327,15 +327,20 @@ impl<'a, M> Compiler<'a, M> {
                     id -= len as u16;
                 }
 
+                assert!(!(is_syscall && *closure), "A closure can't be a syscall");
+
                 let id = Primitive::U16(id).into();
-                let syscall = Primitive::Boolean(is_syscall).into();
-                let from = Primitive::U16(chunk_id).into();
-
-                if *closure {
+                let value = if *closure {
                     chunk.emit_opcode(OpCode::CaptureContext);
-                }
 
-                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Array(vec![id, syscall, from])))?;
+                    let syscall = Primitive::Boolean(is_syscall).into();
+                    let from = Primitive::U16(chunk_id).into();
+                    Constant::Array(vec![id, syscall, from])
+                } else {
+                    id.into()
+                };
+
+                self.compile_expr(chunk, chunk_id, &Expression::Constant(value))?;
             },
             Expression::DynamicCall(id, params, return_value) => {
                 for param in params {

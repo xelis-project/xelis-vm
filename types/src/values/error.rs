@@ -6,6 +6,8 @@ use super::{constant::Constant, Primitive};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
+    #[error("expected function type or id")]
+    ExpectedFnType,
     #[error("expected bytes type")]
     ExpectedBytes,
     #[error("Invalid stack pointer")]

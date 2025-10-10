@@ -26,6 +26,11 @@ pub use pointer::*;
 pub type CellArray = Vec<ValuePointer>;
 pub type CellMap = IndexMap<ValueCell, ValuePointer>;
 
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
 #[derive(Debug, Eq, Serialize, Deserialize)]
@@ -410,6 +415,15 @@ impl ValueCell {
         match mem::take(self) {
             Self::Map(n) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Map(Box::new(Type::T(Some(0))), Box::new(Type::T(Some(1))))))
+        }
+    }
+
+    #[inline]
+    pub fn as_fn_ptr<'a>(&'a self) -> Result<Either<u16, &'a CellArray>, ValueError> {
+        match self {
+            Self::Primitive(Primitive::U16(id)) => Ok(Either::Left(*id)),
+            Self::Object(values) => Ok(Either::Right(values)),
+            _ => Err(ValueError::ExpectedFnType)
         }
     }
 
