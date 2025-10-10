@@ -213,7 +213,7 @@ impl<'a, M> Compiler<'a, M> {
             },
             Expression::EnumConstructor(exprs, ty) => {
                 // Inject the variant id
-                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Default(Primitive::U8(ty.variant_id()))))?;
+                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Primitive(Primitive::U8(ty.variant_id()))))?;
 
                 for expr in exprs {
                     self.compile_expr(chunk, chunk_id, expr)?;

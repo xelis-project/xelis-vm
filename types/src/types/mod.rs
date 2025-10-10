@@ -120,7 +120,7 @@ impl Type {
     // Get a type from a value type
     pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
-            Constant::Default(v) => Self::from_value(v)?,
+            Constant::Primitive(v) => Self::from_value(v)?,
             Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
             Constant::Map(map) => {
                 let (key, value) = map.iter().next()?;

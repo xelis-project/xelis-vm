@@ -1,9 +1,10 @@
 use xelis_types::{
+    Constant,
     EnumValueType,
     IdentifierType,
+    Primitive,
     StructType,
-    Type,
-    Constant
+    Type
 };
 
 use super::Operator;
@@ -84,4 +85,10 @@ pub struct DeclarationStatement {
 pub struct ConstantDeclaration {
     pub value: Constant,
     pub value_type: Type,
+}
+
+impl From<Primitive> for Expression {
+    fn from(value: Primitive) -> Self {
+        Expression::Constant(Constant::Primitive(value))
+    }
 }

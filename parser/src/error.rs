@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("incompatible type, got '{0}' but expected '{1}'")]
+    IncompatibleType(Type, Type),
     #[error("expected a closure with return")]
     ExpectedClosureWithReturn,
     #[error("expected a normal function for pointer")]

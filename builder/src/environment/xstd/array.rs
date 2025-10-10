@@ -8,7 +8,7 @@ macro_rules! array_number_with_size {
         paste! {
             fn [<with_size_ $op>](params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
                 let count = params[0].as_u32()? as usize;
-                let values = vec![Constant::Default(Primitive::$t(Default::default())); count];
+                let values = vec![Constant::Primitive(Primitive::$t(Default::default())); count];
                 Ok(Constant::Array(values))
             }
 

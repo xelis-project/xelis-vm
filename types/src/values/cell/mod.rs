@@ -159,7 +159,7 @@ impl From<Primitive> for ValueCell {
 impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
-            Constant::Default(v) => Self::Primitive(v),
+            Constant::Primitive(v) => Self::Primitive(v),
             Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),

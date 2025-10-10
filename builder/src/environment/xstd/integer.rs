@@ -273,8 +273,8 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = Constant::Default(Primitive::$t(min));
-        let max_inner = Constant::Default(Primitive::$t(max));
+        let min_inner = Constant::Primitive(Primitive::$t(min));
+        let max_inner = Constant::Primitive(Primitive::$t(max));
 
         $env.register_constant(Type::$t, "MIN", min_inner);
         $env.register_constant(Type::$t, "MAX", max_inner);
