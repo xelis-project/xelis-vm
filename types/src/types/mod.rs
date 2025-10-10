@@ -333,7 +333,12 @@ impl Type {
                 Type::Tuples(types2) => types.iter().zip(types2.iter()).all(|(a, b)| a.is_compatible_with(b)),
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
-            }
+            },
+            Type::Function(f) => match self {
+                Type::Function(f2) => f == f2,
+                Type::Any | Type::T(None) => true,
+                _ => *self == *other
+            },
             _ => *self == *other || self.is_generic(),
         }
     }
@@ -571,5 +576,24 @@ mod tests {
         struct_type.id().hash(&mut right_hasher);
         let right_hash = right_hasher.finish();
         assert_eq!(left_hash, right_hash);
+    }
+
+    #[test]
+    fn test_fn_type_eq() {
+        let fn1 = FnType::new(None, false, vec![Type::U64, Type::String], Some(Type::Bool));
+        let fn2 = FnType::new(None, false, vec![Type::Any, Type::Any], Some(Type::Bool));
+        let fn3 = FnType::new(None, false, vec![Type::Array(Box::new(Type::Any))], Some(Type::Bool));
+        let fn4 = FnType::new(None, false, vec![], Some(Type::Bool));
+        let fn5 = FnType::new(None, false, vec![], Some(Type::Any));
+
+        assert_eq!(fn1, fn2);
+        assert_eq!(fn1, fn3);
+        assert_eq!(fn2, fn3);
+        assert_eq!(fn3, fn4);
+        assert_eq!(fn4, fn5);
+
+        let a = FnType::new(None, false, vec![Type::U8], Some(Type::Any));
+        let b = FnType::new(None, false, vec![Type::U64], Some(Type::Any));
+        assert_ne!(a, b);
     }
 }
