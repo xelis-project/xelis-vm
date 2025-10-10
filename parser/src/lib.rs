@@ -664,7 +664,7 @@ impl<'a, M> Parser<'a, M> {
                     .map(|v| v.into_owned());
 
                 if !ty.as_ref().map_or(next.allow_null(), |v| next.is_assign_compatible_with(&v)) {
-                    return Err(err!(self, ParserErrorKind::IncompatibleType(next.clone(), ty.unwrap_or(Type::Optional(Box::new(next))))))
+                    return Err(err!(self, ParserErrorKind::IncompatibleType(ty.unwrap_or_else(|| Type::Optional(Box::new(next.clone()))), next)))
                 }
 
                 parameters.push(expr);
