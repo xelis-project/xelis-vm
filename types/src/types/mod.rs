@@ -103,7 +103,7 @@ impl Type {
     // Get a type from a value
     pub fn from_value(value: &Primitive) -> Option<Self> {
         Some(match value {
-            Primitive::Null => return None,
+            Primitive::Null => Type::Optional(Box::new(Type::Any)),
             Primitive::U8(_) => Type::U8,
             Primitive::U16(_) => Type::U16,
             Primitive::U32(_) => Type::U32,
@@ -121,11 +121,20 @@ impl Type {
     pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
             Constant::Primitive(v) => Self::from_value(v)?,
-            Constant::Array(values) => Type::Array(Box::new(Type::from_value_type(values.first()?)?)),
+            Constant::Array(values) => Type::Array(Box::new(values.first()
+                .and_then(Type::from_value_type)
+                .unwrap_or(Type::Any)
+            )),
             Constant::Map(map) => {
-                let (key, value) = map.iter().next()?;
-                let key = Type::from_value_type(&key)?;
-                let value = Type::from_value_type(&value)?;
+                let (key, value) = map.iter()
+                    .next()
+                    .and_then(|(k, v)| {
+                        let key = Type::from_value_type(&k)?;
+                        let value = Type::from_value_type(&v)?;
+
+                        Some((key, value))
+                    }).unwrap_or((Type::Any, Type::Any));
+
                 Type::Map(Box::new(key), Box::new(value))
             },
             Constant::Bytes(_) => Type::Bytes,

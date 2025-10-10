@@ -4469,4 +4469,40 @@ mod tests {
         let err = parser.read_statements(&mut context, None).unwrap_err();
         assert!(matches!(err.kind, ParserErrorKind::IncompatibleType { .. }));
     }
+
+    #[test]
+    fn test_any_args() {
+        // fn foo(args: any[]) {}
+        let mut env = EnvironmentBuilder::<()>::new();
+        env.register_native_function("foo", None, vec![("args", Type::Array(Box::new(Type::Any)))], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+
+        // foo([]);
+        let tokens = vec![
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        // foo([1, "hello", true]);
+        let tokens = vec![
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::BracketOpen,
+            Token::Value(Literal::U8(1)),
+            Token::Comma,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::Comma,
+            Token::Value(Literal::Bool(true)),
+            Token::BracketClose,
+            Token::ParenthesisClose
+        ];
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+    }
 }
