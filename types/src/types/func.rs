@@ -96,7 +96,7 @@ impl fmt::Display for FnType {
             .join(", ");
 
         match self.return_type() {
-            Some(ty) => write!(f, "fn({} -> {})", params, ty),
+            Some(ty) => write!(f, "fn({}) -> {}", params, ty),
             None => write!(f, "fn({})", params),
         }
     }
