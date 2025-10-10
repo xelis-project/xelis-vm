@@ -166,7 +166,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Invoke a chunk using its id
     #[inline(always)]
-    pub(crate) fn invoke_chunk_id(&mut self, id: usize) -> Result<(), VMError> {
+    pub fn invoke_chunk_id(&mut self, id: usize) -> Result<(), VMError> {
         self.invoke_chunk_id_internal(ChunkManager::new(id))
     }
 
