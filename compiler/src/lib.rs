@@ -973,6 +973,12 @@ impl<'a, M> Compiler<'a, M> {
         // Pop the scope for ids
         self.pop_mem_scope(&mut chunk)?;
 
+        if chunk.last_instruction() != Some(&OpCode::Return.as_byte()) {
+            // If the function has no return, we add a return
+            // at the end of the chunk
+            chunk.emit_opcode(OpCode::Return);
+        }
+
         // Add the chunk to the module
         match function {
             FunctionType::Declared(f) => match f.visibility() {
