@@ -229,7 +229,7 @@ impl<'a, M> ModuleValidator<'a, M> {
 
                         // Make sure the address is valid
                         if addr as usize >= entry.chunk.index() {
-                            return Err(ValidatorError::InvalidEntryId(addr as usize));
+                            return Err(ValidatorError::InvalidJumpAddress(addr));
                         }
 
                         // Minus 4
