@@ -66,7 +66,7 @@ macro_rules! register_checked_fns {
 macro_rules! integer_param_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
         paste! {
-            fn [<saturating_ $op _ $f>]<M>(
+            fn [<$op _ $f>]<M>(
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &M,
@@ -76,7 +76,7 @@ macro_rules! integer_param_fn {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
 
-                // Perform the operation with `saturating_$op`
+                // Perform the operation with `$op`
                 let result = value.[<$op>](other);
 
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
@@ -84,10 +84,10 @@ macro_rules! integer_param_fn {
 
             // Registering the generated function in the environment
             $env.register_native_function(
-                stringify!([<saturating_ $op>]),
+                stringify!($op),
                 Some(Type::$t),
                 vec![("other", Type::$t)],
-                FunctionHandler::Sync([<saturating_ $op _ $f>]),
+                FunctionHandler::Sync([<$op _ $f>]),
                 $cost,
                 Some(Type::$t)
             );
