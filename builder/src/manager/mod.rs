@@ -135,4 +135,8 @@ impl<'a, T: Builder> TypeManager<'a, T> {
     pub fn finalize<B: FromIterator<T::Type>>(&self) -> B {
         self.types.iter().map(T::to_type).collect()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.types.iter()
+    }
 }
