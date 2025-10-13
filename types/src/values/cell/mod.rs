@@ -592,6 +592,39 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn as_enum<'a>(&'a self) -> Result<(u8, &'a [ValuePointer]), ValueError> {
+        // the enum variant id is injected as first element
+        let values = self.as_vec()?;
+        if values.is_empty() {
+            return Err(ValueError::ExpectedEnumWithVariantId)
+        }
+
+        Ok((values[0].as_ref().as_u8()?, &values[1..]))
+    }
+
+    #[inline]
+    pub fn as_mut_enum<'a>(&'a mut self) -> Result<(u8, &'a mut [ValuePointer]), ValueError> {
+        // the enum variant id is injected as first element
+        let values = self.as_mut_vec()?;
+        if values.is_empty() {
+            return Err(ValueError::ExpectedEnumWithVariantId)
+        }
+
+        Ok((values[0].as_ref().as_u8()?, &mut values[1..]))
+    }
+
+    #[inline]
+    pub fn to_enum(&mut self) -> Result<(u8, CellArray), ValueError> {
+        // the enum variant id is injected as first element
+        let values = self.to_vec()?;
+        if values.is_empty() {
+            return Err(ValueError::ExpectedEnumWithVariantId)
+        }
+
+        Ok((values[0].as_ref().as_u8()?, values[1..].into()))
+    }
+
+    #[inline]
     pub fn as_range(&self) -> Result<(&Primitive, &Primitive), ValueError> {
         self.as_value().and_then(Primitive::as_range)
     }

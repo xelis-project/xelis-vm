@@ -2409,3 +2409,31 @@ fn test_struct_with_function() {
 
     assert_eq!(run_code_id(code, 2), Primitive::U64(42));
 }
+
+#[test]
+fn test_enum_with_function() {
+    let code = r#"
+        enum Foo {
+            A { value: u64 },
+            B { value: u64 },
+            C
+        }
+
+        fn (self Foo) get_value() -> u64 {
+            match self {
+                Foo::A { value } => return value,
+                Foo::B { value } => return value * 2,
+                Foo::C => return 0
+            };
+
+            return panic("unreachable")
+        }
+
+        entry main() {
+            let foo: Foo = Foo::B { value: 21 };
+            return foo.get_value()
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(42));
+}
