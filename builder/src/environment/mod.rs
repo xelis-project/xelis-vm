@@ -165,6 +165,11 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         &self.enum_manager
     }
 
+    // opaque manager, used to find the opaque id
+    pub fn get_opaque_manager(&self) -> &OpaqueManager<'a> {
+        &self.opaque_manager
+    }
+
     // all registered functions
     pub fn get_functions(&self) -> &Vec<NativeFunction<M>> {
         &self.env.get_functions()
