@@ -886,7 +886,7 @@ impl fmt::Display for ValueCell {
                 write!(f, "[{}]", s.join(", "))
             },
             Self::Bytes(bytes) => {
-                write!(f, "bytes[{:?}]", bytes)
+                write!(f, "bytes{:?}", bytes)
             },
             Self::Map(map) => {
                 let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
