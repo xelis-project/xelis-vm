@@ -38,4 +38,8 @@ impl<'a> OpaqueManager<'a> {
         self.mapper.get_by_id(ty.id())
             .map(|v| *v)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &OpaqueType> {
+        self.types.values()
+    }
 }
