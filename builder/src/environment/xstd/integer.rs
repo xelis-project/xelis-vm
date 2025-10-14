@@ -64,7 +64,7 @@ macro_rules! register_checked_fns {
 }
 
 macro_rules! integer_param_fn {
-    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
+    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
             fn [<$op _ $f>]<M>(
                 zelf: FnInstance,
@@ -86,7 +86,8 @@ macro_rules! integer_param_fn {
             $env.register_native_function(
                 stringify!($op),
                 Some(Type::$t),
-                vec![("other", Type::$t)],
+                // $param with uppercase first letter
+                vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<$op _ $f>]),
                 $cost,
                 Some(Type::$t)
@@ -98,11 +99,11 @@ macro_rules! integer_param_fn {
 macro_rules! register_saturating_fns {
     ($env: expr, $t: ident, $f: ident) => {
         {
-            integer_param_fn!($env, saturating_add, $t, $f, $f, 1);
-            integer_param_fn!($env, saturating_sub, $t, $f, $f, 1);
-            integer_param_fn!($env, saturating_mul, $t, $f, $f, 3);
-            integer_param_fn!($env, saturating_div, $t, $f, $f, 3);
-            integer_param_fn!($env, saturating_pow, $t, $f, u32, 50);
+            integer_param_fn!($env, saturating_add, $t, $f, $f, $t, 1);
+            integer_param_fn!($env, saturating_sub, $t, $f, $f, $t, 1);
+            integer_param_fn!($env, saturating_mul, $t, $f, $f, $t, 3);
+            integer_param_fn!($env, saturating_div, $t, $f, $f, $t, 3);
+            integer_param_fn!($env, saturating_pow, $t, $f, u32, U32, 50);
         }
     };
 }
@@ -180,9 +181,9 @@ macro_rules! integer_numbers {
         integer_no_param_fn!($env, $t, $f, trailing_zeros);
         integer_no_param_fn!($env, $t, $f, count_zeros);
 
-        integer_param_fn!($env, rotate_left, $t, $f, u32, 20);
-        integer_param_fn!($env, rotate_right, $t, $f, u32, 20);
-        integer_param_fn!($env, pow, $t, $f, u32, 50);
+        integer_param_fn!($env, rotate_left, $t, $f, u32, U32, 20);
+        integer_param_fn!($env, rotate_right, $t, $f, u32, U32, 20);
+        integer_param_fn!($env, pow, $t, $f, u32, U32, 50);
     };
 }
 
