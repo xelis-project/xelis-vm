@@ -1,24 +1,30 @@
-use xelis_types::{IdentifierType, NoHashMap, OpaqueType};
+use std::{any::TypeId, collections::HashMap};
+
+use xelis_types::{IdentifierType, NoHashMap, Opaque, OpaqueType};
 use crate::{BuilderError, Mapper};
 
 pub struct OpaqueManager<'a> {
     mapper: Mapper<'a, &'static str>,
-    types: NoHashMap<OpaqueType>
+    types: NoHashMap<OpaqueType>,
+    lookup: HashMap<TypeId, OpaqueType>,
 }
 
 impl<'a> OpaqueManager<'a> {
     pub fn new() -> Self {
         Self {
             mapper: Mapper::new(),
-            types: NoHashMap::default()
+            types: NoHashMap::default(),
+            lookup: HashMap::default(),
         }
     }
 
     // Register a new opaque type
-    pub fn build(&mut self, name: &'static str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
+    pub fn build<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
         let id = self.mapper.register(name)?;
         let ty = OpaqueType::with(id, name, allow_external_input);
         self.types.insert(id, ty.clone());
+        self.lookup.insert(TypeId::of::<T>(), ty.clone());
+
         Ok(ty)
     }
 
@@ -41,5 +47,9 @@ impl<'a> OpaqueManager<'a> {
 
     pub fn iter(&self) -> impl Iterator<Item = &OpaqueType> {
         self.types.values()
+    }
+
+    pub fn get_by_type_id(&self, ty: &TypeId) -> Option<&OpaqueType> {
+        self.lookup.get(&ty)
     }
 }

@@ -561,7 +561,16 @@ impl<'a, M> Parser<'a, M> {
             // we have to clone everything due to this
             Expression::Constant(ref val) => match Type::from_value_type(val) {
                 Some(v) => Cow::Owned(v),
-                None => return Ok(None)
+                None => return match val {
+                    Constant::Primitive(Primitive::Opaque(wrapper)) => {
+                        if let Some(ty) = self.environment.get_opaque_manager().get_by_type_id(&wrapper.get_type_id()) {
+                            Ok(Some(Cow::Owned(Type::Opaque(ty.clone()))))
+                        } else {
+                            return Ok(None)
+                        }
+                    },
+                    _ => return Ok(None)
+                }
             },
             Expression::ArrayCall(path, _) => {
                 trace!("Array call on path: {:?}", path);
@@ -2827,6 +2836,7 @@ impl<'a, M> Parser<'a, M> {
 #[cfg(test)]
 mod tests {
     use xelis_environment::{FunctionHandler, SysCallResult};
+    use xelis_types::traits::{JSONHelper, Serializable};
 
     use super::*;
 
@@ -3150,6 +3160,49 @@ mod tests {
 
         assert_eq!(constant.value_type, Type::U64);
         assert_eq!(constant.value, Primitive::U64(10).into());
+    }
+
+    #[test]
+    fn test_registered_const() {
+        // let a: Foo = Foo::MAX;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Identifier("Foo"),
+            Token::OperatorAssign,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX"),
+        ];
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct Foo;
+        impl_opaque!("Foo", Foo);
+
+        impl Serializable for Foo {}
+
+        impl JSONHelper for Foo {}
+
+        let mut env = EnvironmentBuilder::new();
+        let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", false));
+
+        env.register_constant(ty.clone(), "MAX", Primitive::Opaque(Foo.into()).into());
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: Some(0),
+                    value_type: ty,
+                    value: Expression::Constant(Primitive::Opaque(Foo.into()).into())
+                }
+            )
+        );
     }
 
     #[test]
