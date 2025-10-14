@@ -41,7 +41,7 @@ macro_rules! checked_fn {
                 // The function identifier
                 FunctionHandler::Sync([<checked_ $op _ $f>]),
                 $cost,
-                Some(Type::Optional(Box::new(Type::$t)))
+                Some(Type::Optional(Box::new(Type::$param_ty)))
             );
         }
     };
