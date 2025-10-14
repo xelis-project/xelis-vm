@@ -101,46 +101,46 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         };
 
         table.set_instruction(OpCode::Constant, constant, 1);
-        table.set_instruction(OpCode::MemoryLoad, memory_load, 5);
-        table.set_instruction(OpCode::MemorySet, memory_set, 5);
-        table.set_instruction(OpCode::MemoryPop, memory_pop, 3);
-        table.set_instruction(OpCode::MemoryLen, memory_len, 1);
-        table.set_instruction(OpCode::MemoryToOwned, memory_to_owned, 5);
+        table.set_instruction(OpCode::MemoryLoad, memory_load, 15);
+        table.set_instruction(OpCode::MemorySet, memory_set, 15);
+        table.set_instruction(OpCode::MemoryPop, memory_pop, 5);
+        table.set_instruction(OpCode::MemoryLen, memory_len, 3);
+        table.set_instruction(OpCode::MemoryToOwned, memory_to_owned, 12);
 
         table.set_instruction(OpCode::SubLoad, subload, 5);
 
         table.set_instruction(OpCode::Pop, pop, 1);
-        table.set_instruction(OpCode::PopN, pop_n, 1);
+        table.set_instruction(OpCode::PopN, pop_n, 3);
         table.set_instruction(OpCode::Copy, copy, 1);
-        table.set_instruction(OpCode::CopyN, copy_n, 1);
-        table.set_instruction(OpCode::ToOwned, to_owned, 1);
+        table.set_instruction(OpCode::CopyN, copy_n, 3);
+        table.set_instruction(OpCode::ToOwned, to_owned, 5);
 
-        table.set_instruction(OpCode::Swap, swap, 1);
-        table.set_instruction(OpCode::Swap2, swap2, 1);
-        table.set_instruction(OpCode::Jump, jump, 2);
-        table.set_instruction(OpCode::JumpIfFalse, jump_if_false, 3);
+        table.set_instruction(OpCode::Swap, swap, 3);
+        table.set_instruction(OpCode::Swap2, swap2, 5);
+        table.set_instruction(OpCode::Jump, jump, 15);
+        table.set_instruction(OpCode::JumpIfFalse, jump_if_false, 18);
 
         table.set_instruction(OpCode::IterableLength, iterable_length, 3);
-        table.set_instruction(OpCode::IteratorBegin, iterator_begin, 5);
-        table.set_instruction(OpCode::IteratorNext, iterator_next, 1);
-        table.set_instruction(OpCode::IteratorEnd, iterator_end, 1);
+        table.set_instruction(OpCode::IteratorBegin, iterator_begin, 10);
+        table.set_instruction(OpCode::IteratorNext, iterator_next, 5);
+        table.set_instruction(OpCode::IteratorEnd, iterator_end, 5);
 
         table.set_instruction(OpCode::Return, return_fn, 1);
 
-        table.set_instruction(OpCode::ArrayCall, array_call, 2);
-        table.set_instruction(OpCode::Cast, cast, 1);
-        table.set_instruction(OpCode::InvokeChunk, invoke_chunk, 5);
+        table.set_instruction(OpCode::ArrayCall, array_call, 3);
+        table.set_instruction(OpCode::Cast, cast, 5);
+        table.set_instruction(OpCode::InvokeChunk, invoke_chunk, 15);
         table.set_instruction(OpCode::SysCall, syscall, 2);
-        table.set_instruction(OpCode::NewObject, new_array, 1);
-        table.set_instruction(OpCode::NewRange, new_range, 1);
-        table.set_instruction(OpCode::NewMap, new_map, 1);
+        table.set_instruction(OpCode::NewObject, new_array, 3);
+        table.set_instruction(OpCode::NewRange, new_range, 3);
+        table.set_instruction(OpCode::NewMap, new_map, 5);
 
         table.set_instruction(OpCode::Add, add, 1);
         table.set_instruction(OpCode::Sub, sub, 1);
         table.set_instruction(OpCode::Mul, mul, 3);
         table.set_instruction(OpCode::Div, div, 8);
         table.set_instruction(OpCode::Mod, rem, 8);
-        table.set_instruction(OpCode::Pow, pow, 35);
+        table.set_instruction(OpCode::Pow, pow, 50);
         table.set_instruction(OpCode::And, and, 2);
         table.set_instruction(OpCode::Or, or, 1);
 
@@ -163,7 +163,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         table.set_instruction(OpCode::AssignMul, mul_assign, 5);
         table.set_instruction(OpCode::AssignDiv, div_assign, 10);
         table.set_instruction(OpCode::AssignMod, rem_assign, 10);
-        table.set_instruction(OpCode::AssignPow, pow_assign, 35);
+        table.set_instruction(OpCode::AssignPow, pow_assign, 55);
 
         table.set_instruction(OpCode::AssignBitwiseAnd, bitwise_and_assign, 3);
         table.set_instruction(OpCode::AssignBitwiseOr, bitwise_or_assign, 3);
@@ -175,8 +175,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         table.set_instruction(OpCode::Dec, decrement, 1);
         table.set_instruction(OpCode::Flatten, flatten, 5);
         table.set_instruction(OpCode::Match, match_, 2);
-        table.set_instruction(OpCode::DynamicCall, dynamic_call, 8);
-        table.set_instruction(OpCode::CaptureContext, capture_context, 5);
+        table.set_instruction(OpCode::DynamicCall, dynamic_call, 20);
+        table.set_instruction(OpCode::CaptureContext, capture_context, 25);
 
         table
     }
