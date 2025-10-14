@@ -37,11 +37,11 @@ macro_rules! checked_fn {
                 // Function name as a string
                 stringify!([<checked_ $op>]),
                 Some(Type::$t),
-                vec![("other", Type::$t)],
+                vec![("other", Type::$param_ty)],
                 // The function identifier
                 FunctionHandler::Sync([<checked_ $op _ $f>]),
                 $cost,
-                Some(Type::Optional(Box::new(Type::$param_ty)))
+                Some(Type::Optional(Box::new(Type::$t)))
             );
         }
     };
