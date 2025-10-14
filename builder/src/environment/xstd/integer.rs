@@ -56,7 +56,7 @@ macro_rules! register_checked_fns {
             checked_fn!($env, mul, $t, $f, $f, 3);
             checked_fn!($env, div, $t, $f, $f, 8);
             checked_fn!($env, rem, $t, $f, $f, 8);
-            checked_fn!($env, pow, $t, $f, u32, 35);
+            checked_fn!($env, pow, $t, $f, u32, 50);
             checked_fn!($env, shr, $t, $f, u32, 5);
             checked_fn!($env, shl, $t, $f, u32, 5);
         }
@@ -102,7 +102,7 @@ macro_rules! register_saturating_fns {
             integer_param_fn!($env, saturating_sub, $t, $f, $f, 1);
             integer_param_fn!($env, saturating_mul, $t, $f, $f, 3);
             integer_param_fn!($env, saturating_div, $t, $f, $f, 3);
-            integer_param_fn!($env, saturating_pow, $t, $f, u32, 35);
+            integer_param_fn!($env, saturating_pow, $t, $f, u32, 50);
         }
     };
 }
@@ -182,6 +182,7 @@ macro_rules! integer_numbers {
 
         integer_param_fn!($env, rotate_left, $t, $f, u32, 20);
         integer_param_fn!($env, rotate_right, $t, $f, u32, 20);
+        integer_param_fn!($env, pow, $t, $f, u32, 50);
     };
 }
 
