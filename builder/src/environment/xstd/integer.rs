@@ -13,7 +13,7 @@ use paste::paste;
 use crate::EnvironmentBuilder;
 
 macro_rules! checked_fn {
-    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $cost: expr) => {
+    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
             fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
@@ -45,20 +45,23 @@ macro_rules! checked_fn {
             );
         }
     };
+    ($env: expr, $op: ident, $t: ident, $f: ident, $cost: expr) => {
+        checked_fn!($env, $op, $t, $f, $f, $t, $cost);
+    }
 }
 
 // macro to register multiple operations for a specific type
 macro_rules! register_checked_fns {
     ($env: expr, $t: ident, $f: ident) => {
         {
-            checked_fn!($env, add, $t, $f, $f, 1);
-            checked_fn!($env, sub, $t, $f, $f, 1);
-            checked_fn!($env, mul, $t, $f, $f, 3);
-            checked_fn!($env, div, $t, $f, $f, 8);
-            checked_fn!($env, rem, $t, $f, $f, 8);
-            checked_fn!($env, pow, $t, $f, u32, 50);
-            checked_fn!($env, shr, $t, $f, u32, 5);
-            checked_fn!($env, shl, $t, $f, u32, 5);
+            checked_fn!($env, add, $t, $f, 1);
+            checked_fn!($env, sub, $t, $f, 1);
+            checked_fn!($env, mul, $t, $f, 3);
+            checked_fn!($env, div, $t, $f, 8);
+            checked_fn!($env, rem, $t, $f, 8);
+            checked_fn!($env, pow, $t, $f, u32, U32, 50);
+            checked_fn!($env, shr, $t, $f, u32, U32, 5);
+            checked_fn!($env, shl, $t, $f, u32, U32, 5);
         }
     };
 }
