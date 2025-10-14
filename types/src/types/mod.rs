@@ -4,8 +4,7 @@ mod func;
 
 pub mod opaque;
 
-use std::{fmt, hash::{Hash, Hasher}};
-use indexmap::Equivalent;
+use std::{fmt, hash::Hash};
 use serde::{Deserialize, Serialize};
 
 use crate::{values::Primitive, Constant};
@@ -498,33 +497,8 @@ impl fmt::Display for Type {
     }
 }
 
-// TypeId is used to identify a type
-// We can retrieve a type from a TypeId
-// if its stored in an IndexMap
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TypeId(pub u16);
-
-impl Hash for TypeId {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
-impl Equivalent<EnumType> for TypeId {
-    fn equivalent(&self, key: &EnumType) -> bool {
-        key.id() == self.0
-    }
-}
-
-impl Equivalent<StructType> for TypeId {
-    fn equivalent(&self, key: &StructType) -> bool {
-        key.id() == self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::hash::{DefaultHasher, Hash, Hasher};
     use super::*;
 
     #[test]
@@ -568,23 +542,6 @@ mod tests {
             .map_generic_type(Some(&Type::Array(Box::new(Type::U64))));
 
         assert!(expected == got);
-    }
-
-    #[test]
-    fn test_type_id_equivalent() {
-        let id = TypeId(1);
-        let struct_type = StructType::new(1, "Foo", vec![]);
-        assert!(id.equivalent(&struct_type));
-
-        // Also test hash
-        let mut left_hasher = DefaultHasher::new();
-        id.hash(&mut left_hasher);
-        let left_hash = left_hasher.finish();
-
-        let mut right_hasher = DefaultHasher::new();
-        struct_type.id().hash(&mut right_hasher);
-        let right_hash = right_hasher.finish();
-        assert_eq!(left_hash, right_hash);
     }
 
     #[test]
