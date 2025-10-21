@@ -1,4 +1,69 @@
 {
+  "internal_types": [
+    {
+      "name": "Person",
+      "kind": "struct",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "age", "type": "u8" },
+        { "name": "employed", "type": "bool" }
+      ]
+    },
+    {
+      "name": "Status",
+      "kind": "enum",
+      "variants": [
+        { "name": "Active", "fields": [] },
+        { "name": "Pending", "fields": [] },
+        {
+          "name": "Completed",
+          "fields": [
+            { "name": "result", "type": "string" },
+            { "name": "code", "type": "u8" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Action",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Create",
+          "fields": [{ "name": "person", "type": "Person" }]
+        },
+        {
+          "name": "Update",
+          "fields": [
+            { "name": "id", "type": "u64" },
+            { "name": "person", "type": "Person" }
+          ]
+        },
+        {
+          "name": "Delete",
+          "fields": [{ "name": "id", "type": "u64" }]
+        },
+        { "name": "None", "fields": [] }
+      ]
+    },
+    {
+      "name": "Config",
+      "kind": "struct",
+      "fields": [
+        { "name": "enabled", "type": "bool" },
+        { "name": "threshold", "type": "u64" }
+      ]
+    },
+    {
+      "name": "Permission",
+      "kind": "enum",
+      "variants": [
+        { "name": "Read", "fields": [] },
+        { "name": "Write", "fields": [] },
+        { "name": "Admin", "fields": [] }
+      ]
+    }
+  ],
   "data": [
     {
       "chunk_id": 2,
@@ -12,10 +77,7 @@
       "name": "get_factorial",
       "outputs": "u64",
       "params": [
-        {
-          "name": "a",
-          "type": "u64"
-        }
+        { "name": "a", "type": "u64" }
       ],
       "type": "entry"
     },
@@ -24,14 +86,8 @@
       "name": "address_test",
       "outputs": "u64",
       "params": [
-        {
-          "name": "addy",
-          "type": "Address"
-        },
-        {
-          "name": "amt",
-          "type": "u64"
-        }
+        { "name": "addy", "type": "Address" },
+        { "name": "amt", "type": "u64" }
       ],
       "type": "entry"
     },
@@ -41,27 +97,63 @@
       "outputs": "u64",
       "params": [
         {
-          "fields": [
-            {
-              "name": "name",
-              "type": "string"
-            },
-            {
-              "name": "age",
-              "type": "u8"
-            },
-            {
-              "name": "employed",
-              "type": "bool"
-            }
-          ],
-          "internalType": "Person",
           "name": "person",
-          "type": "struct"
+          "type": "struct",
+          "internal_type": "Person"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 7,
+      "name": "status_test",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "status",
+          "type": "enum",
+          "internal_type": "Status"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 8,
+      "name": "action_test",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "action",
+          "type": "enum",
+          "internal_type": "Action"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 9,
+      "name": "batch_configure",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "configs",
+          "type": "Config[]"
+        }
+      ],
+      "type": "entry"
+    },
+    {
+      "chunk_id": 10,
+      "name": "set_permissions",
+      "outputs": "u64",
+      "params": [
+        {
+          "name": "user_permissions",
+          "type": "map<Address, Permission>"
         }
       ],
       "type": "entry"
     }
   ],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

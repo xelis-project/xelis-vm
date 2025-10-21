@@ -1,52 +1,97 @@
 struct Value {
-	value: string
+    value: string
 }
 
 struct Person {
-  name: string,
-  age: u8,
-  employed: bool
+    name: string,
+    age: u8,
+    employed: bool
 }
 
 fn (v Value) my_value() -> string {
-	return v.value
+    return v.value
 }
 
 struct Message {
-	value: Value
+    value: Value
 }
 
 fn (m Message) to_string() -> string {
-	return m.value.value
+    return m.value.value
+}
+
+enum Status {
+    Active,
+    Pending,
+    Completed { result: string, code: u8 }
+}
+
+enum Action {
+    Create { person: Person },
+    Update { id: u64, person: Person },
+    Delete { id: u64 },
+    None
+}
+
+// NEW: Types that only appear inside arrays/containers
+struct Config {
+    enabled: bool,
+    threshold: u64
+}
+
+enum Permission {
+    Read,
+    Write,
+    Admin
 }
 
 entry path_test() {
-	let message: Message = Message { value: Value { value: "Hello World!" } }
-	println(message.to_string())
-	message.value.value += " from path"
-	println(message.value.my_value())
-	return 0
+    let message: Message = Message { value: Value { value: "Hello World!" } }
+    println(message.to_string())
+    message.value.value += " from path"
+    println(message.value.my_value())
+    return 0
 }
 
 fn factorial(n: u64) -> u64 {
-	if n == 0 {
-		return 1
-	}
-	return n * factorial(n - 1)
+    if n == 0 {
+        return 1
+    }
+    return n * factorial(n - 1)
 }
 
 entry get_factorial(a: u64) {
-	println(factorial(a))
-
-	return 0
+    println(factorial(a))
+    return 0
 }
 
 entry address_test(addy: Address, amt: u64) {
-  println(addy)
-  return 0
+    println(addy)
+    return 0
 }
 
 entry person_param_test(person: Person) {
-  println(person)
-  return 0
+    println(person)
+    return 0
+}
+
+entry status_test(status: Status) {
+    println(status)
+    return 0
+}
+
+entry action_test(action: Action) {
+    println(action)
+    return 0
+}
+
+// NEW: Test array parameters - Config and Permission never appear unwrapped
+entry batch_configure(configs: Config[]) {
+    println(configs)
+    return 0
+}
+
+entry set_permissions(user_permissions: map<Address, Permission>) {
+    println(user_permissions)
+    return 0
 }
