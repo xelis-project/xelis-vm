@@ -9,7 +9,7 @@ use xelis_builder::Builder;
 
 #[warn(unused_extern_crates)]
 
-const ABI_VERSION: &str = "1.0.0";
+const ABI_VERSION: &str = "1.1.0";
 
 pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
@@ -22,9 +22,122 @@ pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::
     abi_from_parse(&program, &mapper, &env)
 }
 
+fn register_type(
+    _type: &Type,
+    mapper: &GlobalMapper,
+    internal_types: &mut Vec<serde_json::Value>,
+    seen_types: &mut std::collections::HashSet<String>
+) -> anyhow::Result<()> {
+    match _type {
+        // Recursively handle containers first
+        Type::Array(inner) => {
+            register_type(inner.as_ref(), mapper, internal_types, seen_types)?;
+        },
+        Type::Optional(inner) => {
+            register_type(inner.as_ref(), mapper, internal_types, seen_types)?;
+        },
+        Type::Range(inner) => {
+            register_type(inner.as_ref(), mapper, internal_types, seen_types)?;
+        },
+        Type::Map(key, value) => {
+            register_type(key.as_ref(), mapper, internal_types, seen_types)?;
+            register_type(value.as_ref(), mapper, internal_types, seen_types)?;
+        },
+        Type::Tuples(types) => {
+            for ty in types {
+                register_type(ty, mapper, internal_types, seen_types)?;
+            }
+        },
+        
+        // Then handle struct/enum (existing code)
+        Type::Struct(struct_type) => {
+            let builder = mapper.structs();
+            let name_info = builder.get_name_by_ref(&struct_type)?;
+
+            if seen_types.insert(name_info.to_string()) {
+                // Recursively register nested types in fields
+                for (_field_name, field_type) in struct_type.fields() {
+                    register_type(field_type, mapper, internal_types, seen_types)?;
+                }
+
+                let struct_field_names: Vec<&str> = builder
+                    .get_by_ref(&struct_type)?
+                    .names()
+                    .collect();
+
+                let fields: Vec<serde_json::Value> = struct_type
+                    .fields()
+                    .iter()
+                    .enumerate()
+                    .map(|(field_index, (_field_name, field_type))| {
+                        serde_json::json!({
+                            "name": struct_field_names[field_index],
+                            "type": field_type.to_string()
+                        })
+                    })
+                    .collect();
+
+                internal_types.push(serde_json::json!({
+                    "name": name_info,
+                    "kind": "struct",
+                    "fields": fields
+                }));
+            }
+        },
+        Type::Enum(enum_type) => {
+            let builder = mapper.enums();
+            let name_info = builder.get_name_by_ref(&enum_type)?;
+
+            if seen_types.insert(name_info.to_string()) {
+                // Recursively register nested types in variant fields
+                for (_variant_name, variant_fields) in enum_type.variants() {
+                    for (_field_name, field_type) in variant_fields.fields() {
+                        register_type(field_type, mapper, internal_types, seen_types)?;
+                    }
+                }
+
+                let variants: Vec<serde_json::Value> = enum_type
+                    .variants()
+                    .iter()
+                    .map(|(variant_name, variant_fields)| {
+                        let fields: Vec<serde_json::Value> = variant_fields
+                            .fields()
+                            .iter()
+                            .map(|(field_name, field_type)| {
+                                serde_json::json!({
+                                    "name": field_name.as_ref(),
+                                    "type": field_type.to_string()
+                                })
+                            })
+                            .collect();
+
+                        serde_json::json!({
+                            "name": variant_name.as_ref(),
+                            "fields": fields
+                        })
+                    })
+                    .collect();
+
+                internal_types.push(serde_json::json!({
+                    "name": name_info,
+                    "kind": "enum",
+                    "variants": variants
+                }));
+            }
+        },
+        _ => {
+            // Primitives, Any, T, Opaque, Function, Bytes - nothing to register
+        }
+    }
+    
+    Ok(())
+}
+
 pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: &EnvironmentBuilder<M>) -> anyhow::Result<String> {
-    // Collect all the available entry functions
     let mut abi_functions: Vec<serde_json::Value> = Vec::new();
+    let mut internal_types: Vec<serde_json::Value> = Vec::new();
+    let mut seen_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for (i, func) in program.functions().iter().enumerate() {
         let env_offset = environment.get_functions().len() as u16;
 
@@ -37,62 +150,41 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
             let mut flattened_params = Vec::new();
 
             for (name, _type) in &mapping.parameters {
+                register_type(_type, mapper, &mut internal_types, &mut seen_types)?;
+                
                 match _type {
                     Type::Struct(struct_type) => {
-                        let struct_fields: Vec<(String, Type)> = struct_type
-                            .fields()
-                            .iter()
-                            .enumerate()
-                            .map(|(i, (_name, ty))| (format!("field{}", i), ty.clone()))
-                            .collect();
-
-                        let builder = mapper
-                            .structs();
-
-                        let struct_field_names: Vec<&str> = builder
-                            .get_by_ref(&struct_type)?
-                            .names()
-                            .collect();
-
+                        let builder = mapper.structs();
                         let name_info = builder.get_name_by_ref(&struct_type)?;
-
-                        let mut struct_data = Vec::new();
-                        for (field_index, field_type) in struct_fields.iter().enumerate() {
-                            struct_data.push(serde_json::json!({
-                                "name": struct_field_names[field_index],
-                                "type": field_type.1.to_string(),
-                            }));
-                        }
-
-                        flattened_params.push(
-                            serde_json::json!({
-                                "name": name,
-                                "type": "struct",
-                                "internalType": name_info,
-                                "fields": struct_data
-                            })
-                        )
+                        
+                        flattened_params.push(serde_json::json!({
+                            "name": name,
+                            "type": "struct",
+                            "internal_type": name_info
+                        }));
                     },
                     Type::Enum(enum_type) => {
-
-                        let builder = mapper
-                            .enums();
-
+                        let builder = mapper.enums();
                         let name_info = builder.get_name_by_ref(&enum_type)?;
-
+                        
                         flattened_params.push(serde_json::json!({
                             "name": name.to_string(),
-                            "type": format!("enum"),
-                            "internalType": name_info
+                            "type": "enum",
+                            "internal_type": name_info
                         }));
                     },
                     _ => {
+                        // Primitives, arrays, maps, etc.
                         flattened_params.push(serde_json::json!({
                             "name": name.to_string(),
                             "type": _type.to_string(),
                         }));
                     }
                 }
+            }
+
+            if let Some(return_type) = func.return_type() {
+                register_type(return_type, mapper, &mut internal_types, &mut seen_types)?;
             }
 
             let abi_entry = serde_json::json!({
@@ -108,6 +200,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
 
     let abi_root = serde_json::json!({
         "version": ABI_VERSION,
+        "internal_types": internal_types,
         "data": abi_functions
     });
 
@@ -167,7 +260,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
 //                             serde_json::json!({
 //                                 "name": name,
 //                                 "type": "struct",
-//                                 "internalType": format!("{}{}", prefix, name_info.0),
+//                                 "internal_type": format!("{}{}", prefix, name_info.0),
 //                                 "fields": struct_data
 //                             })
 //                         )
@@ -188,7 +281,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
 //                         flattened_params.push(serde_json::json!({
 //                             "name": name.to_string(),
 //                             "type": format!("enum"),
-//                             "internalType": format!("{}{}", prefix, name_info.0)
+//                             "internal_type": format!("{}{}", prefix, name_info.0)
 //                         }));
 //                     },
 //                     _ => {
