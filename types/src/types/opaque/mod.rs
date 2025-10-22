@@ -82,8 +82,9 @@ impl Hash for dyn Opaque {
 
 /// An Opaque value that can be used to store any type
 /// This allow environments to provide custom types to the VM
-#[derive(Debug, Hash)]
+#[derive(Debug, Hash, JsonSchema)]
 pub struct OpaqueWrapper {
+    #[schemars(skip)]
     inner: Box<dyn Opaque>
 }
 
@@ -194,23 +195,6 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
 
         deserialize_fn(value)
             .map_err(serde::de::Error::custom)
-    }
-}
-
-impl JsonSchema for OpaqueWrapper {
-    fn schema_name() -> Cow<'static, str> {
-        "Opaque".into()
-    }
-
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({
-            "type": "object",
-            "properties": {
-                "type": { "type": "string" },
-                "value": { "type": "object" }
-            },
-            "required": ["type", "value"]
-        })
     }
 }
 

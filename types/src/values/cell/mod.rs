@@ -8,10 +8,11 @@ use std::{
     hash::{Hash, Hasher},
     mem
 };
-use schemars::JsonSchema;
+use schemars::*;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use crate::{
     opaque::OpaqueWrapper,
     DefinedType,
@@ -34,13 +35,12 @@ pub enum Either<L, R> {
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Eq, Serialize, Deserialize)]
 #[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Primitive(Primitive),
     #[serde(with = "hex::serde")]
-    #[schemars(with = "String")]
     Bytes(Vec<u8>),
     Object(CellArray),
     // Map cannot be used as a key in another map
@@ -50,6 +50,91 @@ pub enum ValueCell {
         deserialize_with = "serde_map::deserialize"
     )]
     Map(Box<CellMap>),
+}
+
+// NOTE: we implement JsonSchema manually to reflect the serde_map serialization
+// and to prevent the stack overflow on the Map variant.
+impl JsonSchema for ValueCell {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("ValueCell")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let primitive_schema = gen.subschema_for::<Primitive>();
+        let self_schema = gen.subschema_for::<ValueCell>();
+
+        // Build JSON values for each variant. We use serde_json::Value so we can
+        // easily include the Schema values returned by gen.subschema_for.
+        let primitive_variant = json!({
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "primitive"
+                },
+                "value": primitive_schema
+            },
+            "required": ["type", "value"]
+        });
+
+        let bytes_variant = json!({
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "bytes"
+                },
+                "value": { "type": "string", "description": "hex-encoded bytes" }
+            },
+            "required": ["type", "value"]
+        });
+
+        let object_variant = json!({
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "object"
+                },
+                "value": {
+                    "type": "array",
+                    "items": self_schema
+                }
+            },
+            "required": ["type", "value"]
+        });
+
+        // Map variant — NOTE: this reflects the serde_map serialization: an array
+        // of two-item arrays [key, value] where both items are ValueCell
+        let map_pair_schema = json!({
+            "type": "array",
+            "prefixItems": [ self_schema.clone(), self_schema.clone() ],
+            "minItems": 2,
+            "maxItems": 2
+        });
+
+        let map_variant = json!({
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "map"
+                },
+                "value": {
+                    "type": "array",
+                    "items": map_pair_schema,
+                    "description": "A list of [key, value] pairs"
+                }
+            },
+            "required": ["type", "value"]
+        });
+
+        json_schema!({
+            "oneOf": [ primitive_variant, bytes_variant, object_variant, map_variant ],
+            "title": "ValueCell",
+            "description": "A recursive ValueCell (primitive, bytes, array of values, or map encoded as pairs)"
+        })
+    }
 }
 
 pub enum ValueCellRef<'a> {
@@ -1008,5 +1093,10 @@ mod tests {
     fn test_serde_stackoverflow() {
         let v = r#"{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}"#;
         assert!(serde_json::from_str::<ValueCell>(v).is_err_and(|e| e.to_string().contains("recursion limit exceeded")));
+    }
+
+    #[test]
+    fn test_schema() {
+        let _: Schema = schemars::schema_for!(ValueCell);
     }
 }
