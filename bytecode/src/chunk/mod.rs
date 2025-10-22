@@ -1,15 +1,17 @@
 mod reader;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use super::OpCode;
 pub use self::reader::*;
 
 // Each chunk is a collection of opcodes and constants
 // It represent a function or a block of code
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Chunk {
     // All the opcodes defined in the chunk
     #[serde(with = "hex::serde")]
+    #[schemars(with = "String", description = "Bytecode instructions represented as a hex string")]
     instructions: Vec<u8>
 }
 

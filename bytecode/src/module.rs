@@ -1,10 +1,11 @@
 use indexmap::{IndexMap, IndexSet};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use xelis_types::ValueCell;
 
 use super::{Chunk, Access};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ModuleChunk {
     #[serde(flatten)]
     pub chunk: Chunk,
@@ -14,7 +15,7 @@ pub struct ModuleChunk {
 
 // A module is a collection of declared chunks, constants and types
 // It represents a program compiled in bytecode
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Module {
     // Set of constants used by the program
     #[serde(default)]
