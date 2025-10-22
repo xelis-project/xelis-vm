@@ -6,6 +6,7 @@ use std::{
     fmt,
     hash::{Hash, Hasher}
 };
+use schemars::*;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
 use crate::{IdentifierType, ValueError};
@@ -193,6 +194,23 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
 
         deserialize_fn(value)
             .map_err(serde::de::Error::custom)
+    }
+}
+
+impl JsonSchema for OpaqueWrapper {
+    fn schema_name() -> Cow<'static, str> {
+        "Opaque".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "object",
+            "properties": {
+                "type": { "type": "string" },
+                "value": { "type": "object" }
+            },
+            "required": ["type", "value"]
+        })
     }
 }
 

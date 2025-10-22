@@ -8,6 +8,7 @@ use std::{
     hash::{Hash, Hasher},
     mem
 };
+use schemars::JsonSchema;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -33,12 +34,13 @@ pub enum Either<L, R> {
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Eq, Serialize, Deserialize)]
+#[derive(Debug, Eq, Serialize, Deserialize, JsonSchema)]
 #[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Primitive(Primitive),
     #[serde(with = "hex::serde")]
+    #[schemars(with = "String")]
     Bytes(Vec<u8>),
     Object(CellArray),
     // Map cannot be used as a key in another map

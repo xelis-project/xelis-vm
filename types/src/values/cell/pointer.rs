@@ -1,10 +1,12 @@
 use core::fmt;
 use std::{cell::UnsafeCell, sync::Arc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{Constant, Primitive, ValueCell, ValueError};
 
 // ValuePointer is a simple wrapper around the raw mut pointer
-#[derive(Clone)]
+#[derive(Clone, JsonSchema)]
+#[schemars(with = "ValueCell")]
 pub struct ValuePointer(Arc<UnsafeCell<ValueCell>>);
 
 // SAFETY: ValueCell is Sync + Send

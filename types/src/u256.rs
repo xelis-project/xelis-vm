@@ -5,9 +5,11 @@ use std::{
     str::FromStr
 };
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Hash, Eq, Ord)]
+#[derive(Debug, Clone, Copy, Hash, Eq, Ord, JsonSchema)]
+#[schemars(with = "String", description = "A 256-bit unsigned integer represented as a decimal string.")]
 pub struct U256([u64; 4]);
 
 impl Default for U256 {

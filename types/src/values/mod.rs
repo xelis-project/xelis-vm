@@ -17,6 +17,7 @@ use super::{
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 macro_rules! checked_cast {
@@ -35,7 +36,7 @@ macro_rules! checked_cast {
 }
 
 // This enum is dedicated for constants values / parser
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Primitive {
     Null,
