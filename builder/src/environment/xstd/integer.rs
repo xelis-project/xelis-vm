@@ -234,10 +234,10 @@ macro_rules! min {
             $env.register_native_function(
                 "min",
                 Some(Type::$t),
-                vec![],
+                vec![("other", Type::$t)],
                 FunctionHandler::Sync([<min_ $f>]),
                 1,
-                Some(Type::Array(Box::new(Type::U8)))
+                Some(Type::$t)
             );
         }
     };
@@ -257,10 +257,10 @@ macro_rules! max {
             $env.register_native_function(
                 "max",
                 Some(Type::$t),
-                vec![],
+                vec![("other", Type::$t)],
                 FunctionHandler::Sync([<max_ $f>]),
                 1,
-                Some(Type::Array(Box::new(Type::U8)))
+                Some(Type::$t)
             );
         }
     };
