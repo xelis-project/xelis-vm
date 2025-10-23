@@ -12,7 +12,7 @@ use super::Operator;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expression {
     FunctionCall(Option<Box<Expression>>, IdentifierType, Vec<Expression>, Option<Type>), // path, function name, parameters, return type mapped
-    DynamicCall(IdentifierType, Vec<Expression>, bool), // var_id, parameters, return value
+    DynamicCall(IdentifierType, Vec<Expression>, Option<Type>), // var_id, parameters, return value
     ArrayCall(Box<Expression>, Box<Expression>), // expr, index
     ArrayConstructor(Vec<Expression>),
     TuplesConstructor(Vec<Expression>),

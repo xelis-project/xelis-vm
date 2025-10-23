@@ -626,7 +626,7 @@ impl<'a, M> Parser<'a, M> {
                     let left_type = self.get_type_from_expression(on_type, left, context)?;
                     let right_type = self.get_type_from_expression(on_type, right, context)?;
 
-                    if !left_type.is_number() || !right_type.is_number() || left_type != right_type {
+                    if !left_type.is_number() || !right_type.is_number() || !left_type.is_same_type_for_operation(&right_type) {
                         return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type.into_owned(), right_type.into_owned())))
                     }
                     left_type
@@ -639,7 +639,7 @@ impl<'a, M> Parser<'a, M> {
                         return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type.into_owned(), right_type.into_owned())))
                     }
 
-                    if *right_type != Type::U32 {
+                    if !right_type.is_same_type_for_operation(&Type::U32) {
                         return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(Type::U32, right_type.into_owned())))
                     }
 
@@ -735,7 +735,7 @@ impl<'a, M> Parser<'a, M> {
                     return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                 }
 
-                return Ok(Expression::DynamicCall(id, parameters, ty.return_type().is_some()))
+                return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
             }
         }
 
@@ -1769,7 +1769,7 @@ impl<'a, M> Parser<'a, M> {
             | Operator::Lt
             | Operator::Lte
             | Operator::Gte => {
-                if left_type != right_type {
+                if !left_type.is_same_type_for_operation(&right_type) {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 
@@ -1779,7 +1779,7 @@ impl<'a, M> Parser<'a, M> {
                 }
             }
             Operator::Add => {
-                if left_type != right_type && !(left_type == Type::String || right_type == Type::String) {
+                if !left_type.is_same_type_for_operation(&right_type) && !(left_type.is_string() || right_type.is_string()) {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 
@@ -1789,11 +1789,11 @@ impl<'a, M> Parser<'a, M> {
                 }
             },
             Operator::And | Operator::Or => {
-                if left_type != Type::Bool {
+                if !left_type.is_boolean() {
                     return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, Type::Bool)))
                 }
 
-                if right_type != Type::Bool {
+                if !right_type.is_boolean() {
                     return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(right_type, Type::Bool)))
                 }
             },
@@ -1802,7 +1802,7 @@ impl<'a, M> Parser<'a, M> {
                     return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
                 }
 
-                if right_type != Type::U32 {
+                if !right_type.is_same_type_for_operation(&Type::U32) {
                     // Try to convert the right expression to a u32
                     if !self.try_map_expr_to_type(right_expr, &Type::U32)? {
                         return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, right_type)))
@@ -1811,7 +1811,7 @@ impl<'a, M> Parser<'a, M> {
             },
             Operator::Eq
             | Operator::Neq => {
-                if left_type != right_type {
+                if !left_type.is_same_type_for_operation(&right_type) {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 

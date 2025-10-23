@@ -45,7 +45,13 @@ pub enum Type {
     Struct(StructType),
     Enum(EnumType),
     Opaque(OpaqueType),
-    Function(FnType)
+    Function(FnType),
+    // The function may returns nothing (void)
+    // If a function return type is marked as Voidable,
+    // and the return type is NOT handled explicitly,
+    // it means the returned value may be absent and the
+    // compiler will not count it on the stack
+    Voidable(Box<Type>),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,6 +103,37 @@ impl Type {
     // check if the type is a primitive type
     pub fn is_primitive(&self) -> bool {
         self.primitive_byte().is_some()
+    }
+
+    // check if the type is a voidable type
+    // If its voidable, it means the value may be absent
+    pub fn is_voidable(&self) -> bool {
+        match self {
+            Type::Voidable(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_same_type_for_operation(&self, other: &Type) -> bool {
+        match (self, other) {
+            (Type::U8, Type::U8)
+            | (Type::U16, Type::U16)
+            | (Type::U32, Type::U32)
+            | (Type::U64, Type::U64)
+            | (Type::U128, Type::U128)
+            | (Type::U256, Type::U256)
+            | (Type::Bool, Type::Bool)
+            | (Type::String, Type::String) => true,
+            (Type::Struct(a), Type::Struct(b)) => a == b,
+            (Type::Enum(a), Type::Enum(b)) => a == b,
+            (Type::Tuples(a), Type::Tuples(b)) => a == b,
+            (Type::Array(a), Type::Array(b)) => a == b,
+            (Type::Optional(a), Type::Optional(b)) => a == b,
+            (Type::Range(a), Type::Range(b)) => a == b,
+            (Type::Map(a1, a2), Type::Map(b1, b2)) => a1 == b1 && a2 == b2,
+            (Type::Voidable(inner), t) | (t, Type::Voidable(inner)) => inner.is_same_type_for_operation(t),
+            _ => false
+        }
     }
 
     // Get a type from a value
@@ -255,10 +292,32 @@ impl Type {
         }
     }
 
+    pub fn is_boolean(&self) -> bool {
+        match self {
+            Type::Bool => true,
+            Type::Voidable(inner) => inner.is_boolean(),
+            _ => false
+        }
+    }
+
+    pub fn is_string(&self) -> bool {
+        match self {
+            Type::String => true,
+            Type::Voidable(inner) => inner.is_string(),
+            _ => false
+        }
+    }
+
     // Same as is_compatible_with, but allow for null/value assignation with Optional types
     pub fn is_assign_compatible_with(&self, other: &Type) -> bool {
         if other.is_any() || self.is_any() {
             return true
+        }
+
+        if let Type::Voidable(inner) = other {
+            if self.is_assign_compatible_with(inner) {
+                return true
+            }
         }
 
         match self {
@@ -290,6 +349,7 @@ impl Type {
                 Self::Tuples(tuples2) => tuples.iter().zip(tuples2.iter()).all(|(a, b)| a.is_assign_compatible_with(b)),
                 _ => self.is_compatible_with(other)
             },
+            Self::Voidable(inner) => inner.is_assign_compatible_with(other),
             _ => other.is_compatible_with(self)
         }
     }
@@ -298,6 +358,14 @@ impl Type {
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         if other.is_any() || self.is_any() {
             return true
+        }
+
+        // Special case: voidable are shadow types
+        // that are just useful for compiler hints
+        if let Type::Voidable(inner) = self {
+            if inner.is_compatible_with(other) {
+                return true
+            }
         }
 
         match other {
@@ -347,6 +415,7 @@ impl Type {
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
             },
+            Type::Voidable(inner) => self.is_compatible_with(inner),
             _ => *self == *other || self.is_generic(),
         }
     }
@@ -390,6 +459,7 @@ impl Type {
                 Type::Optional(inner2) => inner.is_castable_to(inner2),
                 _ => inner.is_compatible_with(other)
             },
+            Type::Voidable(inner) => inner.is_castable_to(other),
             _ => false
         }
     }
@@ -416,7 +486,8 @@ impl Type {
             Type::U128 => match other {
                 Type::U256 => true,
                 _ => false
-            }
+            },
+            Type::Voidable(inner) => inner.is_castable_to_no_loss(other),
             _ => false
         }
     }
@@ -426,6 +497,7 @@ impl Type {
             Type::Array(_) => true,
             Type::Range(_) => true,
             Type::Bytes => true,
+            Type::Voidable(ty) => ty.is_iterable(),
             _ => false
         }
     }
@@ -434,6 +506,7 @@ impl Type {
         match &self {
             Type::Array(_) => true,
             Type::Bytes => true,
+            Type::Voidable(ty) => ty.support_array_call(),
             _ => false
         }
     }
@@ -441,6 +514,7 @@ impl Type {
     pub fn is_struct(&self) -> bool {
         match &self {
             Type::Struct(_) => true,
+            Type::Voidable(ty) => ty.is_struct(),
             _ => false
         }
     }
@@ -448,6 +522,7 @@ impl Type {
     pub fn is_number(&self) -> bool {
         match &self {
             Type::U8 | Type::U16 | Type::U32 | Type::U64 | Type::U128 | Type::U256 => true,
+            Type::Voidable(ty) => ty.is_number(),
             _ => false
         }
     }
@@ -455,6 +530,7 @@ impl Type {
     pub fn is_optional(&self) -> bool {
         match &self {
             Type::Optional(_) => true,
+            Type::Voidable(ty) => ty.is_optional(),
             _ => false
         }
     }
@@ -492,7 +568,8 @@ impl fmt::Display for Type {
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(ty) => write!(f, "{}", ty.name()),
             Type::Opaque(ty) => write!(f, "{}", ty.name()),
-            Type::Function(ty) => write!(f, "{}", ty)
+            Type::Function(ty) => write!(f, "{}", ty),
+            Type::Voidable(inner) => write!(f, "void<{}>", inner),
         }
     }
 }
@@ -509,6 +586,15 @@ mod tests {
 
         let struct_type = StructType::new(0, "Foo", Vec::new());
         assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_assign_compatible_with(&Type::Struct(struct_type.clone())));
+
+        // Test void type
+        let void_bool = Type::Voidable(Box::new(Type::Bool));
+        assert!(void_bool.is_compatible_with(&Type::Bool));
+        assert!(Type::Bool.is_compatible_with(&void_bool));
+
+        // assign
+        assert!(void_bool.is_assign_compatible_with(&Type::Bool));
+        assert!(Type::Bool.is_assign_compatible_with(&void_bool));
     }
 
     #[test]

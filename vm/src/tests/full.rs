@@ -2437,3 +2437,38 @@ fn test_enum_with_function() {
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(42));
 }
+
+#[test]
+fn test_voidable_type_no_return() {
+    let code = r#"
+        entry main() {
+            // Type is voidable, so if its not handled
+            // the value is not counted by the compiler
+            test();
+            return 0
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, Some(Type::Voidable(Box::new(Type::U64))));
+
+    let (module, env) = prepare_module_with(code, env);
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+}
+
+
+#[test]
+fn test_voidable_type() {
+    let code = r#"
+        entry main() {
+            let v: u64 = test();
+            return test() * v;
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(100).into()))), 0, Some(Type::Voidable(Box::new(Type::U64))));
+
+    let (module, env) = prepare_module_with(code, env);
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(100 * 100));
+}
