@@ -2456,7 +2456,6 @@ fn test_voidable_type_no_return() {
     assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
 }
 
-
 #[test]
 fn test_voidable_type() {
     let code = r#"

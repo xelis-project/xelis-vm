@@ -116,23 +116,9 @@ impl Type {
 
     pub fn is_same_type_for_operation(&self, other: &Type) -> bool {
         match (self, other) {
-            (Type::U8, Type::U8)
-            | (Type::U16, Type::U16)
-            | (Type::U32, Type::U32)
-            | (Type::U64, Type::U64)
-            | (Type::U128, Type::U128)
-            | (Type::U256, Type::U256)
-            | (Type::Bool, Type::Bool)
-            | (Type::String, Type::String) => true,
-            (Type::Struct(a), Type::Struct(b)) => a == b,
-            (Type::Enum(a), Type::Enum(b)) => a == b,
-            (Type::Tuples(a), Type::Tuples(b)) => a == b,
-            (Type::Array(a), Type::Array(b)) => a == b,
-            (Type::Optional(a), Type::Optional(b)) => a == b,
-            (Type::Range(a), Type::Range(b)) => a == b,
-            (Type::Map(a1, a2), Type::Map(b1, b2)) => a1 == b1 && a2 == b2,
-            (Type::Voidable(inner), t) | (t, Type::Voidable(inner)) => inner.is_same_type_for_operation(t),
-            _ => false
+            (Type::Voidable(inner), t) | (t, Type::Voidable(inner))
+                => inner.is_same_type_for_operation(t),
+            _ => self == other,
         }
     }
 
