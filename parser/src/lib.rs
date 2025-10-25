@@ -1436,7 +1436,20 @@ impl<'a, M> Parser<'a, M> {
                                 Expression::TuplesConstructor(elements)
                             },
                             _ => {
-                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context).unwrap();
+
+                                // check if it's maybe a tuple
+                                if self.peek_is(Token::Comma) {
+                                    let mut elements = vec![expr];
+                                    while self.peek_is(Token::Comma) {
+                                        self.expect_token(Token::Comma)?;
+                                        let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
+                                        elements.push(expr);
+                                    }
+                                    self.expect_token(Token::ParenthesisClose)?;
+                                    return Ok(Expression::TuplesConstructor(elements));
+                                }
+
                                 self.expect_token(Token::ParenthesisClose)?;
                                Expression::SubExpression(Box::new(expr))
                             }
@@ -4557,5 +4570,29 @@ mod tests {
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
 
+    }
+
+    #[test]
+    fn test_tuples_any_fn() {
+        // fn foo(args any) {}
+        let mut env = EnvironmentBuilder::<()>::new();
+        env.register_native_function("foo", None, vec![("args", Type::Any)], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+
+        // foo((1, "hello", true));
+        let tokens = vec![
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U8(1)),
+            Token::Comma,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::Comma,
+            Token::Value(Literal::Bool(true)),
+            Token::ParenthesisClose,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }
