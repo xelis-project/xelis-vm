@@ -59,7 +59,7 @@ mod tests {
         let mut global_mapper = GlobalMapper::new();
 
         let functions = global_mapper.functions_mut();
-        functions.register("test", Some(Type::Any), true, vec![("name", Type::String)], Some(Type::String)).unwrap();
+        functions.register("test", Some(Type::Any), true, vec![("name", Type::String)], Some(Type::String), 0).unwrap();
 
         let results = functions.get_functions_for_type(Some(&Type::String));
         assert_eq!(results.len(), 1);
@@ -83,7 +83,7 @@ mod tests {
         let mut global_mapper = GlobalMapper::new();
 
         let functions = global_mapper.functions_mut();
-        functions.register("test", Some(Type::Any), false, vec![("name", Type::String)], Some(Type::String)).unwrap();
+        functions.register("test", Some(Type::Any), false, vec![("name", Type::String)], Some(Type::String), 0).unwrap();
 
         let results = functions.get_functions_for_type(Some(&Type::Any));
         assert_eq!(results.len(), 1);

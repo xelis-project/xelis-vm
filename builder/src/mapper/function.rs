@@ -16,7 +16,8 @@ pub struct Function<'a> {
     pub on_type: Option<Type>,
     pub parameters: Vec<(&'a str, Type)>,
     pub require_instance: bool,
-    pub return_type: Option<Type>
+    pub return_type: Option<Type>,
+    pub cost: u64,
 }
 
 /// FunctionMapper is used to store the mapping between function signatures and their identifiers
@@ -61,7 +62,7 @@ impl<'a> FunctionMapper<'a> {
     }
 
     // Register a function signature
-    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>) -> Result<IdentifierType, BuilderError> {
+    pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>, cost: u64) -> Result<IdentifierType, BuilderError> {
         if on_type.as_ref().map_or(false, |v| matches!(v, Type::Function(_))) {
             return Err(BuilderError::InvalidSignature)
         }
@@ -81,7 +82,8 @@ impl<'a> FunctionMapper<'a> {
             on_type,
             parameters,
             require_instance,
-            return_type
+            return_type,
+            cost
         });
 
         Ok(id)

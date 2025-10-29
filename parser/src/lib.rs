@@ -2581,7 +2581,7 @@ impl<'a, M> Parser<'a, M> {
 
         let id = self.global_mapper
             .functions_mut()
-            .register(name, for_type.clone(), instance_name.is_some(), parameters.clone(), return_type.clone())
+            .register(name, for_type.clone(), instance_name.is_some(), parameters.clone(), return_type.clone(), 0)
             .map_err(|e| err!(self, e.into()))?;
 
         if self.has_function(id) {
