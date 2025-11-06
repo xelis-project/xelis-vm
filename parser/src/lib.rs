@@ -5,6 +5,7 @@ pub mod mapper;
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet, VecDeque},
+    iter,
     mem
 };
 use error::ParserErrorKind;
@@ -128,7 +129,8 @@ impl<'a, M> Function<'a,M> {
         }
     }
 
-    pub fn as_type(&self) -> Option<FnType> {
+
+    pub fn as_function_type(&self) -> Option<FnType> {
         Some(match self {
             Self::Program(FunctionType::Declared(f)) => FnType::new(
                 f.get_on_type().clone(),
@@ -145,6 +147,32 @@ impl<'a, M> Function<'a,M> {
                 f.is_on_instance(),
                 f.get_parameters().clone(),
                 f.return_type().clone()
+            ),
+            _ => return None
+        })
+    }
+
+    pub fn as_closure_type(&self) -> Option<ClosureType> {
+        Some(match self {
+            Self::Program(FunctionType::Declared(f)) => ClosureType::new(
+                f.get_parameters()
+                        .iter()
+                        .map(Parameter::get_type)
+                        .map(Some)
+                        .chain(iter::once(f.get_on_type().as_ref().filter(|_| f.get_instance_name().is_some())))
+                        .filter_map(|v| v)
+                        .cloned()
+                        .collect(),
+                    f.get_return_type().clone()
+            ),
+            Self::Native(f) => ClosureType::new(
+                f.get_parameters()
+                        .iter()
+                        .map(Some)
+                        .chain(iter::once(f.on_type().filter(|_| f.is_on_instance())))
+                        .filter_map(|v| v.cloned())
+                        .collect(),
+                    f.return_type().clone()
             ),
             _ => return None
         })
@@ -420,6 +448,32 @@ impl<'a, M> Parser<'a, M> {
                 };
 
                 Type::Function(FnType::new(None, false, parameters, return_type))
+            },
+            Token::Closure => {
+                // closure(Type, Type) -> Type
+                self.expect_token(Token::ParenthesisOpen)?;
+                let mut parameters = Vec::new();
+                while self.peek_is_not(Token::ParenthesisClose) {
+                    let ty = self.read_type()?;
+                    parameters.push(ty);
+
+                    if self.peek_is(Token::Comma) {
+                        self.expect_token(Token::Comma)?;
+                    } else {
+                        break;
+                    }
+                }
+                self.expect_token(Token::ParenthesisClose)?;
+
+                let return_type = if self.peek_is(Token::ReturnType) {
+                    trace!("read return type of fn");
+                    self.expect_token(Token::ReturnType)?;
+                    Some(self.read_type()?)
+                } else {
+                    None
+                };
+
+                Type::Closure(ClosureType::new(parameters, return_type))
             }
             token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
         })
@@ -529,14 +583,25 @@ impl<'a, M> Parser<'a, M> {
                 },
                 None => Cow::Borrowed(context.get_type_of_variable(var_name).ok_or_else(|| err!(self, ParserErrorKind::UnexpectedMappedVariableId(*var_name)))?),
             },
-            Expression::FunctionPointer(id, _) => {
+            Expression::FunctionPointer(id, closure) => {
                 let f = self.get_function(*id)?;
-                let ty = f.as_type()
-                    .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
-                Cow::Owned(Type::Function(ty))
+
+                let ty = if *closure {
+                    let ty = f.as_function_type()
+                        .ok_or_else(|| err!(self, ParserErrorKind::ExpectedNormalFunction))?;
+
+                    Type::Function(ty)
+                } else {
+                    let ty = f.as_closure_type()
+                        .ok_or_else(|| err!(self, ParserErrorKind::ExpectedClosure))?;
+                    Type::Closure(ty)
+                };
+
+                Cow::Owned(ty)
             },
             Expression::DynamicCall(id, _, _) => match context.get_type_of_variable(id) {
                 Some(Type::Function(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
+                Some(Type::Closure(ty)) if ty.return_type().is_some() => Cow::Borrowed(ty.return_type().expect("return type")),
                 _ => return Err(err!(self, ParserErrorKind::ExpectedClosureWithReturn))
             },
             Expression::FunctionCall(path, name, _, ty) => match ty {
@@ -709,7 +774,15 @@ impl<'a, M> Parser<'a, M> {
     fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {} on type {:?}", name, on_type);
 
-        let types = if let Some((_, Type::Function(ty))) = context.get_variable(name) {
+        let ty =  context.get_variable(name);
+        let types = if let Some((_, Type::Function(ty))) = ty {
+            ty.parameters()
+                .iter()
+                .cloned()
+                .map(Some)
+                .chain(iter::once(ty.on_type().filter(|_| ty.on_instance()).cloned()))
+                .collect()
+        } else if let Some((_, Type::Closure(ty))) = ty {
             ty.parameters()
                 .iter()
                 .cloned()
@@ -727,15 +800,28 @@ impl<'a, M> Parser<'a, M> {
         let (mut parameters, types) = self.read_function_params(context, types)?;
 
         if on_type.is_none() && path.is_none() {
-            if let Some((id, Type::Function(ty))) = context.get_variable(name) {
-                if !self.global_mapper
-                    .functions()
-                    .has_compatible_params(None, ty.parameters().iter(), types.iter(), &mut parameters)
-                {
-                    return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
-                }
+            match context.get_variable(name) {
+                Some((id, Type::Closure(ty))) => {
+                    if !self.global_mapper
+                        .functions()
+                        .has_compatible_params(None, ty.parameters().iter(), types.iter(), &mut parameters)
+                    {
+                        return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
+                    }
 
-                return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+                    return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+                },
+                Some((id, Type::Function(ty))) => {
+                    if !self.global_mapper
+                        .functions()
+                        .has_compatible_params(None, ty.parameters().iter(), types.iter(), &mut parameters)
+                    {
+                        return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
+                    }
+
+                    return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+                },
+                _ => {}
             }
         }
 
@@ -961,7 +1047,7 @@ impl<'a, M> Parser<'a, M> {
         }
     }
 
-    fn read_closure(&mut self, ty: &FnType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_closure(&mut self, ty: &ClosureType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read closure with {:?}", ty);
         let params = if ty.parameters().is_empty() {
             // No token to pop, because it was a || directly
@@ -1684,8 +1770,19 @@ impl<'a, M> Parser<'a, M> {
                     trace!("no specific case for {:?}, expected type: {:?}", token, expected_type);
                     if token.is_type() {
                         self.read_type_constant(token, context)?
-                    } else if let Some(Type::Function(ty)) = expected_type {
+                    } else if let Some(Type::Closure(ty)) = expected_type {
                         self.read_closure(ty, context)?
+                    } else if let Some(Type::Function(ty)) = expected_type {
+                        let identifier = match token {
+                            Token::Identifier(id) => id,
+                            _ => return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(token)))
+                        };
+
+                        let f = self.global_mapper.functions()
+                            .get_by_signature(identifier, ty.on_type())
+                            .map_err(|_| err!(self, ParserErrorKind::FunctionNotFound))?;
+
+                        Expression::FunctionPointer(f, false)
                     } else {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,

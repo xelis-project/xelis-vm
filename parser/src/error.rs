@@ -20,6 +20,8 @@ pub enum ParserErrorKind<'a> {
     IncompatibleType(Type, Type),
     #[error("expected a closure with return")]
     ExpectedClosureWithReturn,
+    #[error("expected a closure")]
+    ExpectedClosure,
     #[error("expected a normal function for pointer")]
     ExpectedNormalFunction,
     #[error("duplicated match pattern")]

@@ -63,7 +63,7 @@ impl<'a> FunctionMapper<'a> {
 
     // Register a function signature
     pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>, cost: u64) -> Result<IdentifierType, BuilderError> {
-        if on_type.as_ref().map_or(false, |v| matches!(v, Type::Function(_))) {
+        if on_type.as_ref().map_or(false, |v| v.is_closure()) {
             return Err(BuilderError::InvalidSignature)
         }
 

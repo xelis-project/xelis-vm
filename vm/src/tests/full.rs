@@ -1914,14 +1914,14 @@ fn test_function_pointer_with_local_context() {
             }
         }
 
-        fn abc() -> fn() -> Foo {
+        fn abc() -> closure() -> Foo {
             let a: u64 = 10
             return || {
                 return foo(a)
             }
         }
 
-        fn bar(f: fn() -> Foo) -> u64 {
+        fn bar(f: closure() -> Foo) -> u64 {
             return f().value
         }
 
@@ -1944,7 +1944,7 @@ fn test_function_pointer_with_multiple_returns() {
             assert(b == 20);
         }
 
-        fn abc() -> fn() {
+        fn abc() -> closure() {
             let a: u64 = 10
             return || {
                 println("closure")
@@ -1952,11 +1952,11 @@ fn test_function_pointer_with_multiple_returns() {
             }
         }
 
-        fn abc2() -> fn() {
+        fn abc2() -> closure() {
             return abc()
         }
 
-        fn bar(f: fn()) {
+        fn bar(f: closure()) {
             f()
         }
 
@@ -1975,7 +1975,7 @@ fn test_function_pointer_with_multiple_returns() {
 #[test]
 fn test_closure() {
     let code = r#"
-        fn bar(f: fn() -> u64) -> u64 {
+        fn bar(f: closure() -> u64) -> u64 {
             return f() / 2
         }
 
@@ -1989,26 +1989,26 @@ fn test_closure() {
     assert_eq!(run_code_id(code, 1), Primitive::U64(5));
 
     let code = r#"
-        fn bar(f: fn(u64) -> u64) -> u64 {
+        fn bar(f: closure(u64) -> u64) -> u64 {
             return f(4) / 2
         }
 
-        entry main() {
-            let closure: fn(u64) -> u64 = |v: u64| {
-                return v * 5
-            };
+        fn foo(a: u64) -> u64 {
+            return a * 5
+        }
 
-            return bar(closure)
+        entry main() {
+            return bar(foo)
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 2), Primitive::U64(10));
 }
 
 #[test]
 fn test_closure_with_external_context() {
     let code = r#"
-        fn bar(f: fn() -> u64) -> u64 {
+        fn bar(f: closure() -> u64) -> u64 {
             return f() / 2
         }
 

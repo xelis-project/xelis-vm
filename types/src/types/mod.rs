@@ -45,6 +45,10 @@ pub enum Type {
     Struct(StructType),
     Enum(EnumType),
     Opaque(OpaqueType),
+    // A closure type, accepting functions
+    Closure(ClosureType),
+    // A real function (chunk) type
+    // Can't accept closures
     Function(FnType),
     // The function may returns nothing (void)
     // If a function return type is marked as Voidable,
@@ -241,6 +245,7 @@ impl Type {
                 Box::new(v.map_generic_type(replacement)),
             ),
             Type::Tuples(types) => Type::Tuples(types.iter().map(|t| t.map_generic_type(replacement)).collect()),
+            Type::Closure(f) => Type::Closure(f.map_generic_type(replacement)),
             Type::Function(f) => Type::Function(f.map_generic_type(replacement)),
             _ => self.clone(),
         }
@@ -294,6 +299,17 @@ impl Type {
         }
     }
 
+    pub fn is_closure(&self) -> bool {
+        match self {
+            // Function can be considered as a closure because its just
+            // a wrapper around it to see a difference between written
+            // closures and normal functions
+            Type::Closure(_) | Type::Function(_) => true,
+            Type::Voidable(inner) => inner.is_closure(),
+            _ => false
+        }
+    }
+
     // Same as is_compatible_with, but allow for null/value assignation with Optional types
     pub fn is_assign_compatible_with(&self, other: &Type) -> bool {
         if other.is_any() || self.is_any() {
@@ -322,13 +338,14 @@ impl Type {
             Self::Map(k, v) => match other {
                 Self::Map(k2, v2) => k.is_assign_compatible_with(k2) && v.is_assign_compatible_with(v2),
                 _ => self.is_compatible_with(other)
-            }
+            },
+            Self::Closure(f) => match other {
+                Self::Closure(f2) => f == f2,
+                Self::Function(f2) => f.eq(f2),
+                _ => self.is_compatible_with(other)
+            },
             Self::Function(f) => match other {
-                Self::Function(f2) if f2.return_type().is_some() && f.return_type().is_some() => f.return_type()
-                    .expect("f type")
-                    .is_assign_compatible_with(
-                        f2.return_type().expect("f2 type")
-                    ),
+                Self::Function(f2) => f == f2,
                 _ => self.is_compatible_with(other)
             },
             Self::Tuples(tuples) => match other {
@@ -393,6 +410,12 @@ impl Type {
             },
             Type::Tuples(types) => match self {
                 Type::Tuples(types2) => types.iter().zip(types2.iter()).all(|(a, b)| a.is_compatible_with(b)),
+                Type::Any | Type::T(None) => true,
+                _ => *self == *other
+            },
+            Type::Closure(f) => match self {
+                Type::Closure(f2) => f == f2,
+                Type::Function(f2) => f.eq(f2),
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
             },
@@ -554,6 +577,7 @@ impl fmt::Display for Type {
             Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
             Type::Enum(ty) => write!(f, "{}", ty.name()),
             Type::Opaque(ty) => write!(f, "{}", ty.name()),
+            Type::Closure(ty) => write!(f, "{}", ty),
             Type::Function(ty) => write!(f, "{}", ty),
             Type::Voidable(inner) => write!(f, "void<{}>", inner),
         }
