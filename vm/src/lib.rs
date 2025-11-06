@@ -4,7 +4,6 @@ mod iterator;
 mod stack;
 mod validator;
 mod instructions;
-mod module;
 
 #[cfg(test)]
 mod tests;
@@ -21,7 +20,6 @@ pub use validator::*;
 pub use instructions::*;
 pub use error::VMError;
 pub use chunk::*;
-pub use module::*;
 
 // 64 elements maximum in the call stack
 // This represents how many calls can be chained
@@ -410,7 +408,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 Err(EnvironmentError::FnExpectedInstance)
                                             };
 
-                                            let res = ptr(on_value, params.into(), &m.metadata, &mut self.context).await?;
+                                            let res = ptr(on_value, params.into(), &m, &mut self.context).await?;
                                             result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
                                                 Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),

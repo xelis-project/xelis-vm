@@ -968,6 +968,7 @@ dependencies = [
  "paste",
  "thiserror 2.0.17",
  "xelis-ast",
+ "xelis-bytecode",
  "xelis-environment",
  "xelis-types",
 ]

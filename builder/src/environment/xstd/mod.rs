@@ -9,6 +9,7 @@ mod math;
 
 use std::ptr;
 
+use xelis_bytecode::ModuleMetadata;
 use xelis_types::{Primitive, Type};
 use xelis_environment::{
     Context,
@@ -40,28 +41,28 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)));
 }
 
-fn println<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{}", param.as_ref());
 
     Ok(SysCallResult::None)
 }
 
-fn debug<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{:?}", param);
 
     Ok(SysCallResult::None)
 }
 
-fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let value = param.into_owned();
 
     Err(EnvironmentError::Panic(format!("{:#}", value)))
 }
 
-fn assert<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let param = &parameters[0];
     let value = param.as_bool()?;
 
@@ -72,7 +73,7 @@ fn assert<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnR
     }
 }
 
-fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let left = parameters[0].as_ref();
     let right = parameters[1].as_ref();
     let same = ptr::from_ref(left) == ptr::from_ref(right);
@@ -80,7 +81,7 @@ fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -
     Ok(SysCallResult::Return(Primitive::Boolean(same).into()))
 }
 
-fn require<M>(_: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let msg = parameters.remove(1)
         .into_owned()
         .into_string()?;
@@ -99,7 +100,7 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -
     }
 }
 
-fn clone<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn clone<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
 
     let memory = zelf.calculate_memory_usage(context.memory_left())?;

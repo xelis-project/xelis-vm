@@ -41,6 +41,7 @@ pub enum BuilderError {
 mod tests {
     use std::collections::VecDeque;
 
+    use xelis_bytecode::{Module, ModuleMetadata, Reference};
     use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
     use crate::EnvironmentBuilder;
 
@@ -55,7 +56,7 @@ mod tests {
 
     tid! { impl<'a, F: 'static> TidAble<'a> for FooWrapper<F> where F: Foo }
 
-    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &M, context: &'a mut Context<'ty, 'r>) -> FnReturnType<M> {
+    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &ModuleMetadata<'_, M>, context: &'a mut Context<'ty, 'r>) -> FnReturnType<M> {
         let _: &FooWrapper<F> = context.get().unwrap();
         Ok(SysCallResult::None)
     }
@@ -84,6 +85,6 @@ mod tests {
         let mut context = Context::new();
         context.insert(FooWrapper(FooImpl));
 
-        assert!((f.call_function(VecDeque::new(), &(), &mut context)).unwrap().is_none());
+        assert!((f.call_function(VecDeque::new(), &ModuleMetadata { module: Reference::Borrowed(&Module::new()), metadata: Reference::Borrowed(&()) }, &mut context)).unwrap().is_none());
     }
 }

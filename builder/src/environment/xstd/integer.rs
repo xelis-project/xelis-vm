@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use xelis_bytecode::ModuleMetadata;
 use xelis_environment::{
     SysCallResult,
     FunctionHandler,
@@ -15,7 +16,7 @@ use crate::EnvironmentBuilder;
 macro_rules! checked_fn {
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 // Extract and convert parameters
                 let other = parameters[0]
                     .as_ref()
@@ -72,7 +73,7 @@ macro_rules! integer_param_fn {
             fn [<$op _ $f>]<M>(
                 zelf: FnInstance,
                 parameters: FnParams,
-                _: &M,
+                _: &ModuleMetadata<'_, M>,
                 _: &mut Context
             ) -> FnReturnType<M> {
                 // Extract and convert parameters
@@ -114,7 +115,7 @@ macro_rules! register_saturating_fns {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
@@ -135,7 +136,7 @@ macro_rules! to_endian_bytes {
 macro_rules! from_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = params[0].as_bytes()?;
                 let slice: &[u8] = &value;
                 let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().context("invalid bytes size")?);
@@ -157,7 +158,7 @@ macro_rules! from_endian_bytes {
 macro_rules! integer_no_param_fn {
     ($env: expr, $t: ident, $f: ident, $func: ident) => {
         paste! {
-            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 Ok(SysCallResult::Return(Primitive::U32(value.[<$func>]()).into()))
             }
@@ -193,7 +194,7 @@ macro_rules! integer_numbers {
 macro_rules! register_reverse_bits {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
-            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 Ok(SysCallResult::Return(Primitive::$t(value.reverse_bits()).into()))
             }
@@ -223,7 +224,7 @@ macro_rules! register_endian_bytes {
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
@@ -246,7 +247,7 @@ macro_rules! min {
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 

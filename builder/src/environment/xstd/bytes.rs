@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use xelis_bytecode::ModuleMetadata;
 use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
 use xelis_types::{Constant, Primitive, Type, ValueCell};
 
@@ -32,12 +33,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 }
 
 // native functions
-fn len<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let len = zelf?.as_bytes()?.len();
     Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let array =  zelf.as_bytes_mut()?;
     if array.len() >= u32::MAX as usize {
@@ -52,7 +53,7 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -
     Ok(SysCallResult::None)
 }
 
-fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
@@ -67,7 +68,7 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Co
     Ok(SysCallResult::Return(Primitive::U8(array.remove(index)).into()))
 }
 
-fn pop<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let array = zelf.as_bytes_mut()?;
     if let Some(value) = array.pop() {
@@ -77,7 +78,7 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType
     }
 }
 
-fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let range = param.as_ref();
     let (start, end) = range.as_range()?;
@@ -99,7 +100,7 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Con
     Ok(SysCallResult::Return(ValueCell::Bytes(slice).into()))
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref().as_u8()?;
     let zelf = zelf?;
@@ -111,7 +112,7 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, context: &mut 
     Ok(SysCallResult::Return(Primitive::Boolean(vec.contains(&handle)).into()))
 }
 
-fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
@@ -122,7 +123,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &M, _: &mut Context) ->
     }
 }
 
-fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
     if let Some(value) = vec.first().copied() {
@@ -132,7 +133,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTy
     }
 }
 
-fn last<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnType<M> {
+fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
     if let Some(value) = vec.last().copied() {
@@ -142,7 +143,7 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &M, _: &mut Context) -> FnReturnTyp
     }
 }
 
-fn to_array<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn to_array<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
 
@@ -155,7 +156,7 @@ fn to_array<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> F
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }
 
-fn from_hex<M>(_: FnInstance, params: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn from_hex<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let value = params[0].as_string()?;
 
     context.increase_gas_usage(value.len() as _)?;
@@ -166,7 +167,7 @@ fn from_hex<M>(_: FnInstance, params: FnParams, _: &M, context: &mut Context) ->
     Ok(SysCallResult::Return(ValueCell::Bytes(values).into()))
 }
 
-fn to_hex<M>(zelf: FnInstance, _: FnParams, _: &M, context: &mut Context) -> FnReturnType<M> {
+fn to_hex<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
     let bytes = zelf.as_bytes()?;
 

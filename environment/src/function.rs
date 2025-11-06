@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::BoxFuture;
-use xelis_bytecode::Module;
+use xelis_bytecode::{Module, ModuleMetadata};
 use xelis_types::{Primitive, StackValue, Type, ValueCell};
 use crate::Context;
 
@@ -79,14 +79,14 @@ pub type FnParams = Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
-        &'a M,
+        &'a ModuleMetadata<'_, M>,
         &'a mut Context<'ty, 'r>,
     ) -> FnReturnType<M>;
 
 pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
-        &'a M,
+        &'a ModuleMetadata<'_, M>,
         &'a mut Context<'ty, 'r>,
     ) -> BoxFuture<'a, FnReturnType<M>>;
 
@@ -140,7 +140,7 @@ impl<M> NativeFunction<M> {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &M, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len()));
         }
