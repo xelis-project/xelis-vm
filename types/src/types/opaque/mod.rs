@@ -72,6 +72,10 @@ pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + fmt::D
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Opaque")
     }
+
+    fn validate(&self) -> Result<(), ValueError> {
+        Ok(())
+    }
 }
 
 impl Hash for dyn Opaque {
@@ -154,6 +158,11 @@ impl OpaqueWrapper {
     #[inline]
     pub fn inner(&self) -> &dyn Opaque {
         self.inner.as_ref()
+    }
+
+    #[inline]
+    pub fn validate(&self) -> Result<(), ValueError> {
+        self.inner.validate()
     }
 }
 

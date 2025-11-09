@@ -125,6 +125,8 @@ impl<'a, M> ModuleValidator<'a, M> {
                             .unwrap_or(false) {
                             return Err(ValidatorError::InvalidOpaque);
                         }
+
+                        opaque.validate()?;
                     },
                     _ => {}
                 }
