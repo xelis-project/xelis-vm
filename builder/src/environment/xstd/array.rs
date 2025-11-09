@@ -30,6 +30,10 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32));
     env.register_native_function("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(push), 2, None);
     env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(remove), 5, Some(Type::T(Some(0))));
+    env.register_native_function("swap_remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(swap_remove), 8, Some(Type::T(Some(0))));
+    env.register_native_function("insert", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32), ("value", Type::T(Some(0)))], FunctionHandler::Sync(insert), 5, None);
+    env.register_native_function("index_of", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(index_of), 5, Some(Type::Optional(Box::new(Type::U32))));
+
     env.register_native_function("pop", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(pop), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))));
     env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("range", Type::Range(Box::new(Type::U32)))], FunctionHandler::Sync(slice), 5, Some(Type::Array(Box::new(Type::T(Some(0))))));
     env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(contains), 10, Some(Type::Bool));
@@ -91,9 +95,70 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     }
 
     // moving all elements after the index to the left is costly
-    context.increase_gas_usage((array.len() as u64) * 5)?;
+    let shift_len = array.len() - index;
+    context.increase_gas_usage((shift_len as u64) * 5)?;
 
     Ok(SysCallResult::Return(array.remove(index).into()))
+}
+
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+    let index = parameters.remove(0).as_u32()? as usize;
+
+    let mut zelf = zelf?;
+    let array = zelf.as_mut_vec()?;
+    if index >= array.len() {
+        return Err(EnvironmentError::OutOfBounds(index, array.len()))
+    }
+
+    Ok(SysCallResult::Return(array.swap_remove(index).into()))
+}
+
+fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let index = parameters.remove(0).as_u32()? as usize;
+    let param = parameters.remove(0);
+    let depth = param.depth();
+    let value = param.into_owned();
+
+    let mut zelf = zelf?;
+    let array = zelf.as_mut_vec()?;
+    if index >= array.len() {
+        return Err(EnvironmentError::OutOfBounds(index, array.len()))
+    }
+
+    if array.len() >= u32::MAX as usize || array.len() + 1 > u32::MAX as usize {
+        return Err(EnvironmentError::OutOfMemory)
+    }
+
+    value.calculate_depth(
+        context.max_value_depth()
+            .saturating_sub(depth.saturating_add(1))
+    )?;
+
+    // moving all elements after the index to the right is costly
+    let shift_len = array.len() - index;
+    context.increase_gas_usage((shift_len as u64) * 5)?;
+
+    array.insert(index, value.into());
+
+    Ok(SysCallResult::None)
+}
+
+fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let value = parameters.remove(0);
+    let handle = value.as_ref();
+    let zelf = zelf?;
+    let vec = zelf.as_vec()?;
+
+    // we need to go through all elements in the slice, thus we increase the gas usage
+    context.increase_gas_usage((vec.len() as u64) * 5)?;
+
+    for (i, v) in vec.iter().enumerate() {
+        if *v.as_ref() == *handle {
+            return Ok(SysCallResult::Return(Primitive::U32(i as u32).into()))
+        }
+    }
+
+    Ok(Primitive::Null.into())
 }
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
