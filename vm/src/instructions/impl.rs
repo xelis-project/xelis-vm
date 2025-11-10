@@ -190,7 +190,7 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
     // Execute the syscall
     let f_res = f.call_function(arguments, current, context)?;
     // Handle the result from syscall
-    let result = handle_perform_syscall(stack, context, f_res)?;
+    let result = handle_perform_syscall(stack, context, f_res, current)?;
 
     // In case of a next syscall, continue performing it
     perform_syscall(backend, result, stack, context)

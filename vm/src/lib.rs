@@ -402,7 +402,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             };
 
                                             let res = ptr(on_value, params.into(), &m, &mut self.context).await?;
-                                            result = match handle_perform_syscall(&mut self.stack, &mut self.context, res) {
+                                            result = match handle_perform_syscall(&mut self.stack, &mut self.context, res, &m) {
                                                 Ok(syscall @ PerformSysCallHelper::Next { .. }) => perform_syscall(&self.backend, syscall, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),
                                                 Err(e) => Err(e)

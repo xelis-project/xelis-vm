@@ -31,7 +31,8 @@ pub enum SysCallResult<M> {
     ModuleCall {
         module: Arc<Module>,
         metadata: Arc<M>,
-        environment: Arc<Environment<M>>,
+        // if set to None, it means reuse the current environment
+        environment: Option<Arc<Environment<M>>>,
         chunk: u16,
         // It must be a list of parameters
         // that will be passed to the chunk

@@ -6,6 +6,19 @@ pub enum Reference<'a, T> {
     Shared(Arc<T>),
 }
 
+impl<'a, T> Reference<'a, T> {
+    pub fn into_arc(self) -> Arc<T>
+    where
+        T: ToOwned,
+        T::Owned: Into<T>,
+    {
+        match self {
+            Self::Borrowed(v) => Arc::new(v.to_owned().into()),
+            Self::Shared(v) => v,
+        }
+    }
+}
+
 impl<'a, T> Clone for Reference<'a, T> {
     fn clone(&self) -> Self {
         match self {

@@ -18,6 +18,7 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
     stack: &mut Stack,
     context: &mut Context<'ty, 'r>,
     result: SysCallResult<M>,
+    metadata: &ModuleMetadata<'a, M>,
 ) -> Result<PerformSysCallHelper<'a, M>, VMError> {
     match result {
         SysCallResult::None => Ok(PerformSysCallHelper::End(InstructionResult::Nothing)),
@@ -55,13 +56,13 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                 }))
             }
         },
-        SysCallResult::ModuleCall { module, metadata, environment, chunk, params } => {
+        SysCallResult::ModuleCall { module, metadata: new_metadata, environment, chunk, params } => {
             stack.extend_stack(params.into_iter())?;
             Ok(PerformSysCallHelper::End(InstructionResult::AppendModule {
                 module: ModuleMetadata {
                     module: module.into(),
-                    metadata: metadata.into(),
-                    environment: environment.into(),
+                    metadata: new_metadata.into(),
+                    environment: environment.map(Into::into).unwrap_or_else(|| metadata.environment.clone()),
                 },
                 chunk_id: chunk,
             }))
@@ -91,6 +92,7 @@ pub fn perform_syscall<'a, 'ty, 'r, M>(
                     stack,
                     context,
                     res,
+                    m
                 )?;
             },
             PerformSysCallHelper::End(result) => return Ok(result),
