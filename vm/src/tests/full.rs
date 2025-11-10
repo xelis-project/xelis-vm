@@ -65,8 +65,12 @@ fn test_max_gas() {
     "#;
 
     let (module, environment) = prepare_module(code);
-    let mut vm = VM::new(&environment);
-    vm.append_module(&module, &()).expect("module");
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
     vm.invoke_entry_chunk(0).expect("valid entry chunk");
     vm.context_mut().set_gas_limit(1000);
 

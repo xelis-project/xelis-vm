@@ -5,7 +5,8 @@ mod context;
 use std::any::TypeId;
 
 use indexmap::{IndexMap, IndexSet};
-use xelis_types::{EnumType, StructType};
+use xelis_bytecode::Module;
+use xelis_types::{EnumType, Reference, StructType};
 
 // Also re-export the necessary macro
 pub use better_any::*;
@@ -117,5 +118,24 @@ impl<M> Environment<M> {
     // Get the total of hooks registered
     pub fn hooks(&self) -> u8 {
         self.hooks
+    }
+}
+
+
+// Module with provided metadata
+#[derive(Debug)]
+pub struct ModuleMetadata<'a, M> {
+    pub module: Reference<'a, Module>,
+    pub metadata: Reference<'a, M>,
+    pub environment: Reference<'a, Environment<M>>,
+}
+
+impl<'a, M> Clone for ModuleMetadata<'a, M> {
+    fn clone(&self) -> Self {
+        Self {
+            module: self.module.clone(),
+            metadata: self.metadata.clone(),
+            environment: self.environment.clone(),
+        }
     }
 }

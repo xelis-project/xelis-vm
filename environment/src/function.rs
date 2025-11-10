@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::BoxFuture;
-use xelis_bytecode::{Module, ModuleMetadata};
+use xelis_bytecode::Module;
 use xelis_types::{Primitive, StackValue, Type, ValueCell};
-use crate::Context;
+use crate::{Context, Environment, ModuleMetadata};
 
 use super::EnvironmentError;
 
@@ -31,6 +31,7 @@ pub enum SysCallResult<M> {
     ModuleCall {
         module: Arc<Module>,
         metadata: Arc<M>,
+        environment: Arc<Environment<M>>,
         chunk: u16,
         // It must be a list of parameters
         // that will be passed to the chunk

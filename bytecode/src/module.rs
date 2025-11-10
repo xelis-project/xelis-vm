@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use xelis_types::ValueCell;
 
-use super::{Chunk, Access, Reference};
+use super::{Chunk, Access};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ModuleChunk {
@@ -166,21 +166,5 @@ impl Module {
             access: Access::Hook { id }
         });
         self.hook_chunk_ids.insert(id, index)
-    }
-}
-
-// Module with provided metadata
-#[derive(Debug)]
-pub struct ModuleMetadata<'a, M> {
-    pub module: Reference<'a, Module>,
-    pub metadata: Reference<'a, M>
-}
-
-impl<'a, M> Clone for ModuleMetadata<'a, M> {
-    fn clone(&self) -> Self {
-        Self {
-            module: self.module.clone(),
-            metadata: self.metadata.clone()
-        }
     }
 }

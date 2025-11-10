@@ -9,7 +9,6 @@ mod math;
 
 use std::ptr;
 
-use xelis_bytecode::ModuleMetadata;
 use xelis_types::{Primitive, Type};
 use xelis_environment::{
     Context,
@@ -18,7 +17,8 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     FunctionHandler,
-    SysCallResult
+    SysCallResult,
+    ModuleMetadata,
 };
 use super::EnvironmentBuilder;
 

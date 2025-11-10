@@ -1,6 +1,5 @@
-use xelis_bytecode::ModuleMetadata;
 use xelis_types::{Constant, Primitive, Type, ValueCell};
-use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
+use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
 use super::EnvironmentBuilder;
 use paste::paste;
 

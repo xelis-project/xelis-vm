@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use xelis_builder::EnvironmentBuilder;
 use xelis_bytecode::Module;
 use xelis_compiler::Compiler;
-use xelis_environment::Environment;
+use xelis_environment::{Environment, ModuleMetadata};
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_vm::VM;
@@ -12,9 +12,14 @@ macro_rules! bench {
         $group.bench_function($name, |b| {
             let code = $code;
             let (module, env) = prepare(&code);
-            let mut vm = VM::new(&env);
+            let mut vm = VM::default();
             b.iter(|| {
-                vm.append_module(&module, &()).expect("module");
+                vm.append_module(ModuleMetadata {
+                    module: (&module).into(),
+                    environment: (&env).into(),
+                    metadata: (&()).into(),
+                }).expect("module");
+
                 vm.invoke_entry_chunk($id).expect("entry");
                 vm.run_blocking().expect("run");
                 vm.context_mut().reset_usage();

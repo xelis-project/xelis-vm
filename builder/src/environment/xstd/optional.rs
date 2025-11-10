@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use xelis_bytecode::ModuleMetadata;
 use xelis_types::{ClosureType, Primitive, Type, ValueError};
 use xelis_environment::{
     Context,
@@ -9,7 +8,8 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     FunctionHandler,
-    SysCallResult
+    SysCallResult,
+    ModuleMetadata
 };
 use super::EnvironmentBuilder;
 

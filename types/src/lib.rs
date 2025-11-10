@@ -1,6 +1,7 @@
 mod types;
 mod values;
 mod u256;
+mod reference;
 
 use std::{
     collections::HashMap,
@@ -14,6 +15,7 @@ pub use types::*;
 pub use values::*;
 pub use types::opaque::*;
 pub use u256::U256;
+pub use reference::*;
 
 // Variable identifier used in the parser and interpreter
 // This is used to optimize the memory usage by using a smaller type

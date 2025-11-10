@@ -1,4 +1,3 @@
-use xelis_bytecode::ModuleMetadata;
 use xelis_environment::{
     FnInstance,
     FnParams,
@@ -6,6 +5,7 @@ use xelis_environment::{
     Context,
     SysCallResult,
     FunctionHandler,
+    ModuleMetadata
 };
 use xelis_types::{Type, Primitive, U256 as u256};
 use paste::paste;

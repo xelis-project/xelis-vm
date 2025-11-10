@@ -1,11 +1,11 @@
 use anyhow::Context as _;
-use xelis_bytecode::ModuleMetadata;
 use xelis_environment::{
     SysCallResult,
     FunctionHandler,
     FnInstance,
     FnParams,
     FnReturnType,
+    ModuleMetadata,
     Context,
 };
 use xelis_types::{Type, Primitive, ValueCell, Constant, U256 as u256};

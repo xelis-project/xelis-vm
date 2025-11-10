@@ -4,6 +4,7 @@ use xelis_types::Either;
 
 use crate::{
     debug,
+    handle_perform_syscall,
     perform_syscall,
     stack::Stack,
     Backend,
@@ -171,7 +172,10 @@ pub fn syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack:
 fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, id: u16, stack: &mut Stack, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("syscall: {}", id);
 
-    let f = backend.environment.get_functions()
+    let current = backend.current()?;
+    let f = current
+        .environment
+        .get_functions()
         .get(id as usize)
         .ok_or(VMError::UnknownSysCall(id))?;
 
@@ -183,7 +187,13 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
         arguments.push_front(stack.pop_stack()?);
     }
 
-    perform_syscall(backend, f, arguments, stack, context)
+    // Execute the syscall
+    let f_res = f.call_function(arguments, current, context)?;
+    // Handle the result from syscall
+    let result = handle_perform_syscall(stack, context, f_res)?;
+
+    // In case of a next syscall, continue performing it
+    perform_syscall(backend, result, stack, context)
 }
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {

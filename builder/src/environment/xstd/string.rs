@@ -1,4 +1,3 @@
-use xelis_bytecode::ModuleMetadata;
 use xelis_environment::{Context, FunctionHandler};
 use xelis_types::{Type, Primitive, ValueCell};
 use super::{
@@ -6,7 +5,8 @@ use super::{
     FnParams,
     FnReturnType,
     EnvironmentBuilder,
-    SysCallResult
+    SysCallResult,
+    ModuleMetadata
 };
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {

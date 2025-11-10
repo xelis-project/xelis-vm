@@ -196,8 +196,12 @@ fn test_struct() {
 
     {
         let env = Environment::new();
-        let mut vm = VM::new(&env);
-        vm.append_module(&module, &()).expect("module");
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&env).into(),
+            metadata: (&()).into(),
+        }).expect("module");
         vm.invoke_chunk_id(0).expect("entry chunk at 0");
         assert_eq!(
             vm.run_blocking().unwrap(),
@@ -244,8 +248,12 @@ fn test_struct() {
     chunk.emit_opcode(OpCode::Return);
 
     let env = Environment::new();
-    let mut vm = VM::new(&env);
-    vm.append_module(&module, &()).expect("module");
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&env).into(),
+        metadata: (&()).into(),
+    }).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::U16(30).into());
@@ -280,8 +288,12 @@ fn test_function_call() {
     module.add_internal_chunk(bool_fn);
 
     let env = Environment::new();
-    let mut vm = VM::new(&env);
-    vm.append_module(&module, &()).expect("module");
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&env).into(),
+        metadata: (&()).into(),
+    }).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::Boolean(true).into());
@@ -317,8 +329,12 @@ fn test_function_call_on_value() {
     module.add_internal_chunk(struct_fn);
 
     let env = Environment::new();
-    let mut vm = VM::new(&env);
-    vm.append_module(&module, &()).expect("module");
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&env).into(),
+        metadata: (&()).into(),
+    }).expect("module");
     vm.invoke_chunk_id(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::U64(10).into());

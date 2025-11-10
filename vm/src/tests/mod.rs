@@ -17,9 +17,13 @@ fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -
     validator.verify()
         .map_err(|e| VMError::Any(e.into()))?;
 
-    let mut vm = VM::new(environment);
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: environment.into(),
+        metadata: (&()).into(),
+    }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.append_module(&module, &()).expect("module");
     vm.invoke_chunk_id(id as _).expect("valid entry chunk");
     vm.run_blocking().map(|mut v| v.into_value().expect("primitive"))
 }
@@ -36,8 +40,7 @@ fn assert_send<T: Send>(_: T) {}
 fn assert_thread_safe() {
     assert_send(ValueCell::default());
 
-    let e: Environment<()> = Environment::new();
-    let mut vm = VM::new(&e);
+    let mut vm = VM::<()>::default();
     assert_send(&vm);
     assert_send(vm.run());
     assert_send(vm.run_blocking());

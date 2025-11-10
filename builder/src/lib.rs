@@ -41,8 +41,9 @@ pub enum BuilderError {
 mod tests {
     use std::collections::VecDeque;
 
-    use xelis_bytecode::{Module, ModuleMetadata, Reference};
-    use xelis_environment::{tid, Context, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult};
+    use xelis_bytecode::Module;
+    use xelis_environment::{Context, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
+    use xelis_types::Reference;
     use crate::EnvironmentBuilder;
 
     trait Foo: Send + Sync {}
@@ -85,6 +86,10 @@ mod tests {
         let mut context = Context::new();
         context.insert(FooWrapper(FooImpl));
 
-        assert!((f.call_function(VecDeque::new(), &ModuleMetadata { module: Reference::Borrowed(&Module::new()), metadata: Reference::Borrowed(&()) }, &mut context)).unwrap().is_none());
+        assert!((f.call_function(VecDeque::new(), &ModuleMetadata {
+            module: Reference::Borrowed(&Module::new()),
+            metadata: Reference::Borrowed(&()),
+            environment: Reference::Borrowed(env.environment()),
+        }, &mut context)).unwrap().is_none());
     }
 }

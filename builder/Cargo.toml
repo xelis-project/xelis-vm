@@ -7,7 +7,6 @@ edition = "2021"
 xelis-types = { path = "../types" }
 xelis-ast = { path = "../ast" }
 xelis-environment = { path = "../environment" }
-xelis-bytecode = { path = "../bytecode" }
 thiserror = "2.0.1"
 paste = "1.0.15"
 anyhow = "1.0.95"
@@ -15,4 +14,5 @@ log = "0.4.25"
 hex = "0.4.3"
 
 [dev-dependencies]
+xelis-bytecode = { path = "../bytecode" }
 futures = "0.3.31"

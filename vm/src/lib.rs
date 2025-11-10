@@ -36,8 +36,6 @@ pub struct Backend<'a: 'r, 'ty: 'a, 'r, M> {
     table: InstructionTable<'a, 'ty, 'r, M>,
     // The module to execute
     modules: Vec<ModuleMetadata<'a, M>>,
-    // The environment of the VM
-    environment: &'a Environment<M>,
 }
 
 impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
@@ -88,23 +86,19 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r, M: 'static> {
     tail_call_optimization: bool
 }
 
-impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
-    // Create a new VM
-    // Insert the environment as a reference in the context
-    pub fn new(environment: &'a Environment<M>) -> Self {
-        let mut context = Context::default();
-        context.insert_ref(environment);
-
-        Self::with(environment, Default::default(), context)
+impl<'a: 'r, 'ty: 'a, 'r, M: 'static> Default for VM<'a, 'ty, 'r, M> {
+    fn default() -> Self {
+        Self::new(InstructionTable::default(), Context::default())
     }
+}
 
+impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Create a new VM with a given table and context
-    pub fn with(environment: &'a Environment<M>, table: InstructionTable<'a, 'ty, 'r, M>, context: Context<'ty, 'r>) -> Self {
+    pub fn new(table: InstructionTable<'a, 'ty, 'r, M>, context: Context<'ty, 'r>) -> Self {
         Self {
             backend: Backend {
                 table,
                 modules: Vec::with_capacity(1),
-                environment,
             },
             call_stack: Vec::with_capacity(4),
             call_stack_size: 0,
@@ -144,6 +138,10 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         &mut self.context
     }
 
+    pub fn backend(&self) -> &Backend<'a, 'ty, 'r, M> {
+        &self.backend
+    }
+
     // Get the instruction table
     #[inline(always)]
     pub fn table(&self) -> &InstructionTable<'a, 'ty, 'r, M> {
@@ -154,12 +152,6 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     #[inline(always)]
     pub fn table_mut(&mut self) -> &mut InstructionTable<'a, 'ty, 'r, M> {
         &mut self.backend.table
-    }
-
-    // Get the environment
-    #[inline(always)]
-    pub fn environment(&self) -> &Environment<M> {
-        self.backend.environment
     }
 
     // Invoke a chunk using its id
@@ -183,7 +175,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Append a new module to execute
     // Once added, you can invoke a chunk / entry / hook
-    pub fn append_module(&mut self, module: impl Into<Reference<'a, Module>>, metadata: impl Into<Reference<'a, M>>) -> Result<(), VMError> {
+    pub fn append_module(&mut self, module: ModuleMetadata<'a, M>) -> Result<(), VMError> {
         if self.backend.modules.len() + 1 >= MODULES_STACK_SIZE {
             return Err(VMError::ModulesStackOverflow)
         }
@@ -194,7 +186,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             self.call_stack.push(CallStack::SwitchModule);
         }
 
-        self.backend.modules.push(ModuleMetadata { module: module.into(), metadata: metadata.into() });
+        self.backend.modules.push(module);
+
         Ok(())
     }
 
@@ -409,8 +402,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             };
 
                                             let res = ptr(on_value, params.into(), &m, &mut self.context).await?;
-                                            result = match handle_perform_syscall(&self.backend, &mut self.stack, &mut self.context, res) {
-                                                Ok(PerformSysCallHelper::Next { f, params }) => perform_syscall(&self.backend, f, params, &mut self.stack, &mut self.context),
+                                            result = match handle_perform_syscall(&mut self.stack, &mut self.context, res) {
+                                                Ok(syscall @ PerformSysCallHelper::Next { .. }) => perform_syscall(&self.backend, syscall, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),
                                                 Err(e) => Err(e)
                                             };
@@ -422,19 +415,18 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     },
                                     Ok(InstructionResult::AppendModule {
                                         module: new_module,
-                                        metadata,
                                         chunk_id
                                     }) => {
                                         // Can only call public chunks from new module
                                         // This allow for a module to be fully private if wanted
-                                        if !new_module.is_public_chunk(chunk_id as usize) {
+                                        if !new_module.module.is_public_chunk(chunk_id as usize) {
                                             return Err(VMError::ExpectedPublicChunk);
                                         }
 
                                         // Push back the current callstack
                                         self.push_back_call_stack(manager, reader)?;
     
-                                        self.append_module(new_module, metadata)?;
+                                        self.append_module(new_module)?;
                                         self.invoke_chunk_id(chunk_id as _)?;
     
                                         // Jump to the next module

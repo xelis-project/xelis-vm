@@ -14,11 +14,11 @@ use iterator::*;
 use constructor::*;
 use memory::*;
 
-use xelis_bytecode::{Module, OpCode};
-use xelis_environment::OnCallAsyncFn;
+use xelis_bytecode::OpCode;
+use xelis_environment::{ModuleMetadata, OnCallAsyncFn};
 use xelis_types::{Primitive, StackValue, ValueCell};
 
-use crate::{ChunkReader, Context, Reference};
+use crate::{ChunkReader, Context};
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
@@ -60,8 +60,7 @@ pub enum InstructionResult<'a, M> {
         from: usize,
     },
     AppendModule {
-        module: Reference<'a, Module>,
-        metadata: Reference<'a, M>,
+        module: ModuleMetadata<'a, M>,
         chunk_id: u16
     },
     AsyncCall {
