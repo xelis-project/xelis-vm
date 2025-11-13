@@ -356,6 +356,13 @@ impl<'a> Lexer<'a> {
     fn skip_multi_line_comment(&mut self) -> Result<(), LexerError> {
         loop {
             let c = self.advance()?;
+
+            // new line handling
+            if c == '\n' {
+                self.line += 1;
+                self.column = 0;
+            }
+
             if c == '*' && self.peek()? == '/' {
                 self.advance()?;
                 break;
@@ -426,6 +433,9 @@ impl<'a> Lexer<'a> {
                     let v = self.advance()?;
                     if v == '/' {
                         self.skip_until(|c| *c == '\n')?;
+
+                        self.line += 1;
+                        self.column = 0;
                     } else {
                         self.skip_multi_line_comment()?;
                     }
@@ -1167,5 +1177,27 @@ mod tests {
             Token::BraceClose,
             Token::BraceClose,
         ]);
+    }
+
+    #[test]
+    fn test_comment_location() {
+        let code = "// This is a comment\nlet a = 10;";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+
+        assert_eq!(token.token, Token::Let);
+        assert_eq!(token.line, 2);
+        assert_eq!(token.column_start, 1);
+    }
+
+    #[test]
+    fn test_multi_line_comment_location() {
+        let code = "/* This is a comment\n * with multiple lines */\nlet a = 10;";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+
+        assert_eq!(token.token, Token::Let);
+        assert_eq!(token.line, 3);
+        assert_eq!(token.column_start, 1);
     }
 }
