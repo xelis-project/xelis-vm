@@ -1200,4 +1200,65 @@ mod tests {
         assert_eq!(token.line, 3);
         assert_eq!(token.column_start, 1);
     }
+
+    #[test]
+    fn test_function_call_location() {
+        let code = "sum(10, 20)";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.token, Token::Identifier("sum"));
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column_start, 1);
+        assert_eq!(token.column_end, 3);
+    }
+
+    #[test]
+    fn test_big_program_location() {
+        let code = r#"
+            fn main() {
+                // This is a comment
+                let a = 10;
+                /*
+                * Multi-line comment
+                */
+                let b = 20;
+                let c = a + b;
+                return c;
+            }
+        "#;
+
+        let mut lexer = Lexer::new(code);
+
+        let expected_tokens = vec![
+            (Token::Function, 2, 13),
+            (Token::Identifier("main"), 2, 16),
+            (Token::ParenthesisOpen, 2, 20),
+            (Token::ParenthesisClose, 2, 21),
+            (Token::BraceOpen, 2, 23),
+            (Token::Let, 4, 17),
+            (Token::Identifier("a"), 4, 21),
+            (Token::OperatorAssign, 4, 23),
+            (Token::Value(Literal::Number(10)), 4, 25),
+            (Token::Let, 8, 17),
+            (Token::Identifier("b"), 8, 21),
+            (Token::OperatorAssign, 8, 23),
+            (Token::Value(Literal::Number(20)), 8, 25),
+            (Token::Let, 9, 17),
+            (Token::Identifier("c"), 9, 21),
+            (Token::OperatorAssign, 9, 23),
+            (Token::Identifier("a"), 9, 25),
+            (Token::OperatorPlus, 9, 27),
+            (Token::Identifier("b"), 9, 29),
+            (Token::Return, 10, 17),
+            (Token::Identifier("c"), 10, 24),
+            (Token::BraceClose, 11, 13)
+        ];
+
+        for (expected_token, expected_line, expected_column_start) in expected_tokens {
+            let token = lexer.next().unwrap().unwrap();
+            assert_eq!(token.token, expected_token, "Token mismatch at line {}, column {}", expected_line, expected_column_start);
+            assert_eq!(token.line, expected_line, "Line mismatch for token {:?} at column {}", expected_token, expected_column_start);
+            assert_eq!(token.column_start, expected_column_start, "Column start mismatch for token {:?} at line {}", expected_token, expected_line);
+        }
+    }
 }
