@@ -477,24 +477,113 @@ impl Constant {
 
 impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Primitive(v) => write!(f, "{}", v),
-            Self::Array(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
-                write!(f, "[{}]", s.join(", "))
-            },
-            Self::Bytes(bytes) => {
-                write!(f, "bytes{:?}", bytes)
-            },
-            Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-                write!(f, "map{}{}{}", "{", s.join(", "), "}")
-            },
-            Self::Typed(fields, _type) => {
-                let s: Vec<String> = fields.iter().enumerate().map(|(k, v)| format!("{}: {}", k, v)).collect();
-                write!(f, "{:?} {} {} {}", _type, "{", s.join(", "), "}")
+        use fmt::Write;
+
+        // Use iterative formatting to avoid stack overflow on deep nesting
+        enum FormatItem<'a> {
+            Value(&'a Constant),
+            OpenArray,
+            CloseArray,
+            OpenMap,
+            CloseMap,
+            OpenTyped(&'a DefinedType),
+            CloseTyped,
+            MapSeparator,
+            ArraySeparator,
+            FieldIndex(usize),
+        }
+
+        let mut output = String::new();
+        let mut stack = vec![FormatItem::Value(self)];
+        let mut first_in_container = Vec::new();
+
+        while let Some(item) = stack.pop() {
+            match item {
+                FormatItem::Value(constant) => {
+                    match constant {
+                        Self::Primitive(v) => {
+                            write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
+                        }
+                        Self::Bytes(bytes) => {
+                            write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
+                        }
+                        Self::Array(values) => {
+                            if values.is_empty() {
+                                output.push_str("[]");
+                            } else {
+                                stack.push(FormatItem::CloseArray);
+                                first_in_container.push(true);
+                                for value in values.iter().rev() {
+                                    stack.push(FormatItem::Value(value));
+                                    stack.push(FormatItem::ArraySeparator);
+                                }
+                                stack.push(FormatItem::OpenArray);
+                            }
+                        }
+                        Self::Map(map) => {
+                            if map.is_empty() {
+                                output.push_str("map{}");
+                            } else {
+                                stack.push(FormatItem::CloseMap);
+                                first_in_container.push(true);
+                                for (k, v) in map.iter().rev() {
+                                    stack.push(FormatItem::Value(v));
+                                    stack.push(FormatItem::MapSeparator);
+                                    stack.push(FormatItem::Value(k));
+                                    stack.push(FormatItem::ArraySeparator);
+                                }
+                                stack.push(FormatItem::OpenMap);
+                            }
+                        }
+                        Self::Typed(fields, _type) => {
+                            stack.push(FormatItem::CloseTyped);
+                            first_in_container.push(true);
+                            for (idx, value) in fields.iter().enumerate().rev() {
+                                stack.push(FormatItem::Value(value));
+                                stack.push(FormatItem::MapSeparator);
+                                stack.push(FormatItem::FieldIndex(idx));
+                                stack.push(FormatItem::ArraySeparator);
+                            }
+                            stack.push(FormatItem::OpenTyped(_type));
+                        }
+                    }
+                }
+                FormatItem::OpenArray => output.push('['),
+                FormatItem::CloseArray => {
+                    output.push(']');
+                    first_in_container.pop();
+                }
+                FormatItem::OpenMap => output.push_str("map{"),
+                FormatItem::CloseMap => {
+                    output.push('}');
+                    first_in_container.pop();
+                }
+                FormatItem::OpenTyped(_type) => {
+                    use std::fmt::Write;
+                    write!(&mut output, "{:?} {{", _type).map_err(|_| fmt::Error)?;
+                }
+                FormatItem::CloseTyped => {
+                    output.push('}');
+                    first_in_container.pop();
+                }
+                FormatItem::MapSeparator => output.push_str(": "),
+                FormatItem::FieldIndex(idx) => {
+                    use std::fmt::Write;
+                    write!(&mut output, "{}", idx).map_err(|_| fmt::Error)?;
+                }
+                FormatItem::ArraySeparator => {
+                    if let Some(first) = first_in_container.last_mut() {
+                        if *first {
+                            *first = false;
+                        } else {
+                            output.push_str(", ");
+                        }
+                    }
+                }
             }
         }
+
+        write!(f, "{}", output)
     }
 }
 
@@ -547,5 +636,30 @@ mod tests {
         // To drop it without stackoverflow
         let _wrapped = ConstantWrapper(map);
         drop(_wrapped);
+    }
+
+    #[test]
+    fn test_display_deep_nesting() {
+        // Test that Display doesn't stack overflow on deeply nested constants
+        let mut map = Constant::Map(Default::default());
+        for _ in 0..1000 {
+            let mut m = IndexMap::new();
+            m.insert(Constant::Primitive(Primitive::U8(0)), map);
+            map = Constant::Map(m);
+        }
+
+        let display = format!("{}", map);
+        assert!(display.starts_with("map{"));
+        assert!(display.ends_with("}"));
+
+        // Test with deeply nested arrays
+        let mut array = Constant::Array(vec![Constant::Primitive(Primitive::U64(42))]);
+        for _ in 0..1000 {
+            array = Constant::Array(vec![array]);
+        }
+
+        let display = format!("{}", array);
+        assert!(display.starts_with("["));
+        assert!(display.ends_with("]"));
     }
 }

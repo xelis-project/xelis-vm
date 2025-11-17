@@ -1007,20 +1007,87 @@ impl ValueCell {
 
 impl fmt::Display for ValueCell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Primitive(v) => write!(f, "{}", v),
-            Self::Object(values) => {
-                let s: Vec<String> = values.iter().map(|v| format!("{}", v.as_ref())).collect();
-                write!(f, "[{}]", s.join(", "))
-            },
-            Self::Bytes(bytes) => {
-                write!(f, "bytes{:?}", bytes)
-            },
-            Self::Map(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.as_ref())).collect();
-                write!(f, "map{}{}{}", "{", s.join(", "), "}")
+        // Use iterative formatting to avoid stack overflow on deep nesting
+        enum FormatItem<'a> {
+            Value(ValueCellRef<'a>),
+            OpenArray,
+            CloseArray,
+            OpenMap,
+            CloseMap,
+            MapSeparator,
+            ArraySeparator,
+        }
+
+        let mut output = String::new();
+        let mut stack = vec![FormatItem::Value(ValueCellRef::Ref(self))];
+        let mut first_in_container = Vec::new();
+
+        while let Some(item) = stack.pop() {
+            match item {
+                FormatItem::Value(cell_ref) => {
+                    match cell_ref.value() {
+                        Self::Primitive(v) => {
+                            use std::fmt::Write;
+                            write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
+                        }
+                        Self::Bytes(bytes) => {
+                            use std::fmt::Write;
+                            write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
+                        }
+                        Self::Object(values) => {
+                            if values.is_empty() {
+                                output.push_str("[]");
+                            } else {
+                                stack.push(FormatItem::CloseArray);
+                                first_in_container.push(true);
+                                for value in values.iter().rev() {
+                                    stack.push(FormatItem::Value(ValueCellRef::Pointer(value.clone())));
+                                    stack.push(FormatItem::ArraySeparator);
+                                }
+                                stack.push(FormatItem::OpenArray);
+                            }
+                        }
+                        Self::Map(map) => {
+                            if map.is_empty() {
+                                output.push_str("map{}");
+                            } else {
+                                stack.push(FormatItem::CloseMap);
+                                first_in_container.push(true);
+                                for (k, v) in map.iter().rev() {
+                                    stack.push(FormatItem::Value(ValueCellRef::Pointer(v.clone())));
+                                    stack.push(FormatItem::MapSeparator);
+                                    stack.push(FormatItem::Value(ValueCellRef::Owned(k.clone())));
+                                    stack.push(FormatItem::ArraySeparator);
+                                }
+                                stack.push(FormatItem::OpenMap);
+                            }
+                        }
+                    }
+                }
+                FormatItem::OpenArray => output.push('['),
+                FormatItem::CloseArray => {
+                    output.push(']');
+                    first_in_container.pop();
+                }
+                FormatItem::OpenMap => output.push_str("map{"),
+                FormatItem::CloseMap => {
+                    output.push('}');
+                    first_in_container.pop();
+                }
+                FormatItem::MapSeparator => output.push_str(": "),
+                FormatItem::ArraySeparator => {
+                    if let Some(first) = first_in_container.last_mut() {
+                        if *first {
+                            *first = false;
+                        } else {
+                            output.push_str(", ");
+                        }
+                    }
+                }
             }
         }
+
+        write!(f, "{}", output)
     }
 }
 
@@ -1103,6 +1170,49 @@ mod tests {
 
         // Try the Eq impl
         assert_eq!(map, map.clone());
+    }
+
+    #[test]
+    fn test_display_deep_nesting() {
+        // Test that Display doesn't stack overflow on deeply nested structures
+        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
+        for _ in 0..MAX_ITERS {
+            let mut inner_map = IndexMap::new();
+            inner_map.insert(Primitive::U8(10).into(), map.into());
+            map = ValueCell::Map(Box::new(inner_map));
+        }
+
+        // This should not stack overflow
+        let display = format!("{}", map);
+        assert!(display.starts_with("map{"));
+        assert!(display.ends_with("}"));
+
+        // Test with deeply nested arrays
+        let mut array = ValueCell::Object(vec![Primitive::U64(42).into()]);
+        for _ in 0..MAX_ITERS {
+            array = ValueCell::Object(vec![array.into()]);
+        }
+
+        let display = format!("{}", array);
+        assert!(display.starts_with("["));
+        assert!(display.ends_with("]"));
+    }
+
+    #[test]
+    fn test_debug_deep_nesting() {
+        // Test that Debug doesn't stack overflow on deeply nested structures via ValuePointer
+        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
+        for _ in 0..100 {  // Use smaller depth for Debug since it's more verbose
+            let mut inner_map = IndexMap::new();
+            inner_map.insert(Primitive::U8(10).into(), map.into());
+            map = ValueCell::Map(Box::new(inner_map));
+        }
+
+        let ptr: ValuePointer = map.into();
+        // This should not stack overflow
+        let debug = format!("{:?}", ptr);
+        assert!(debug.starts_with("ValuePointer("));
+        assert!(debug.ends_with(")"));
     }
 
     #[test]

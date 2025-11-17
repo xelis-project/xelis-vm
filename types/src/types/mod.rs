@@ -547,40 +547,88 @@ impl Type {
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Type::Any => write!(f, "any"),
-            Type::T(None) => write!(f, "T"),
-            Type::T(Some(id)) => write!(f, "T{}", id),
-            Type::U8 => write!(f, "u8"),
-            Type::U16 => write!(f, "u16"),
-            Type::U32 => write!(f, "u32"),
-            Type::U64 => write!(f, "u64"),
-            Type::U128 => write!(f, "u128"),
-            Type::U256 => write!(f, "u256"),
-            Type::String => write!(f, "string"),
-            Type::Bool => write!(f, "bool"),
-            Type::Bytes => write!(f, "bytes"),
-            Type::Tuples(types) => {
-                write!(f, "(")?;
-                for (i, t) in types.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", t)?;
-                }
-                write!(f, ")")
-            }
-            Type::Struct(ty) => write!(f, "{}", ty.name()),
-            Type::Array(_type) => write!(f, "{}[]", _type),
-            Type::Optional(_type) => write!(f, "optional<{}>", _type),
-            Type::Range(_type) => write!(f, "range<{}>", _type),
-            Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
-            Type::Enum(ty) => write!(f, "{}", ty.name()),
-            Type::Opaque(ty) => write!(f, "{}", ty.name()),
-            Type::Closure(ty) => write!(f, "{}", ty),
-            Type::Function(ty) => write!(f, "{}", ty),
-            Type::Voidable(inner) => write!(f, "void<{}>", inner),
+        // Use iterative formatting to avoid stack overflow on deeply nested generic types
+        enum FormatItem<'a> {
+            Type(&'a Type),
+            Text(&'static str),
         }
+
+        let mut output = String::new();
+        let mut stack = vec![FormatItem::Type(self)];
+
+        while let Some(item) = stack.pop() {
+            match item {
+                FormatItem::Type(ty) => {
+                    match ty {
+                        Type::Any => output.push_str("any"),
+                        Type::T(None) => output.push('T'),
+                        Type::T(Some(id)) => {
+                            use std::fmt::Write;
+                            write!(&mut output, "T{}", id).map_err(|_| fmt::Error)?;
+                        }
+                        Type::U8 => output.push_str("u8"),
+                        Type::U16 => output.push_str("u16"),
+                        Type::U32 => output.push_str("u32"),
+                        Type::U64 => output.push_str("u64"),
+                        Type::U128 => output.push_str("u128"),
+                        Type::U256 => output.push_str("u256"),
+                        Type::String => output.push_str("string"),
+                        Type::Bool => output.push_str("bool"),
+                        Type::Bytes => output.push_str("bytes"),
+                        Type::Struct(ty) => output.push_str(ty.name()),
+                        Type::Enum(ty) => output.push_str(ty.name()),
+                        Type::Opaque(ty) => output.push_str(ty.name()),
+                        Type::Closure(ty) => {
+                            use std::fmt::Write;
+                            write!(&mut output, "{}", ty).map_err(|_| fmt::Error)?;
+                        }
+                        Type::Function(ty) => {
+                            use std::fmt::Write;
+                            write!(&mut output, "{}", ty).map_err(|_| fmt::Error)?;
+                        }
+                        Type::Tuples(types) => {
+                            output.push('(');
+                            for (i, t) in types.iter().enumerate() {
+                                if i > 0 {
+                                    output.push_str(", ");
+                                }
+                                stack.push(FormatItem::Type(t));
+                            }
+                            output.push(')');
+                        }
+                        Type::Array(_type) => {
+                            stack.push(FormatItem::Text("[]"));
+                            stack.push(FormatItem::Type(_type));
+                        }
+                        Type::Optional(_type) => {
+                            stack.push(FormatItem::Text(">"));
+                            stack.push(FormatItem::Type(_type));
+                            stack.push(FormatItem::Text("optional<"));
+                        }
+                        Type::Range(_type) => {
+                            stack.push(FormatItem::Text(">"));
+                            stack.push(FormatItem::Type(_type));
+                            stack.push(FormatItem::Text("range<"));
+                        }
+                        Type::Voidable(inner) => {
+                            stack.push(FormatItem::Text(">"));
+                            stack.push(FormatItem::Type(inner));
+                            stack.push(FormatItem::Text("void<"));
+                        }
+                        Type::Map(key, value) => {
+                            stack.push(FormatItem::Text(">"));
+                            stack.push(FormatItem::Type(value));
+                            stack.push(FormatItem::Text(", "));
+                            stack.push(FormatItem::Type(key));
+                            stack.push(FormatItem::Text("map<"));
+                        }
+                    }
+                }
+                FormatItem::Text(text) => output.push_str(text),
+            }
+        }
+
+        write!(f, "{}", output)
     }
 }
 
@@ -657,5 +705,38 @@ mod tests {
         let a = FnType::new(None, false, vec![Type::U8], Some(Type::Any));
         let b = FnType::new(None, false, vec![Type::U64], Some(Type::Any));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_display_type() {
+        let ty = Type::Map(
+            Box::new(Type::Array(Box::new(Type::U32))),
+            Box::new(Type::Optional(Box::new(Type::String))),
+        );
+
+        assert_eq!(format!("{}", ty), "map<u32[], optional<string>>");
+    }
+
+    #[test]
+    fn test_display_deeply_nested_type() {
+        // Test that Display doesn't stack overflow on deeply nested generic types
+        let mut ty = Type::U64;
+        for _ in 0..1000 {
+            ty = Type::Array(Box::new(ty));
+        }
+
+        let display = format!("{}", ty);
+        assert!(display.starts_with("u64"));
+        assert!(display.ends_with("[]"));
+
+        // Test with nested maps
+        let mut ty = Type::String;
+        for _ in 0..1000 {
+            ty = Type::Map(Box::new(Type::U64), Box::new(ty));
+        }
+
+        let display = format!("{}", ty);
+        assert!(display.contains("map<"));
+        assert!(display.contains("string"));
     }
 }
