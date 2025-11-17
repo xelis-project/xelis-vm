@@ -34,13 +34,21 @@ fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut 
 }
 
 fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
-    let opt = zelf?.take_as_optional()?.ok_or(ValueError::OptionalIsNull)?;
+    // SAFETY: we have exclusive access to zelf
+    let opt = unsafe {
+        zelf?.as_mut()
+    }.take_as_optional()?
+        .ok_or(ValueError::OptionalIsNull)?;
+
     Ok(SysCallResult::Return(opt.into()))
 }
 
 fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
-    let optional = zelf?.take_as_optional()?;
+    // SAFETY: we have exclusive access to zelf
+    let optional = unsafe {
+        zelf?.as_mut()
+    }.take_as_optional()?;
     match optional {
         Some(value) => Ok(SysCallResult::Return(value.into())),
         None => Ok(SysCallResult::Return(default))
@@ -49,7 +57,10 @@ fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'
 
 fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
-    let optional = zelf?.take_as_optional()?;
+    let optional = unsafe {
+        zelf?.as_mut()
+    }.take_as_optional()?;
+
     match optional {
         Some(value) => Ok(SysCallResult::Return(value.into())),
         None => Ok(SysCallResult::DynamicCall {
@@ -68,7 +79,10 @@ fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
         return Err(EnvironmentError::InvalidExpect);
     }
 
-    let opt = zelf?.take_as_optional()?
+    // SAFETY: we have exclusive access to zelf
+    let opt = unsafe {
+        zelf?.as_mut()
+    }.take_as_optional()?
         .ok_or(EnvironmentError::Expect(msg))?;
 
     Ok(SysCallResult::Return(opt.into()))

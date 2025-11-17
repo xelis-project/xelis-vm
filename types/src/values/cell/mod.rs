@@ -217,15 +217,15 @@ impl Hash for ValueCell {
             match value.value() {
                 Self::Primitive(v) => v.hash(state),
                 Self::Object(values) => {
-                    12u8.hash(state);
+                    11u8.hash(state);
                     stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
                 },
                 Self::Bytes(values) => {
-                    13u8.hash(state);
+                    12u8.hash(state);
                     values.hash(state);
                 }
                 Self::Map(map) => {
-                    14u8.hash(state);
+                    13u8.hash(state);
                     stack.extend(
                         map.iter()
                             .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
@@ -992,6 +992,8 @@ impl Clone for ValueCell {
 
 #[cfg(test)]
 mod tests {
+    use std::hash::DefaultHasher;
+
     use serde_json::json;
 
     use super::*;
@@ -1055,7 +1057,7 @@ mod tests {
             map = ValueCell::Map(Box::new(inner_map));
         }
 
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut hasher = DefaultHasher::new();
         map.hash(&mut hasher);
     }
 
@@ -1098,5 +1100,23 @@ mod tests {
     #[test]
     fn test_schema() {
         let _: Schema = schemars::schema_for!(ValueCell);
+    }
+
+    #[test]
+    fn test_hashing_types() {
+        let value = ValuePointer::new(ValueCell::Primitive(Primitive::U8(10)));
+
+        let single = ValueCell::Object(vec![value.clone(), value.clone()]);
+        let twice = ValueCell::Object(vec![value.clone()]);
+
+        let mut hasher = DefaultHasher::new();
+        single.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        hasher = DefaultHasher::new();
+        twice.hash(&mut hasher);
+        let hash2 = hasher.finish();
+
+        assert_ne!(hash, hash2);
     }
 }

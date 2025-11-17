@@ -181,7 +181,11 @@ macro_rules! opcode_op_assign {
             let right = $self.pop_stack()?;
             let mut left = $self.pop_stack()?;
             let result = $macr!(left.as_ref(), right.as_ref(), $op);
-            *left.as_mut() = result.into();
+
+            // SAFETY: we have exclusive access to left
+            unsafe {
+                *left.as_mut() = result.into();
+            }
         }
     };
 }
@@ -247,7 +251,11 @@ pub fn assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
             .saturating_sub(left_depth)
     )?;
 
-    *left.as_mut() = owned;
+    // SAFETY: we have exclusive access to left
+    unsafe {
+        *left.as_mut() = owned;
+    }
+
     Ok(InstructionResult::Nothing)
 }
 
@@ -298,7 +306,11 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
         }
     };
 
-    *left.as_mut() = result.into();
+    // SAFETY: we have exclusive access to left
+    unsafe {
+        *left.as_mut() = result.into();
+    }
+
     Ok(InstructionResult::Nothing)
 }
 
@@ -350,7 +362,10 @@ pub fn increment<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     debug!("increment");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut().increment()?;
+    // SAFETY: we have exclusive access to v
+    unsafe {
+        v.as_mut().increment()?;
+    }
     Ok(InstructionResult::Nothing)
 }
 
@@ -358,6 +373,9 @@ pub fn decrement<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     debug!("decrement");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut().decrement()?;
+    // SAFETY: we have exclusive access to v
+    unsafe {
+        v.as_mut().decrement()?;
+    }
     Ok(InstructionResult::Nothing)
 }

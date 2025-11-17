@@ -76,8 +76,11 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     )?;
 
     let mut zelf = zelf?;
-    let map = zelf.as_mut()
-        .as_mut_map()?;
+    // SAFETY: we have exclusive access to zelf
+    let map = unsafe {
+        zelf.as_mut()
+    }.as_mut_map()?;
+
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -101,21 +104,24 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
 }
 
 fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
-    let key = parameters.remove(0);
+    // We make it owned in case the key contains our only reference to itself
+    let key = parameters.remove(0)
+        .into_owned();
 
-    let k = key.as_ref();
-    if k.is_map() {
+    if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
     let mut zelf = zelf?;
-    let map = zelf.as_mut()
-        .as_mut_map()?;
+    // SAFETY: we have exclusive access to zelf
+    let map = unsafe {
+        zelf.as_mut()
+    }.as_mut_map()?;
 
     // pay based on O(N)
     context.increase_gas_usage(map.len() as _)?;
 
-    let value = map.shift_remove(k);
+    let value = map.shift_remove(&key);
     Ok(SysCallResult::Return(match value {
         Some(v) => v.into(),
         None => Primitive::Null.into(),
@@ -123,15 +129,20 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
 }
 
 fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
-    let key = parameters.remove(0);
+    // We make it owned in case the key contains our only reference to itself
+    let key = parameters.remove(0)
+        .into_owned();
 
-    let k = key.as_ref();
-    if k.is_map() {
+    if key.is_map() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    let value = zelf?.as_mut_map()?
-        .swap_remove(k);
+    // SAFETY: we have exclusive access to zelf
+    let value = unsafe {
+        zelf?.as_mut()
+    }.as_mut_map()?
+        .swap_remove(&key);
+
     Ok(SysCallResult::Return(match value {
         Some(v) => v.into(),
         None => Primitive::Null.into(),
@@ -139,7 +150,11 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
 }
 
 fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
-    zelf?.as_mut_map()?.clear();
+    unsafe {
+        zelf?.as_mut()
+    }.as_mut_map()?
+        .clear();
+
     Ok(SysCallResult::None)
 }
 

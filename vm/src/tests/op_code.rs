@@ -798,5 +798,85 @@ fn test_infinite_map_depth() {
     module.add_entry_chunk(chunk);
 
     assert!(try_run(module).is_err());
-    // assert!(matches!(try_run(module), Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::MaxDepthReached)))));
+}
+
+#[test]
+fn test_array_self_reference_with_pointer_sharing() {
+    let mut module = Module::new();
+    let mut chunk = Chunk::new();
+
+    // Create an array [10, 20, 30]
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(10)) as u16);
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(20)) as u16);
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(30)) as u16);
+
+    chunk.emit_opcode(OpCode::NewObject);
+    chunk.write_u8(3);
+
+    // Store in memory[0]
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(0);
+
+    // Load pointer to array
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Store the same pointer in memory[1] (now both memory[0] and memory[1] point to the same array)
+    chunk.emit_opcode(OpCode::MemorySet);
+    chunk.write_u16(1);
+
+    // Modify the array through memory[0]: change element at index 1 to 999
+    // Load the array
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(0);
+
+    // Load index 1
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(1)) as u16);
+
+    // Get element at index 1 (this returns a pointer to the element)
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Set new value 999
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(999)) as u16);
+
+    // Assign the new value
+    chunk.emit_opcode(OpCode::Assign);
+
+    // Now read the element at index 1 through memory[1]
+    // Load the array from memory[1]
+    chunk.emit_opcode(OpCode::MemoryLoad);
+    chunk.write_u16(1);
+
+    // Load index 1
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(1)) as u16);
+
+    // Get element at index 1
+    chunk.emit_opcode(OpCode::ArrayCall);
+
+    // Compare to 999
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::U32(999)) as u16);
+    chunk.emit_opcode(OpCode::Eq);
+
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::String("not equal to 999".to_string())) as u16);
+
+    // require function
+    chunk.emit_opcode(OpCode::SysCall);
+    chunk.write_u16(247);
+
+    // return true
+    chunk.emit_opcode(OpCode::Constant);
+    chunk.write_u16(module.add_constant(Primitive::Boolean(true)) as u16);
+    chunk.emit_opcode(OpCode::Return);
+
+    module.add_entry_chunk(chunk);
+
+    assert_eq!(run(module), Primitive::Boolean(true));
 }

@@ -1,4 +1,4 @@
-use std::{mem, ops::{Deref, DerefMut}};
+use std::{mem, ops::Deref};
 
 use crate::{
     values::{cell::pointer::ValuePointer, ValueError},
@@ -129,9 +129,20 @@ impl StackValue {
         }
     }
 
+    // Get a mutable reference to the value
+    // Caller must ensure no other references exist
+    #[inline(always)]
+    pub unsafe fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Pointer { ptr, .. } => ptr.as_mut()
+        }
+    }
+
     // Take the ownership by stealing the value from the pointer
     // and replace our current pointer as a owned value
-    pub fn take_ownership(&mut self) {
+    #[inline(always)]
+    pub unsafe fn take_ownership(&mut self) {
         if let Self::Pointer { ptr, .. } = self {
             let cell = ptr.as_mut();
             let owned = mem::take(cell);
@@ -140,6 +151,7 @@ impl StackValue {
     }
 
     // Make the path owned if the pointer is the same
+    #[inline(always)]
     pub fn make_owned_if_same_ptr(&mut self, other: ValuePointer) {
         if let Self::Pointer { ptr,  .. } = self {
             if *ptr == other {
@@ -151,6 +163,7 @@ impl StackValue {
 
     // Transform the StackValue into an Owned variant if its a pointer
     // Do nothing if its a Owned variant already
+    #[inline(always)]
     pub fn make_owned(&mut self) -> bool {
         if let Self::Pointer { ptr, .. } = self {
             let cell = ptr.as_ref();
@@ -233,29 +246,12 @@ impl Deref for StackValue {
     }
 }
 
-impl DerefMut for StackValue {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
-    }
-}
-
 impl AsRef<ValueCell> for StackValue {
     #[inline(always)]
     fn as_ref(&self) -> &ValueCell {
         match self {
             Self::Owned(v) => v,
             Self::Pointer { ptr, .. } => ptr.as_ref()
-        }
-    }
-}
-
-impl AsMut<ValueCell> for StackValue {
-    #[inline(always)]
-    fn as_mut(&mut self) -> &mut ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_mut()
         }
     }
 }
