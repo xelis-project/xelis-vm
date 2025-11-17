@@ -1,10 +1,22 @@
 use std::{mem, ops::{Deref, DerefMut}};
 
 use crate::{
-    values::{cell::pointer::ValuePointer, ValueError}, Constant, Opaque, OpaqueWrapper, Primitive, Type
+    values::{cell::pointer::ValuePointer, ValueError},
+    Constant,
+    Opaque,
+    OpaqueWrapper,
+    Primitive,
+    Type
 };
 use super::ValueCell;
 
+// StackValue represent a value on the stack
+// It can be either an owned value or a pointer to a value
+// Note that the pointer can be nested (pointer to pointer)
+// because of the ValueCell format (Object containing ValuePointers)
+// WARNING: Be careful when manipulating StackValue pointers
+// especially with mutable references! You must ensure that no other
+// references exist when you get a mutable reference to the inner ValueCell
 #[derive(Debug, Clone)]
 pub enum StackValue {
     // Value is on stack directly
