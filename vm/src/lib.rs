@@ -478,11 +478,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
             // Pop the module because we fully executed it
             // This allow the VM to be fully reusable
-            let res = self.backend.modules.pop();
-            debug_assert!(res.is_some(), "backend modules must be some");
+            if self.backend.modules.pop().is_none() {
+                return Err(VMError::NoModule);
+            }
         }
 
-        debug_assert!(self.call_stack_size == 0, "call stack size is not zero");
+        if self.call_stack_size != 0 {
+            return Err(VMError::CallStackNotEmpty(self.call_stack_size));
+        }
 
         let end_value = self.stack.pop_stack()?
             .into_owned();
@@ -493,7 +496,3 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         Ok(end_value)
     }
 }
-
-// SAFETY: it is safe to move it between threads
-// because no pointer is available from our API
-// unsafe impl<'a: 'r, 'ty: 'a, 'r, M: Send + 'static> Send for VM<'a, 'ty, 'r, M> {}

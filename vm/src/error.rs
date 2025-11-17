@@ -5,6 +5,8 @@ use xelis_types::{Primitive, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("call stack not empty, size is {0}")]
+    CallStackNotEmpty(usize),
     #[error(transparent)]
     ChunkError(#[from] ChunkReaderError),
     #[error("unknown op code called")]
