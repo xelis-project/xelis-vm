@@ -194,13 +194,54 @@ impl Drop for ValueCell {
 
 impl PartialEq for ValueCell {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Primitive(a), Self::Primitive(b)) => a == b,
-            (Self::Bytes(a), Self::Bytes(b)) => a == b,
-            (Self::Object(a), Self::Object(b)) => a == b,
-            (Self::Map(a), Self::Map(b)) => a == b,
-            _ => false
+        if let Self::Primitive(a) = self {
+            if let Self::Primitive(b) = other {
+                return a == b;
+            } else {
+                return false;
+            }
         }
+
+        // Use iterative comparison to avoid stack overflow on deep nesting
+        let mut stack = vec![(ValueCellRef::Ref(self), ValueCellRef::Ref(other))];
+        
+        while let Some((left, right)) = stack.pop() {
+            match (left.value(), right.value()) {
+                (Self::Primitive(a), Self::Primitive(b)) => {
+                    if a != b {
+                        return false;
+                    }
+                }
+                (Self::Bytes(a), Self::Bytes(b)) => {
+                    if a != b {
+                        return false;
+                    }
+                }
+                (Self::Object(a), Self::Object(b)) => {
+                    if a.len() != b.len() {
+                        return false;
+                    }
+                    // Push pairs in reverse order to maintain comparison order
+                    for (left_item, right_item) in a.iter().zip(b.iter()).rev() {
+                        stack.push((ValueCellRef::Pointer(left_item.clone()), ValueCellRef::Pointer(right_item.clone())));
+                    }
+                }
+                (Self::Map(a), Self::Map(b)) => {
+                    if a.len() != b.len() {
+                        return false;
+                    }
+                    // Compare maps: check all keys exist and values match
+                    // We need to compare both key and value pairs
+                    for ((left_key, left_val), (right_key, right_val)) in a.iter().zip(b.iter()).rev() {
+                        stack.push((ValueCellRef::Owned(left_key.clone()), ValueCellRef::Owned(right_key.clone())));
+                        stack.push((ValueCellRef::Pointer(left_val.clone()), ValueCellRef::Pointer(right_val.clone())));
+                    }
+                }
+                _ => return false
+            }
+        }
+        
+        true
     }
 }
 
@@ -1059,6 +1100,9 @@ mod tests {
 
         let mut hasher = DefaultHasher::new();
         map.hash(&mut hasher);
+
+        // Try the Eq impl
+        assert_eq!(map, map.clone());
     }
 
     #[test]
