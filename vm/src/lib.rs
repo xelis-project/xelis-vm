@@ -407,7 +407,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                     }
                                                 }
 
-                                                Ok(instance)
+                                                // Wrap the instance in SafeStackValue
+                                                // SAFETY: we checked that none of the parameters are pointing to it
+                                                Ok(unsafe {
+                                                    StackValueFunctionInstance::new_unchecked(instance)
+                                                })
                                             } else {
                                                 Err(EnvironmentError::FnExpectedInstance)
                                             };

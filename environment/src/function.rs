@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt, sync::Arc};
+use std::{collections::VecDeque, fmt, ops::Deref, sync::Arc};
 
 use futures::future::BoxFuture;
 use xelis_bytecode::Module;
@@ -73,10 +73,46 @@ impl<M> From<StackValue> for SysCallResult<M> {
     }
 }
 
+
+/// A wrapper around StackValue to indicate that it is safe to mutably borrow
+/// while having parameters being borrowed as well.
+/// We check before the call that none of the parameters are pointing to the instance.
+#[repr(transparent)]
+pub struct StackValueFunctionInstance(StackValue);
+
+impl StackValueFunctionInstance {
+    /// It is up to the caller to ensure that the value is safe to use
+    /// in a function call context.
+    #[inline(always)]
+    pub unsafe fn new_unchecked(value: StackValue) -> Self {
+        Self(value)
+    }
+
+    // Override the as_mut method to get a mutable reference to the inner ValueCell
+    // Because we've checked that none of the parameters are pointing to it
+    // NOTE: this is only valid during the function call and current parameters
+    // not the internal data of any parameter or somehow itself 
+    #[inline(always)]
+    pub fn as_mut(&mut self) -> &mut ValueCell {
+        // SAFETY: On construction we ensure that no other StackValue is pointing to the same ValueCell
+        unsafe {
+            self.0.as_mut()
+        }
+    }
+}
+
+impl Deref for StackValueFunctionInstance {
+    type Target = StackValue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
-pub type FnInstance<'a> = Result<StackValue, EnvironmentError>;
+pub type FnInstance<'a> = Result<StackValueFunctionInstance, EnvironmentError>;
 pub type FnParams = Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
@@ -163,7 +199,11 @@ impl<M> NativeFunction<M> {
                         }
                     }
 
-                    Ok(instance)
+                    // Wrap the instance in SafeStackValue
+                    // SAFETY: we checked that none of the parameters are pointing to it
+                    Ok(unsafe {
+                        StackValueFunctionInstance::new_unchecked(instance)
+                    })
                 } else {
                     Err(EnvironmentError::FnExpectedInstance)
                 };

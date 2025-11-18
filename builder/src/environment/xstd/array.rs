@@ -65,10 +65,7 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Cont
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let array = unsafe {
-        zelf.as_mut().as_mut_vec()?
-    };
+    let array = zelf.as_mut().as_mut_vec()?;
     if array.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
@@ -92,10 +89,7 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
         .as_u32()? as usize;
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let array = unsafe {
-        zelf.as_mut()
-    }.as_mut_vec()?;
+    let array = zelf.as_mut().as_mut_vec()?;
 
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
@@ -112,10 +106,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     let index = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let array = unsafe {
-        zelf.as_mut()
-    }.as_mut_vec()?;
+    let array = zelf.as_mut().as_mut_vec()?;
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
@@ -130,10 +121,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     let value = param.into_owned();
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let array = unsafe {
-        zelf.as_mut()
-    }.as_mut_vec()?;
+    let array = zelf.as_mut().as_mut_vec()?;
 
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
@@ -177,8 +165,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let array = unsafe { zelf.as_mut().as_mut_vec()? };
+    let array = zelf.as_mut().as_mut_vec()?;
     if let Some(value) = array.pop() {
         Ok(SysCallResult::Return(value.into()))
     } else {
@@ -195,8 +182,7 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M
     let end = end.as_u32()?;
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let vec = unsafe { zelf.as_mut().as_mut_vec()? };
+    let vec = zelf.as_mut().as_mut_vec()?;
     let len = vec.len() as u32;
     if start >= len || end >= len || start >= end {
         return Err(EnvironmentError::InvalidRange(start, end))
@@ -269,9 +255,7 @@ fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
 
     let mut zelf = zelf?;
     // SAFETY: we have exclusive access to zelf
-    let vec = unsafe {
-        zelf.as_mut()
-    }.as_mut_vec()?;
+    let vec = zelf.as_mut().as_mut_vec()?;
 
     if other.len() as u64 + vec.len() as u64 > u32::MAX as u64 {
         return Err(EnvironmentError::OutOfMemory)

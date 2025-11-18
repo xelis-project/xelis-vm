@@ -76,10 +76,8 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     )?;
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let map = unsafe {
-        zelf.as_mut()
-    }.as_mut_map()?;
+    let map = zelf.as_mut()
+        .as_mut_map()?;
 
     if map.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
@@ -113,10 +111,8 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
     }
 
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let map = unsafe {
-        zelf.as_mut()
-    }.as_mut_map()?;
+    let map = zelf.as_mut()
+        .as_mut_map()?;
 
     // pay based on O(N)
     context.increase_gas_usage(map.len() as _)?;
@@ -137,10 +133,8 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
         return Err(EnvironmentError::InvalidKeyType);
     }
 
-    // SAFETY: we have exclusive access to zelf
-    let value = unsafe {
-        zelf?.as_mut()
-    }.as_mut_map()?
+    let value = zelf?.as_mut()
+        .as_mut_map()?
         .swap_remove(&key);
 
     Ok(SysCallResult::Return(match value {
@@ -150,9 +144,8 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
 }
 
 fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
-    unsafe {
-        zelf?.as_mut()
-    }.as_mut_map()?
+    zelf?.as_mut()
+        .as_mut_map()?
         .clear();
 
     Ok(SysCallResult::None)
