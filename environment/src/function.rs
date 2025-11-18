@@ -142,33 +142,6 @@ impl<M> NativeFunction<M> {
         self.require_instance
     }
 
-    // Verify that all parameters are safe to use
-    // If a parameter is a pointer that is shared with another parameter
-    pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
-        let mut pointers: IndexMap<*const ValueCell, usize, IdentityBuildHasher> = IndexMap::default();
-
-        for param in parameters.iter_mut() {
-            if !param.is_owned() {
-                *pointers.entry(param.ptr())
-                    .or_default() += 1;
-            }
-        }
-
-        // Now, for each parameter that is a pointer
-        // check if its count is more than 1
-        for param in parameters.iter_mut().rev() {
-            if let Some(count) = pointers.get_mut(&param.ptr()) {
-                if *count > 1 {
-                    // Clone the parameter to make it owned
-                    *param = param.to_owned();
-                    *count -= 1;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     // Execute the function
     pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
@@ -181,11 +154,12 @@ impl<M> NativeFunction<M> {
             FunctionHandler::Sync(on_call) => {
                 // Verify only the parameters for direct execution
                 // For the async case, it will be done in the VM loop
-                Self::verify_parameters(parameters.make_contiguous())?;
 
                 let on_value = if self.is_on_instance() {
                     let instance = parameters.pop_front()
                         .ok_or(EnvironmentError::MissingInstanceFnCall)?;
+
+                    verify_instance_against_parameters(&instance, parameters.make_contiguous())?;
 
                     Ok(instance)
                 } else {
@@ -245,6 +219,49 @@ impl<'ty, M> fmt::Debug for NativeFunction<M> {
     }
 }
 
+// Verify that the instance is not duplicated in the parameters
+// Instance may be mutably borrowed, so we need to ensure no other references exist 
+pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
+    if !instance.is_owned() {
+        // Check if the instance is duplicated in the parameters
+        let instance_ptr = instance.ptr();
+        for param in parameters.iter_mut() {
+            if param.ptr() == instance_ptr {
+                *param = param.to_owned();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Verify that all parameters are safe to use
+// If a parameter is a pointer that is shared with another parameter
+pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
+    let mut pointers: IndexMap<*const ValueCell, usize, IdentityBuildHasher> = IndexMap::default();
+
+    for param in parameters.iter_mut() {
+        if !param.is_owned() {
+            *pointers.entry(param.ptr())
+                .or_default() += 1;
+        }
+    }
+
+    // Now, for each parameter that is a pointer
+    // check if its count is more than 1
+    for param in parameters.iter_mut().rev() {
+        if let Some(count) = pointers.get_mut(&param.ptr()) {
+            if *count > 1 {
+                // Clone the parameter to make it owned
+                *param = param.to_owned();
+                *count -= 1;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,7 +276,7 @@ mod tests {
             StackValue::from(Primitive::U64(300)),
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // All should remain owned
@@ -282,7 +299,7 @@ mod tests {
         ];
 
         let init = params.clone();
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // All should remain as pointers (not cloned)
@@ -306,7 +323,7 @@ mod tests {
             StackValue::from(ptr.clone()),
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // First paraemter stays as a pointer, the second is cloned (owned)
@@ -326,7 +343,7 @@ mod tests {
         ];
 
         let init = params.clone();
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // First parameter stays as a pointer, the next two are cloned (owned)
@@ -354,7 +371,7 @@ mod tests {
             StackValue::from(ptr.clone()),          // Same pointer again
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // Owned values remain owned
@@ -379,7 +396,7 @@ mod tests {
             StackValue::from(ptr2.clone()), // ptr2 duplicate
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // First occurrence of each pointer stay as pointer, duplicates are cloned
@@ -394,7 +411,7 @@ mod tests {
         // Empty parameter list should work fine
         let mut params: Vec<StackValue> = vec![];
         
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         assert!(params.is_empty());
     }
@@ -406,7 +423,7 @@ mod tests {
         
         let mut params = vec![StackValue::from(ptr)];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // Should remain as pointer (not cloned)
@@ -427,7 +444,7 @@ mod tests {
             StackValue::from(ptr.clone()),
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
         
         // Last should be cloned, first remains pointer
@@ -447,7 +464,7 @@ mod tests {
             StackValue::from(ptr.clone()), // Should remain pointer (index 2 - last)
         ];
 
-        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        let result = verify_parameters(&mut params);
         assert!(result.is_ok());
 
         // First two are pointers, last is cloned (owned)

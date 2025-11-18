@@ -399,11 +399,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     },
                                     Ok(InstructionResult::AsyncCall { .. }) => {
                                         while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
-                                            NativeFunction::<M>::verify_parameters(params.make_contiguous())?;
-
                                             let on_value = if instance {
                                                 let instance = params.pop_front()
                                                     .ok_or(EnvironmentError::MissingInstanceFnCall)?;
+
+                                                verify_instance_against_parameters(&instance, params.make_contiguous())?;
 
                                                 Ok(instance)
                                             } else {
