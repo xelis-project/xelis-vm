@@ -1,4 +1,4 @@
-use std::{mem, ops::Deref};
+use std::{mem, ops::{Deref, DerefMut}};
 
 use crate::{
     values::{cell::pointer::ValuePointer, ValueError},
@@ -157,10 +157,13 @@ impl StackValue {
     // Get a mutable reference to the value
     // Caller must ensure no other references exist
     #[inline(always)]
-    pub unsafe fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
+    pub fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
         match self {
             Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_mut()
+            Self::Pointer { ptr, .. } => {
+                // SAFETY: NativeFunction::verify_parameters ensures no other references exist
+                unsafe { ptr.as_mut() }
+            }
         }
     }
 
@@ -213,6 +216,14 @@ impl StackValue {
             a.ptr_eq(b)
         } else {
             false
+        }
+    }
+
+    #[inline(always)]
+    pub fn ptr(&self) -> *const ValueCell {
+        match self {
+            Self::Owned(v) => v as *const ValueCell,
+            Self::Pointer { ptr, .. } => ptr.ptr()
         }
     }
 
@@ -278,5 +289,20 @@ impl AsRef<ValueCell> for StackValue {
             Self::Owned(v) => v,
             Self::Pointer { ptr, .. } => ptr.as_ref()
         }
+    }
+}
+
+
+impl AsMut<ValueCell> for StackValue {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut ValueCell {
+        StackValue::as_mut(self)
+    }
+}
+
+impl DerefMut for StackValue {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
     }
 }

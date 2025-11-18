@@ -28,6 +28,11 @@ impl ValuePointer {
     }
 
     #[inline(always)]
+    pub fn ptr(&self) -> *const ValueCell {
+        self.0.get() as _
+    }
+
+    #[inline(always)]
     pub fn strong_count(&self) -> usize {
         Arc::strong_count(&self.0)
     }

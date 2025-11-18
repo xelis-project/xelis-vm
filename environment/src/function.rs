@@ -1,9 +1,10 @@
-use std::{collections::VecDeque, fmt, ops::{Deref, DerefMut}, sync::Arc};
+use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::BoxFuture;
+use indexmap::IndexMap;
 use xelis_bytecode::Module;
 use xelis_types::{Primitive, StackValue, Type, ValueCell};
-use crate::{Context, Environment, ModuleMetadata};
+use crate::{Context, Environment, IdentityBuildHasher, ModuleMetadata};
 
 use super::EnvironmentError;
 
@@ -73,63 +74,10 @@ impl<M> From<StackValue> for SysCallResult<M> {
     }
 }
 
-impl<M> From<StackValueFunctionInstance> for SysCallResult<M> {
-    fn from(value: StackValueFunctionInstance) -> Self {
-        SysCallResult::Return(value.0)
-    }
-}
-
-/// A wrapper around StackValue to indicate that it is safe to mutably borrow
-/// while having parameters being borrowed as well.
-/// We check before the call that none of the parameters are pointing to the instance.
-#[repr(transparent)]
-pub struct StackValueFunctionInstance(StackValue);
-
-impl StackValueFunctionInstance {
-    /// It is up to the caller to ensure that the value is safe to use
-    /// in a function call context.
-    #[inline(always)]
-    pub unsafe fn new_unchecked(value: StackValue) -> Self {
-        Self(value)
-    }
-
-    // Override the as_mut method to get a mutable reference to the inner ValueCell
-    // Because we've checked that none of the parameters are pointing to it
-    // NOTE: this is only valid during the function call and current parameters
-    // not the internal data of any parameter or somehow itself 
-    #[inline(always)]
-    pub fn as_mut(&mut self) -> &mut ValueCell {
-        // SAFETY: On construction we ensure that no other StackValue is pointing to the same ValueCell
-        unsafe {
-            self.0.as_mut()
-        }
-    }
-
-    // Get the inner StackValue
-    #[inline(always)]
-    pub fn into_inner(self) -> StackValue {
-        self.0
-    }
-}
-
-impl Deref for StackValueFunctionInstance {
-    type Target = StackValue;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for StackValueFunctionInstance {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
-pub type FnInstance<'a> = Result<StackValueFunctionInstance, EnvironmentError>;
+pub type FnInstance<'a> = Result<StackValue, EnvironmentError>;
 pub type FnParams = Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
@@ -194,6 +142,33 @@ impl<M> NativeFunction<M> {
         self.require_instance
     }
 
+    // Verify that all parameters are safe to use
+    // If a parameter is a pointer that is shared with another parameter
+    pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
+        let mut pointers: IndexMap<*const ValueCell, usize, IdentityBuildHasher> = IndexMap::default();
+
+        for param in parameters.iter_mut() {
+            if !param.is_owned() {
+                *pointers.entry(param.ptr())
+                    .or_default() += 1;
+            }
+        }
+
+        // Now, for each parameter that is a pointer
+        // check if its count is more than 1
+        for param in parameters.iter_mut().rev() {
+            if let Some(count) = pointers.get_mut(&param.ptr()) {
+                if *count > 1 {
+                    // Clone the parameter to make it owned
+                    *param = param.to_owned();
+                    *count -= 1;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     // Execute the function
     pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
@@ -204,23 +179,15 @@ impl<M> NativeFunction<M> {
         // otherwise return the async call
         match self.on_call {
             FunctionHandler::Sync(on_call) => {
+                // Verify only the parameters for direct execution
+                // For the async case, it will be done in the VM loop
+                Self::verify_parameters(parameters.make_contiguous())?;
+
                 let on_value = if self.is_on_instance() {
                     let instance = parameters.pop_front()
                         .ok_or(EnvironmentError::MissingInstanceFnCall)?;
 
-                    if !instance.is_owned() {
-                        for param in parameters.iter_mut() {
-                            if param.ptr_eq(&instance) {
-                                *param = param.to_owned();
-                            }
-                        }
-                    }
-
-                    // Wrap the instance in SafeStackValue
-                    // SAFETY: we checked that none of the parameters are pointing to it
-                    Ok(unsafe {
-                        StackValueFunctionInstance::new_unchecked(instance)
-                    })
+                    Ok(instance)
                 } else {
                     Err(EnvironmentError::FnExpectedInstance)
                 };

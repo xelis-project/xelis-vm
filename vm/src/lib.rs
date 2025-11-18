@@ -206,10 +206,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         self.invoke_entry_chunk(id)?;
 
         for arg in args {
-            let value = arg.into();
-            let memory_usage = value.estimate_memory_usage(self.context.memory_left())?;
-            self.context.increase_memory_usage_unchecked(memory_usage)?;
-            self.stack.push_stack(value)?;
+            self.push_stack(arg)?;
         }
 
         Ok(())
@@ -238,7 +235,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
                 self.invoke_chunk_id(id as _)?;
-                self.stack.extend_stack(args.map(Into::into))?;
+
+                for arg in args {
+                    self.push_stack(arg)?;
+                }
+
                 Ok(true)
             },
             None => Ok(false)
@@ -248,7 +249,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Push a value to the stack
     #[inline(always)]
     pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
-        let value = value.into();
+        let tmp = value.into();
+
+        // we make sure to deep clone it to prevent any issues later
+        let value: StackValue = tmp.deep_clone().into();
+
         let memory_usage = value.estimate_memory_usage(self.context.memory_left())?;
         self.context.increase_memory_usage_unchecked(memory_usage)?;
 
@@ -394,24 +399,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                     },
                                     Ok(InstructionResult::AsyncCall { .. }) => {
                                         while let Ok(InstructionResult::AsyncCall { ptr, instance, mut params }) = result {
+                                            NativeFunction::<M>::verify_parameters(params.make_contiguous())?;
+
                                             let on_value = if instance {
                                                 let instance = params.pop_front()
                                                     .ok_or(EnvironmentError::MissingInstanceFnCall)?;
 
-                                                // Required to prevent having a BorrowMut & BorrowRef at same time
-                                                if !instance.is_owned() {
-                                                    for param in params.iter_mut() {
-                                                        if param.ptr_eq(&instance) {
-                                                            *param = param.to_owned();
-                                                        }
-                                                    }
-                                                }
-
-                                                // Wrap the instance in SafeStackValue
-                                                // SAFETY: we checked that none of the parameters are pointing to it
-                                                Ok(unsafe {
-                                                    StackValueFunctionInstance::new_unchecked(instance)
-                                                })
+                                                Ok(instance)
                                             } else {
                                                 Err(EnvironmentError::FnExpectedInstance)
                                             };

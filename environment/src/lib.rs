@@ -1,6 +1,7 @@
 mod error;
 mod function;
 mod context;
+mod identity_hasher;
 
 use std::any::TypeId;
 
@@ -13,6 +14,7 @@ pub use better_any::*;
 pub use error::EnvironmentError;
 pub use function::*;
 pub use context::*;
+pub use identity_hasher::*;
 
 /// Environment is used to store all the registered functions and structures
 /// It is used to give a context/std library to the parser / interpreter / VM
