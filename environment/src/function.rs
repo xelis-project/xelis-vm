@@ -157,7 +157,7 @@ impl<M> NativeFunction<M> {
 
                     if !instance.is_owned() {
                         for param in parameters.iter_mut() {
-                            if param.ptr_eq(&param) {
+                            if param.ptr_eq(&instance) {
                                 *param = param.to_owned();
                             }
                         }
