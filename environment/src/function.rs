@@ -113,7 +113,7 @@ impl StackValueFunctionInstance {
 }
 
 impl Deref for StackValueFunctionInstance {
-    type Target = ValueCell;
+    type Target = StackValue;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -122,7 +122,7 @@ impl Deref for StackValueFunctionInstance {
 
 impl DerefMut for StackValueFunctionInstance {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
+        &mut self.0
     }
 }
 
