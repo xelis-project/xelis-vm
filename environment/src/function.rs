@@ -244,3 +244,220 @@ impl<'ty, M> fmt::Debug for NativeFunction<M> {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xelis_types::{ValuePointer, Primitive};
+
+    #[test]
+    fn test_no_duplicated_params_all_owned() {
+        // All parameters are owned - no duplicates possible
+        let mut params = vec![
+            StackValue::from(Primitive::U64(100)),
+            StackValue::from(Primitive::U64(200)),
+            StackValue::from(Primitive::U64(300)),
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // All should remain owned
+        assert!(params[0].is_owned());
+        assert!(params[1].is_owned());
+        assert!(params[2].is_owned());
+    }
+
+    #[test]
+    fn test_no_duplicated_params_different_pointers() {
+        // Different pointers - no duplicates
+        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::U64(200)));
+        let ptr3 = ValuePointer::new(ValueCell::from(Primitive::U64(300)));
+
+        let mut params = vec![
+            StackValue::from(ptr1),
+            StackValue::from(ptr2),
+            StackValue::from(ptr3),
+        ];
+
+        let init = params.clone();
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // All should remain as pointers (not cloned)
+        assert!(!params[0].is_owned());
+        assert!(!params[1].is_owned());
+        assert!(!params[2].is_owned());
+
+        // Verify values are still correct
+        for (a, b) in params.iter().zip(init.iter()) {
+            assert_eq!(a.ptr(), b.ptr());
+        }
+    }
+
+    #[test]
+    fn test_duplicated_params_same_pointer_twice() {
+        // Same pointer used twice - should clone one
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        
+        let mut params = vec![
+            StackValue::from(ptr.clone()),
+            StackValue::from(ptr.clone()),
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // First paraemter stays as a pointer, the second is cloned (owned)
+        assert!(!params[0].is_owned());
+        assert!(params[1].is_owned());
+    }
+
+    #[test]
+    fn test_duplicated_params_same_pointer_three_times() {
+        // Same pointer used three times - should clone two of them
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        
+        let mut params = vec![
+            StackValue::from(ptr.clone()),
+            StackValue::from(ptr.clone()),
+            StackValue::from(ptr.clone()),
+        ];
+
+        let init = params.clone();
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // First parameter stays as a pointer, the next two are cloned (owned)
+        assert!(!params[0].is_owned());
+        assert!(params[1].is_owned());
+        assert!(params[2].is_owned());
+
+        assert_eq!(params[0].ptr(), init[0].ptr());
+
+        // Verify values are still correct
+        for (a, b) in params.iter().zip(init.iter()).skip(1) {
+            assert_ne!(a.ptr(), b.ptr());
+        }
+    }
+
+    #[test]
+    fn test_mixed_owned_and_duplicated_pointers() {
+        // Mix of owned values and duplicated pointers
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        
+        let mut params = vec![
+            StackValue::from(Primitive::U64(999)), // Owned
+            StackValue::from(ptr.clone()),          // Pointer
+            StackValue::from(Primitive::U64(888)), // Owned
+            StackValue::from(ptr.clone()),          // Same pointer again
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // Owned values remain owned
+        assert!(params[0].is_owned());
+        assert!(params[2].is_owned());
+        
+        // First duplicated pointer is cloned, second remains
+        assert!(!params[1].is_owned());  // Original pointer
+        assert!(params[3].is_owned()); // Cloned
+    }
+
+    #[test]
+    fn test_multiple_different_duplicated_pointers() {
+        // Multiple sets of duplicated pointers
+        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::U64(200)));
+        
+        let mut params = vec![
+            StackValue::from(ptr1.clone()),
+            StackValue::from(ptr2.clone()),
+            StackValue::from(ptr1.clone()), // ptr1 duplicate
+            StackValue::from(ptr2.clone()), // ptr2 duplicate
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // First occurrence of each pointer stay as pointer, duplicates are cloned
+        assert!(!params[0].is_owned());  // ptr1 first - remains pointer
+        assert!(!params[1].is_owned());  // ptr2 first - remains pointer
+        assert!(params[2].is_owned()); // ptr1 second - cloned
+        assert!(params[3].is_owned()); // ptr2 second - cloned
+    }
+
+    #[test]
+    fn test_empty_params() {
+        // Empty parameter list should work fine
+        let mut params: Vec<StackValue> = vec![];
+        
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_single_param_pointer() {
+        // Single pointer parameter - no duplicates possible
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        
+        let mut params = vec![StackValue::from(ptr)];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // Should remain as pointer (not cloned)
+        assert!(!params[0].is_owned());
+    }
+
+    #[test]
+    fn test_complex_value_duplication() {
+        // Test with complex values (arrays/objects)
+        let complex_value = ValueCell::Object(vec![
+            ValuePointer::new(ValueCell::from(Primitive::U64(1))),
+            ValuePointer::new(ValueCell::from(Primitive::U64(2))),
+        ]);
+        let ptr = ValuePointer::new(complex_value);
+        
+        let mut params = vec![
+            StackValue::from(ptr.clone()),
+            StackValue::from(ptr.clone()),
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+        
+        // Last should be cloned, first remains pointer
+        assert!(!params[0].is_owned());
+        assert!(params[1].is_owned());
+    }
+
+    #[test]
+    fn test_reverse_processing_order() {
+        // Verify that processing happens in reverse order
+        // (last occurrences keep the pointer, earlier ones are cloned)
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        
+        let mut params = vec![
+            StackValue::from(ptr.clone()), // Should be cloned (index 0)
+            StackValue::from(ptr.clone()), // Should be cloned (index 1)
+            StackValue::from(ptr.clone()), // Should remain pointer (index 2 - last)
+        ];
+
+        let result = NativeFunction::<()>::verify_parameters(&mut params);
+        assert!(result.is_ok());
+
+        // First two are pointers, last is cloned (owned)
+        assert!(!params[0].is_owned());
+        assert!(params[1].is_owned());
+        assert!(params[2].is_owned());
+        
+        // Verify the values are still correct after cloning
+        assert_eq!(params[0].as_u64().unwrap(), 100);
+        assert_eq!(params[1].as_u64().unwrap(), 100);
+        assert_eq!(params[2].as_u64().unwrap(), 100);
+    }
+}
