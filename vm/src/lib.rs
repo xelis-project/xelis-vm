@@ -401,7 +401,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 // Required to prevent having a BorrowMut & BorrowRef at same time
                                                 if !instance.is_owned() {
                                                     for param in params.iter_mut() {
-                                                        if param.ptr_eq(&param) {
+                                                        if param.ptr_eq(&instance) {
                                                             *param = param.to_owned();
                                                         }
                                                     }
@@ -416,7 +416,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             result = match handle_perform_syscall(&mut self.stack, &mut self.context, res, &m) {
                                                 Ok(syscall @ PerformSysCallHelper::Next { .. }) => perform_syscall(&self.backend, syscall, &mut self.stack, &mut self.context),
                                                 Ok(PerformSysCallHelper::End(res)) => Ok(res),
-                                                Err(e) => Err(e)
+                                                Err(e) => return Err(e)
                                             };
                                         }
 
