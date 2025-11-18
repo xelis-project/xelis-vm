@@ -204,7 +204,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // This will use the latest module added
     pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         self.invoke_entry_chunk(id)?;
-        self.stack.extend_stack(args.map(Into::into))?;
+
+        for arg in args {
+            let value = arg.into();
+            let memory_usage = value.estimate_memory_usage(self.context.memory_left())?;
+            self.context.increase_memory_usage_unchecked(memory_usage)?;
+            self.stack.push_stack(value)?;
+        }
+
         Ok(())
     }
 
@@ -241,7 +248,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Push a value to the stack
     #[inline(always)]
     pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
-        self.stack.push_stack(value.into())
+        let value = value.into();
+        let memory_usage = value.estimate_memory_usage(self.context.memory_left())?;
+        self.context.increase_memory_usage_unchecked(memory_usage)?;
+
+        self.stack.push_stack(value)
     }
 
     // Add the chunk manager to the call stack if required
@@ -455,6 +466,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                             // We keep it to prevent any DoS using closures
                             self.call_stack_size += 1;
+                        } else {
+                            for value in manager.get_registers() {
+                                let memory = value.estimate_memory_usage(self.context.max_memory_usage())?;
+                                self.context.decrease_memory_usage(memory);
+                            }
                         }
                     },
                     CallStack::SwitchModule => break 'call_stack,

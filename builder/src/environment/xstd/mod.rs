@@ -103,7 +103,7 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
 fn clone<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let zelf = zelf?;
 
-    let memory = zelf.calculate_memory_usage(context.memory_left())?;
+    let memory = zelf.estimate_memory_usage(context.memory_left())?;
     // Double cost: computation for cloning and memory allocation?
     context.increase_memory_usage_unchecked(memory)?;
 

@@ -28,7 +28,7 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
             params,
         })),
         SysCallResult::Return(v) => {
-            let memory_usage = v.as_ref().calculate_memory_usage(context.memory_left())?;
+            let memory_usage = v.estimate_memory_usage(context.memory_left())?;
             context.increase_memory_usage_unchecked(memory_usage)?;
             stack.push_stack(v)?;
             Ok(PerformSysCallHelper::End(InstructionResult::Nothing))
@@ -49,7 +49,12 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                     params,
                 })
             } else {
-                stack.extend_stack(params.into_iter().map(Into::into))?;
+                for param in params {
+                    let memory_usage = param.estimate_memory_usage(context.memory_left())?;
+                    context.increase_memory_usage_unchecked(memory_usage)?;
+                    stack.push_stack(param)?;
+                }
+
                 Ok(PerformSysCallHelper::End(InstructionResult::InvokeDynamicChunk {
                     chunk_id: id as _,
                     from: from as _,

@@ -3,16 +3,16 @@ use std::collections::VecDeque;
 use xelis_types::Either;
 
 use crate::{
-    debug,
-    handle_perform_syscall,
-    perform_syscall,
-    stack::Stack,
     Backend,
     ChunkContext,
     ChunkManager,
     ChunkReader,
     Context,
-    VMError
+    PerformSysCallHelper,
+    VMError,
+    debug,
+    perform_syscall,
+    stack::Stack
 };
 use super::InstructionResult;
 
@@ -36,8 +36,7 @@ pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     let path = stack.pop_stack()?;
     let sub = path.get_at_index(index as usize)?;
 
-    let memory_usage = sub.as_ref()
-        .calculate_memory_usage(context.memory_left())?;
+    let memory_usage = sub.estimate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(sub);
@@ -49,8 +48,7 @@ pub fn copy<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     debug!("copy");
     let value = stack.last_stack()?;
 
-    let memory_usage = value.as_ref()
-        .calculate_memory_usage(context.memory_left())?;
+    let memory_usage = value.estimate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(value.to_owned())?;
@@ -64,8 +62,7 @@ pub fn copy_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
 
     let value = stack.get_stack_at(index as usize)?;
 
-    let memory_usage = value.as_ref()
-        .calculate_memory_usage(context.memory_left())?;
+    let memory_usage = value.estimate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(value.to_owned())?;
@@ -78,23 +75,38 @@ pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut
 
     let value = stack.last_mut_stack()?;
     if value.make_owned() {
-        let memory = value.as_ref().calculate_memory_usage(context.memory_left())?;
+        let memory = value.estimate_memory_usage(context.memory_left())?;
         context.increase_memory_usage_unchecked(memory)?;
     }
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pop");
 
-    stack.pop_stack()?;
+    let value = stack.pop_stack()?;
+    // Decrease memory usage
+    let memory = value
+        .estimate_memory_usage(context.max_memory_usage())?;
+    context.decrease_memory_usage(memory);
+
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let n = reader.read_u8()?;
     debug!("pop n {}", n);
+
+    // Decrease memory for owned values before popping
+    let inner = stack.get_inner();
+    let len = inner.len();
+    if len >= n as usize {
+        for value in &inner[len - n as usize..] {
+            let memory = value.estimate_memory_usage(context.max_memory_usage())?;
+            context.decrease_memory_usage(memory);
+        }
+    }
 
     stack.pop_stack_n(n)?;
     Ok(InstructionResult::Nothing)
@@ -126,8 +138,7 @@ pub fn array_call<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
     let value = stack.pop_stack()?;
     let sub = value.get_at_index(index as usize)?;
 
-    let memory_usage = sub.as_ref()
-        .calculate_memory_usage(context.memory_left())?;
+    let memory_usage = sub.estimate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(sub);
@@ -184,16 +195,19 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
     let args = f.get_parameters().len();
     let mut arguments = VecDeque::with_capacity(args);
     for _ in 0..args + f.is_on_instance() as usize {
-        arguments.push_front(stack.pop_stack()?);
+        let value = stack.pop_stack()?;
+        // reduce memory usage
+        let memory = value.estimate_memory_usage(context.max_memory_usage())?;
+        context.decrease_memory_usage(memory);
+
+        arguments.push_front(value);
     }
 
-    // Execute the syscall
-    let f_res = f.call_function(arguments, current, context)?;
-    // Handle the result from syscall
-    let result = handle_perform_syscall(stack, context, f_res, current)?;
-
     // In case of a next syscall, continue performing it
-    perform_syscall(backend, result, stack, context)
+    perform_syscall(backend, PerformSysCallHelper::Next {
+        f: id,
+        params: arguments,
+    }, stack, context)
 }
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {

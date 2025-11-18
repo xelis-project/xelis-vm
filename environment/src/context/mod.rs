@@ -45,6 +45,9 @@ pub struct Context<'ty, 'r> {
     current_gas: u64,
     // Current memory used in the execution
     current_memory: usize,
+    // Peak memory used in the execution (Ethereum-style)
+    // Only pay gas when growing beyond this peak
+    peak_memory: usize,
 }
 
 impl Default for Context<'_, '_> {
@@ -64,6 +67,7 @@ impl<'ty, 'r> Context<'ty, 'r> {
             max_value_depth: 16,
             max_memory_usage: 1024 * 1024 * 128, // 128 MB
             current_memory: 0,
+            peak_memory: 0,
         }
     }
 
@@ -156,7 +160,24 @@ impl<'ty, 'r> Context<'ty, 'r> {
         self.max_memory_usage.saturating_sub(self.current_memory)
     }
 
+    // Get the peak memory usage
+    #[inline(always)]
+    pub fn peak_memory_usage(&self) -> usize {
+        self.peak_memory
+    }
+
+    #[inline]
+    fn handle_peak_memory(&mut self) -> Result<(), EnvironmentError> {
+        if let Some(growth) = self.current_memory.checked_sub(self.peak_memory) {
+            self.increase_gas_usage((growth as u64) * self.memory_price_per_byte)?;
+            self.peak_memory = self.current_memory;
+        }
+
+        Ok(())
+    }
+
     // Increase the memory usage by a specific amount
+    // Ethereum-style: Only pay gas when growing beyond peak memory
     #[inline]
     pub fn increase_memory_usage(&mut self, memory: usize) -> Result<(), EnvironmentError> {
         self.current_memory = self.current_memory.checked_add(memory)
@@ -166,15 +187,16 @@ impl<'ty, 'r> Context<'ty, 'r> {
             return Err(EnvironmentError::OutOfMemory);
         }
 
-        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
+        self.handle_peak_memory()
     }
 
     // Increase the memory usage by a specific amount
     // The memory added is unchecked but we still check for the gas price of the memory
+    // Ethereum-style: Only pay gas when growing beyond peak memory
     #[inline]
     pub fn increase_memory_usage_unchecked(&mut self, memory: usize) -> Result<(), EnvironmentError> {
         self.current_memory += memory;
-        self.increase_gas_usage((memory as u64) * self.memory_price_per_byte)
+        self.handle_peak_memory()
     }
 
     // Decrease the memory usage by a specific amount
@@ -270,6 +292,7 @@ impl<'ty, 'r> Context<'ty, 'r> {
     pub fn reset_usage(&mut self) {
         self.current_gas = 0;
         self.current_memory = 0;
+        self.peak_memory = 0;
     }
 }
 

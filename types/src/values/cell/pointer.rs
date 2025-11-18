@@ -21,13 +21,20 @@ impl ValuePointer {
     }
 
     #[inline(always)]
-    pub fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
+    pub unsafe fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
         let ptr = self.0.get();
-        // SAFETY: the pointer is valid as long as it is
-        // borrowed
-        unsafe {
-            ptr.as_mut().unwrap_unchecked()
-        }
+        // SAFETY: the pointer is valid as long as it is borrowed
+        ptr.as_mut().unwrap_unchecked()
+    }
+
+    #[inline(always)]
+    pub fn strong_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+
+    #[inline(always)]
+    pub fn is_alone(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
     }
 
     #[inline(always)]

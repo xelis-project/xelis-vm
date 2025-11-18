@@ -10,6 +10,8 @@ use crate::{
 };
 use super::ValueCell;
 
+pub const REFERENCE_SIZE: usize = 8;
+
 // StackValue represent a value on the stack
 // It can be either an owned value or a pointer to a value
 // Note that the pointer can be nested (pointer to pointer)
@@ -47,6 +49,19 @@ impl StackValue {
     #[inline(always)]
     pub fn as_u64<'a>(&'a self) -> Result<u64, ValueError> {
         self.as_ref().as_u64()
+    }
+
+    #[inline(always)]
+    pub fn estimate_memory_usage(&self, max: usize) -> Result<usize, ValueError> {
+        match self {
+            Self::Owned(v) => v.calculate_memory_usage(max),
+            Self::Pointer { .. } => {
+                // Otherwise, we consider only the pointer size
+                // We can't rely on Arc::strong_count or any caching here
+                // because a branching in such critical path is too costly
+                Ok(REFERENCE_SIZE)
+            }
+        }
     }
 
     // Get the sub value at index requested
@@ -99,17 +114,27 @@ impl StackValue {
         }
     }
 
+    #[inline(always)]
     pub fn reference(&mut self) -> Self {
-        if let Self::Owned(value) = self {
-            let v = mem::take(value);
-            let pointer = ValuePointer::new(v);
-            *self = Self::Pointer {
-                ptr: pointer.clone(),
-                depth: 0
-            };
-        }
+        match self {
+            Self::Pointer { ptr, depth } => Self::Pointer {
+                ptr: ptr.clone(),
+                depth: *depth,
+            },
+            Self::Owned(value) => {
+                let v = mem::take(value);
+                let pointer = ValuePointer::new(v);
+                *self = Self::Pointer {
+                    ptr: pointer.clone(),
+                    depth: 0
+                };
 
-        self.clone()
+                Self::Pointer {
+                    ptr: pointer,
+                    depth: 0
+                }
+            }
+        }
     }
 
     // Get an owned variant from it

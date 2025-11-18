@@ -126,7 +126,7 @@ impl ChunkManager {
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<(), VMError> {
+    pub fn set_register(&mut self, index: usize, mut value: StackValue) -> Result<Option<StackValue>, VMError> {
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -135,12 +135,11 @@ impl ChunkManager {
         match cmp {
             Ordering::Equal => {
                 self.registers.push(value);
-                Ok(())
+                Ok(None)
             },
             Ordering::Greater => {
-                self.registers[index] = value;
-
-                Ok(())
+                mem::swap(&mut self.registers[index], &mut value);
+                Ok(Some(value))
             },
             Ordering::Less => Err(VMError::RegisterOverflow)
         }

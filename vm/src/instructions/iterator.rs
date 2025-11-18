@@ -39,8 +39,7 @@ pub fn iterator_next<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack:
 
     let addr = reader.read_u32()?;
     if let Some(value) = manager.next_iterator()? {
-        let memory_usage = value.as_ref()
-            .calculate_memory_usage(context.memory_left())?;
+        let memory_usage = value.estimate_memory_usage(context.memory_left())?;
         context.increase_memory_usage_unchecked(memory_usage)?;
 
         stack.push_stack(value)?;
