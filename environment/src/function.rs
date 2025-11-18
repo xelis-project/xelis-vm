@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt, ops::Deref, sync::Arc};
+use std::{collections::VecDeque, fmt, ops::{Deref, DerefMut}, sync::Arc};
 
 use futures::future::BoxFuture;
 use xelis_bytecode::Module;
@@ -73,6 +73,11 @@ impl<M> From<StackValue> for SysCallResult<M> {
     }
 }
 
+impl<M> From<StackValueFunctionInstance> for SysCallResult<M> {
+    fn from(value: StackValueFunctionInstance) -> Self {
+        SysCallResult::Return(value.0)
+    }
+}
 
 /// A wrapper around StackValue to indicate that it is safe to mutably borrow
 /// while having parameters being borrowed as well.
@@ -99,13 +104,25 @@ impl StackValueFunctionInstance {
             self.0.as_mut()
         }
     }
+
+    // Get the inner StackValue
+    #[inline(always)]
+    pub fn into_inner(self) -> StackValue {
+        self.0
+    }
 }
 
 impl Deref for StackValueFunctionInstance {
-    type Target = StackValue;
+    type Target = ValueCell;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for StackValueFunctionInstance {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
     }
 }
 
