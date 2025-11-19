@@ -42,6 +42,8 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
     env.register_native_function("extend", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("other", Type::Array(Box::new(Type::T(Some(0)))))], FunctionHandler::Sync(extend), 5, None);
     env.register_native_function("concat", Some(Type::Array(Box::new(Type::Array(Box::new(Type::T(Some(0))))))), vec![], FunctionHandler::Sync(concat), 5, Some(Type::Array(Box::new(Type::T(Some(0))))));
+    env.register_native_function("split_off", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(split_off), 5, Some(Type::Array(Box::new(Type::T(Some(0))))));
+    env.register_native_function("truncate", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("size", Type::U32)], FunctionHandler::Sync(truncate), 5, None);
 
     // Transform a Type::Array(U8) into bytes easily
     env.register_native_function("to_bytes", Some(Type::Array(Box::new(Type::U8))), vec![], FunctionHandler::Sync(to_bytes), 1, Some(Type::Bytes));
@@ -306,4 +308,34 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
+}
+
+fn split_off<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let index = parameters.remove(0).as_u32()? as usize;
+
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut().as_mut_vec()?;
+    if index > vec.len() {
+        return Err(EnvironmentError::OutOfBounds(index, vec.len()))
+    }
+
+    // we need to allocate all elements in the new slice, thus we increase the gas usage
+    context.increase_gas_usage((vec.len() - index) as u64)?;
+
+    let second = vec.split_off(index);
+    Ok(SysCallResult::Return(ValueCell::Object(second).into()))
+}
+
+fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+    let size = parameters.remove(0).as_u32()? as usize;
+
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut().as_mut_vec()?;
+    if size > vec.len() {
+        return Err(EnvironmentError::OutOfBounds(size, vec.len()))
+    }
+
+    vec.truncate(size);
+
+    Ok(SysCallResult::None)
 }
