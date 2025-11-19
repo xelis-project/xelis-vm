@@ -1522,7 +1522,7 @@ impl<'a, M> Parser<'a, M> {
                                 Expression::TuplesConstructor(elements)
                             },
                             _ => {
-                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context).unwrap();
+                                let expr = self.read_expr(Some(&Token::ParenthesisClose), None, true, true, expected_type, context)?;
 
                                 // check if it's maybe a tuple
                                 if self.peek_is(Token::Comma) {
