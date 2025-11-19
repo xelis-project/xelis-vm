@@ -1559,6 +1559,26 @@ impl<'a, M> Parser<'a, M> {
                             };
                             self.read_function_call(prev_expr, on_type.is_some(), on_type, id, context)?
                         },
+                        // Range creation
+                        Ok(Token::Dot) if matches!(self.peek_n(1), Ok(Token::Dot)) => {
+                            self.expect_token(Token::Dot)?;
+                            self.expect_token(Token::Dot)?;
+                            let end_expr = self.read_expr(delimiter, None, false, true, expected_type, context)?;
+                            let end_type = self.get_type_from_expression(None, &end_expr, context)?;
+                            let start_expr = Expression::Variable(context.get_variable_id(id)
+                                .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?);
+                            let start_type = self.get_type_from_expression(None, &start_expr, context)?;
+
+                            if *start_type != *end_type {
+                                return Err(err!(self, ParserErrorKind::InvalidRangeType(start_type.into_owned(), end_type.into_owned())))
+                            }
+
+                            if !start_type.is_primitive() {
+                                return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(start_type.into_owned())))
+                            }
+
+                            Expression::RangeConstructor(Box::new(start_expr), Box::new(end_expr))
+                        }
                         Ok(Token::Colon) if matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {

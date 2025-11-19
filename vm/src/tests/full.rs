@@ -381,6 +381,22 @@ fn test_range_contains() {
 
 
 #[test]
+fn test_range() {
+    let code = r#"
+        entry main() {
+            let a: u32 = 5;
+            let b: u32 = 15;
+            let x: bool = (0u32..10u32).contains(a) && !(0u32..10u32).contains(b);
+            let t: range<u32> = a..b;
+
+            return t.max() as u64
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(15));
+}
+
+#[test]
 fn test_range_contains_u256() {
     let code = r#"
         entry main() {
