@@ -367,6 +367,52 @@ fn test_foreach_range() {
     assert_eq!(run_code(code), Primitive::U64(45));
 }
 
+
+#[test]
+fn test_foreach_range_with_var() {
+    let code = r#"
+        entry main() {
+            let x: u64 = 0;
+            let max: u64 = 10;
+            foreach i in 0..max {
+                x = x + i
+            }
+            return x
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(45));
+
+    let code = r#"
+        entry main() {
+            let x: u64 = 0;
+            let min: u64 = 0;
+            foreach i in min..10 {
+                x = x + i
+            }
+            return x
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(45));
+
+
+    let code = r#"
+        entry main() {
+            let x: u64 = 0;
+            let min: u64 = 0;
+            let max: u64 = 10;
+            foreach i in min..max {
+                x = x + i
+            }
+            return x
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(45));
+}
+
+
 #[test]
 fn test_range_contains() {
     let code = r#"

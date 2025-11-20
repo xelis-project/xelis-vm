@@ -1665,7 +1665,7 @@ impl<'a, M> Parser<'a, M> {
                             // Read a range
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
-                                let end_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
+                                let end_expr = self.read_expr(delimiter, None, false, false, expected_type, context)?;
                                 let end_type = self.get_type_from_expression(on_type, &end_expr, context)?;
                                 if _type != *end_type {
                                     return Err(err!(self, ParserErrorKind::InvalidRangeType(_type, end_type.into_owned())))
