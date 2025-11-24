@@ -7,6 +7,7 @@ use xelis_environment::{
     FnReturnType,
     ModuleMetadata,
     Context,
+    EnvironmentError,
 };
 use xelis_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
 use paste::paste;
@@ -267,10 +268,163 @@ macro_rules! max {
     };
 }
 
+// to_string(base: u32) -> string
+// Converts an integer to a string with the specified base (radix)
+// Supported bases: 2
+macro_rules! to_string {
+    ($env: expr, U256, u256) => {
+        paste! {
+            fn to_string_u256<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                context: &mut Context
+            ) -> FnReturnType<M> {
+                let value = zelf?.as_u256()?;
+                let base = parameters[0].as_ref().as_u32()?;
+                
+                // Validate base range
+                if base < 2 || base > 36 {
+                    return Err(anyhow::anyhow!("Base must be between 2 and 36, got {}", base).into());
+                }
+                
+                // For U256, use custom implementation for all bases
+                let mut num = value;
+                if num.is_zero() {
+                    return Ok(SysCallResult::Return(Primitive::String("0".to_string()).into()));
+                }
+
+                let mut result = String::new();
+                let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
+                let base_u256 = u256::from(base);
+
+                // Calculate gas based on number of digits
+                // Each iteration: modulo, division, string insert (costly operations)
+                // Use approximate max digits: 256 bits / log2(base)
+                // Precomputed ceiling values for common bases to avoid floating point
+                let max_digits = match base {
+                    2 => 256,
+                    3 => 162,
+                    4 => 128,
+                    5 => 110,
+                    6 => 99,
+                    7 => 91,
+                    8 => 86,
+                    9 => 81,
+                    10 => 78,
+                    11 => 75,
+                    12 => 72,
+                    13 => 69,
+                    14 => 67,
+                    15 => 66,
+                    16 => 64,
+                    _ => 256 / base.ilog2() + 1, // Conservative estimate for other bases
+                };
+                context.increase_gas_usage(max_digits as u64)?;
+
+                while !num.is_zero() {
+                    let remainder_u256 = num % base_u256;
+                    // Convert remainder to u32 using Into trait (safe because base <= 36)
+                    let remainder: u32 = remainder_u256.into();
+                    result.insert(0, digits[remainder as usize] as char);
+                    num /= base_u256;
+                }
+                
+                Ok(SysCallResult::Return(Primitive::String(result).into()))
+            }
+
+            $env.register_native_function(
+                "to_string",
+                Some(Type::U256),
+                vec![("base", Type::U32)],
+                FunctionHandler::Sync(to_string_u256),
+                3,
+                Some(Type::String)
+            );
+        }
+    };
+    ($env: expr, $t: ident, $f: ident) => {
+        paste! {
+            fn [<to_string_ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                context: &mut Context
+            ) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>]()?;
+                let base = parameters[0].as_ref().as_u32()?;
+
+                // Validate base
+                if base < 2 || base > 36 {
+                    // replace this with your own error type/handling
+                    return Err(EnvironmentError::from("base must be >= 2 and <= 36"));
+                }
+
+                // Calculate gas based on number of digits
+                // Use integer arithmetic: bit_width / log2(base), rounded up, plus margin for non-powers of two
+                let bit_width: u32 = (std::mem::size_of::<$f>() * 8) as u32;
+                let base_log2: u32 = base.ilog2();
+
+                let max_digits: u32 = if base.is_power_of_two() {
+                    // ceil(bit_width / log2(base))
+                    (bit_width + base_log2 - 1) / base_log2
+                } else {
+                    // Conservative upper bound for non-power-of-two bases
+                    (bit_width + base_log2 - 1) / base_log2 + 1
+                };
+
+                context.increase_gas_usage(max_digits as u64)?;
+
+                // Convert to string with the given base
+                let result = match base {
+                    2 => format!("{:b}", value),
+                    8 => format!("{:o}", value),
+                    10 => value.to_string(),
+                    16 => format!("{:x}", value),
+                    _ => {
+                        // For other bases, use custom implementation
+                        let mut num = value;
+                        if num == 0 {
+                            return Ok(SysCallResult::Return(Primitive::String("0".to_owned()).into()));
+                        }
+
+                        let mut result = String::new();
+                        let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
+                        
+                        while num > 0 {
+                            let remainder = (num % (base as $f)) as usize;
+                            result.insert(0, digits[remainder] as char);
+                            num /= base as $f;
+                        }
+                        result
+                    }
+                };
+                
+                Ok(SysCallResult::Return(Primitive::String(result).into()))
+            }
+
+            $env.register_native_function(
+                "to_string",
+                Some(Type::$t),
+                vec![("base", Type::U32)],
+                FunctionHandler::Sync([<to_string_ $f>]),
+                1,
+                Some(Type::String)
+            );
+        }
+    };
+}
+
 macro_rules! register_min_max {
     ($env: expr, $t: ident, $f: ident) => {
         min!($env, $t, $f, be);
         max!($env, $t, $f, be);
+    };
+}
+
+macro_rules! register_to_string {
+    ($env: expr, $t: ident, $f: ident) => {
+        to_string!($env, $t, $f);
     };
 }
 
@@ -342,4 +496,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     register_min_max!(env, U64, u64);
     register_min_max!(env, U128, u128);
     register_min_max!(env, U256, u256);
+
+    // Register to_string functions for all types
+    register_to_string!(env, U8, u8);
+    register_to_string!(env, U16, u16);
+    register_to_string!(env, U32, u32);
+    register_to_string!(env, U64, u64);
+    register_to_string!(env, U128, u128);
+    register_to_string!(env, U256, u256);
 }
