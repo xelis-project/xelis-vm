@@ -2182,20 +2182,31 @@ impl<'a, M> Parser<'a, M> {
      */
     fn read_tuples_deconstruction(&mut self, context: &mut Context<'a>) -> Result<Statement, ParserError<'a>> {
         let pattern = self.read_tuple_pattern(&mut HashSet::new())?;
-        self.expect_token(Token::Colon)?;
-        let expected_type = self.read_type()?;
+        let expected_type = if self.peek_is(Token::Colon) {
+            self.expect_token(Token::Colon)?;
+            Some(self.read_type()?)
+        } else {
+            None
+        };
 
         self.expect_token(Token::OperatorAssign)?;
-        let value = self.read_expr(None, None, true, true, Some(&expected_type), context)?;
-        let value_type = self.get_type_from_expression(None, &value, context)?;
+        let value = self.read_expr(None, None, true, true, expected_type.as_ref(), context)?;
 
-        if !value_type.is_compatible_with(&expected_type) {
-            return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_type)));
+        let mut value_type = self.get_type_from_expression(None, &value, context)?
+            .into_owned();
+
+        if let Some(expected_type) = expected_type {
+            if !value_type.is_compatible_with(&expected_type) {
+                return Err(err!(self, ParserErrorKind::InvalidValueType(value_type, expected_type)));
+            }
+
+            // use the expected type for deconstruction
+            // so it force the real requested type
+            value_type = expected_type;
         }
 
         let mut statements = Vec::new();
-
-        self.match_pattern_with_type(&pattern, &expected_type, context, &mut statements)?;
+        self.match_pattern_with_type(&pattern, &value_type, context, &mut statements)?;
 
         Ok(Statement::TuplesDeconstruction(value, statements))
     }
