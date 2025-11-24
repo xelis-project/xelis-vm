@@ -587,12 +587,14 @@ impl fmt::Display for Type {
                             write!(&mut output, "{}", ty).map_err(|_| fmt::Error)?;
                         }
                         Type::Tuples(types) => {
+                            // Format tuples directly to avoid stack reversal issues
+                            use std::fmt::Write;
                             output.push('(');
                             for (i, t) in types.iter().enumerate() {
                                 if i > 0 {
                                     output.push_str(", ");
                                 }
-                                stack.push(FormatItem::Type(t));
+                                write!(&mut output, "{}", t).map_err(|_| fmt::Error)?;
                             }
                             output.push(')');
                         }
@@ -715,6 +717,17 @@ mod tests {
         );
 
         assert_eq!(format!("{}", ty), "map<u32[], optional<string>>");
+    }
+
+    #[test]
+    fn test_display_tuples_type() {
+        let ty = Type::Tuples(vec![
+            Type::U8,
+            Type::String,
+            Type::Array(Box::new(Type::Bool)),
+        ]);
+
+        assert_eq!(format!("{}", ty), "(u8, string, bool[])");
     }
 
     #[test]

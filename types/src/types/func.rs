@@ -192,9 +192,9 @@ impl fmt::Display for ClosureType {
 
 impl fmt::Display for FnType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let params = self.parameters.iter()
-            .map(Some)
-            .chain(iter::once(self.on_type.as_deref().filter(|_| self.on_instance)))
+        // If on_instance is true, the on_type should be the first parameter
+        let params = iter::once(self.on_type.as_deref().filter(|_| self.on_instance))
+            .chain(self.parameters.iter().map(Some))
             .filter_map(|v| v.map(Type::to_string))
             .collect::<Vec<_>>()
             .join(", ");
@@ -203,5 +203,62 @@ impl fmt::Display for FnType {
             Some(ty) => write!(f, "fn({}) -> {}", params, ty),
             None => write!(f, "fn({})", params),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_closure_display() {
+        let closure = ClosureType::new(
+            vec![Type::U64, Type::String],
+            Some(Type::Bool)
+        );
+        assert_eq!(format!("{}", closure), "closure(u64, string) -> bool");
+
+        let closure_no_return = ClosureType::new(
+            vec![Type::U32],
+            None
+        );
+        assert_eq!(format!("{}", closure_no_return), "closure(u32)");
+    }
+
+    #[test]
+    fn test_fn_display_static() {
+        // Static function (not on instance)
+        let fn_type = FnType::new(
+            None,
+            false,
+            vec![Type::U64, Type::String],
+            Some(Type::Bool)
+        );
+        assert_eq!(format!("{}", fn_type), "fn(u64, string) -> bool");
+    }
+
+    #[test]
+    fn test_fn_display_instance_method() {
+        // Instance method - on_type should appear first
+        let fn_type = FnType::new(
+            Some(Type::String),
+            true,
+            vec![Type::U64, Type::Bool],
+            Some(Type::U32)
+        );
+        assert_eq!(format!("{}", fn_type), "fn(string, u64, bool) -> u32");
+    }
+
+    #[test]
+    fn test_fn_display_static_with_on_type() {
+        // Static method with on_type (on_instance = false)
+        // on_type should NOT appear in parameters
+        let fn_type = FnType::new(
+            Some(Type::String),
+            false,
+            vec![Type::U64],
+            Some(Type::Bool)
+        );
+        assert_eq!(format!("{}", fn_type), "fn(u64) -> bool");
     }
 }
