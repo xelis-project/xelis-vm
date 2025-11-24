@@ -302,7 +302,7 @@ macro_rules! to_string {
                 // Each iteration: modulo, division, string insert (costly operations)
                 // Use approximate max digits: 256 bits / log2(base)
                 // Precomputed ceiling values for common bases to avoid floating point
-                let max_digits = match base {
+                let baseline_256 = match base {
                     2 => 256,
                     3 => 162,
                     4 => 128,
@@ -318,8 +318,12 @@ macro_rules! to_string {
                     14 => 67,
                     15 => 66,
                     16 => 64,
-                    _ => 256 / base.ilog2() + 1, // Conservative estimate for other bases
+                    _ => 256 / base.ilog2() + 1, // conservative for other bases
                 };
+
+                // Scale linearly by bit_width/256, with ceil division
+                let max_digits = ((baseline_256 as u64) * (256 as u64) + 255) / 256;
+
                 context.increase_gas_usage(max_digits as u64)?;
 
                 while !num.is_zero() {
@@ -362,7 +366,7 @@ macro_rules! to_string {
 
                 // Calculate gas based on number of digits
                 // Use integer arithmetic: bit_width / log2(base), rounded up, plus margin for non-powers of two
-                let bit_width: u32 = (std::mem::size_of::<$f>() * 8) as u32;
+                let bit_width: u32 = $f::BITS;
                 let base_log2: u32 = base.ilog2();
 
                 let max_digits: u32 = if base.is_power_of_two() {
