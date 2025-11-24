@@ -30,6 +30,25 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("matches", Some(Type::String), vec![("pattern", Type::String)], FunctionHandler::Sync(string_matches), 50, Some(Type::Array(Box::new(Type::String))));
     env.register_native_function("substring", Some(Type::String), vec![("value", Type::U32)], FunctionHandler::Sync(string_substring), 3, Some(Type::Optional(Box::new(Type::String))));
     env.register_native_function("substring_range", Some(Type::String), vec![("value", Type::U32), ("value", Type::U32)], FunctionHandler::Sync(string_substring_range), 3, Some(Type::Optional(Box::new(Type::String))));
+
+    // from utf8
+    env.register_static_function(
+        "from_utf8",
+        Type::String,
+        vec![("bytes", Type::Bytes)],
+        FunctionHandler::Sync(string_from_utf8),
+        5,
+        Some(Type::Optional(Box::new(Type::String)))
+    );
+
+    env.register_static_function(
+        "from_utf8_lossy",
+        Type::String,
+        vec![("bytes", Type::Bytes)],
+        FunctionHandler::Sync(string_from_utf8_lossy),
+        5,
+        Some(Type::String)
+    );
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
@@ -237,4 +256,29 @@ fn string_substring_range<M>(zelf: FnInstance, mut parameters: FnParams, _: &Mod
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
+}
+
+fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let bytes = parameters[0]
+        .as_bytes()?;
+
+    context.increase_gas_usage(bytes.len() as u64)?;
+
+    let str = String::from_utf8(bytes.clone())
+        .ok()
+        .map(|s| Primitive::String(s))
+        .unwrap_or_default();
+
+    Ok(SysCallResult::Return(str.into()))
+}
+
+fn string_from_utf8_lossy<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let bytes = parameters[0]
+        .as_bytes()?;
+
+    context.increase_gas_usage(bytes.len() as u64)?;
+
+    let str = String::from_utf8_lossy(&bytes).into_owned();
+
+    Ok(SysCallResult::Return(Primitive::String(str).into()))
 }
