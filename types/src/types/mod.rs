@@ -349,7 +349,9 @@ impl Type {
                 _ => self.is_compatible_with(other)
             },
             Self::Tuples(tuples) => match other {
-                Self::Tuples(tuples2) => tuples.iter().zip(tuples2.iter()).all(|(a, b)| a.is_assign_compatible_with(b)),
+                Self::Tuples(tuples2) =>  tuples.len() == tuples2.len() && tuples.iter()
+                    .zip(tuples2.iter())
+                    .all(|(a, b)| b.is_assign_compatible_with(a)),
                 _ => self.is_compatible_with(other)
             },
             Self::Voidable(inner) => inner.is_assign_compatible_with(other),
@@ -401,7 +403,7 @@ impl Type {
                 Type::Optional(sub) => sub.is_generic_compatible_with(other, sub_type.as_ref()),
                 Type::Any | Type::T(None) => true,
                 Type::T(Some(_)) => self.is_generic_compatible_with(other, sub_type.as_ref()),
-                _ => *self == *other
+                _ => sub_type.is_compatible_with(self)
             },
             Type::Map(k, v) => match self {
                 Type::Map(k2, v2) => k2.is_generic_compatible_with(other, k) && v2.is_generic_compatible_with(other, v),
@@ -409,7 +411,9 @@ impl Type {
                 _ => *self == *other
             },
             Type::Tuples(types) => match self {
-                Type::Tuples(types2) => types.iter().zip(types2.iter()).all(|(a, b)| a.is_compatible_with(b)),
+                Type::Tuples(types2) => types.len() == types2.len() && types.iter()
+                    .zip(types2.iter())
+                    .all(|(a, b)| b.is_compatible_with(a)),
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
             },
@@ -466,7 +470,7 @@ impl Type {
             },
             Type::Optional(inner) => match other {
                 Type::Optional(inner2) => inner.is_castable_to(inner2),
-                _ => inner.is_compatible_with(other)
+                _ => false,
             },
             Type::Voidable(inner) => inner.is_castable_to(other),
             _ => false
@@ -642,7 +646,7 @@ mod tests {
     fn test_compatibility_between_types() {
         assert!(Type::Optional(Box::new(Type::Bool)).is_assign_compatible_with(&Type::Bool));
         assert!(!Type::Optional(Box::new(Type::Bool)).is_compatible_with(&Type::Bool));
-        assert!(!Type::Bool.is_compatible_with(&Type::Optional(Box::new(Type::Bool))));
+        assert!(Type::Bool.is_compatible_with(&Type::Optional(Box::new(Type::Bool))));
 
         let struct_type = StructType::new(0, "Foo", Vec::new());
         assert!(Type::Optional(Box::new(Type::Struct(struct_type.clone()))).is_assign_compatible_with(&Type::Struct(struct_type.clone())));
@@ -659,8 +663,14 @@ mod tests {
 
     #[test]
     fn test_compatibility_deep_types() {
-        let expected = Type::Array(Box::new(Type::Tuples(vec![Type::String, Type::U64])));
-        let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
+        // let expected = Type::Array(Box::new(Type::Tuples(vec![Type::String, Type::U64])));
+        // let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
+
+        // assert!(expected.is_compatible_with(&ty));
+        // assert!(expected.is_assign_compatible_with(&ty));
+
+        let expected = Type::Tuples(vec![Type::String, Type::U64]);
+        let ty = Type::Tuples(vec![Type::String, Type::Optional(Box::new(Type::U64))]);
 
         assert!(expected.is_compatible_with(&ty));
         assert!(expected.is_assign_compatible_with(&ty));

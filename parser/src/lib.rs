@@ -1155,7 +1155,19 @@ impl<'a, M> Parser<'a, M> {
 
         Some(match expr {
             Expression::Constant(v) => v.clone(),
-            Expression::ForceType(expr, _) => self.try_convert_expr_to_value(expr)?,
+            Expression::ForceType(inner, ty) => {
+                let v = self.try_convert_expr_to_value(inner)?
+                        .checked_cast_to_primitive_type(ty)
+                        .ok()?;
+                // In case its a optional type, we need to keep the ForceType expression
+                if ty.is_optional() {
+                    *expr = Expression::ForceType(Box::new(Expression::Constant(v)), ty.clone());
+
+                    return None
+                } else {
+                    v
+                }
+            },
             Expression::ArrayConstructor(values) => {
                 let len = values.len();
                 let mut new_values = Vec::with_capacity(len);
@@ -1747,7 +1759,11 @@ impl<'a, M> Parser<'a, M> {
 
                     required_operator = !required_operator;
 
-                    if left_type.is_any() {
+                    // allows:
+                    // any -> T (force type)
+                    // T -> optional<T> (cast)
+                    // T -> U (cast) if T castable to U and U primitive
+                    if left_type.is_any() || (right_type.is_optional() && right_type.get_inner_type() == &left_type) {
                         Expression::ForceType(Box::new(prev_expr), right_type)
                     } else {
                         if !left_type.is_castable_to(&right_type) {
@@ -2045,38 +2061,50 @@ impl<'a, M> Parser<'a, M> {
             return Err(err!(self, ParserErrorKind::InvalidConstName(name)))
         }
 
-        self.expect_token(Token::Colon)?;
-        let value_type = self.read_type()?;
-        let value: Expression = if self.peek_is(Token::OperatorAssign) {
-            self.expect_token(Token::OperatorAssign)?;
-            let expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
+        let (value_type, value) = if self.peek_is(Token::Colon) {
+            self.expect_token(Token::Colon)?;
+            let value_type = self.read_type()?;
+            let value: Expression = if self.peek_is(Token::OperatorAssign) {
+                self.expect_token(Token::OperatorAssign)?;
+                let expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
 
-            let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
-                Ok(opt_type) => match opt_type {
-                    Some(v) => v,
-                    None => if value_type.contains_sub_type() {
-                        Cow::Owned(value_type.clone())
-                    } else {
-                        return Err(err!(self, ParserErrorKind::NoSubType))
+                let expr_type = match self.get_type_from_expression_internal(None, &expr, context) {
+                    Ok(opt_type) => match opt_type {
+                        Some(v) => v,
+                        None => if value_type.contains_sub_type() {
+                            Cow::Owned(value_type.clone())
+                        } else {
+                            return Err(err!(self, ParserErrorKind::NoSubType))
+                        }
+                    },
+                    Err(e) => match e.kind { // support empty array declaration
+                        ParserErrorKind::EmptyArrayConstructor if value_type.support_array_call() => Cow::Owned(value_type.clone()),
+                        _ => return Err(e)
                     }
-                },
-                Err(e) => match e.kind { // support empty array declaration
-                    ParserErrorKind::EmptyArrayConstructor if value_type.support_array_call() => Cow::Owned(value_type.clone()),
-                    _ => return Err(e)
+                };
+
+                // Don't allow the reverse to prevent that example:
+                // let _: bool = <optional bool>
+                if !value_type.is_assign_compatible_with(&expr_type) {
+                    return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
                 }
+
+                expr
+            } else if value_type.is_optional() {
+                Expression::Constant(Constant::Primitive(Primitive::Null))
+            } else {
+                return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
             };
 
-            // Don't allow the reverse to prevent that example:
-            // let _: bool = <optional bool>
-            if !value_type.is_assign_compatible_with(&expr_type) {
-                return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), value_type)))
-            }
+            (value_type, value)
+        }
+        else {
+            self.expect_token(Token::OperatorAssign)?;
+            let value: Expression = self.read_expr(None, None, true, true, None, context)?;
+            let value_type = self.get_type_from_expression(None, &value, context)?
+                .into_owned();
 
-            expr
-        } else if value_type.is_optional() {
-            Expression::Constant(Constant::Primitive(Primitive::Null))
-        } else {
-            return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
+            (value_type, value)
         };
 
         Ok((name, value_type, value, ignored))
@@ -2161,7 +2189,7 @@ impl<'a, M> Parser<'a, M> {
         let value = self.read_expr(None, None, true, true, Some(&expected_type), context)?;
         let value_type = self.get_type_from_expression(None, &value, context)?;
 
-        if *value_type != expected_type {
+        if !value_type.is_compatible_with(&expected_type) {
             return Err(err!(self, ParserErrorKind::InvalidValueType(value_type.into_owned(), expected_type)));
         }
 
@@ -3116,7 +3144,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(xelis_types::Primitive::U64(25 - 8)))
+            Expression::Constant(Constant::Primitive(Primitive::U64(25 - 8)))
         );
 
         // Compare the parsed AST to the expected AST

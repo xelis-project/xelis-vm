@@ -2537,3 +2537,50 @@ fn test_voidable_type() {
     let (module, env) = prepare_module_with(code, env);
     assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(100 * 100));
 }
+
+#[test]
+fn test_optional_value_type() {
+    let code = r#"
+        entry main() {
+            let v: optional<u64> = 10;
+            let value = v.unwrap();
+            return value
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(10)
+    );
+}
+
+#[test]
+fn test_raw_value_cast_to_optional() {
+    let code = r#"
+        entry main() {
+            let v = 10u64 as optional<u64>;
+            return v.unwrap()
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(10)
+    );
+
+    let code = r#"
+        fn foo() -> (string, u64) {
+            return ("hello!", 10)
+        }
+
+        entry main() {
+            let (_, v): (string, optional<u64>) = foo();
+            return v.unwrap()
+        }
+    "#;
+
+    assert_eq!(
+        run_code_id(code, 1),
+        Primitive::U64(10)
+    );
+}
