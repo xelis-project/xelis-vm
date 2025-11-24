@@ -49,6 +49,7 @@ pub enum Literal<'a> {
     // Default number type when no type is specified
     Number(u64),
     String(Cow<'a, str>),
+    Bytes(Cow<'a, [u8]>),
     Bool(bool),
     Null,
 }
@@ -137,6 +138,17 @@ impl<'a> fmt::Display for Token<'a> {
         Value(Literal::Bool(true)) => "true",
         Value(Literal::Bool(false)) => "false",
         Value(Literal::String(s)) => return write!(f, "\"{}\"", s),
+        Value(Literal::Bytes(b)) => {
+            write!(f, "b\"")?;
+            for byte in b.iter() {
+                if byte.is_ascii_graphic() && *byte != b'"' && *byte != b'\\' {
+                    write!(f, "{}", *byte as char)?;
+                } else {
+                    write!(f, "\\x{:02x}", byte)?;
+                }
+            }
+            return write!(f, "\"");
+        },
         Value(Literal::Number(n)) => return write!(f, "{}", n),
         Value(Literal::U8(n)) => return write!(f, "{}_u8", n),
         Value(Literal::U16(n)) => return write!(f, "{}_u16", n),

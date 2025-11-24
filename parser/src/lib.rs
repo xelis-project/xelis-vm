@@ -1661,6 +1661,7 @@ impl<'a, M> Parser<'a, M> {
                             _ => Primitive::U64(n)
                         }.into(),
                         Literal::String(s) => Primitive::String(s.into_owned()).into(),
+                        Literal::Bytes(b) => Expression::Constant(Constant::Bytes(b.into_owned())),
                         Literal::Bool(b) => Primitive::Boolean(b).into(),
                         Literal::Null => Primitive::Null.into()
                     }
@@ -4750,5 +4751,33 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_byte_string_literal() {
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("data"),
+            Token::Colon,
+            Token::Bytes,
+            Token::OperatorAssign,
+            Token::Value(Literal::Bytes(Cow::Borrowed(b"hello"))),
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+
+        if let Statement::Variable(DeclarationStatement { id, value_type, value }) = &statements[0] {
+            assert_eq!(id, &Some(0));
+            assert_eq!(*value_type, Type::Bytes);
+            
+            // Verify it generates a Constant::Bytes
+            assert_eq!(
+                *value,
+                Expression::Constant(Constant::Bytes(b"hello".to_vec()))
+            );
+        } else {
+            panic!("Expected Variable declaration");
+        }
     }
 }
