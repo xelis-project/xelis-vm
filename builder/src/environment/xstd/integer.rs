@@ -472,6 +472,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
     // Register all 'to endian bytes' (be/le) functions for all types
     // Returns a Bytes type
+    register_endian_bytes!(env, U8, u8);
     register_endian_bytes!(env, U16, u16);
     register_endian_bytes!(env, U32, u32);
     register_endian_bytes!(env, U64, u64);
