@@ -34,35 +34,36 @@ fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut 
 }
 
 fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
-    let opt = zelf?.as_mut()
-        .take_as_optional()?
-        .ok_or(ValueError::OptionalIsNull)?;
+    let zelf = zelf?;
+    if zelf.is_null() {
+        return Err(ValueError::OptionalIsNull.into());
+    }
 
-    Ok(SysCallResult::Return(opt.into()))
+    Ok(SysCallResult::Return(zelf))
 }
 
 fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
-    let optional = zelf?.as_mut()
-        .take_as_optional()?;
-    match optional {
-        Some(value) => Ok(SysCallResult::Return(value.into())),
-        None => Ok(SysCallResult::Return(default))
-    }
+    let zelf = zelf?;
+
+    Ok(SysCallResult::Return(if zelf.is_null() {
+        default
+    } else {
+       zelf
+    }))
 }
 
 fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
     let default = parameters.remove(0);
-    let optional = zelf?.as_mut()
-        .take_as_optional()?;
-
-    match optional {
-        Some(value) => Ok(SysCallResult::Return(value.into())),
-        None => Ok(SysCallResult::DynamicCall {
+    let zelf = zelf?;
+    Ok(if zelf.is_null() {
+        SysCallResult::DynamicCall {
             ptr: default,
             params: VecDeque::new()
-        })
-    }
+        }
+    } else {
+        SysCallResult::Return(zelf)
+    })
 }
 
 fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
@@ -74,9 +75,10 @@ fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
         return Err(EnvironmentError::InvalidExpect);
     }
 
-    let opt = zelf?.as_mut()
-        .take_as_optional()?
-        .ok_or(EnvironmentError::Expect(msg))?;
+    let zelf = zelf?;
+    if zelf.is_null() {
+        return Err(EnvironmentError::Expect(msg));
+    }
 
-    Ok(SysCallResult::Return(opt.into()))
+    Ok(SysCallResult::Return(zelf))
 }

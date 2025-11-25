@@ -2584,3 +2584,60 @@ fn test_raw_value_cast_to_optional() {
         Primitive::U64(10)
     );
 }
+
+
+#[test]
+fn test_destructive_unwrap() {
+    let code = r#"
+        entry main() {
+            let a: optional<u64> = 10;
+            let b: u64 = a.unwrap();
+            // This would fail if unwrap consumed 'a' (making it null)
+            let c: u64 = a.unwrap();
+            return b + c
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(20)
+    );
+}
+
+#[test]
+fn test_destructive_unwrap_struct() {
+    let code = r#"
+        struct Test { v: u64 }
+        entry main() {
+            let t: Test = Test { v: 10 };
+            let a: optional<Test> = t;
+            let b: Test = a.unwrap();
+            // This would fail if unwrap consumed 'a'
+            let c: Test = a.unwrap();
+            return b.v + c.v
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(20)
+    );
+}
+
+#[test]
+fn test_destructive_expect() {
+    let code = r#"
+        entry main() {
+            let a: optional<u64> = 10;
+            let b: u64 = a.expect("error");
+            // This would fail if expect consumed 'a'
+            let c: u64 = a.expect("error");
+            return b + c
+        }
+    "#;
+
+    assert_eq!(
+        run_code(code),
+        Primitive::U64(20)
+    );
+}
