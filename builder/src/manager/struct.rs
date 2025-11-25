@@ -12,12 +12,17 @@ pub struct StructBuilder {
 }
 
 impl Builder for StructBuilder {
-    type Data = Vec<(Cow<'static, str>, Type)>;
+    type Data = (Vec<Cow<'static, str>>, Vec<(Cow<'static, str>, Type)>);
     type Type = StructType;
 
     fn build_with(id: IdentifierType, name: impl Into<Cow<'static, str>>, data: Self::Data) -> Self {
+        let (generics, fields) = data;
         Self {
-            inner: StructType::new(id, name, data)
+            inner: if generics.is_empty() {
+                StructType::new(id, name, fields)
+            } else {
+                StructType::new_with_generics(id, name, generics, fields)
+            }
         }
     }
 

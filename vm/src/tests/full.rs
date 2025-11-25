@@ -2665,3 +2665,19 @@ fn test_tuples_any() {
 
     assert_eq!(run_code_id(code, 1), Primitive::U64(0));
 }
+
+#[test]
+fn test_generics_struct() {
+    let code = r#"
+        struct Foo<T> {
+            value: T
+        }
+
+        entry main() {
+            let a = Foo { value: 1000u64 };
+            return a.value
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(1000));
+}

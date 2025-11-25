@@ -10,6 +10,8 @@ pub struct Struct {
     // Unique identifier for serialization
     id: IdentifierType,
     name: Cow<'static, str>,
+    // Generic parameter names (e.g., ["K", "V"] for Entry<K, V>)
+    generics: Vec<Cow<'static, str>>,
     // Fields of the struct
     fields: Vec<(Cow<'static, str>, Type)>
 }
@@ -32,7 +34,17 @@ pub struct StructType(Arc<Struct>);
 impl StructType {
     /// Create a new struct type
     pub fn new(id: IdentifierType, name: impl Into<Cow<'static, str>>, fields: Vec<(Cow<'static, str>, Type)>) -> Self {
-        Self(Arc::new(Struct { id, name: name.into(), fields }))
+        Self(Arc::new(Struct { id, name: name.into(), generics: Vec::new(), fields }))
+    }
+
+    /// Create a new struct type with generic parameters
+    pub fn new_with_generics(
+        id: IdentifierType,
+        name: impl Into<Cow<'static, str>>,
+        generics: Vec<Cow<'static, str>>,
+        fields: Vec<(Cow<'static, str>, Type)>
+    ) -> Self {
+        Self(Arc::new(Struct { id, name: name.into(), generics, fields }))
     }
 
     /// Get the unique identifier of the struct
@@ -43,6 +55,12 @@ impl StructType {
 
     pub fn name(&self) -> &str {
         &self.0.name
+    }
+
+    /// Get the generic parameter names
+    #[inline(always)]
+    pub fn generics(&self) -> &Vec<Cow<'static, str>> {
+        &self.0.generics
     }
 
     /// Get the fields of the struct

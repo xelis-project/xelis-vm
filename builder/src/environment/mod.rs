@@ -89,9 +89,10 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Register a structure in the environment
     // Panic if the structure name is already used
     pub fn register_structure<const N: usize>(&mut self, name: impl Into<Cow<'static, str>>, fields: [(impl Into<Cow<'static, str>>, Type); N]) -> StructType {
-        let data = fields.into_iter()
+        let fields_data = fields.into_iter()
             .map(|(k, v)| (k.into(), v))
             .collect();
+        let data = (Vec::new(), fields_data); // No generics for register_structure
         let _type = self.struct_manager.build(name.into(), data).expect("Failed to build struct");
         self.env.add_structure(_type.clone());
         _type

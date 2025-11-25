@@ -346,22 +346,53 @@ impl<'a, M> Parser<'a, M> {
         Ok(())
     }
 
-    fn get_generic_type(&mut self) -> Result<Type, ParserError<'a>> {
+    // Substitute generic type parameters (Type::T) with concrete types
+    fn substitute_generic_type(ty: &Type, concrete_types: &[Type]) -> Type {
+        match ty {
+            Type::T(Some(id)) => {
+                let id = *id as usize;
+                if id < concrete_types.len() {
+                    concrete_types[id].clone()
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Array(inner) => Type::Array(Box::new(Self::substitute_generic_type(inner, concrete_types))),
+            Type::Optional(inner) => Type::Optional(Box::new(Self::substitute_generic_type(inner, concrete_types))),
+            Type::Range(inner) => Type::Range(Box::new(Self::substitute_generic_type(inner, concrete_types))),
+            Type::Map(key, value) => Type::Map(
+                Box::new(Self::substitute_generic_type(key, concrete_types)),
+                Box::new(Self::substitute_generic_type(value, concrete_types))
+            ),
+            Type::Tuples(types) => Type::Tuples(
+                types.iter()
+                    .map(|t| Self::substitute_generic_type(t, concrete_types))
+                    .collect()
+            ),
+            _ => ty.clone()
+        }
+    }
+
+    fn get_generic_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
         let token = self.advance()?;
-        let inner = self.get_type_from_token(token)?;
+        let inner = self.get_type_from_token_with_generics(token, generics)?;
         Ok(inner)
     }
 
-    fn get_single_inner_type(&mut self) -> Result<Type, ParserError<'a>> {
+    fn get_single_inner_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get single inner type");
-        let inner = self.get_generic_type()?;
+        let inner = self.get_generic_type_with_generics(generics)?;
         self.expect_token(Token::OperatorGreaterThan)?;
         Ok(inner)
     }
 
     fn get_type_from_token(&mut self, token: Token<'a>) -> Result<Type, ParserError<'a>> {
+        self.get_type_from_token_with_generics(token, &[])
+    }
+
+    fn get_type_from_token_with_generics(&mut self, token: Token<'a>, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get type from token: {:?}", token);
         Ok(match token {
             Token::Number(inner) => match inner {
@@ -374,26 +405,70 @@ impl<'a, M> Parser<'a, M> {
             },
             Token::String => Type::String,
             Token::Bool => Type::Bool,
-            Token::Optional => Type::Optional(Box::new(self.get_single_inner_type()?)),
-            Token::Range => Type::Range(Box::new(self.get_single_inner_type()?)),
+            Token::Optional => Type::Optional(Box::new(self.get_single_inner_type_with_generics(generics)?)),
+            Token::Range => Type::Range(Box::new(self.get_single_inner_type_with_generics(generics)?)),
             Token::Bytes => Type::Bytes,
             Token::Any => Type::Any,
             Token::Map => {
-                let key = self.get_generic_type()?;
+                let key = self.get_generic_type_with_generics(generics)?;
                 if key.is_map() {
                     return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
                 }
 
                 self.expect_token(Token::Comma)?;
                 let token = self.advance()?;
-                let value = self.get_type_from_token(token)?;
+                let value = self.get_type_from_token_with_generics(token, generics)?;
                 self.expect_token(Token::OperatorGreaterThan)?;
 
                 Type::Map(Box::new(key), Box::new(value))
             },
             Token::Identifier(id) => {
-                if let Ok(builder) = self.global_mapper.structs().get_by_name(id) {
-                    Type::Struct(builder.get_type().clone())
+                // Check if it's a generic type parameter (e.g., K, V, T)
+                if let Some(pos) = generics.iter().position(|g| g.as_ref() == id) {
+                    if pos > u8::MAX as usize {
+                        return Err(err!(self, ParserErrorKind::TooManyParameters))
+                    }
+                    Type::T(Some(pos as u8))
+                } else if let Ok(builder) = self.global_mapper.structs().get_by_name(id) {
+                    let base_type = builder.get_type().clone();
+
+                    // Check if generic type instantiation follows: Foo<u64>
+                    if !base_type.generics().is_empty() && self.peek_is(Token::OperatorLessThan) {
+                        self.expect_token(Token::OperatorLessThan)?;
+
+                        let mut generic_types = Vec::with_capacity(base_type.generics().len());
+                        loop {
+                            let ty = self.read_type_with_generics(generics)?;
+                            generic_types.push(ty);
+                            
+                            if !self.peek_is(Token::Comma) {
+                                break;
+                            }
+                            self.expect_token(Token::Comma)?;
+                        }
+
+                        self.expect_token(Token::OperatorGreaterThan)?;
+
+                        // Verify we have the right number of generic arguments
+                        if generic_types.len() != base_type.generics().len() {
+                            return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+                        }
+
+                        // Create a specialized struct with concrete types
+                        // Replace Type::T(Some(i)) with the actual types from generic_types
+                        let struct_id = base_type.id();
+                        let struct_name = base_type.name().to_owned();
+                        let specialized_fields = base_type.fields().iter()
+                            .map(|(name, field_type)| {
+                                let concrete_type = Self::substitute_generic_type(field_type, &generic_types);
+                                (name.clone(), concrete_type)
+                            })
+                            .collect();
+                        
+                        Type::Struct(StructType::new(struct_id, struct_name, specialized_fields))
+                    } else {
+                        Type::Struct(base_type)
+                    }
                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
                     Type::Enum(builder.get_type().clone())
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
@@ -493,9 +568,13 @@ impl<'a, M> Parser<'a, M> {
      * - T[] (where T is any above Type)
      */
     fn read_type(&mut self) -> Result<Type, ParserError<'a>> {
+        self.read_type_with_generics(&[])
+    }
+
+    fn read_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Read type");
         let token = self.advance()?;
-        let mut _type = self.get_type_from_token(token)?;
+        let mut _type = self.get_type_from_token_with_generics(token, generics)?;
 
         // support multi dimensional arrays
         loop {
@@ -649,7 +728,29 @@ impl<'a, M> Parser<'a, M> {
                 }
             },
             Expression::SubExpression(expr) => self.get_type_from_expression(on_type, expr, context)?,
-            Expression::StructConstructor(_, _type) => Cow::Owned(Type::Struct(_type.clone())),
+            Expression::StructConstructor(fields, base_type) => {
+                if !base_type.generics().is_empty() {
+                    let mut fields_types = Vec::with_capacity(fields.len());
+                    for expr in fields.iter() {
+                        let field_type = self.get_type_from_expression(on_type, expr, context)?;
+                        fields_types.push(field_type.into_owned());
+                    }
+
+                    let struct_id = base_type.id();
+                    let struct_name = base_type.name().to_owned();
+                    let specialized_fields = base_type.fields()
+                        .iter()
+                        .map(|(name, field_type)| {
+                            let concrete_type = Self::substitute_generic_type(field_type, &fields_types);
+                            (name.clone(), concrete_type)
+                        })
+                        .collect();
+
+                    Cow::Owned(Type::Struct(StructType::new(struct_id, struct_name, specialized_fields)))
+                } else {
+                    Cow::Owned(Type::Struct(base_type.clone()))
+                }
+            },
             Expression::Path(left, right) => {
                 let var_type = self.get_type_from_expression(on_type, left, context)?;
                 self.get_type_from_expression(Some(&var_type), right, context)?
@@ -927,6 +1028,92 @@ impl<'a, M> Parser<'a, M> {
     fn read_struct_constructor(&mut self, struct_type: StructType, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read struct constructor: {:?}", struct_type);
         self.expect_token(Token::BraceOpen)?;
+        
+        // Clone the struct type info upfront since StructType contains an Arc
+        let struct_id = struct_type.id();
+        let struct_name = struct_type.name().to_string();
+        let fields_info: Vec<(Cow<'static, str>, Type)> = struct_type.fields().iter()
+            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .collect();
+        let generics_len = struct_type.generics().len();
+        
+        // Check if we need to infer generic types  
+        if generics_len > 0 {
+            // For generic structs, we need to infer the concrete types from field values
+            
+            // Read field expressions without strict type checking to infer types
+            let mut inferred_generics: Vec<Option<Type>> = vec![None; generics_len];
+            let mut field_exprs = Vec::new();
+            
+            for (field_name_expected, field_type) in &fields_info {
+                let field_name = self.next_identifier()?;
+                if field_name != *field_name_expected {
+                    return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected.clone())))
+                }
+                
+                let expr = match self.peek()? {
+                    Token::Comma | Token::BraceClose => {
+                        let id = context.get_variable_id(field_name)
+                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?;
+                        Expression::Variable(id)
+                    },
+                    Token::Colon => {
+                        self.expect_token(Token::Colon)?;
+                        self.read_expr(None, None, true, true, None, context)?
+                    },
+                    token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token.clone())))
+                };
+                
+                // Infer generic type from expression
+                if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
+                    // Check if field_type is a generic Type::T and map it
+                    if let Type::T(Some(generic_id)) = field_type {
+                        let idx = *generic_id as usize;
+                        if inferred_generics[idx].is_none() {
+                            inferred_generics[idx] = Some(expr_type.into_owned());
+                        }
+                    }
+                }
+                
+                field_exprs.push((field_name, expr));
+                
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                }
+            }
+            
+            self.expect_token(Token::BraceClose)?;
+            
+            // Build specialized struct type with inferred generics
+            let concrete_types: Vec<Type> = inferred_generics.into_iter()
+                .enumerate()
+                .map(|(i, opt)| opt.ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(Type::T(Some(i as u8))))))
+                .collect::<Result<Vec<_>, _>>()?;
+            
+            let specialized_fields: Vec<(Cow<'static, str>, Type)> = fields_info.iter()
+                .map(|(name, field_type)| {
+                    let concrete_type = Self::substitute_generic_type(field_type, &concrete_types);
+                    (name.clone(), concrete_type)
+                })
+                .collect();
+            
+            let specialized = StructType::new(struct_id, struct_name, specialized_fields);
+            
+            // Now verify and collect final expressions
+            let mut fields_expressions = Vec::with_capacity(field_exprs.len());
+            for ((field_name, mut field_expr), (field_name_expected, field_type)) in field_exprs.into_iter().zip(specialized.fields().iter()) {
+                if field_name != *field_name_expected {
+                    return Err(err!(self, ParserErrorKind::InvalidFieldName(field_name, field_name_expected.clone())))
+                }
+                
+                self.verify_type_of(&mut field_expr, field_type, context, true)?;
+                fields_expressions.push(field_expr);
+            }
+            
+            return Ok(Expression::StructConstructor(fields_expressions, specialized));
+        }
+        
+        // Non-generic path (original logic)
         let fields = self.read_constructor_fields(context, struct_type.fields().iter().map(|(_, ty)| ty))?;
 
         if struct_type.fields().len() != fields.len() {
@@ -936,10 +1123,7 @@ impl<'a, M> Parser<'a, M> {
         // Now verify that it match our struct
         let mut fields_expressions = Vec::with_capacity(fields.len());
         let iter = fields.into_iter()
-            .zip(
-                struct_type.fields()
-                    .iter()
-            );
+            .zip(struct_type.fields().iter());
 
         for ((field_name, mut field_expr), (field_name_expected, field_type)) in iter {
             if field_name != *field_name_expected {
@@ -1622,7 +1806,18 @@ impl<'a, M> Parser<'a, M> {
                                     } else if let Some(constant) = self.constants.get(id) {
                                         Expression::Constant(constant.value.clone())
                                     } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
-                                        self.read_struct_constructor(builder.get_type().clone(), context)?
+                                        // Check if we have an expected type that's a specialized version
+                                        let struct_type = if let Some(Type::Struct(expected_struct)) = expected_type {
+                                            // Use the expected specialized type if the struct IDs match
+                                            if expected_struct.id() == builder.get_type().id() {
+                                                expected_struct.clone()
+                                            } else {
+                                                builder.get_type().clone()
+                                            }
+                                        } else {
+                                            builder.get_type().clone()
+                                        };
+                                        self.read_struct_constructor(struct_type, context)?
                                     } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
                                         self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
                                     } else if let Ok(id) = self.global_mapper.functions()
@@ -2067,7 +2262,8 @@ impl<'a, M> Parser<'a, M> {
         let (value_type, value) = if self.peek_is(Token::Colon) {
             self.expect_token(Token::Colon)?;
             let value_type = self.read_type()?;
-            let value: Expression = if self.peek_is(Token::OperatorAssign) {
+
+            let value = if self.peek_is(Token::OperatorAssign) {
                 self.expect_token(Token::OperatorAssign)?;
                 let expr = self.read_expr(None, None, true, true, Some(&value_type), context)?;
 
@@ -2100,10 +2296,9 @@ impl<'a, M> Parser<'a, M> {
             };
 
             (value_type, value)
-        }
-        else {
+        } else {
             self.expect_token(Token::OperatorAssign)?;
-            let value: Expression = self.read_expr(None, None, true, true, None, context)?;
+            let value = self.read_expr(None, None, true, true, None, context)?;
             let value_type = self.get_type_from_expression(None, &value, context)?
                 .into_owned();
 
@@ -2583,11 +2778,15 @@ impl<'a, M> Parser<'a, M> {
 
     // Read the parameters for a function
     fn read_parameters(&mut self) -> Result<Vec<(&'a str, Type)>, ParserError<'a>> {
+        self.read_parameters_with_generics(&[])
+    }
+
+    fn read_parameters_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Vec<(&'a str, Type)>, ParserError<'a>> {
         let mut parameters = Vec::new();
         while self.peek_is_identifier() {
             let name = self.next_identifier()?;
             self.expect_token(Token::Colon)?;
-            let value_type = self.read_type()?;
+            let value_type = self.read_type_with_generics(generics)?;
 
             trace!("Read parameter: `{}: {:?}`", name, value_type);
             parameters.push((name, value_type));
@@ -2890,22 +3089,48 @@ impl<'a, M> Parser<'a, M> {
             None => return Err(err!(self, ParserErrorKind::EmptyStructName))
         };
 
+        // Parse generic parameters if present: struct Entry<K, V>
+        let generics = if self.peek_is(Token::OperatorLessThan) {
+            self.expect_token(Token::OperatorLessThan)?;
+            let mut generic_params = Vec::new();
+            
+            loop {
+                let generic_name = self.next_identifier()?;
+                generic_params.push(Cow::Owned(generic_name.to_owned()));
+                
+                if !self.peek_is(Token::Comma) {
+                    break;
+                }
+                self.expect_token(Token::Comma)?;
+            }
+            
+            self.expect_token(Token::OperatorGreaterThan)?;
+            
+            if generic_params.len() > u8::MAX as usize {
+                return Err(err!(self, ParserErrorKind::TooManyParameters))
+            }
+            
+            generic_params
+        } else {
+            Vec::new()
+        };
+
         self.expect_token(Token::BraceOpen)?;
-        let params = self.read_parameters()?;
+        let params = self.read_parameters_with_generics(&generics)?;
         if params.len() > u8::MAX as usize {
             return Err(err!(self, ParserErrorKind::TooManyParameters))
         }
 
         let mut fields = Vec::with_capacity(params.len());
-        for (name, param_type) in params {
-            fields.push((Cow::Owned(name.to_owned()), param_type));
+        for (field_name, param_type) in params {
+            fields.push((Cow::Owned(field_name.to_owned()), param_type));
         }
 
         self.expect_token(Token::BraceClose)?;
 
         self.global_mapper
             .structs_mut()
-            .add(Cow::Owned(name.to_owned()), fields)
+            .add(Cow::Owned(name.to_owned()), (generics, fields))
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -4738,6 +4963,50 @@ mod tests {
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
 
+    }
+
+    #[test]
+    fn test_generic_struct() {
+        // struct Entry<K, V> { key: K, value: V }
+        let tokens = vec![
+            Token::Struct,
+            Token::Identifier("Entry"),
+            Token::OperatorLessThan,
+            Token::Identifier("K"),
+            Token::Comma,
+            Token::Identifier("V"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("key"),
+            Token::Colon,
+            Token::Identifier("K"),
+            Token::Comma,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Identifier("V"),
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (_program, mapper) = parser.parse().unwrap();
+
+        // Verify the struct was registered with generics
+        let structs = mapper.structs();
+        let entry_builder = structs.get_by_name("Entry").unwrap();
+        let entry_type = entry_builder.get_type();
+        
+        assert_eq!(entry_type.generics().len(), 2);
+        assert_eq!(entry_type.generics()[0].as_ref(), "K");
+        assert_eq!(entry_type.generics()[1].as_ref(), "V");
+        
+        // Verify fields use generic types
+        let fields = entry_type.fields();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].0.as_ref(), "key");
+        assert_eq!(fields[0].1, Type::T(Some(0))); // K = position 0
+        assert_eq!(fields[1].0.as_ref(), "value");
+        assert_eq!(fields[1].1, Type::T(Some(1))); // V = position 1
     }
 
     #[test]

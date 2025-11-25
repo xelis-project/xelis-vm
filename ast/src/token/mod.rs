@@ -370,7 +370,7 @@ impl<'a> Token<'a> {
 
     pub fn accept_generic(&self) -> bool {
         use Token::*;
-        matches!(self, Identifier(_) | Optional | Range | Map)
+        matches!(self, Identifier(_) | Optional | Range | Map | Struct)
     }
 
     pub fn should_stop(&self) -> bool {
