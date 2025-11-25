@@ -4,7 +4,7 @@ mod mapper;
 mod hook;
 
 use thiserror::Error;
-use xelis_types::ValueError;
+use xelis_types::{Type, ValueError};
 
 pub use environment::*;
 pub use manager::*;
@@ -31,8 +31,19 @@ pub enum BuilderError {
     InvalidConstFnParameters,
     #[error("Invalid const fn parameters: mismatch")]
     InvalidConstFnParametersMismatch,
-    #[error("Function instance mismatch")]
-    FunctionInstanceMismatch,
+    #[error("Function instance mismatch for {name} on type {on_type:?} with parameters {parameter_types:?}")]
+    FunctionInstanceMismatch {
+        name: String,
+        on_type: Option<Type>,
+        parameter_types: Vec<Option<Type>>,
+    },
+    #[error("No matching function found for {name} on type {on_type:?} with parameters {parameter_types:?}")]
+    NoMatchingFunction {
+        name: String,
+        on_type: Option<Type>,
+        // a type can be None in case we can't determine it (eg. generic type)
+        parameter_types: Vec<Option<Type>>,
+    },
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }

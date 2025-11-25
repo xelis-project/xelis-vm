@@ -2641,3 +2641,27 @@ fn test_destructive_expect() {
         Primitive::U64(20)
     );
 }
+
+#[test]
+fn test_tuples_any() {
+    let code = r#"
+        fn tuples() -> any {
+            return (0, 0)
+        }
+
+        entry main() {
+            let (a, b) = tuples();
+
+            // to_be_bytes will not work without a cast
+            // because you have to force the type
+            (a as u64).to_be_bytes();
+
+            assert(a == 0);
+            assert(b == 0);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code_id(code, 1), Primitive::U64(0));
+}

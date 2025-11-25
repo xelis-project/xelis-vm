@@ -235,10 +235,18 @@ impl<'a> FunctionMapper<'a> {
         if let Ok(id) = self.get_by_signature(name, on_type) {
             trace!("found id {} from signature", id);
             let function = self.get_function(&id)
-                .ok_or(BuilderError::MappingNotFound)?;
+                .ok_or_else(|| BuilderError::NoMatchingFunction {
+                    name: name.to_string(),
+                    on_type: on_type.cloned(),
+                    parameter_types: types.clone(),
+                })?;
 
             if function.require_instance != instance {
-                return Err(BuilderError::FunctionInstanceMismatch)
+                return Err(BuilderError::FunctionInstanceMismatch {
+                    name: name.to_owned(),
+                    on_type: on_type.cloned(),
+                    parameter_types: types.clone(),
+                })
             }
 
             if self.has_compatible_params(on_type, function.parameters.iter().map(|(_, v)| v), types.iter(), expressions) {
@@ -253,10 +261,11 @@ impl<'a> FunctionMapper<'a> {
         for (signature, id) in self.mapper.mappings.iter()
             .filter(|(s, _)|
                 *s.get_id() == signature_id
-            ) {
+            )
+        {
             trace!("checking {:?}", signature);
             let is_on_type = match (signature.get_on_type(), on_type) {
-                (Some(s), Some(k)) => s.is_compatible_with(k),
+                (Some(s), Some(k)) if !k.is_any() => s.is_compatible_with(k),
                 (None, None) => true,
                 _ => false
             };
@@ -275,6 +284,7 @@ impl<'a> FunctionMapper<'a> {
             }
 
             if self.has_compatible_params(on_type, function.parameters.iter().map(|(_, v)| v), types.iter(), expressions) {
+                trace!("found compatible id {}", id);
                 return Ok(id.clone());
             }
         }
@@ -285,7 +295,11 @@ impl<'a> FunctionMapper<'a> {
 
         trace!("no function found for '{}' on {:?} (instance = {}) with {:?}", name, on_type, instance, types);
 
-        Err(BuilderError::MappingNotFound)
+        Err(BuilderError::NoMatchingFunction {
+            name: name.to_owned(),
+            on_type: on_type.cloned(),
+            parameter_types: types.clone(),
+        })
     }
 
     // Find all functions declared for a specific type

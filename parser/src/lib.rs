@@ -825,6 +825,8 @@ impl<'a, M> Parser<'a, M> {
             }
         }
 
+        trace!("searching function {} with on_type {:?}, instance: {}, types: {:?}", name, on_type, instance, types);
+
         let id = self.global_mapper
             .functions()
             .get_compatible(name, on_type, instance, &types, &mut parameters)
@@ -2173,6 +2175,15 @@ impl<'a, M> Parser<'a, M> {
                 }
                 Ok(())
             }
+            (TuplePattern::Tuple(sub_patterns), ty) if ty.is_generic() => {
+                // Trust the user when using 'any' type
+                statements.push(TupleStatement::Depth(sub_patterns.len()));
+                for p in sub_patterns.iter().rev() {
+                    self.match_pattern_with_type(p, &Type::Any, context, statements)?;
+                }
+
+                Ok(())
+            },
             _ => Err(err!(self, ParserErrorKind::InvalidTupleType)),
         }
     }
