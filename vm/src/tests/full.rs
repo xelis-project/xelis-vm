@@ -2680,4 +2680,34 @@ fn test_generics_struct() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(1000));
+
+    let code = r#"
+        struct Foo<T> {
+            value: T[]
+        }
+
+        entry main() {
+            let a = Foo { value: [1000u64] };
+            return a.value.len() as u64 + a.value[0]
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(1001));
+
+    let code = r#"
+        struct Inner<T> {
+            data: T
+        }
+
+        struct Foo<T> {
+            value: Inner<T>[]
+        }
+
+        entry main() {
+            let a = Foo { value: [Inner { data: 1000u64 }] };
+            return a.value.len() as u64 + a.value[0].data
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(1001));
 }

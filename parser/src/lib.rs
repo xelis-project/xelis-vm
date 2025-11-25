@@ -373,6 +373,53 @@ impl<'a, M> Parser<'a, M> {
         }
     }
 
+    // Infer generic type parameters by matching field_type pattern against expr_type
+    // For example: if field_type is Array(T(Some(0))) and expr_type is Array(U64),
+    // then we infer T(Some(0)) = U64
+    fn infer_generic_types(field_type: &Type, expr_type: &Type, inferred: &mut [Option<Type>]) {
+        match (field_type, expr_type) {
+            // Direct match: T maps to the concrete type
+            (Type::T(Some(id)), _) => {
+                let idx = *id as usize;
+                if idx < inferred.len() && inferred[idx].is_none() {
+                    inferred[idx] = Some(expr_type.clone());
+                }
+            }
+            // Recursive match for Array
+            (Type::Array(field_inner), Type::Array(expr_inner)) => {
+                Self::infer_generic_types(field_inner, expr_inner, inferred);
+            }
+            // Recursive match for Optional
+            (Type::Optional(field_inner), Type::Optional(expr_inner)) => {
+                Self::infer_generic_types(field_inner, expr_inner, inferred);
+            }
+            // Recursive match for Range
+            (Type::Range(field_inner), Type::Range(expr_inner)) => {
+                Self::infer_generic_types(field_inner, expr_inner, inferred);
+            }
+            // Recursive match for Map
+            (Type::Map(field_key, field_val), Type::Map(expr_key, expr_val)) => {
+                Self::infer_generic_types(field_key, expr_key, inferred);
+                Self::infer_generic_types(field_val, expr_val, inferred);
+            }
+            // Recursive match for Tuples
+            (Type::Tuples(field_types), Type::Tuples(expr_types)) if field_types.len() == expr_types.len() => {
+                for (field_t, expr_t) in field_types.iter().zip(expr_types.iter()) {
+                    Self::infer_generic_types(field_t, expr_t, inferred);
+                }
+            }
+            // Match for Struct types - infer from fields if same struct
+            (Type::Struct(field_struct), Type::Struct(expr_struct)) if field_struct.id() == expr_struct.id() => {
+                // Match corresponding fields
+                for ((_, field_field_type), (_, expr_field_type)) in field_struct.fields().iter().zip(expr_struct.fields().iter()) {
+                    Self::infer_generic_types(field_field_type, expr_field_type, inferred);
+                }
+            }
+            // No match - types are incompatible or both concrete
+            _ => {}
+        }
+    }
+
     fn get_generic_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
@@ -1064,15 +1111,9 @@ impl<'a, M> Parser<'a, M> {
                     token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token.clone())))
                 };
                 
-                // Infer generic type from expression
+                // Infer generic type from expression - handle nested generics
                 if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
-                    // Check if field_type is a generic Type::T and map it
-                    if let Type::T(Some(generic_id)) = field_type {
-                        let idx = *generic_id as usize;
-                        if inferred_generics[idx].is_none() {
-                            inferred_generics[idx] = Some(expr_type.into_owned());
-                        }
-                    }
+                    Self::infer_generic_types(field_type, &expr_type, &mut inferred_generics);
                 }
                 
                 field_exprs.push((field_name, expr));
