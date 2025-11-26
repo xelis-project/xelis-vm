@@ -2167,7 +2167,10 @@ impl<'a, M> Parser<'a, M> {
                 }
             }
             Operator::Add => {
-                if !left_type.is_same_type_for_operation(&right_type) && !(left_type.is_string() || right_type.is_string()) {
+                if !left_type.is_same_type_for_operation(&right_type) && !(
+                    (left_type.is_string() && right_type.is_primitive())
+                    || (right_type.is_string() && left_type.is_primitive()))
+                {
                     let throw = !self.try_map_expr_to_type(left_expr, &right_type)?
                         && !self.try_map_expr_to_type(right_expr, &left_type)?;
 
@@ -5202,6 +5205,10 @@ mod tests {
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
 
+        let id = env.get_functions_mapper()
+            .get_by_signature("to_be_bytes", Some(&Type::U8))
+            .unwrap();
+
         let statement = Statement::Expression(
             Expression::FunctionCall(
                 Some(Box::new(
@@ -5209,7 +5216,7 @@ mod tests {
                         Expression::Constant(Constant::Primitive(Primitive::U8(127)))
                     ))
                 )),
-                136,
+                id,
                 vec![],
                 Some(Type::Bytes),
             )

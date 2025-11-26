@@ -59,13 +59,8 @@ macro_rules! op_string {
                 (Primitive::String(a), Primitive::String(b)) => {
                     // Verify the final len is less than u32::MAX
                     let len = (a.len() as u32).checked_add(b.len() as u32);
-                    match len {
-                        Some(len) => {
-                            if len > u32::MAX {
-                                return Err(VMError::StringTooLarge);
-                            }
-                        }
-                        None => return Err(VMError::StringTooLarge)
+                    if len.is_none() {
+                        return Err(VMError::StringTooLarge);
                     }
 
                     Primitive::String(a.to_owned() $op b)

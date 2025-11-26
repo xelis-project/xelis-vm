@@ -2711,3 +2711,14 @@ fn test_generics_struct() {
 
     assert_eq!(run_code(code), Primitive::U64(1001));
 }
+
+#[test]
+fn test_u8_max_to_bytes_len() {
+    let code = r#"
+        entry main() {
+            return (u8::MAX*1).to_be_bytes().len() as u64
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
