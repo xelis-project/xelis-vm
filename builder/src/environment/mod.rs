@@ -23,7 +23,7 @@ pub struct EnvironmentBuilder<'a, M> {
     enum_manager: EnumManager<'a>,
     opaque_manager: OpaqueManager<'a>,
     // All types constants (like u64::MAX)
-    types_constants: HashMap<Type, HashMap<&'a str, Constant>>,
+    types_constants: HashMap<Type, HashMap<&'a str, (Constant, Type)>>,
     // All types constants functions
     // Example: u64::MAX()
     types_constants_functions: ConstFunctionMapper<'a>,
@@ -132,13 +132,13 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
 
     // Register a constant in the environment
     // Panic if the constant name is already used
-    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant) {
+    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type) {
         let constants = self.types_constants.entry(_type.clone()).or_insert_with(HashMap::new);
-        constants.insert(name, value.clone());
+        constants.insert(name, (value.clone(), value_type));
     }
 
     // Get a constant by name
-    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&Constant> {
+    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&(Constant, Type)> {
         self.types_constants.get(_type).and_then(|v| v.get(name))
     }
 

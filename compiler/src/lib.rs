@@ -1302,7 +1302,7 @@ mod tests {
             &[
                 // Load struct
                 OpCode::Constant.as_byte(), 0, 0,
-                // New struct
+                // load field a
                 OpCode::SubLoad.as_byte(), 0,
                 OpCode::Return.as_byte()
             ]

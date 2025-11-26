@@ -1243,9 +1243,9 @@ impl<'a, M> Parser<'a, M> {
 
         trace!("Read type constant: {:?}::{}", _type, constant_name);
         // check if its a constant value
-        if let Some(expr) = self.environment.get_constant_by_name(&_type, &constant_name)
-            .map(|v| Expression::Constant(v.clone())) {
-            Ok(expr)
+        if let Some((constant, ty)) = self.environment.get_constant_by_name(&_type, &constant_name)
+            .cloned() {
+            Ok(Expression::ForceType(Box::new(Expression::Constant(constant)), ty))
         // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
             let (mut parameters, _) = self.read_function_params(context, None)?;
@@ -1377,7 +1377,10 @@ impl<'a, M> Parser<'a, M> {
     // if we have a if true { 5 } else { 10 } -> we write 5
     fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Constant> {
         if self.disable_const_upgrading {
-            return None
+            match expr {
+                Expression::Constant(v) => return Some(v.clone()),
+                _ => return None
+            }
         }
 
         Some(match expr {
@@ -3465,7 +3468,7 @@ mod tests {
         ];
     
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U8, "MAX", Primitive::U8(u8::MAX).into());
+        env.register_constant(Type::U8, "MAX", Primitive::U8(u8::MAX).into(), Type::U8);
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
@@ -3635,7 +3638,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", false));
 
-        env.register_constant(ty.clone(), "MAX", Primitive::Opaque(Foo.into()).into());
+        env.register_constant(ty.clone(), "MAX", Primitive::Opaque(Foo.into()).into(), ty.clone());
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
@@ -3645,8 +3648,11 @@ mod tests {
             Statement::Variable(
                 DeclarationStatement {
                     id: Some(0),
-                    value_type: ty,
-                    value: Expression::Constant(Primitive::Opaque(Foo.into()).into())
+                    value_type: ty.clone(),
+                    value: Expression::ForceType(
+                        Box::new(Expression::Constant(Primitive::Opaque(Foo.into()).into())),
+                        ty.clone()
+                    )
                 }
             )
         );
@@ -4564,7 +4570,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U64, "MAX", Primitive::U64(u64::MAX).into());
+        env.register_constant(Type::U64, "MAX", Primitive::U64(u64::MAX).into(), Type::U64);
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
@@ -5100,5 +5106,114 @@ mod tests {
         } else {
             panic!("Expected Variable declaration");
         }
+    }
+
+    #[test]
+    fn test_u256_div() {
+        // let a: u256 = 100u256 / 3;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U256),
+            Token::OperatorAssign,
+            Token::Value(Literal::U256(U256::from(100u64))),
+            Token::OperatorDivide,
+            Token::Value(Literal::Number(3)),
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+
+        println!("{:#?}", &statements[0]);
+        assert!(matches!(
+            &statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::U256,
+                ..
+            })
+        ));
+
+    }
+
+    #[test]
+    fn test_u8_div() {
+        // let a: u8 = 100u8 / 3;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U8),
+            Token::OperatorAssign,
+            Token::Value(Literal::U8(100u8)),
+            Token::OperatorDivide,
+            Token::Value(Literal::Number(3)),
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+
+        assert!(matches!(
+            &statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::U8,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_u8_max_div_2() {
+        // u8::MAX / 2
+        let tokens = vec![
+            Token::Number(NumberType::U8),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX"),
+            Token::OperatorDivide,
+            Token::Value(Literal::U8(2)),
+        ];
+
+        let env = EnvironmentBuilder::default();
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        let statement = Statement::Expression(Expression::Constant(Constant::Primitive(Primitive::U8(127))));
+        assert_eq!(statements[0], statement);
+
+        // (u8::MAX / 2).to_be_bytes()
+        let tokens = vec![
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U8),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("MAX"),
+            Token::OperatorDivide,
+            Token::Value(Literal::U8(2)),
+            Token::ParenthesisClose,
+            Token::Dot,
+            Token::Identifier("to_be_bytes"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
+
+        let statement = Statement::Expression(
+            Expression::FunctionCall(
+                Some(Box::new(
+                    Expression::SubExpression(Box::new(
+                        Expression::Constant(Constant::Primitive(Primitive::U8(127)))
+                    ))
+                )),
+                136,
+                vec![],
+                Some(Type::Bytes),
+            )
+        );
+        assert_eq!(statements[0], statement);
     }
 }
