@@ -22,9 +22,11 @@ pub use error::ParserError;
 
 #[derive(Debug, Clone)]
 pub enum QueueItem {
-  Operator(Operator),         // For operators, identifiers, or literals
-  Separator,
-  Expression(Expression),  // For finalized expressions or sub-expressions
+    // For operators, identifiers, or literals
+    Operator(Operator),
+    Separator,
+    // For finalized expressions or sub-expressions
+    Expression(Expression),
 }
 
 macro_rules! err {
@@ -38,44 +40,128 @@ macro_rules! err {
     };
 }
 
+macro_rules! operation_error {
+    ($self: expr, $left: expr, $right: expr) => {
+        {
+            let l = $left.get_type()
+                .map_err(|e| err!($self, ParserErrorKind::ValueError(e)))?;
+            let r = $right.get_type()
+                .map_err(|e| err!($self, ParserErrorKind::ValueError(e)))?;
+
+            return Err(err!($self, ParserErrorKind::InvalidOperationNotSameType(l, r)))
+        }
+    }
+}
+
+// Helper macro to handle checked operation result
+macro_rules! checked_result {
+    ($self: expr, $result: expr, $error: expr) => {
+        $result.ok_or_else(|| err!($self, $error))?
+    };
+}
+
+// Helper macro to apply checked operations across all primitive types
+macro_rules! apply_checked_op {
+    ($self: expr, $a: expr, $b: expr, $op_name: ident, $error: expr) => {{
+        paste::paste! {
+            let result = match ($a, $b) {
+                (Primitive::U8(a), Primitive::U8(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U8),
+                (Primitive::U16(a), Primitive::U16(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U16),
+                (Primitive::U32(a), Primitive::U32(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U32),
+                (Primitive::U64(a), Primitive::U64(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U64),
+                (Primitive::U128(a), Primitive::U128(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U128),
+                (Primitive::U256(a), Primitive::U256(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U256),
+                (a, b) => operation_error!($self, a, b)
+            };
+            checked_result!($self, result, $error)
+        }
+    }};
+}
+
+// Helper macro for shift operations (which need special handling for U32 and U256)
+macro_rules! apply_shift_op {
+    ($self: expr, $a: expr, $b: expr, $op_name: ident) => {{
+        paste::paste! {
+            let result = match ($a, $b) {
+                (Primitive::U8(a), Primitive::U8(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U8),
+                (Primitive::U16(a), Primitive::U16(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U16),
+                (Primitive::U32(a), Primitive::U32(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U32),
+                (Primitive::U64(a), Primitive::U64(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U64),
+                (Primitive::U128(a), Primitive::U128(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U128),
+                (Primitive::U256(a), Primitive::U256(b)) => {
+                    let shift = checked_result!($self, b.as_u64(), ParserErrorKind::Overflow) as u32;
+                    a.[<checked_ $op_name>](shift).map(Primitive::U256)
+                },
+                (a, b) => operation_error!($self, a, b)
+            };
+            checked_result!($self, result, ParserErrorKind::Overflow)
+        }
+    }};
+}
 
 macro_rules! op {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($self: expr, $a: expr, $b: expr, +) => {
+        apply_checked_op!($self, $a, $b, add, ParserErrorKind::Overflow)
+    };
+    ($self: expr, $a: expr, $b: expr, -) => {
+        apply_checked_op!($self, $a, $b, sub, ParserErrorKind::Underflow)
+    };
+    ($self: expr, $a: expr, $b: expr, *) => {
+        apply_checked_op!($self, $a, $b, mul, ParserErrorKind::Overflow)
+    };
+    ($self: expr, $a: expr, $b: expr, %) => {
+        apply_checked_op!($self, $a, $b, rem, ParserErrorKind::DivisionByZero)
+    };
+    ($self: expr, $a: expr, $b: expr, <<) => {
+        apply_shift_op!($self, $a, $b, shl)
+    };
+    ($self: expr, $a: expr, $b: expr, >>) => {
+        apply_shift_op!($self, $a, $b, shr)
+    };
+    ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
             (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
             (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
             (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
             (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-            _ => return None
+            (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+            (a, b) => operation_error!($self, a, b)
         }
     }};
 }
 
 macro_rules! op_div {
-    ($t: ident, $a: expr, $b: expr) => {
+    ($self: expr, $t: ident, $a: expr, $b: expr) => {
         {
             if *$b == 0 {
-                return None
+                return Err(err!($self, ParserErrorKind::DivisionByZero))
             }
     
             Primitive::$t($a / $b)
         }
     };
-    ($a: expr, $b: expr) => {
+    ($self: expr, $a: expr, $b: expr) => {
         match ($a, $b) {
-            (Primitive::U8(a), Primitive::U8(b)) => op_div!(U8, a, b),
-            (Primitive::U16(a), Primitive::U16(b)) => op_div!(U16, a, b),
-            (Primitive::U32(a), Primitive::U32(b)) => op_div!(U32, a, b),
-            (Primitive::U64(a), Primitive::U64(b)) => op_div!(U64, a, b),
-            (Primitive::U128(a), Primitive::U128(b)) => op_div!(U128, a, b),
-            _ => return None
+            (Primitive::U8(a), Primitive::U8(b)) => op_div!($self, U8, a, b),
+            (Primitive::U16(a), Primitive::U16(b)) => op_div!($self, U16, a, b),
+            (Primitive::U32(a), Primitive::U32(b)) => op_div!($self, U32, a, b),
+            (Primitive::U64(a), Primitive::U64(b)) => op_div!($self, U64, a, b),
+            (Primitive::U128(a), Primitive::U128(b)) => op_div!($self, U128, a, b),
+            (Primitive::U256(a), Primitive::U256(b)) => {
+                if *b == 0 {
+                    return Err(err!($self, ParserErrorKind::DivisionByZero))
+                }
+        
+                Primitive::U256(*a / *b)
+            }
+            (a, b) => operation_error!($self, a, b)
         }
     };
 }
 
 macro_rules! op_bool {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
             (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
@@ -83,13 +169,14 @@ macro_rules! op_bool {
             (Primitive::U32(a), Primitive::U32(b)) => Primitive::Boolean(a $op b),
             (Primitive::U64(a), Primitive::U64(b)) => Primitive::Boolean(a $op b),
             (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
-            _ => return None
+            (Primitive::U256(a), Primitive::U256(b)) => Primitive::Boolean(*a $op *b),
+            (a, b) => operation_error!($self, a, b)
         }
     }};
 }
 
 macro_rules! op_num_with_bool {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
             (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
@@ -97,9 +184,19 @@ macro_rules! op_num_with_bool {
             (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
             (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
             (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-            _ => return None
+            (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+            (a, b) => operation_error!($self, a, b)
         }
     }};
+}
+
+macro_rules! ok_none {
+    ($v: expr) => {
+        match $v {
+            Some(v) => v,
+            None => return Ok(None)
+        }
+    }
 }
 
 enum Function<'a, M> {
@@ -1251,7 +1348,7 @@ impl<'a, M> Parser<'a, M> {
             let (mut parameters, _) = self.read_function_params(context, None)?;
             let mut constants = Vec::with_capacity(parameters.len());
             for param in parameters.iter_mut() {
-                let constant = self.try_convert_expr_to_value(param)
+                let constant = self.try_convert_expr_to_value(param)?
                     .ok_or_else(|| err!(self, ParserErrorKind::ConstantNotFound(_type.clone(), constant_name)))?;
                 constants.push(constant);
             }
@@ -1327,47 +1424,61 @@ impl<'a, M> Parser<'a, M> {
     }
 
     // Execute the selected operator
-    fn execute_operator(&self, op: &Operator, left: &Primitive, right: &Primitive) -> Option<Primitive> {
-        Some(match op {
+    fn execute_operator(&self, op: &Operator, left: &Primitive, right: &Primitive) -> Result<Option<Primitive>, ParserError<'a>> {
+        Ok(Some(match op {
             Operator::Add => {
                 if left.is_string() || right.is_string() {
                     Primitive::String(format!("{}{}", left, right))
                 } else {
-                    op!(left, right, +)
+                    op!(self, left, right, +)
                 }
             },
-            Operator::Sub => op!(left, right, -),
-            Operator::Div => op_div!(left, right),
-            Operator::Mul => op!(left, right, *),
-            Operator::Mod => op!(left, right, %),
+            Operator::Sub => op!(self, left, right, -),
+            Operator::Div => op_div!(self, left, right),
+            Operator::Mul => op!(self, left, right, *),
+            Operator::Mod => op!(self, left, right, %),
             Operator::Pow => {
-                let pow_n = right.as_u32().ok()?;
+                let pow_n = right.as_u32()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
                 match left {
                     Primitive::U8(v) => Primitive::U8(v.pow(pow_n)),
                     Primitive::U16(v) => Primitive::U16(v.pow(pow_n)),
                     Primitive::U32(v) => Primitive::U32(v.pow(pow_n)),
                     Primitive::U64(v) => Primitive::U64(v.pow(pow_n)),
                     Primitive::U128(v) => Primitive::U128(v.pow(pow_n)),
-                    _ => return None
+                    Primitive::U256(v) => Primitive::U256(v.pow(pow_n)),
+                    _ => return Err(err!(self, ParserErrorKind::InvalidOperation)),
                 }
             },
 
-            Operator::BitwiseXor => op!(left, right, ^),
-            Operator::BitwiseAnd => op_num_with_bool!(left, right, &),
-            Operator::BitwiseOr => op_num_with_bool!(left, right, |),
-            Operator::BitwiseShl => op!(left, right, <<),
-            Operator::BitwiseShr => op!(left, right, >>),
+            Operator::BitwiseXor => op!(self, left, right, ^),
+            Operator::BitwiseAnd => op_num_with_bool!(self, left, right, &),
+            Operator::BitwiseOr => op_num_with_bool!(self, left, right, |),
+            Operator::BitwiseShl => op!(self, left, right, <<),
+            Operator::BitwiseShr => op!(self, left, right, >>),
 
             Operator::Eq => Primitive::Boolean(left == right),
             Operator::Neq => Primitive::Boolean(left != right),
-            Operator::Gte => op_bool!(left, right, >=),
-            Operator::Gt => op_bool!(left, right, >),
-            Operator::Lte => op_bool!(left, right, <=),
-            Operator::Lt => op_bool!(left, right, <),
-            Operator::And => Primitive::Boolean(left.as_bool().ok()? && right.as_bool().ok()?),
-            Operator::Or => Primitive::Boolean(left.as_bool().ok()? || right.as_bool().ok()?),
-            Operator::Assign(_) => return None,
-        })
+            Operator::Gte => op_bool!(self, left, right, >=),
+            Operator::Gt => op_bool!(self, left, right, >),
+            Operator::Lte => op_bool!(self, left, right, <=),
+            Operator::Lt => op_bool!(self, left, right, <),
+            Operator::And => {
+                let l = left.as_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                let r = right.as_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                Primitive::Boolean(l && r)
+            },
+            Operator::Or => {
+                let l = left.as_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                let r = right.as_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                Primitive::Boolean(l || r)
+            },
+            Operator::Assign(_) => return Ok(None),
+        }))
     }
 
     // Try to convert an expression to a value
@@ -1375,34 +1486,39 @@ impl<'a, M> Parser<'a, M> {
     // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
     // Example: 5 + 5 = 10 -> we only write 10
     // if we have a if true { 5 } else { 10 } -> we write 5
-    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Option<Constant> {
+    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Result<Option<Constant>, ParserError<'a>> {
         if self.disable_const_upgrading {
             match expr {
-                Expression::Constant(v) => return Some(v.clone()),
-                _ => return None
+                Expression::Constant(v) => return Ok(Some(v.clone())),
+                _ => return Ok(None)
             }
         }
 
-        Some(match expr {
+        Ok(Some(match expr {
             Expression::Constant(v) => v.clone(),
             Expression::ForceType(inner, ty) => {
-                let v = self.try_convert_expr_to_value(inner)?
-                        .checked_cast_to_primitive_type(ty)
-                        .ok()?;
-                // In case its a optional type, we need to keep the ForceType expression
-                if ty.is_optional() {
-                    *expr = Expression::ForceType(Box::new(Expression::Constant(v)), ty.clone());
-
-                    return None
+                if ty.is_primitive() || ty.is_optional() {
+                    let v = ok_none!(self.try_convert_expr_to_value(inner)?)
+                            .checked_cast_to_primitive_type(ty)
+                            .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+    
+                    // In case its a optional type, we need to keep the ForceType expression
+                    if ty.is_optional() {
+                        *expr = Expression::ForceType(Box::new(Expression::Constant(v)), ty.clone());
+    
+                        return Ok(None)
+                    } else {
+                        v
+                    }
                 } else {
-                    v
+                    return Ok(None)
                 }
             },
             Expression::ArrayConstructor(values) => {
                 let len = values.len();
                 let mut new_values = Vec::with_capacity(len);
                 for value in values {
-                    if let Some(v) = self.try_convert_expr_to_value(value) {
+                    if let Some(v) = self.try_convert_expr_to_value(value)? {
                         *value = Expression::Constant(v.clone());
                         new_values.push(v);
                     }
@@ -1410,14 +1526,14 @@ impl<'a, M> Parser<'a, M> {
 
                 // We can't fully upgrade it to const
                 if len != new_values.len() {
-                    return None
+                    return Ok(None)
                 }
 
                 Constant::Array(new_values)
             },
             Expression::RangeConstructor(min, max) => {
-                let min_value = self.try_convert_expr_to_value(min);
-                let max_value = self.try_convert_expr_to_value(max);
+                let min_value = self.try_convert_expr_to_value(min)?;
+                let max_value = self.try_convert_expr_to_value(max)?;
 
                 if min_value.is_none() || max_value.is_none() {
                     if let Some(v) = &min_value {
@@ -1429,8 +1545,10 @@ impl<'a, M> Parser<'a, M> {
                     }
                 }
 
-                let min = min_value?.into_value().ok()?;
-                let max = max_value?.into_value().ok()?;
+                let min = ok_none!(min_value).into_value()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                let max = ok_none!(max_value).into_value()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
 
                 Constant::Primitive(Primitive::Range(Box::new((min, max))))
             },
@@ -1438,14 +1556,14 @@ impl<'a, M> Parser<'a, M> {
                 let len = fields.len();
                 let mut new_fields = Vec::with_capacity(len);
                 for field in fields {
-                    if let Some(v) = self.try_convert_expr_to_value(field) {
+                    if let Some(v) = self.try_convert_expr_to_value(field)? {
                         *field = Expression::Constant(v.clone());
                         new_fields.push(v);
                     }
                 }
 
                 if len != new_fields.len() {
-                    return None
+                    return Ok(None)
                 }
 
                 Constant::Typed(new_fields, DefinedType::Struct(struct_type.clone()))
@@ -1453,7 +1571,7 @@ impl<'a, M> Parser<'a, M> {
             Expression::EnumConstructor(fields, enum_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
-                    let v = self.try_convert_expr_to_value(field)?;
+                    let v = ok_none!(self.try_convert_expr_to_value(field)?);
                     *field = Expression::Constant(v.clone());
                     new_fields.push(v);
                 }
@@ -1462,8 +1580,8 @@ impl<'a, M> Parser<'a, M> {
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = IndexMap::with_capacity(entries.len());
                 for (key, value) in entries {
-                    let k = self.try_convert_expr_to_value(key);
-                    let v = self.try_convert_expr_to_value(value);
+                    let k = self.try_convert_expr_to_value(key)?;
+                    let v = self.try_convert_expr_to_value(value)?;
 
                     if let Some(k) = &k {
                         *key = Expression::Constant(k.clone());
@@ -1473,17 +1591,18 @@ impl<'a, M> Parser<'a, M> {
                         *value = Expression::Constant(v.clone());
                     }
 
-                    new_entries.insert(k?, v?);
+                    new_entries.insert(ok_none!(k), ok_none!(v));
                 }
                 Constant::Map(new_entries)
             },
             Expression::Cast(expr, _type) => {
-                let v = self.try_convert_expr_to_value(expr)?;
-                v.checked_cast_to_primitive_type(_type).ok()?
+                let v = ok_none!(self.try_convert_expr_to_value(expr)?);
+                v.checked_cast_to_primitive_type(_type)
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?
             },
             Expression::ArrayCall(array_expr, value) => {
-                let array = self.try_convert_expr_to_value(array_expr);
-                let index = self.try_convert_expr_to_value(value);
+                let array = self.try_convert_expr_to_value(array_expr)?;
+                let index = self.try_convert_expr_to_value(value)?;
 
                 if let Some(array) = &array {
                     *array_expr.as_mut() = Expression::Constant(array.clone());
@@ -1493,18 +1612,26 @@ impl<'a, M> Parser<'a, M> {
                     *value.as_mut() = Expression::Constant(index.clone());
                 }
 
-                let index = index?.checked_cast_to_u32().ok()?;
-                let array = array?;
-                let values = array.as_vec().ok()?;
-                values.get(index as usize)?.clone()
+                let index = ok_none!(index).checked_cast_to_u32()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                let array = ok_none!(array);
+
+                let values = array.as_vec()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+
+                values.get(index as usize)
+                    .cloned()
+                    .ok_or_else(|| err!(self, ParserErrorKind::IndexOutOfBounds(index, values.len() as u32)))?
             },
             Expression::IsNot(expr) => {
-                let v = self.try_convert_expr_to_value(expr)?;
-                Constant::Primitive(Primitive::Boolean(!v.to_bool().ok()?))
+                let v = ok_none!(self.try_convert_expr_to_value(expr)?)
+                    .to_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                Constant::Primitive(Primitive::Boolean(!v))
             },
             Expression::Operator(op, left, right) => {
-                let l = self.try_convert_expr_to_value(left);
-                let r = self.try_convert_expr_to_value(right);
+                let l = self.try_convert_expr_to_value(left)?;
+                let r = self.try_convert_expr_to_value(right)?;
             
                 if let Some(l) = &l {
                     *left.as_mut() = Expression::Constant(l.clone());
@@ -1514,18 +1641,27 @@ impl<'a, M> Parser<'a, M> {
                     *right.as_mut() = Expression::Constant(r.clone());
                 }
 
-                Constant::Primitive(self.execute_operator(op, l?.as_value().ok()?, r?.as_value().ok()?)?)
+                let left = ok_none!(l);
+                let left = left.as_value()
+                        .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                let right = ok_none!(r);
+                let right = right.as_value()
+                        .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+
+                let res = ok_none!(self.execute_operator(op, left, right)?);
+
+                Constant::Primitive(res)
             },
-            Expression::SubExpression(expr) => self.try_convert_expr_to_value(expr)?,
+            Expression::SubExpression(expr) => ok_none!(self.try_convert_expr_to_value(expr)?),
             Expression::Ternary(condition, left, right) => {
-                let c = self.try_convert_expr_to_value(condition);
+                let c = self.try_convert_expr_to_value(condition)?;
 
                 if let Some(c) = &c {
                     *condition.as_mut() = Expression::Constant(c.clone());
                 }
 
-                let l = self.try_convert_expr_to_value(left);
-                let r = self.try_convert_expr_to_value(right);
+                let l = self.try_convert_expr_to_value(left)?;
+                let r = self.try_convert_expr_to_value(right)?;
 
                 if let Some(l) = &l {
                     *left.as_mut() = Expression::Constant(l.clone());
@@ -1535,15 +1671,17 @@ impl<'a, M> Parser<'a, M> {
                     *right.as_mut() = Expression::Constant(r.clone());
                 }
 
-                if c?.to_bool().ok()? {
-                    l?
+                let tmp = ok_none!(c).to_bool()
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
+                if tmp {
+                    ok_none!(l)
                 } else {
-                    r?
+                    ok_none!(r)
                 }
             },
             Expression::Path(left, right) => {
-                let l = self.try_convert_expr_to_value(left);
-                let r = self.try_convert_expr_to_value(right);
+                let l = self.try_convert_expr_to_value(left)?;
+                let r = self.try_convert_expr_to_value(right)?;
 
                 if let Some(l) = &l {
                     *left.as_mut() = Expression::Constant(l.clone());
@@ -1554,10 +1692,10 @@ impl<'a, M> Parser<'a, M> {
                 }
 
                 // TODO: find a way to get the value of the path
-                return None
+                return Ok(None)
             },
-            _ => return None
-        })
+            _ => return Ok(None)
+        }))
     }
 
     fn try_postfix_collapse(
@@ -2119,7 +2257,7 @@ impl<'a, M> Parser<'a, M> {
             self.advance()?;
         };
 
-        Ok(self.try_convert_expr_to_value(&mut collapsed_expr)
+        Ok(self.try_convert_expr_to_value(&mut collapsed_expr)?
             .map(|constant| Expression::Constant(constant))
             .unwrap_or(collapsed_expr))
     }
@@ -2502,7 +2640,7 @@ impl<'a, M> Parser<'a, M> {
     fn read_const(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
         let (name, value_type, mut value, _) = self.read_variable_internal(context, true)?;
 
-        let const_value = self.try_convert_expr_to_value(&mut value)
+        let const_value = self.try_convert_expr_to_value(&mut value)?
                 .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?;
 
         self.constants.insert(name, ConstantDeclaration {

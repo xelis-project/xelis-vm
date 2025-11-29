@@ -1032,6 +1032,7 @@ dependencies = [
  "anyhow",
  "indexmap",
  "log",
+ "paste",
  "thiserror 2.0.17",
  "xelis-ast",
  "xelis-builder",

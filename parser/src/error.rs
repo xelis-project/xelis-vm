@@ -16,6 +16,14 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("division by zero")]
+    DivisionByZero,
+    #[error("arithmetic overflow")]
+    Overflow,
+    #[error("arithmetic underflow")]
+    Underflow,
+    #[error("index out of bounds: index '{0}' but length is '{1}'")]
+    IndexOutOfBounds(u32, u32),
     #[error("incompatible type, got '{0}' but expected '{1}'")]
     IncompatibleType(Type, Type),
     #[error("expected a closure with return")]
