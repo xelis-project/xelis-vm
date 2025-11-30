@@ -93,9 +93,8 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
             .map(|(k, v)| (k.into(), v))
             .collect();
         let data = (Vec::new(), fields_data); // No generics for register_structure
-        let _type = self.struct_manager.build(name.into(), data).expect("Failed to build struct");
-        self.env.add_structure(_type.clone());
-        _type
+        self.struct_manager.build(name.into(), data)
+            .expect("Failed to build struct")
     }
 
     // Register an enum in the environment
@@ -105,9 +104,8 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
 
-        let _type = self.enum_manager.build(name, data).expect("Failed to build enum");
-        self.env.add_enum(_type.clone());
-        _type
+        self.enum_manager.build(name, data)
+            .expect("Failed to build enum")
     }
 
     // Register an opaque type in the environment
@@ -233,7 +231,6 @@ mod tests {
             ("B", EnumVariant::new(vec![(Cow::Borrowed("b"), Type::U64)])),
         ]);
 
-        let env = builder.build();
-        assert_eq!(env.get_enums().len(), 1);
+        let _ = builder.build();
     }
 }

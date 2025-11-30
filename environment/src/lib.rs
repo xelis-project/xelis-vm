@@ -5,9 +5,9 @@ mod identity_hasher;
 
 use std::any::TypeId;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use xelis_bytecode::Module;
-use xelis_types::{EnumType, Reference, StructType};
+use xelis_types::Reference;
 
 // Also re-export the necessary macro
 pub use better_any::*;
@@ -22,10 +22,6 @@ pub use identity_hasher::*;
 pub struct Environment<M> {
     // All functions provided by the Environment
     functions: Vec<NativeFunction<M>>,
-    // All structures provided by the Environment
-    structures: IndexSet<StructType>,
-    // All enums provided by the Environment
-    enums: IndexSet<EnumType>,
     // All opaques types provided by the Environment
     opaques: IndexMap<TypeId, bool>,
     // Number of hooks registered
@@ -38,8 +34,6 @@ impl<M> Default for Environment<M> {
     fn default() -> Self {
         Self {
             functions: Vec::new(),
-            structures: IndexSet::new(),
-            enums: IndexSet::new(),
             opaques: IndexMap::new(),
             hooks: 0
         }
@@ -58,18 +52,6 @@ impl<M> Environment<M> {
         &self.functions
     }
 
-    // Get all the registered structures
-    #[inline(always)]
-    pub fn get_structures(&self) -> &IndexSet<StructType> {
-        &self.structures
-    }
-
-    // Get all the registered enums
-    #[inline(always)]
-    pub fn get_enums(&self) -> &IndexSet<EnumType> {
-        &self.enums
-    }
-
     // Get all the registered opaques
     #[inline(always)]
     pub fn get_opaques(&self) -> &IndexMap<TypeId, bool> {
@@ -85,18 +67,6 @@ impl<M> Environment<M> {
     // Get a mutable native function by its id
     pub fn get_function_by_id_mut(&mut self, id: usize) -> Option<&mut NativeFunction<M>> {
         self.functions.get_mut(id)
-    }
-
-    // Add a new structure to the environment
-    #[inline(always)]
-    pub fn add_structure(&mut self, structure: StructType) {
-        self.structures.insert(structure);
-    }
-
-    // Add a new enum to the environment
-    #[inline(always)]
-    pub fn add_enum(&mut self, _enum: EnumType) {
-        self.enums.insert(_enum);
     }
 
     // Add a new opaque type to the environment
