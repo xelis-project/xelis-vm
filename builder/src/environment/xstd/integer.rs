@@ -68,7 +68,193 @@ macro_rules! register_checked_fns {
     };
 }
 
+macro_rules! wrapping_fn {
+    ($env: expr, wrapping_div, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
+        paste! {
+            fn [<wrapping_div _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Check for division by zero (for primitive types)
+                if other == 0 {
+                    return Err(EnvironmentError::Static("division by zero"));
+                }
+
+                // Perform the operation with wrapping_div
+                let result = value.wrapping_div(other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                "wrapping_div",
+                Some(Type::$t),
+                vec![("other", Type::$param_ty)],
+                FunctionHandler::Sync([<wrapping_div _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
+    ($env: expr, wrapping_rem, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
+        paste! {
+            fn [<wrapping_rem _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Check for division by zero (for primitive types)
+                if other == 0 {
+                    return Err(EnvironmentError::Static("division by zero"));
+                }
+
+                // Perform the operation with wrapping_rem
+                let result = value.wrapping_rem(other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                "wrapping_rem",
+                Some(Type::$t),
+                vec![("other", Type::$param_ty)],
+                FunctionHandler::Sync([<wrapping_rem _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
+    ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
+        paste! {
+            fn [<$op _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Perform the operation with `$op`
+                let result = value.[<$op>](other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                stringify!($op),
+                Some(Type::$t),
+                // $param with uppercase first letter
+                vec![("other", Type::$param_ty)],
+                FunctionHandler::Sync([<$op _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
+    ($env: expr, $op: ident, $t: ident, $f: ident, $cost: expr) => {
+        wrapping_fn!($env, $op, $t, $f, $f, $t, $cost);
+    };
+}
+
+macro_rules! register_wrapping_fns {
+    ($env: expr, $t: ident, $f: ident) => {
+        {
+            wrapping_fn!($env, wrapping_add, $t, $f, 1);
+            wrapping_fn!($env, wrapping_sub, $t, $f, 1);
+            wrapping_fn!($env, wrapping_mul, $t, $f, 3);
+            wrapping_fn!($env, wrapping_div, $t, $f, 3);
+            wrapping_fn!($env, wrapping_rem, $t, $f, 3);
+            wrapping_fn!($env, wrapping_pow, $t, $f, u32, U32, 50);
+        }
+    };
+}
+
 macro_rules! integer_param_fn {
+    // Special cases for wrapping_div and wrapping_rem to handle division by zero
+    ($env: expr, wrapping_div, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
+        paste! {
+            fn [<wrapping_div _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                if other == 0 {
+                    return Err(EnvironmentError::Static("division by zero"));
+                }
+
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Perform the operation with `$op`
+                let result = value.wrapping_div(other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                stringify!($op),
+                Some(Type::$t),
+                // $param with uppercase first letter
+                vec![("other", Type::$param_ty)],
+                FunctionHandler::Sync([<$op _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
+    ($env: expr, wrapping_rem, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
+        paste! {
+            fn [<wrapping_rem _ $f>]<M>(
+                zelf: FnInstance,
+                parameters: FnParams,
+                _: &ModuleMetadata<'_, M>,
+                _: &mut Context
+            ) -> FnReturnType<M> {
+                // Extract and convert parameters
+                let other = parameters[0].as_ref().[<as_ $param>]()?;
+                if other == 0 {
+                    return Err(EnvironmentError::Static("division by zero"));
+                }
+
+                let value = zelf?.[<as_ $f>]()?;
+
+                // Perform the operation with `$op`
+                let result = value.wrapping_rem(other);
+
+                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+            }
+
+            // Registering the generated function in the environment
+            $env.register_native_function(
+                stringify!($op),
+                Some(Type::$t),
+                // $param with uppercase first letter
+                vec![("other", Type::$param_ty)],
+                FunctionHandler::Sync([<$op _ $f>]),
+                $cost,
+                Some(Type::$t)
+            );
+        }
+    };
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
             fn [<$op _ $f>]<M>(
@@ -461,6 +647,14 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     register_saturating_fns!(env, U64, u64);
     register_saturating_fns!(env, U128, u128);
     register_saturating_fns!(env, U256, u256);
+
+    // Register all wrapping operations
+    register_wrapping_fns!(env, U8, u8);
+    register_wrapping_fns!(env, U16, u16);
+    register_wrapping_fns!(env, U32, u32);
+    register_wrapping_fns!(env, U64, u64);
+    register_wrapping_fns!(env, U128, u128);
+    register_wrapping_fns!(env, U256, u256);
 
     // Register min/max functions for all types
     register_constants_min_max!(env, U8, u8);

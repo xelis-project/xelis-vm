@@ -196,7 +196,7 @@ opcode_fn!(add, opcode_op, op_string, +);
 opcode_fn!(sub, opcode_op, op, -);
 opcode_fn!(mul, opcode_op, op, *);
 opcode_fn!(div, opcode_op, op_div, /);
-opcode_fn!(rem, opcode_op, op, %);
+opcode_fn!(rem, opcode_op, op_div, %);
 
 opcode_fn!(bitwise_and, opcode_op, op_bool, &);
 opcode_fn!(bitwise_or, opcode_op, op_bool, |);

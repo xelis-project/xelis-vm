@@ -398,6 +398,124 @@ impl U256 {
         (remainder, false)
     }
 
+    /// Left shift with overflow handling
+    /// Returns true if any bits were shifted out
+    #[inline]
+    pub fn overflowing_shl(self, shift: u32) -> (U256, bool) {
+        if shift >= 256 {
+            return (U256::ZERO, !self.is_zero());
+        }
+
+        if shift == 0 {
+            return (self, false);
+        }
+
+        // Check if any bits will be shifted out
+        let mut overflow = false;
+        let word_shift = (shift / 64) as usize;
+        let bit_shift = (shift % 64) as u32;
+
+        // Check if any bits in the upper words will be lost
+        for i in (4 - word_shift)..4 {
+            if self.0[i] != 0 {
+                overflow = true;
+                break;
+            }
+        }
+
+        // If there's a bit shift, check if bits from the highest remaining word will be lost
+        if !overflow && bit_shift > 0 && word_shift < 4 {
+            let highest_remaining = 3 - word_shift;
+            if self.0[highest_remaining] >> (64 - bit_shift) != 0 {
+                overflow = true;
+            }
+        }
+
+        let result = self.checked_shl(shift).unwrap_or(U256::ZERO);
+        (result, overflow)
+    }
+
+    /// Right shift with overflow handling
+    /// Returns true if any bits were shifted out
+    #[inline]
+    pub fn overflowing_shr(self, shift: u32) -> (U256, bool) {
+        if shift >= 256 {
+            return (U256::ZERO, !self.is_zero());
+        }
+
+        if shift == 0 {
+            return (self, false);
+        }
+
+        // Check if any bits will be shifted out
+        let mut overflow = false;
+        let word_shift = (shift / 64) as usize;
+        let bit_shift = (shift % 64) as u32;
+
+        // Check if any bits in the lower words will be lost
+        for i in 0..word_shift {
+            if self.0[i] != 0 {
+                overflow = true;
+                break;
+            }
+        }
+
+        // If there's a bit shift, check if bits from the lowest remaining word will be lost
+        if !overflow && bit_shift > 0 && word_shift < 4 {
+            if self.0[word_shift] & ((1u64 << bit_shift) - 1) != 0 {
+                overflow = true;
+            }
+        }
+
+        let result = self.checked_shr(shift).unwrap_or(U256::ZERO);
+        (result, overflow)
+    }
+
+    /// Negation with overflow handling (two's complement)
+    /// For unsigned types, overflow always occurs unless the value is zero
+    #[inline]
+    pub fn overflowing_neg(self) -> (U256, bool) {
+        if self.is_zero() {
+            return (U256::ZERO, false);
+        }
+
+        // Two's complement: invert all bits and add 1
+        let mut result = [0u64; 4];
+        for i in 0..4 {
+            result[i] = !self.0[i];
+        }
+        let (result, _) = U256(result).overflowing_add(U256::ONE);
+        (result, true)
+    }
+
+    /// Power with overflow handling
+    #[inline]
+    pub fn overflowing_pow(self, exp: u32) -> (U256, bool) {
+        if exp == 0 {
+            return (U256::ONE, false);
+        }
+
+        let mut base = self;
+        let mut result = U256::ONE;
+        let mut exp_remaining = exp;
+        let mut overflow = false;
+
+        while exp_remaining > 0 {
+            if exp_remaining & 1 == 1 {
+                let (new_result, ovf) = result.overflowing_mul(base);
+                result = new_result;
+                overflow |= ovf;
+            }
+
+            let (new_base, ovf) = base.overflowing_mul(base);
+            base = new_base;
+            overflow |= ovf;
+            exp_remaining >>= 1;
+        }
+
+        (result, overflow)
+    }
+
     /// Checked subtraction with overflow handling
     #[inline]
     pub fn checked_sub(self, other: U256) -> Option<U256> {
@@ -544,6 +662,69 @@ impl U256 {
     #[inline]
     pub fn saturating_pow(self, exp: u32) -> U256 {
         self.checked_pow(exp).unwrap_or(U256::MAX)
+    }
+
+    /// Wrapping addition. Returns the wrapped result on overflow.
+    #[inline]
+    pub fn wrapping_add(self, other: U256) -> U256 {
+        let (result, _) = self.overflowing_add(other);
+        result
+    }
+
+    /// Wrapping subtraction. Returns the wrapped result on underflow.
+    #[inline]
+    pub fn wrapping_sub(self, other: U256) -> U256 {
+        let (result, _) = self.overflowing_sub(other);
+        result
+    }
+
+    /// Wrapping multiplication. Returns the wrapped result on overflow.
+    #[inline]
+    pub fn wrapping_mul(self, other: U256) -> U256 {
+        let (result, _) = self.overflowing_mul(other);
+        result
+    }
+
+    /// Wrapping division. Panics on division by zero.
+    #[inline]
+    pub fn wrapping_div(self, divisor: U256) -> U256 {
+        let (result, _) = self.overflowing_div(divisor);
+        result
+    }
+
+    /// Wrapping remainder. Panics on division by zero.
+    #[inline]
+    pub fn wrapping_rem(self, divisor: U256) -> U256 {
+        let (result, _) = self.overflowing_rem(divisor);
+        result
+    }
+
+    /// Wrapping left shift. Returns the wrapped result on overflow.
+    #[inline]
+    pub fn wrapping_shl(self, shift: u32) -> U256 {
+        let (result, _) = self.overflowing_shl(shift);
+        result
+    }
+
+    /// Wrapping right shift. Returns the wrapped result on overflow.
+    #[inline]
+    pub fn wrapping_shr(self, shift: u32) -> U256 {
+        let (result, _) = self.overflowing_shr(shift);
+        result
+    }
+
+    /// Wrapping negation. Returns the two's complement.
+    #[inline]
+    pub fn wrapping_neg(self) -> U256 {
+        let (result, _) = self.overflowing_neg();
+        result
+    }
+
+    /// Wrapping power. Returns the wrapped result on overflow.
+    #[inline]
+    pub fn wrapping_pow(self, exp: u32) -> U256 {
+        let (result, _) = self.overflowing_pow(exp);
+        result
     }
 
     /// Export the data as a big-endian byte array

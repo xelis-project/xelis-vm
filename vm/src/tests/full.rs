@@ -2722,3 +2722,27 @@ fn test_u8_max_to_bytes_len() {
 
     assert_eq!(run_code(code), Primitive::U64(1));
 }
+
+#[test]
+fn test_div_by_zero_panic() {
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = 0;
+            return a / b
+        }
+    "#;
+
+    let result = try_run_code(code, 0);
+    assert!(matches!(result, Err(VMError::DivisionByZero)));
+
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = 0;
+            return a % b
+        }
+    "#;
+    let result = try_run_code(code, 0);
+    assert!(matches!(result, Err(VMError::DivisionByZero)));
+}
