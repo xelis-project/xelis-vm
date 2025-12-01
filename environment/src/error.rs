@@ -44,6 +44,8 @@ pub enum EnvironmentError {
     Expect(String),
     #[error("Invalid expect message, require alphanumeric chars only")]
     InvalidExpect,
+    #[error("division by zero")]
+    DivisionByZero,
     #[error("{0}")]
     Static(&'static str)
 }

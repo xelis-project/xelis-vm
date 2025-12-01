@@ -2740,7 +2740,37 @@ fn test_div_by_zero_panic() {
         entry main() {
             let a: u64 = 10;
             let b: u64 = 0;
+            return a.saturating_div(b)
+        }
+    "#;
+    let result = try_run_code(code, 0);
+    assert!(matches!(result, Err(VMError::DivisionByZero)));
+
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = 0;
+            return a.wrapping_div(b)
+        }
+    "#;
+    let result = try_run_code(code, 0);
+    assert!(matches!(result, Err(VMError::DivisionByZero)));
+
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = 0;
             return a % b
+        }
+    "#;
+    let result = try_run_code(code, 0);
+    assert!(matches!(result, Err(VMError::DivisionByZero)));
+
+    let code = r#"
+        entry main() {
+            let a: u64 = 10;
+            let b: u64 = 0;
+            return a.wrapping_rem(b)
         }
     "#;
     let result = try_run_code(code, 0);

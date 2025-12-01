@@ -99,7 +99,10 @@ pub enum VMError {
 
 impl From<EnvironmentError> for VMError {
     fn from(error: EnvironmentError) -> Self {
-        VMError::EnvironmentError(error)
+        match error {
+            EnvironmentError::DivisionByZero => VMError::DivisionByZero,
+            _ => VMError::EnvironmentError(error)
+        }
     }
 }
 
