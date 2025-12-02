@@ -2776,3 +2776,21 @@ fn test_div_by_zero_panic() {
     let result = try_run_code(code, 0);
     assert!(matches!(result, Err(VMError::DivisionByZero)));
 }
+
+#[test]
+fn test_sort() {
+    let code = r#"
+        entry main() {
+            let a: u64[] = [5, 3, 8, 1, 2];
+            a.sort();
+            assert(a == [1, 2, 3, 5, 8]);
+
+            a.reverse();
+            assert(a == [8, 5, 3, 2, 1]);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}

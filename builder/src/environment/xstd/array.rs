@@ -51,6 +51,26 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // Constant function
     env.register_const_function("with", Type::Array(Box::new(Type::T(Some(0)))), vec![("size", Type::U32), ("default", Type::T(Some(0)))], const_with);
 
+    // Sort function
+    // Only works with primitive types that implement Ord
+    env.register_native_function(
+        "sort",
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+        vec![],
+        FunctionHandler::Sync(sort),
+        20,
+        None,
+    );
+
+    env.register_native_function(
+        "reverse",
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+        vec![],
+        FunctionHandler::Sync(reverse),
+        10,
+        None,
+    );
+
     array_number_with_size!(env, u8, U8);
     array_number_with_size!(env, u16, U16);
     array_number_with_size!(env, u32, U32);
@@ -336,6 +356,39 @@ fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     }
 
     vec.truncate(size);
+
+    Ok(SysCallResult::None)
+}
+
+fn sort<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut().as_mut_vec()?;
+
+    // Simple bubble sort implementation
+    let len = vec.len();
+    context.increase_gas_usage((len * len) as u64)?;
+
+    for i in 0..len {
+        for j in 0..(len - i - 1) {
+            let a = vec[j].as_ref();
+            let b = vec[j + 1].as_ref();
+            if a.as_value()? > b.as_value()? {
+                vec.swap(j, j + 1);
+            }
+        }
+    }
+
+    Ok(SysCallResult::None)
+}
+
+fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let mut zelf = zelf?;
+    let vec = zelf.as_mut().as_mut_vec()?;
+
+    let len = vec.len();
+    context.increase_gas_usage((len / 2) as u64)?;
+
+    vec.reverse();
 
     Ok(SysCallResult::None)
 }

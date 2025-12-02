@@ -1847,7 +1847,15 @@ impl<'a, M> Parser<'a, M> {
                         _ => {
                             // require at least one value in a array constructor
                             let mut elements: Vec<Expression> = Vec::new();
-                            let mut array_type: Option<Type> = expected_type.map(|t| t.get_inner_type().clone());
+                            let mut array_type: Option<Type> = expected_type
+                                .and_then(|t| {
+                                    if let Type::Array(inner) = t {
+                                        Some(*inner.clone())
+                                    } else {
+                                        None
+                                    }
+                                });
+
                             while self.peek_is_not(Token::BracketClose) {
                                 let expr = self.read_expr(None, on_type, true, true, expected_type.map(|t| t.get_inner_type()), context)?;
                                 match &array_type { // array values must have the same type
