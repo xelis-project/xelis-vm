@@ -1,5 +1,5 @@
-use xelis_types::{Constant, Primitive, Type, ValueCell};
-use xelis_environment::{Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
+use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, ValueCell};
+use xelis_environment::{CallbackState, Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use super::EnvironmentBuilder;
 use paste::paste;
 
@@ -67,6 +67,20 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         Some(Type::Array(Box::new(Type::T(Some(0))))),
         vec![],
         FunctionHandler::Sync(reverse),
+        10,
+        None,
+    );
+
+    env.register_native_function(
+        "map",
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+        vec![
+            ("mapper", Type::Closure(ClosureType::new(
+                vec![Type::T(Some(0))],
+                Some(Type::Any)
+            )))
+        ],
+        FunctionHandler::Sync(map),
         10,
         None,
     );
@@ -391,4 +405,73 @@ fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context:
     vec.reverse();
 
     Ok(SysCallResult::None)
+}
+
+pub struct MapState {
+    closure_ptr: StackValue,
+    index: usize,
+    ptr: StackValue,
+}
+
+fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let key_fn = parameters.remove(0);
+    let mut zelf = zelf?;
+
+    // First we need to prepare a state with all the mapped keys
+    let vec = zelf.as_mut().as_mut_vec()?;
+
+    let len = vec.len();
+    context.increase_gas_usage(len as u64 * 10)?;
+
+    let Some(first) = vec.first().cloned() else {
+        return Ok(SysCallResult::None)
+    };
+
+    fn sort_by_key_callback<M>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut state = state
+            .downcast::<MapState>()
+            .map_err(|_| EnvironmentError::InvalidCallbackState)?;
+
+        let key = params
+            .get(0)
+            .ok_or(EnvironmentError::InvalidCallbackParameters)?
+            .clone();
+
+        let zelf = state.ptr
+            .as_mut_vec()?;
+        let len = zelf.len();
+
+        let at_index = zelf.get_mut(state.index)
+            .ok_or(EnvironmentError::OutOfBounds(state.index, len))?;
+
+        *at_index = key.into_owned().into();
+
+        state.index += 1;
+        let Some(next) = zelf.get(state.index).cloned() else {
+            return Ok(SysCallResult::None)
+        };
+
+        Ok(SysCallResult::ExecuteAndCallback {
+            ptr: state.closure_ptr.clone(),
+            params: vec![next.into()].into(),
+            state,
+            callback_params_len: 1,
+            callback: sort_by_key_callback,
+        })
+    }
+
+    Ok(SysCallResult::ExecuteAndCallback {
+        ptr: key_fn.clone(),
+        params: vec![first.into()].into(),
+        state: Box::new(MapState {
+            closure_ptr: key_fn,
+            index: 0,
+            ptr: zelf.into(),
+        }),
+        callback_params_len: 1,
+        callback: sort_by_key_callback,
+    })
 }

@@ -8,6 +8,8 @@ mod instructions;
 #[cfg(test)]
 mod tests;
 
+use std::collections::VecDeque;
+
 use stack::Stack;
 use log::trace;
 
@@ -78,7 +80,7 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r, M: 'static> {
     call_stack_size: usize,
     // The stack of the VM
     // Every values are stored here
-    stack: Stack,
+    stack: Stack<M>,
     // Context given to each instruction
     context: Context<'ty, 'r>,
     // Flag to enable/disable the tail call optimization
@@ -122,7 +124,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Get the stack
     #[inline(always)]
-    pub fn get_stack(&self) -> &Stack {
+    pub fn get_stack(&self) -> &Stack<M> {
         &self.stack
     }
 
@@ -289,12 +291,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         // call stack has been fully consummed
         // don't push it back but clean pointers
         self.call_stack_size -= 1;
-        if let Some(origin) = manager.registers_origin() {
+        if let Some((origin, max_size)) = manager.registers_origin() {
             debug!("Swapping registers for origin: {}", origin);
             // Swap back our registers
+            manager.truncate_registers_to(max_size);
             let previous = self.find_manager_with_chunk_id(origin)
                 .ok_or(VMError::ChunkManagerNotFound(origin))?;
             previous.swap_registers(manager);
+            manager.set_registers_origin(None);
         }
 
         Ok(())
@@ -334,6 +338,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         // We go through every modules injected
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(call_stack) = self.call_stack.pop() {
+                debug!("Processing call stack: {:?}", call_stack);
                 match call_stack {
                     CallStack::Chunk(mut manager) => {
                         // Retrieve the required chunk
@@ -356,14 +361,35 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             // And to prevent duplicated code for the final result
                             // This still cause us a 10-20% performance downgrade
                             loop {
+                                trace!("Result: {:?}", result);
                                 match result {
                                     Ok(InstructionResult::Nothing) => {},
-                                    Ok(InstructionResult::Break) => break 'opcodes,
+                                    Ok(InstructionResult::Break) => {
+                                        if let Some(callback) = self.stack.get_callback() {
+                                            let mut params = VecDeque::with_capacity(callback.params_len);
+                                            for _ in 0..callback.params_len {
+                                                params.push_front(self.stack.pop_stack().unwrap());
+                                            }
+
+                                            let res = (callback.callback)(
+                                                callback.state,
+                                                params.into(),
+                                            )?;
+
+                                            let tmp = handle_perform_syscall(&mut self.stack, &mut self.context, res, &m)?;
+                                            result = perform_syscall(&self.backend, tmp, &mut self.stack, &mut self.context);
+                                            continue;
+                                        }
+
+                                        trace!("Breaking execution");
+                                        break 'opcodes;
+                                    },
                                     Ok(InstructionResult::InvokeChunk(id)) => {
+                                        trace!("Invoking chunk id: {}", id);
                                         if !m.module.is_callable_chunk(id as usize) {
                                             return Err(VMError::ExpectedNormalChunk);
                                         }
-    
+
                                         self.push_back_call_stack(manager, reader)?;
                                         self.invoke_chunk_id(id as _)?;
     
@@ -375,25 +401,44 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             return Err(VMError::ExpectedNormalChunk);
                                         }
 
-                                        let mut new = ChunkManager::with(
-                                            chunk_id,
-                                            None,
-                                            Vec::new()
-                                        );
-    
-                                        if let Some(previous) = self.find_manager_with_chunk_id(from) {
-                                            new.swap_registers(previous);
-                                            previous.set_context(ChunkContext::Used);
+                                        // If we need to swap the registers, check if from our current manager
+                                        // we already took the pointers from another chunk
+                                        if let Some((_, len)) = manager.registers_origin().filter(|(origin, _)| *origin == from && chunk_id == manager.chunk_id()) {
+                                            trace!("reusing current chunk manager for dynamic call");
+                                            manager.truncate_registers_to(len);
+                                            manager.set_ip(0);
+
+                                            // Push back our current chunk manager
+                                            self.call_stack.push(CallStack::Chunk(manager));
                                         } else {
-                                            trace!("No chunk manager found for origin {}, skipping it", from);
-                                            new.set_registers_origin(None);
+                                            let mut new = ChunkManager::with(
+                                                chunk_id,
+                                                None,
+                                                Vec::new()
+                                            );
+
+                                            trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
+                                            let previous = if manager.chunk_id() == from {
+                                                Some(&mut manager)
+                                            } else {
+                                                self.find_manager_with_chunk_id(from)
+                                            };
+
+                                            if let Some(previous) = previous {
+
+                                                new.set_registers_origin(Some((from, previous.get_registers().len())));
+                                                new.swap_registers(previous);
+                                                previous.set_context(ChunkContext::Used);
+                                            } else {
+                                                debug!("No chunk manager found for origin {}, skipping it", from);
+                                            }
+
+                                            self.push_back_call_stack(manager, reader)?;
+
+                                            // Add our new chunk
+                                            self.invoke_chunk_id_internal(new)?;
                                         }
-    
-                                        self.push_back_call_stack(manager, reader)?;
-    
-                                        // Add our new chunk
-                                        self.invoke_chunk_id_internal(new)?;
-    
+
                                         // Jump to the next call stack
                                         continue 'call_stack;
                                     },
@@ -498,6 +543,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         }
 
         if self.call_stack_size != 0 {
+            debug!("Call stack size left: {:?}", self.call_stack);
             return Err(VMError::CallStackNotEmpty(self.call_stack_size));
         }
 

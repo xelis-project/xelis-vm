@@ -869,7 +869,7 @@ fn test_array_self_reference_with_pointer_sharing() {
 
     // require function
     chunk.emit_opcode(OpCode::SysCall);
-    chunk.write_u16(300);
+    chunk.write_u16(303);
 
     // return true
     chunk.emit_opcode(OpCode::Constant);

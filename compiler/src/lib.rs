@@ -494,10 +494,16 @@ impl<'a, M> Compiler<'a, M> {
     }
 
     // Push the next register store id
+    #[inline(always)]
     fn push_mem_scope(&mut self) {
+        self.push_mem_scope_with_default(0);
+    }
+
+    // Push the next register store id with a default id
+    fn push_mem_scope_with_default(&mut self, id: u16) {
         let last_id = self.memstore_ids.last()
             .copied()
-            .unwrap_or(0);
+            .unwrap_or(id);
 
         trace!("Pushing memory scope with last id {last_id}");
         self.memstore_ids.push(last_id);
@@ -934,7 +940,7 @@ impl<'a, M> Compiler<'a, M> {
         let mut chunk = Chunk::new();
 
         // Push the new scope for ids
-        self.push_mem_scope();
+        self.push_mem_scope_with_default(function.registers_reserved());
 
         // Push the total expected values on the stack (due to the param and instance)
         let total_on_stack = function.get_parameters().len() + function.get_instance_name().is_some() as usize;
@@ -1457,7 +1463,7 @@ mod tests {
                 // 10
                 OpCode::Constant.as_byte(), 1, 0,
                 // insert
-                OpCode::SysCall.as_byte(), 26, 1,
+                OpCode::SysCall.as_byte(), 29, 1,
                 // Expected POP
                 OpCode::Pop.as_byte(),
                 // x.get("a")
@@ -1466,9 +1472,9 @@ mod tests {
                 // a
                 OpCode::Constant.as_byte(), 0, 0,
                 // get
-                OpCode::SysCall.as_byte(), 25, 1,
+                OpCode::SysCall.as_byte(), 28, 1,
                 // unwrap (u16 id)
-                OpCode::SysCall.as_byte(), 34, 0,
+                OpCode::SysCall.as_byte(), 37, 0,
                 // let dummy: u64 = x.get("a").unwrap();
                 OpCode::MemorySet.as_byte(), 1, 0,
                 // x.insert("b", dummy);
@@ -1479,7 +1485,7 @@ mod tests {
                 // Load dummy
                 OpCode::MemoryLoad.as_byte(), 1, 0,
                 // insert (u16 id)
-                OpCode::SysCall.as_byte(), 26, 1,
+                OpCode::SysCall.as_byte(), 29, 1,
                 // Expected POP
                 OpCode::Pop.as_byte(),
 

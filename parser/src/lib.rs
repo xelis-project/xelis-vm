@@ -1383,6 +1383,7 @@ impl<'a, M> Parser<'a, M> {
         };
 
         let current = context.max_variables_count();
+        let variables_count = context.variables_count();
         context.begin_scope();
 
         // Register the closure params
@@ -1391,6 +1392,7 @@ impl<'a, M> Parser<'a, M> {
             let id = context.register_variable(name, param_type.clone())
                 .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
 
+            trace!("Registered closure param: {} with id {}", name, id);
             new_params.push(Parameter::new(id, param_type));
         }
 
@@ -1411,7 +1413,8 @@ impl<'a, M> Parser<'a, M> {
             new_params,
             statements,
             ty.return_type().cloned(),
-            max
+            max,
+            variables_count,
         ));
 
         // Inject the closure
@@ -2192,7 +2195,14 @@ impl<'a, M> Parser<'a, M> {
                 },
                 token => {
                     trace!("no specific case for {:?}, expected type: {:?}", token, expected_type);
-                    if token.is_type() {
+                    if matches!(token, Token::Map) && self.peek_is(Token::ParenthesisOpen) {
+                        let prev_expr = match queue.pop() {
+                            Some(QueueItem::Expression(v)) => Some(v),
+                            None | Some(QueueItem::Separator) => None,
+                            _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
+                        };
+                        self.read_function_call(prev_expr, on_type.is_some(), on_type, "map", context)?
+                    } else if token.is_type() {
                         self.read_type_constant(token, context)?
                     } else if let Some(Type::Closure(ty)) = expected_type {
                         self.read_closure(ty, context)?
@@ -3169,6 +3179,7 @@ impl<'a, M> Parser<'a, M> {
                 new_params,
                 Vec::new(),
                 return_type.clone(),
+                0,
                 0
             )),
             FunctionKind::Hook => FunctionType::Hook(HookFunction::new(
@@ -4131,7 +4142,7 @@ mod tests {
         assert_eq!(
             *program.functions().get(0).unwrap(),
             FunctionType::Declared(
-                DeclaredFunction::new(FunctionVisibility::Private, None, None, Vec::new(), statements, Some(Type::Bool), 1)
+                DeclaredFunction::new(FunctionVisibility::Private, None, None, Vec::new(), statements, Some(Type::Bool), 1, 0)
             )
         );
     }

@@ -1,6 +1,8 @@
 use std::{cmp::Ordering, mem};
 use xelis_types::StackValue;
 
+use crate::trace;
+
 use super::{iterator::ValueIterator, VMError};
 
 // u16::MAX registers maximum
@@ -25,7 +27,8 @@ pub enum ChunkContext {
 #[derive(Debug)]
 pub struct ChunkManager {
     // Chunk id from which we took the registers
-    registers_origin: Option<usize>,
+    // id, original max size
+    registers_origin: Option<(usize, usize)>,
     // Registers are temporary and "scoped" per chunk
     registers: Vec<StackValue>,
     // Iterators stack
@@ -49,7 +52,7 @@ impl ChunkManager {
 
     // Create a new chunk manager with a registers origin and a registers list
     #[inline(always)]
-    pub fn with(chunk_id: usize, registers_origin: Option<usize>, registers: Vec<StackValue>) -> Self {
+    pub fn with(chunk_id: usize, registers_origin: Option<(usize, usize)>, registers: Vec<StackValue>) -> Self {
         Self {
             registers_origin,
             chunk_id,
@@ -68,8 +71,16 @@ impl ChunkManager {
 
     // Retrieve the registers origin chunk id
     #[inline(always)]
-    pub fn registers_origin(&self) -> Option<usize> {
+    pub fn registers_origin(&self) -> Option<(usize, usize)> {
         self.registers_origin
+    }
+
+    // Truncate the registers to a maximum size
+    #[inline]
+    pub fn truncate_registers_to(&mut self, max_size: usize) {
+        if self.registers.len() > max_size {
+            self.registers.truncate(max_size);
+        }
     }
 
     #[inline(always)]
@@ -127,6 +138,7 @@ impl ChunkManager {
     // Push/set a new value into the registers
     #[inline]
     pub fn set_register(&mut self, index: usize, mut value: StackValue) -> Result<Option<StackValue>, VMError> {
+        trace!("Setting register at index {}: {:?}, current {}", index, value.as_ref(), self.registers.len());
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }
@@ -154,6 +166,7 @@ impl ChunkManager {
     // Pop a value from the registers
     #[inline(always)]
     pub fn pop_register(&mut self) -> Result<StackValue, VMError> {
+        trace!("Popping register, current {}", self.registers.len());
         self.registers.pop().ok_or(VMError::EmptyRegister)
     }
 
@@ -164,7 +177,7 @@ impl ChunkManager {
     }
 
     #[inline(always)]
-    pub fn set_registers_origin(&mut self, origin: Option<usize>) {
+    pub fn set_registers_origin(&mut self, origin: Option<(usize, usize)>) {
         self.registers_origin = origin;
     }
 
@@ -172,6 +185,7 @@ impl ChunkManager {
     // access from one to another
     #[inline]
     pub fn swap_registers(&mut self, other: &mut Self) {
+        trace!("Swapping registers ({}, {}) between chunk {} and chunk {}", self.registers.len(), other.registers.len(), self.chunk_id, other.chunk_id);
         mem::swap(&mut self.registers, &mut other.registers);
     }
 }

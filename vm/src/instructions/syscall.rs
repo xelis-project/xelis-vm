@@ -1,9 +1,15 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{Context, ModuleMetadata, SysCallResult};
+use xelis_environment::{CallbackFunction, CallbackState, Context, ModuleMetadata, SysCallResult};
 use xelis_types::StackValue;
 
 use crate::{stack::Stack, Backend, InstructionResult, VMError};
+
+pub struct Callback<M> {
+    pub state: CallbackState,
+    pub params_len: usize,
+    pub callback: CallbackFunction<M>,
+}
 
 pub enum PerformSysCallHelper<'a, M> {
     Next {
@@ -15,7 +21,7 @@ pub enum PerformSysCallHelper<'a, M> {
 }
 
 pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
-    stack: &mut Stack,
+    stack: &mut Stack<M>,
     context: &mut Context<'ty, 'r>,
     result: SysCallResult<M>,
     metadata: &ModuleMetadata<'a, M>,
@@ -72,13 +78,47 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                 chunk_id: chunk,
             }))
         },
+        SysCallResult::ExecuteAndCallback { ptr, params, state, callback_params_len, callback } => {
+            let values = ptr.as_ref().as_vec()?;
+            if values.len() != 3 {
+                return Err(VMError::InvalidDynamicCall);
+            }
+
+            let id = values[0].as_u16()?;
+            let syscall = values[1].as_bool()?;
+            let from = values[2].as_u16()?;
+
+            stack.push_callback(Callback {
+                state,
+                params_len: callback_params_len,
+                callback,
+            })?;
+
+            if syscall {
+                Ok(PerformSysCallHelper::Next {
+                    f: id,
+                    params,
+                })
+            } else {
+                for param in params {
+                    let memory_usage = param.estimate_memory_usage(context.memory_left())?;
+                    context.increase_memory_usage_unchecked(memory_usage)?;
+                    stack.push_stack(param)?;
+                }
+
+                Ok(PerformSysCallHelper::End(InstructionResult::InvokeDynamicChunk {
+                    chunk_id: id as _,
+                    from: from as _,
+                }))
+            }
+        }
     }
 }
 
 pub fn perform_syscall<'a, 'ty, 'r, M>(
     backend: &Backend<'a, 'ty, 'r, M>,
     mut syscall: PerformSysCallHelper<'a, M>,
-    stack: &mut Stack,
+    stack: &mut Stack<M>,
     context: &mut Context<'ty, 'r>,
 ) -> Result<InstructionResult<'a, M>, VMError> {
     let m = backend.current()?;

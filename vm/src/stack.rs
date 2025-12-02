@@ -1,20 +1,40 @@
 use xelis_types::StackValue;
 
+use crate::Callback;
+
 use super::VMError;
 
 // 256 elements maximum in the stack:
 // Function Call can have up to 255 arguments and 1 on value
 const STACK_SIZE: usize = 256;
+const STACK_CALLBACKS_SIZE: usize = 16;
 
-pub struct Stack {
-    stack: Vec<StackValue>
+pub struct Stack<M> {
+    stack: Vec<StackValue>,
+    callbacks: Vec<Callback<M>>,
 }
 
-impl Stack {
+impl<M> Stack<M> {
     pub fn new() -> Self {
         Self {
-            stack: Vec::with_capacity(16)
+            stack: Vec::with_capacity(16),
+            callbacks: Vec::new(),
         }
+    }
+
+    #[inline(always)]
+    pub fn get_callback(&mut self) -> Option<Callback<M>> {
+        self.callbacks.pop()
+    }
+
+    #[inline(always)]
+    pub fn push_callback(&mut self, callback: Callback<M>) -> Result<(), VMError> {
+        if self.callbacks.len() >= STACK_CALLBACKS_SIZE {
+            return Err(VMError::StackOverflow);
+        }
+
+        self.callbacks.push(callback);
+        Ok(())
     }
 
     // Push a value to the stack

@@ -41,6 +41,10 @@ impl<'a> Context<'a> {
         self.max_variables_count as IdentifierType
     }
 
+    pub fn variables_count(&self) -> IdentifierType {
+        self.scopes.len() as IdentifierType
+    }
+
     // Get the variable identifier from its registered name
     pub fn get_variable_id(&self, key: &str) -> Option<IdentifierType> {
         // We go through our scopes in reverse order to get the last variable registered with the same name

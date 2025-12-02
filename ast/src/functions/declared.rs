@@ -41,10 +41,20 @@ pub struct DeclaredFunction {
     statements: Vec<Statement>,
     return_type: Option<Type>,
     variables_count: u16,
+    registers_reserved: u16,
 }
 
 impl DeclaredFunction {
-    pub fn new(visibility: FunctionVisibility, for_type: Option<Type>, instance_name: Option<IdentifierType>, parameters: Vec<Parameter>, statements: Vec<Statement>, return_type: Option<Type>, variables_count: u16) -> Self {
+    pub fn new(
+        visibility: FunctionVisibility,
+        for_type: Option<Type>,
+        instance_name: Option<IdentifierType>,
+        parameters: Vec<Parameter>,
+        statements: Vec<Statement>,
+        return_type: Option<Type>,
+        variables_count: u16,
+        registers_reserved: u16
+    ) -> Self {
         DeclaredFunction {
             visibility,
             for_type,
@@ -52,8 +62,14 @@ impl DeclaredFunction {
             parameters,
             statements,
             return_type,
-            variables_count
+            variables_count,
+            registers_reserved,
         }
+    }
+
+    #[inline]
+    pub const fn registers_reserved(&self) -> u16 {
+        self.registers_reserved
     }
 
     #[inline]

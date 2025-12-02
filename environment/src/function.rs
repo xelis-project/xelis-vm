@@ -8,6 +8,13 @@ use crate::{Context, Environment, IdentityBuildHasher, ModuleMetadata};
 
 use super::EnvironmentError;
 
+pub type CallbackState = Box<dyn std::any::Any + Send + Sync>;
+
+pub type CallbackFunction<M> = fn(
+    state: CallbackState,
+    params: FnParams,
+) -> Result<SysCallResult<M>, EnvironmentError>;
+
 // SysCall Result represent all possible actions
 // from a SysCall
 pub enum SysCallResult<M> {
@@ -38,6 +45,17 @@ pub enum SysCallResult<M> {
         // It must be a list of parameters
         // that will be passed to the chunk
         params: VecDeque<StackValue>,
+    },
+    // Execute the said function ptr and after that call the callback function
+    // Same as a dynamic call but with a callback after execution
+    ExecuteAndCallback {
+        // Should contains [id: u16, is_syscall bool, from: u16]
+        ptr: StackValue,
+        params: VecDeque<StackValue>,
+        // The state can be anything
+        state: CallbackState,
+        callback_params_len: usize,
+        callback: CallbackFunction<M>,
     }
 }
 

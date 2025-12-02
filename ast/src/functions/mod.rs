@@ -130,6 +130,16 @@ impl FunctionType {
         }
     }
 
+    // Get the reserved registers count of the function
+    #[inline(always)]
+    pub fn registers_reserved(&self) -> u16 {
+        match self {
+            FunctionType::Declared(f) => f.registers_reserved(),
+            _ => 0
+        }
+    }
+
+
     // Get the function as a declared function
     #[inline(always)]
     pub fn get_instance_name(&self) -> Option<&IdentifierType> {

@@ -2794,3 +2794,39 @@ fn test_sort() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_array_map() {
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2, 3, 4, 5, 6];
+            a.map(|x: u64| { return x * 2; });
+            assert(a == [2, 4, 6, 8, 10, 12]);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+
+#[test]
+fn test_array_map_double_depth() {
+    let code = r#"
+        entry main() {
+            let a: u64[][] = [[1, 2], [3, 4], [5, 6]];
+            a.map(|x: u64[]| {
+                x.map(|y: u64| {
+                    return y * 2;
+                });
+                return x;
+            });
+            assert(a == [[2, 4], [6, 8], [10, 12]]);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
