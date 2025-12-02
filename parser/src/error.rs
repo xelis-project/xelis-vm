@@ -16,6 +16,10 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("invalid parameter count for function '{name}'")]
+    InvalidParameterCount {
+        name: &'a str,
+    },
     #[error("division by zero")]
     DivisionByZero,
     #[error("arithmetic overflow")]

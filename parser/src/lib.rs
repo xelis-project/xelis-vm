@@ -967,8 +967,8 @@ impl<'a, M> Parser<'a, M> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_params(&mut self, context: &mut Context<'a>, expected_types: Option<Vec<Type>>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
-        trace!("read function params");
+    fn read_function_params(&mut self, context: &mut Context<'a>, name: &'a str, expected_types: Option<Vec<Type>>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
+        trace!("read function params with expected types: {:?}", expected_types);
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
         let mut parameters: Vec<Expression> = Vec::new();
@@ -977,6 +977,10 @@ impl<'a, M> Parser<'a, M> {
         if let Some(expected_types) = expected_types {
             let mut iter = expected_types.into_iter().peekable();
             while let Some(next) = iter.next() {
+                if self.peek_is(Token::ParenthesisClose) {
+                    return Err(err!(self, ParserErrorKind::InvalidParameterCount { name }))
+                }
+
                 let expr = self.read_expr(Some(&Token::Comma), None, true, true, Some(&next), context)?;
 
                 let ty = self.get_type_from_expression_internal(None, &expr, context)?
@@ -1016,7 +1020,7 @@ impl<'a, M> Parser<'a, M> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("read function call {} on type {:?}", name, on_type);
 
         let ty =  context.get_variable(name);
@@ -1042,7 +1046,7 @@ impl<'a, M> Parser<'a, M> {
                 )
         };
 
-        let (mut parameters, types) = self.read_function_params(context, types)?;
+        let (mut parameters, types) = self.read_function_params(context, name, types)?;
 
         if on_type.is_none() && path.is_none() {
             match context.get_variable(name) {
@@ -1345,7 +1349,7 @@ impl<'a, M> Parser<'a, M> {
             Ok(Expression::ForceType(Box::new(Expression::Constant(constant)), ty))
         // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
-            let (mut parameters, _) = self.read_function_params(context, None)?;
+            let (mut parameters, _) = self.read_function_params(context, constant_name, None)?;
             let mut constants = Vec::with_capacity(parameters.len());
             for param in parameters.iter_mut() {
                 let constant = self.try_convert_expr_to_value(param)?
@@ -1735,6 +1739,10 @@ impl<'a, M> Parser<'a, M> {
             }
         }
 
+        if collapse_queue.len() != 1 {
+            return Err(err!(self, ParserErrorKind::InvalidExpression))
+        }
+
         Ok(collapse_queue.remove(0))
     }
 
@@ -1764,7 +1772,7 @@ impl<'a, M> Parser<'a, M> {
         expected_type: Option<&Type>, 
         context: &mut Context<'a>
     ) -> Result<Expression, ParserError<'a>> {
-        trace!("Read expression with peek {:?} on type {:?}, expected type {:?}, operator {}", self.peek(), on_type, expected_type, accept_operator);
+        trace!("Read expression with peek {:?}, delimiter {:?} on type {:?}, expected type {:?}, operator {}", self.peek(), delimiter, on_type, expected_type, accept_operator);
         // All expressions parsed
         let mut operator_stack: Vec<Operator> = Vec::new();
         // Queued items, draining the above two vectors
@@ -1812,7 +1820,7 @@ impl<'a, M> Parser<'a, M> {
             }).is_some()
         {
             let token = self.advance()?;
-            trace!("token: {:?}", token);
+            println!("token: {:?}", token);
 
             let expr = match token {
                 Token::BracketOpen => {
