@@ -17,6 +17,7 @@ use crate::{
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
 // and import files by the user
+#[derive(Debug)]
 pub struct EnvironmentBuilder<'a, M> {
     functions_mapper: FunctionMapper<'a>,
     struct_manager: StructManager<'a>,

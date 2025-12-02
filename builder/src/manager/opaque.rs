@@ -3,6 +3,7 @@ use std::{any::TypeId, collections::HashMap};
 use xelis_types::{IdentifierType, NoHashMap, Opaque, OpaqueType};
 use crate::{BuilderError, Mapper};
 
+#[derive(Debug)]
 pub struct OpaqueManager<'a> {
     mapper: Mapper<'a, &'static str>,
     types: NoHashMap<OpaqueType>,
