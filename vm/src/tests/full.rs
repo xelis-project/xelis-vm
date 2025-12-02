@@ -2800,8 +2800,8 @@ fn test_array_map() {
     let code = r#"
         entry main() {
             let a: u64[] = [1, 2, 3, 4, 5, 6];
-            a.map(|x: u64| { return x * 2; });
-            assert(a == [2, 4, 6, 8, 10, 12]);
+            let b: u64[] = a.map(|x: u64| { return x * 2; });
+            assert(b == [2, 4, 6, 8, 10, 12]);
 
             return 0
         }
@@ -2816,13 +2816,59 @@ fn test_array_map_double_depth() {
     let code = r#"
         entry main() {
             let a: u64[][] = [[1, 2], [3, 4], [5, 6]];
-            a.map(|x: u64[]| {
-                x.map(|y: u64| {
+            let b: u64[][] = a.map(|x: u64[]| {
+                return x.map(|y: u64| {
                     return y * 2;
                 });
-                return x;
             });
-            assert(a == [[2, 4], [6, 8], [10, 12]]);
+            assert(b == [[2, 4], [6, 8], [10, 12]]);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_array_map_double_depth_with_context_var() {
+    let code = r#"
+        entry main() {
+            let a: u64[][] = [[1, 2], [3, 4], [5, 6]];
+            let b: u64 = 1;
+            let b: u64[][] = a.map(|x: u64[]| {
+                let c: u64 = b + 1;
+                return x.map(|y: u64| {
+                    b *= 2;
+                    return y * (c + b);
+                });
+            });
+            println(b);
+            assert(b == [[4, 12], [39, 84], [245, 486]]);
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_array_sort_by_key() {
+    let code = r#"
+        struct Foo {
+            value: u64
+        }
+
+        entry main() {
+            let a: Foo[] = [Foo { value: 5 }, Foo { value: 3 }, Foo { value: 8 }, Foo { value: 1 }, Foo { value: 2 }];
+            a.sort_by_key(|x: Foo| { return x.value; }, true);
+
+            assert(a[0].value == 1);
+            assert(a[1].value == 2);
+            assert(a[2].value == 3);
+            assert(a[3].value == 5);
+            assert(a[4].value == 8);
 
             return 0
         }

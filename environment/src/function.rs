@@ -51,10 +51,13 @@ pub enum SysCallResult<M> {
     ExecuteAndCallback {
         // Should contains [id: u16, is_syscall bool, from: u16]
         ptr: StackValue,
+        // Stack params for the above ptr call
         params: VecDeque<StackValue>,
         // The state can be anything
         state: CallbackState,
+        // Count of required parameters for the callback
         callback_params_len: usize,
+        // The callback function to call after execution
         callback: CallbackFunction<M>,
     }
 }

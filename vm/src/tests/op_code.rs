@@ -867,9 +867,15 @@ fn test_array_self_reference_with_pointer_sharing() {
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(module.add_constant(Primitive::String("not equal to 999".to_string())) as u16);
 
+    let environment = EnvironmentBuilder::<()>::default();
+
+    let id = environment.get_functions_mapper()
+        .get_by_signature("require", None)
+        .expect("require function");
+
     // require function
     chunk.emit_opcode(OpCode::SysCall);
-    chunk.write_u16(303);
+    chunk.write_u16(id);
 
     // return true
     chunk.emit_opcode(OpCode::Constant);
@@ -878,5 +884,5 @@ fn test_array_self_reference_with_pointer_sharing() {
 
     module.add_entry_chunk(chunk);
 
-    assert_eq!(run(module), Primitive::Boolean(true));
+    assert_eq!(run_internal(module, environment.environment(), 0).unwrap(), Primitive::Boolean(true));
 }

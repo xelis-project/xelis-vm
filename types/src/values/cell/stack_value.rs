@@ -306,3 +306,12 @@ impl DerefMut for StackValue {
         self.as_mut()
     }
 }
+
+impl Into<ValuePointer> for StackValue {
+    fn into(self) -> ValuePointer {
+        match self {
+            StackValue::Owned(v) => ValuePointer::new(v),
+            StackValue::Pointer { ptr, .. } => ptr,
+        }
+    }
+}

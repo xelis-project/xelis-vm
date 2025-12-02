@@ -1,4 +1,4 @@
-use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, ValueCell};
+use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
 use xelis_environment::{CallbackState, Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use super::EnvironmentBuilder;
 use paste::paste;
@@ -82,6 +82,23 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         ],
         FunctionHandler::Sync(map),
         10,
+        Some(Type::Array(Box::new(Type::Any))),
+    );
+
+    // O(n) to build key cache + sort by key implementation
+    // Only support integer types
+    env.register_native_function(
+        "sort_by_key",
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+        vec![
+            ("key_fn", Type::Closure(ClosureType::new(
+                vec![Type::T(Some(0))],
+                Some(Type::Any)
+            ))),
+            ("ascending", Type::Bool),
+        ],
+        FunctionHandler::Sync(sort_by_key),
+        30,
         None,
     );
 
@@ -411,6 +428,7 @@ pub struct MapState {
     closure_ptr: StackValue,
     index: usize,
     ptr: StackValue,
+    tmp: StackValue,
 }
 
 fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
@@ -424,10 +442,10 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
     context.increase_gas_usage(len as u64 * 10)?;
 
     let Some(first) = vec.first().cloned() else {
-        return Ok(SysCallResult::None)
+        return Ok(SysCallResult::Return(zelf))
     };
 
-    fn sort_by_key_callback<M>(
+    fn map_callback<M>(
         state: CallbackState,
         params: FnParams,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
@@ -440,26 +458,25 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             .ok_or(EnvironmentError::InvalidCallbackParameters)?
             .clone();
 
-        let zelf = state.ptr
+        let tmp = state.tmp
             .as_mut_vec()?;
-        let len = zelf.len();
-
-        let at_index = zelf.get_mut(state.index)
-            .ok_or(EnvironmentError::OutOfBounds(state.index, len))?;
-
-        *at_index = key.into_owned().into();
+        tmp.push(key.into_owned().into());
 
         state.index += 1;
-        let Some(next) = zelf.get(state.index).cloned() else {
-            return Ok(SysCallResult::None)
-        };
+
+        let Some(next) = state.ptr
+            .as_mut_vec()?
+            .get(state.index)
+            .cloned() else {
+                return Ok(SysCallResult::Return(state.tmp))
+            };
 
         Ok(SysCallResult::ExecuteAndCallback {
             ptr: state.closure_ptr.clone(),
             params: vec![next.into()].into(),
             state,
             callback_params_len: 1,
-            callback: sort_by_key_callback,
+            callback: map_callback,
         })
     }
 
@@ -470,6 +487,173 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             closure_ptr: key_fn,
             index: 0,
             ptr: zelf.into(),
+            tmp: ValueCell::Object(Vec::new()).into(),
+        }),
+        callback_params_len: 1,
+        callback: map_callback,
+    })
+}
+
+struct SortByKeyState {
+    closure_ptr: StackValue,
+    index: usize,
+    // actual array
+    ptr: StackValue,
+    // current cache being built
+    // index of original element and its mapped key
+    cache: Vec<(usize, OrdKey)>,
+    // Force the key type
+    kind: Option<OrdKeyKind>,
+    // ascending or descending
+    ascending: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum OrdKey {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    U128(u128),
+    U256(U256),
+}
+
+impl OrdKey {
+    #[inline]
+    const fn kind(&self) -> OrdKeyKind {
+        match self {
+            OrdKey::U8(_) => OrdKeyKind::U8,
+            OrdKey::U16(_) => OrdKeyKind::U16,
+            OrdKey::U32(_) => OrdKeyKind::U32,
+            OrdKey::U64(_) => OrdKeyKind::U64,
+            OrdKey::U128(_) => OrdKeyKind::U128,
+            OrdKey::U256(_) => OrdKeyKind::U256,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OrdKeyKind {
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    U256,
+}
+
+fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+    let ascending = parameters.remove(1).as_bool()?;
+    let key_fn = parameters.remove(0);
+    let mut zelf = zelf?;
+
+    // First we need to prepare a state with all the mapped keys
+    let vec = zelf.as_mut().as_mut_vec()?;
+
+    let len = vec.len() as u64;
+    context.increase_gas_usage((len * len) * 15)?;
+
+    let Some(first) = vec.first().cloned() else {
+        return Ok(SysCallResult::None)
+    };
+
+    fn sort_by_key_callback<M>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut state = state
+            .downcast::<SortByKeyState>()
+            .map_err(|_| EnvironmentError::InvalidCallbackState)?;
+
+        let key = params
+            .get(0)
+            .ok_or(EnvironmentError::InvalidCallbackParameters)?
+            .clone();
+
+        let mapped_key = match key.into_owned().into_value()? {
+            Primitive::U8(v) => OrdKey::U8(v),
+            Primitive::U16(v) => OrdKey::U16(v),
+            Primitive::U32(v) => OrdKey::U32(v),
+            Primitive::U64(v) => OrdKey::U64(v),
+            Primitive::U128(v) => OrdKey::U128(v),
+            Primitive::U256(v) => OrdKey::U256(v),
+            _ => {
+                return Err(EnvironmentError::Static("sort_by_key only supports primitive types that implement Ord"))
+            }
+        };
+
+        let kind = mapped_key.kind();
+        match state.kind {
+            Some(existing_kind) => {
+                if existing_kind != kind {
+                    return Err(EnvironmentError::Static("sort_by_key require that all keys must be of the same type"))
+                }
+            },
+            None => {
+                state.kind = Some(kind);
+            }
+        }
+
+        state.cache.push((state.index, mapped_key));
+        state.index += 1;
+
+        let next = state.ptr
+            .as_mut_vec()?
+            .get(state.index)
+            .cloned();
+        match next {
+            Some(next) => {
+                Ok(SysCallResult::ExecuteAndCallback {
+                    ptr: state.closure_ptr.clone(),
+                    params: vec![next.into()].into(),
+                    state,
+                    callback_params_len: 1,
+                    callback: sort_by_key_callback,
+                })
+            },
+            None => {
+                // Cache is built, now we can sort the array based on it
+                let array = state.ptr
+                    .as_mut_vec()?;
+
+                let mut keys = state.cache;
+
+                if keys.len() != array.len() {
+                    return Err(EnvironmentError::Static("SortByKeyState keys and array length mismatch"))
+                }
+
+                if state.ascending {
+                    keys.sort_by(|a, b| a.1.cmp(&b.1));
+                } else {
+                    keys.sort_by(|a, b| b.1.cmp(&a.1));
+                }
+
+                // Now, we need to reorder the original array based on the sorted keys
+                let original_array = array.clone();
+                for (new_index, (original_index, _)) in keys.into_iter().enumerate() {
+                    let value = original_array
+                        .get(original_index)
+                        .cloned()
+                        .ok_or(EnvironmentError::OutOfBounds(original_index, array.len()))?;
+
+                    array[new_index] = value;
+                }
+
+                Ok(SysCallResult::None)
+            }
+        }
+    }
+
+    Ok(SysCallResult::ExecuteAndCallback {
+        ptr: key_fn.clone(),
+        params: vec![first.into()].into(),
+        state: Box::new(SortByKeyState {
+            closure_ptr: key_fn,
+            index: 0,
+            ptr: zelf.into(),
+            cache: Vec::new(),
+            kind: None,
+            ascending,
         }),
         callback_params_len: 1,
         callback: sort_by_key_callback,
