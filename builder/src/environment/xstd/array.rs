@@ -56,7 +56,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function(
         "sort",
         Some(Type::Array(Box::new(Type::T(Some(0))))),
-        vec![],
+        vec![("ascending", Type::Bool)],
         FunctionHandler::Sync(sort),
         20,
         None,
@@ -391,22 +391,34 @@ fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(SysCallResult::None)
 }
 
-fn sort<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
     let mut zelf = zelf?;
+
+    let ascending = params[0].as_bool()?;
     let vec = zelf.as_mut().as_mut_vec()?;
 
     // Simple bubble sort implementation
     let len = vec.len();
     context.increase_gas_usage((len * len) as u64)?;
 
-    for i in 0..len {
-        for j in 0..(len - i - 1) {
-            let a = vec[j].as_ref();
-            let b = vec[j + 1].as_ref();
-            if a.as_value()? > b.as_value()? {
-                vec.swap(j, j + 1);
-            }
-        }
+    // use the OrdKey enum to compare values
+    let mut keys = Vec::with_capacity(len);
+    for (i, v) in vec.iter().enumerate() {
+        let key = OrdKey::from_primitive(
+            v.as_ref().as_value()?.clone()
+        )?;
+        keys.push((i, key));
+    }
+
+    if ascending {
+        keys.sort_by(|a, b| a.1.cmp(&b.1));
+    } else {
+        keys.sort_by(|a, b| b.1.cmp(&a.1));
+    }
+
+    let cloned = vec.clone();
+    for (new_index, (original_index, _)) in keys.into_iter().enumerate() {
+        vec[new_index] = cloned[original_index].clone();
     }
 
     Ok(SysCallResult::None)
@@ -530,6 +542,18 @@ impl OrdKey {
             OrdKey::U256(_) => OrdKeyKind::U256,
         }
     }
+
+    fn from_primitive(p: Primitive) -> Result<Self, EnvironmentError> {
+        match p {
+            Primitive::U8(v) => Ok(OrdKey::U8(v)),
+            Primitive::U16(v) => Ok(OrdKey::U16(v)),
+            Primitive::U32(v) => Ok(OrdKey::U32(v)),
+            Primitive::U64(v) => Ok(OrdKey::U64(v)),
+            Primitive::U128(v) => Ok(OrdKey::U128(v)),
+            Primitive::U256(v) => Ok(OrdKey::U256(v)),
+            _ => Err(EnvironmentError::Static("only supports primitive types that implement Ord")),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -570,17 +594,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
             .ok_or(EnvironmentError::InvalidCallbackParameters)?
             .clone();
 
-        let mapped_key = match key.into_owned().into_value()? {
-            Primitive::U8(v) => OrdKey::U8(v),
-            Primitive::U16(v) => OrdKey::U16(v),
-            Primitive::U32(v) => OrdKey::U32(v),
-            Primitive::U64(v) => OrdKey::U64(v),
-            Primitive::U128(v) => OrdKey::U128(v),
-            Primitive::U256(v) => OrdKey::U256(v),
-            _ => {
-                return Err(EnvironmentError::Static("sort_by_key only supports primitive types that implement Ord"))
-            }
-        };
+        let mapped_key = OrdKey::from_primitive(key.into_owned().into_value()?)?;
 
         let kind = mapped_key.kind();
         match state.kind {
@@ -631,12 +645,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
                 // Now, we need to reorder the original array based on the sorted keys
                 let original_array = array.clone();
                 for (new_index, (original_index, _)) in keys.into_iter().enumerate() {
-                    let value = original_array
-                        .get(original_index)
-                        .cloned()
-                        .ok_or(EnvironmentError::OutOfBounds(original_index, array.len()))?;
-
-                    array[new_index] = value;
+                    array[new_index] = original_array[original_index].clone();
                 }
 
                 Ok(SysCallResult::None)

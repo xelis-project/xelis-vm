@@ -2782,7 +2782,7 @@ fn test_sort() {
     let code = r#"
         entry main() {
             let a: u64[] = [5, 3, 8, 1, 2];
-            a.sort();
+            a.sort(true);
             assert(a == [1, 2, 3, 5, 8]);
 
             a.reverse();
