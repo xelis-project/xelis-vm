@@ -397,16 +397,20 @@ fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, contex
     let ascending = params[0].as_bool()?;
     let vec = zelf.as_mut().as_mut_vec()?;
 
-    // Simple bubble sort implementation
-    let len = vec.len();
-    context.increase_gas_usage((len * len) as u64)?;
+    if vec.is_empty() {
+        return Ok(SysCallResult::None)
+    }
+
+    // Len cannot be zero as we checked for first above
+    let len = vec.len() as u64;
+    // n × (log₂n + 5) without float
+    let log2n = len.ilog2() as u64;
+    context.increase_gas_usage(len * (log2n + 5))?;
 
     // use the OrdKey enum to compare values
-    let mut keys = Vec::with_capacity(len);
+    let mut keys = Vec::with_capacity(vec.len());
     for (i, v) in vec.iter().enumerate() {
-        let key = OrdKey::from_primitive(
-            v.as_ref().as_value()?.clone()
-        )?;
+        let key = OrdKey::from_value(v.to_owned())?;
         keys.push((i, key));
     }
 
@@ -528,6 +532,7 @@ enum OrdKey {
     U64(u64),
     U128(u128),
     U256(U256),
+    Bytes(Vec<u8>),
 }
 
 impl OrdKey {
@@ -540,17 +545,19 @@ impl OrdKey {
             OrdKey::U64(_) => OrdKeyKind::U64,
             OrdKey::U128(_) => OrdKeyKind::U128,
             OrdKey::U256(_) => OrdKeyKind::U256,
+            OrdKey::Bytes(_) => OrdKeyKind::Bytes,
         }
     }
 
-    fn from_primitive(p: Primitive) -> Result<Self, EnvironmentError> {
+    fn from_value(p: ValueCell) -> Result<Self, EnvironmentError> {
         match p {
-            Primitive::U8(v) => Ok(OrdKey::U8(v)),
-            Primitive::U16(v) => Ok(OrdKey::U16(v)),
-            Primitive::U32(v) => Ok(OrdKey::U32(v)),
-            Primitive::U64(v) => Ok(OrdKey::U64(v)),
-            Primitive::U128(v) => Ok(OrdKey::U128(v)),
-            Primitive::U256(v) => Ok(OrdKey::U256(v)),
+            ValueCell::Primitive(Primitive::U8(v)) => Ok(OrdKey::U8(v)),
+            ValueCell::Primitive(Primitive::U16(v)) => Ok(OrdKey::U16(v)),
+            ValueCell::Primitive(Primitive::U32(v)) => Ok(OrdKey::U32(v)),
+            ValueCell::Primitive(Primitive::U64(v)) => Ok(OrdKey::U64(v)),
+            ValueCell::Primitive(Primitive::U128(v)) => Ok(OrdKey::U128(v)),
+            ValueCell::Primitive(Primitive::U256(v)) => Ok(OrdKey::U256(v)),
+            ValueCell::Bytes(v) => Ok(OrdKey::Bytes(v)),
             _ => Err(EnvironmentError::Static("only supports primitive types that implement Ord")),
         }
     }
@@ -564,6 +571,7 @@ enum OrdKeyKind {
     U64,
     U128,
     U256,
+    Bytes,
 }
 
 fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
@@ -574,12 +582,15 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     // First we need to prepare a state with all the mapped keys
     let vec = zelf.as_mut().as_mut_vec()?;
 
-    let len = vec.len() as u64;
-    context.increase_gas_usage((len * len) * 15)?;
-
     let Some(first) = vec.first().cloned() else {
         return Ok(SysCallResult::None)
     };
+
+    // Len cannot be zero as we checked for first above
+    let len = vec.len() as u64;
+    // n × (log₂n + 5) without float
+    let log2n = len.ilog2() as u64;
+    context.increase_gas_usage(len * (log2n + 5))?;
 
     fn sort_by_key_callback<M>(
         state: CallbackState,
@@ -594,7 +605,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
             .ok_or(EnvironmentError::InvalidCallbackParameters)?
             .clone();
 
-        let mapped_key = OrdKey::from_primitive(key.into_owned().into_value()?)?;
+        let mapped_key = OrdKey::from_value(key.into_owned())?;
 
         let kind = mapped_key.kind();
         match state.kind {
@@ -667,4 +678,24 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
         callback_params_len: 1,
         callback: sort_by_key_callback,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_ord_key_ordering() {
+        use super::OrdKey;
+
+        let key1 = OrdKey::U32(10);
+        let key2 = OrdKey::U32(20);
+        let key3 = OrdKey::U64(10);
+
+        assert!(key1 < key2);
+        assert!(key2 > key1);
+        assert!(key1 != key3);
+
+        let key4 = OrdKey::Bytes(vec![1, 2, 3]);
+        let key5 = OrdKey::Bytes(vec![1, 2, 4]);
+        assert!(key4 < key5);
+    }
 }
