@@ -965,7 +965,7 @@ impl<'a, M> Parser<'a, M> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_params(&mut self, context: &mut Context<'a>, name: &'a str, expected_types: Option<Vec<Type>>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
+    fn read_function_params(&mut self, context: &mut Context<'a>, name: &'a str, on_type: Option<&Type>, expected_types: Option<Vec<Type>>) -> Result<(Vec<Expression>, Vec<Option<Type>>), ParserError<'a>> {
         trace!("read function params with expected types: {:?}", expected_types);
         // we remove the token from the list
         self.expect_token(Token::ParenthesisOpen)?;
@@ -997,7 +997,7 @@ impl<'a, M> Parser<'a, M> {
             }
         } else {
             while self.peek_is_not(Token::ParenthesisClose) {
-                let expr = self.read_expression_delimited(&Token::Comma, context)?;
+                let expr = self.read_expr(Some(&Token::Comma), on_type, true, true, None, context)?;
                 // We are forced to clone the type because we can't borrow it from the expression
                 // I prefer to do this than doing an iteration below
                 let t = self.get_type_from_expression_internal(None, &expr, context)?
@@ -1018,8 +1018,8 @@ impl<'a, M> Parser<'a, M> {
 
     // Read a function call with the following syntax:
     // function_name(param1, param2, ...)
-    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
-        trace!("read function call {} on type {:?}", name, on_type);
+    fn read_function_call(&mut self, path: Option<Expression>, instance: bool, on_type: Option<&Type>, expected_type: Option<&Type>, name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read function call {} on type {:?} and expecting type {:?}", name, on_type, expected_type);
 
         let ty =  context.get_variable(name);
         let types = if let Some((_, Type::Function(ty))) = ty {
@@ -1044,7 +1044,7 @@ impl<'a, M> Parser<'a, M> {
                 )
         };
 
-        let (mut parameters, types) = self.read_function_params(context, name, types)?;
+        let (mut parameters, types) = self.read_function_params(context, name, on_type, types)?;
 
         if on_type.is_none() && path.is_none() {
             match context.get_variable(name) {
@@ -1056,7 +1056,15 @@ impl<'a, M> Parser<'a, M> {
                         return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                     }
 
-                    return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+                    let mut return_type = ty.return_type()
+                        .as_ref()
+                        .map(|v| v.map_generic_type(on_type));
+
+                    if expected_type.is_some() && return_type.as_ref().is_some_and(|ty| ty.get_inner_type().is_any()) {
+                        return_type = return_type.map(|v| v.map_generic_type(on_type));
+                    }
+
+                    return Ok(Expression::DynamicCall(id, parameters, return_type))
                 },
                 Some((id, Type::Function(ty))) => {
                     if !self.global_mapper
@@ -1066,7 +1074,15 @@ impl<'a, M> Parser<'a, M> {
                         return Err(err!(self, ParserErrorKind::IncompatibleClosureParams))
                     }
 
-                    return Ok(Expression::DynamicCall(id, parameters, ty.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+                    let mut return_type = ty.return_type()
+                        .as_ref()
+                        .map(|v| v.map_generic_type(on_type));
+
+                    if expected_type.is_some() && return_type.as_ref().is_some_and(|ty| ty.get_inner_type().is_any()) {
+                        return_type = return_type.map(|v| v.map_generic_type(on_type));
+                    }
+
+                    return Ok(Expression::DynamicCall(id, parameters, return_type))
                 },
                 _ => {}
             }
@@ -1086,7 +1102,15 @@ impl<'a, M> Parser<'a, M> {
             return Err(err!(self, ParserErrorKind::FunctionIsNotCallable))
         }
 
-        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters, f.return_type().as_ref().map(|v| v.map_generic_type(on_type))))
+        let mut return_type = f.return_type()
+            .as_ref()
+            .map(|v| v.map_generic_type(on_type));
+
+        if expected_type.is_some() && return_type.as_ref().is_some_and(|ty| ty.get_inner_type().is_any()) {
+            return_type = return_type.map(|v| v.map_generic_type(on_type));
+        }
+
+        Ok(Expression::FunctionCall(path.map(Box::new), id, parameters, return_type))
     }
 
     // Read fields of a constructor with the following syntax:
@@ -1347,7 +1371,7 @@ impl<'a, M> Parser<'a, M> {
             Ok(Expression::ForceType(Box::new(Expression::Constant(constant)), ty))
         // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
-            let (mut parameters, _) = self.read_function_params(context, constant_name, None)?;
+            let (mut parameters, _) = self.read_function_params(context, constant_name, Some(&_type), None)?;
             let mut constants = Vec::with_capacity(parameters.len());
             for param in parameters.iter_mut() {
                 let constant = self.try_convert_expr_to_value(param)?
@@ -1360,7 +1384,7 @@ impl<'a, M> Parser<'a, M> {
                 .map_err(|e| err!(self, e.into()))
         } else if self.peek_is(Token::ParenthesisOpen) {
             // Try to read a static (on type) function call from it
-            self.read_function_call(None, false, Some(&_type), constant_name, context)
+            self.read_function_call(None, false, Some(&_type), None,  constant_name, context)
         // If its a enum, it may be a variant constructor
         } else if let Ok(id) = self.global_mapper.functions().get_by_signature(constant_name, Some(&_type)) {
             // Read a function pointer
@@ -1818,7 +1842,7 @@ impl<'a, M> Parser<'a, M> {
             }).is_some()
         {
             let token = self.advance()?;
-            println!("token: {:?}", token);
+            trace!("token: {:?}", token);
 
             let expr = match token {
                 Token::BracketOpen => {
@@ -1954,7 +1978,7 @@ impl<'a, M> Parser<'a, M> {
                                 None | Some(QueueItem::Separator) => None,
                                 _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                             };
-                            self.read_function_call(prev_expr, on_type.is_some(), on_type, id, context)?
+                            self.read_function_call(prev_expr, on_type.is_some(), on_type, expected_type, id, context)?
                         },
                         // Range creation
                         Ok(Token::Dot) if matches!(self.peek_n(1), Ok(Token::Dot)) => {
@@ -1975,7 +1999,7 @@ impl<'a, M> Parser<'a, M> {
                             }
 
                             Expression::RangeConstructor(Box::new(start_expr), Box::new(end_expr))
-                        }
+                        },
                         Ok(Token::Colon) if matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
                         _ => {
                             match on_type {
@@ -1997,7 +2021,11 @@ impl<'a, M> Parser<'a, M> {
 
                                         Expression::Variable(id)
                                     },
-                                    _ => return Err(err!(self, ParserErrorKind::UnexpectedType(t.clone())))
+                                    _ => {
+                                        context.get_variable_id(id)
+                                            .map(Expression::Variable)
+                                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(t.clone())))?
+                                    }
                                 },
                                 None => {
                                     if let Some(num_id) = context.get_variable_id(id) {
@@ -2065,7 +2093,7 @@ impl<'a, M> Parser<'a, M> {
                 Token::Dot => {
                     match queue.pop() {
                         Some(QueueItem::Expression(value)) => {
-                            let _type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
+                            let prev_type = self.get_type_from_expression(on_type, &value, context)?.into_owned();
                             // If we have .. that is mostly a range
 
                             // because we read operator DOT + right expression
@@ -2074,20 +2102,20 @@ impl<'a, M> Parser<'a, M> {
                             // Read a range
                             if self.peek_is(Token::Dot) {
                                 self.expect_token(Token::Dot)?;
-                                let end_expr = self.read_expr(delimiter, None, false, false, expected_type, context)?;
+                                let end_expr = self.read_expr(delimiter, Some(&prev_type), false, false, expected_type, context)?;
                                 let end_type = self.get_type_from_expression(on_type, &end_expr, context)?;
-                                if _type != *end_type {
-                                    return Err(err!(self, ParserErrorKind::InvalidRangeType(_type, end_type.into_owned())))
+                                if prev_type != *end_type {
+                                    return Err(err!(self, ParserErrorKind::InvalidRangeType(prev_type, end_type.into_owned())))
                                 }
 
-                                if !_type.is_primitive() {
-                                    return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(_type)))
+                                if !prev_type.is_primitive() {
+                                    return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(prev_type)))
                                 }
 
                                 Expression::RangeConstructor(Box::new(value), Box::new(end_expr))
                             } else {
                                 // Read a variable access OR a function call
-                                let right_expr = self.read_expr(delimiter, Some(&_type), false, false, expected_type, context)?;
+                                let right_expr = self.read_expr(delimiter, Some(&prev_type), false, false, expected_type, context)?;
                                 if let Expression::FunctionCall(path, name, params, ty) = right_expr {
                                     if path.is_some() {
                                         return Err(err!(self, ParserErrorKind::UnexpectedPathInFunctionCall))
@@ -2184,7 +2212,9 @@ impl<'a, M> Parser<'a, M> {
                 Token::BraceOpen => {
                     let (key, value) = if let Some(Type::Map(key, value)) = expected_type {
                         (Some(*key.clone()), Some(*value.clone()))
-                    } else {
+                    } else if let Some(Type::Map(key, value)) = on_type {
+                        (Some(*key.clone()), Some(*value.clone()))
+                    }else {
                         // If its an assignation
                         // variable path is on first
                         match queue.first() {
@@ -2207,7 +2237,7 @@ impl<'a, M> Parser<'a, M> {
                             None | Some(QueueItem::Separator) => None,
                             _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
                         };
-                        self.read_function_call(prev_expr, on_type.is_some(), on_type, "map", context)?
+                        self.read_function_call(prev_expr, on_type.is_some(), on_type, expected_type, "map", context)?
                     } else if token.is_type() {
                         self.read_type_constant(token, context)?
                     } else if let Some(Type::Closure(ty)) = expected_type {
@@ -2428,7 +2458,7 @@ impl<'a, M> Parser<'a, M> {
 
         let (key, value) = match (key_type, value_type) {
             (Some(k), Some(v)) => (k, v),
-            _ => return Err(err!(self, ParserErrorKind::NoValueType))
+            _ => (Type::Any, Type::Any)
         };
 
         self.expect_token(Token::BraceClose)?;
@@ -5291,7 +5321,6 @@ mod tests {
         let statements = test_parser_statement(tokens, Vec::new());
         assert_eq!(statements.len(), 1);
 
-        println!("{:#?}", &statements[0]);
         assert!(matches!(
             &statements[0],
             Statement::Variable(DeclarationStatement {
@@ -5385,5 +5414,44 @@ mod tests {
             )
         );
         assert_eq!(statements[0], statement);
+    }
+
+    #[test]
+    fn test_optional_unwrap_or() {
+        // let a: map<string, string> = foo().unwrap_or({});
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::String,
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Identifier("foo"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::Dot,
+            Token::Identifier("unwrap_or"),
+            Token::ParenthesisOpen,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::ParenthesisClose
+        ];
+
+        let mut env = EnvironmentBuilder::<()>::default();
+        env.register_native_function(
+            "foo",
+            None,
+            vec![],
+            FunctionHandler::Sync(|_, _, _, _| todo!()),
+            0,
+            Some(Type::Optional(Box::new(Type::Any)))
+        );
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }
