@@ -132,12 +132,17 @@ impl<'ty, 'r> Context<'ty, 'r> {
     // Increase the gas usage by a specific amount
     #[inline]
     pub fn increase_gas_usage(&mut self, gas: u64) -> Result<(), EnvironmentError> {
-        self.current_gas = self.current_gas.checked_add(gas)
+        let new_gas = self.current_gas.checked_add(gas)
             .ok_or(EnvironmentError::GasOverflow)?;
 
-        if self.current_gas > self.max_gas {
-            return Err(EnvironmentError::NotEnoughGas { limit: self.max_gas, actual: self.current_gas });
+        if new_gas > self.max_gas {
+            // used gas exceeds limit
+            // cap it to the max_gas value
+            self.current_gas = self.max_gas;
+            return Err(EnvironmentError::NotEnoughGas { limit: self.max_gas, actual: new_gas });
         }
+
+        self.current_gas = new_gas;
 
         Ok(())
     }
