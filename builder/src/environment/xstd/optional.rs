@@ -21,8 +21,8 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_some), 1, Some(Type::Bool));
     env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(unwrap), 1, Some(Type::T(Some(0))));
     env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], FunctionHandler::Sync(unwrap_or), 1, Some(Type::T(Some(0))));
-    env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("msg", Type::String)], FunctionHandler::Sync(expect), 1, Some(Type::T(Some(0))));
-    env.register_native_function("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))));
+    env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("message", Type::String)], FunctionHandler::Sync(expect), 1, Some(Type::T(Some(0))));
+    env.register_native_function("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))));
 }
 
 fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {

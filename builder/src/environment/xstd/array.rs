@@ -27,15 +27,15 @@ macro_rules! array_number_with_size {
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("len", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32));
-    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(push), 2, None);
+    env.register_native_function("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(push), 2, None);
     env.register_native_function("remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(remove), 5, Some(Type::T(Some(0))));
     env.register_native_function("swap_remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(swap_remove), 8, Some(Type::T(Some(0))));
-    env.register_native_function("insert", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32), ("value", Type::T(Some(0)))], FunctionHandler::Sync(insert), 5, None);
-    env.register_native_function("index_of", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(index_of), 5, Some(Type::Optional(Box::new(Type::U32))));
+    env.register_native_function("insert", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32), ("element", Type::T(Some(0)))], FunctionHandler::Sync(insert), 5, None);
+    env.register_native_function("index_of", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(index_of), 5, Some(Type::Optional(Box::new(Type::U32))));
 
     env.register_native_function("pop", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(pop), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))));
     env.register_native_function("slice", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("range", Type::Range(Box::new(Type::U32)))], FunctionHandler::Sync(slice), 5, Some(Type::Array(Box::new(Type::T(Some(0))))));
-    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(contains), 10, Some(Type::Bool));
+    env.register_native_function("contains", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(contains), 10, Some(Type::Bool));
     env.register_native_function("get", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], FunctionHandler::Sync(get), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))));
     env.register_native_function("first", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(first), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))));
     env.register_native_function("last", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(last), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))));

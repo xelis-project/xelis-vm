@@ -32,12 +32,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     map::register(env);
     math::register(env);
 
-    env.register_native_function("println", None, vec![("value", Type::Any)], FunctionHandler::Sync(println), 1, None);
-    env.register_native_function("debug", None, vec![("value", Type::Any)], FunctionHandler::Sync(debug), 1, None);
-    env.register_native_function("panic", None, vec![("value", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any));
-    env.register_native_function("assert", None, vec![("value", Type::Bool)], FunctionHandler::Sync(assert), 1, None);
+    env.register_native_function("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None);
+    env.register_native_function("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None);
+    env.register_native_function("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any));
+    env.register_native_function("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None);
     env.register_native_function("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool));
-    env.register_native_function("require", None, vec![("condition", Type::Bool), ("msg", Type::String)], FunctionHandler::Sync(require), 1, None);
+    env.register_native_function("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None);
     env.register_native_function("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)));
 }
 

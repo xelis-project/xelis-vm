@@ -7,11 +7,11 @@ use crate::EnvironmentBuilder;
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // Bytes
     env.register_native_function("len", Some(Type::Bytes), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32));
-    env.register_native_function("push", Some(Type::Bytes), vec![("value", Type::U8)], FunctionHandler::Sync(push), 2, None);
+    env.register_native_function("push", Some(Type::Bytes), vec![("byte", Type::U8)], FunctionHandler::Sync(push), 2, None);
     env.register_native_function("remove", Some(Type::Bytes), vec![("index", Type::U32)], FunctionHandler::Sync(remove), 5, Some(Type::U8));
     env.register_native_function("pop", Some(Type::Bytes), vec![], FunctionHandler::Sync(pop), 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("slice", Some(Type::Bytes), vec![("range", Type::Range(Box::new(Type::U32)))], FunctionHandler::Sync(slice), 5, Some(Type::Bytes));
-    env.register_native_function("contains", Some(Type::Bytes), vec![("value", Type::U8)], FunctionHandler::Sync(contains), 10, Some(Type::Bool));
+    env.register_native_function("contains", Some(Type::Bytes), vec![("byte", Type::U8)], FunctionHandler::Sync(contains), 10, Some(Type::Bool));
     env.register_native_function("get", Some(Type::Bytes), vec![("index", Type::U32)], FunctionHandler::Sync(get), 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("first", Some(Type::Bytes), vec![], FunctionHandler::Sync(first), 1, Some(Type::Optional(Box::new(Type::U8))));
     env.register_native_function("last", Some(Type::Bytes), vec![], FunctionHandler::Sync(last), 1, Some(Type::Optional(Box::new(Type::U8))));
@@ -21,7 +21,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("truncate", Some(Type::Bytes), vec![("size", Type::U32)], FunctionHandler::Sync(truncate), 5, None);
 
     env.register_native_function("to_hex", Some(Type::Bytes), vec![], FunctionHandler::Sync(to_hex), 1, Some(Type::String));
-    env.register_static_function("from_hex", Type::Bytes, vec![("value", Type::String)], FunctionHandler::Sync(from_hex), 1, Some(Type::Bytes));
+    env.register_static_function("from_hex", Type::Bytes, vec![("hex_string", Type::String)], FunctionHandler::Sync(from_hex), 1, Some(Type::Bytes));
 
     env.register_const_function("new", Type::Bytes, vec![], |_| Ok(Constant::Bytes(Vec::new())));
     env.register_const_function("from", Type::Bytes, vec![("values", Type::Array(Box::new(Type::U8)))], |values| {

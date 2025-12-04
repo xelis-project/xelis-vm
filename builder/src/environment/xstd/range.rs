@@ -59,7 +59,7 @@ macro_rules! count {
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let _type = Type::Range(Box::new(Type::T(Some(0))));
-    env.register_native_function("contains", Some(_type.clone()), vec![("value", Type::T(Some(0)))], FunctionHandler::Sync(contains), 5, Some(Type::Bool));
+    env.register_native_function("contains", Some(_type.clone()), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(contains), 5, Some(Type::Bool));
     env.register_native_function("collect", Some(_type.clone()), vec![], FunctionHandler::Sync(collect), 20, Some(Type::Array(Box::new(Type::T(Some(0))))));
     env.register_native_function("max", Some(_type.clone()), vec![], FunctionHandler::Sync(max), 1, Some(Type::T(Some(0))));
     env.register_native_function("min", Some(_type.clone()), vec![], FunctionHandler::Sync(min), 1, Some(Type::T(Some(0))));
