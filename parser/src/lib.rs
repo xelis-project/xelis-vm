@@ -407,9 +407,10 @@ impl<'a, M> Parser<'a, M> {
     // Limited to 32 characters
     #[inline(always)]
     fn next_identifier(&mut self) -> Result<&'a str, ParserError<'a>> {
-        match self.advance()? {
-            Token::Identifier(id) => Ok(id),
-            token => Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(token)))
+        let next = self.advance()?;
+        match next.as_identifier() {
+            Some(id) => Ok(id),
+            None => Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(next)))
         }
     }
 
@@ -428,10 +429,7 @@ impl<'a, M> Parser<'a, M> {
     // Check if the next token is an identifier
     #[inline(always)]
     fn peek_is_identifier(&self) -> bool {
-        self.tokens.front().filter(|t| match t.token {
-            Token::Identifier(_) => true,
-            _ => false
-        }).is_some()
+        self.tokens.front().filter(|t| t.token.as_identifier().is_some()).is_some()
     }
 
     // Require a specific token
@@ -2215,9 +2213,9 @@ impl<'a, M> Parser<'a, M> {
                     } else if let Some(Type::Closure(ty)) = expected_type {
                         self.read_closure(ty, context)?
                     } else if let Some(Type::Function(ty)) = expected_type {
-                        let identifier = match token {
-                            Token::Identifier(id) => id,
-                            _ => return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(token)))
+                        let identifier = match token.as_identifier() {
+                            Some(id) => id,
+                            None => return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(token)))
                         };
 
                         let f = self.global_mapper.functions()
@@ -3079,7 +3077,7 @@ impl<'a, M> Parser<'a, M> {
 
             (Some(id), Some(for_type), self.next_identifier()?)
         } else {
-            let Token::Identifier(name) = token else {
+            let Some(name) = token.as_identifier() else {
                 return Err(err!(self, ParserErrorKind::ExpectedIdentifierToken(token)))
             };
             (None, None, name)

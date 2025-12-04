@@ -57,82 +57,8 @@ pub enum Literal<'a> {
 impl<'a> fmt::Display for Token<'a> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       use Token::*;
+
       let output = match self {
-        // Basic symbols
-        BraceOpen => "{",
-        BraceClose => "}",
-        BracketOpen => "[",
-        BracketClose => "]",
-        ParenthesisOpen => "(",
-        ParenthesisClose => ")",
-
-        OperatorAssign => "=",
-        OperatorEquals => "==",
-        OperatorNotEquals => "!=",
-        OperatorAnd => "&&",
-        OperatorOr => "||",
-        OperatorGreaterThan => ">",
-        OperatorLessThan => "<",
-        OperatorGreaterOrEqual => ">=",
-        OperatorLessOrEqual => "<=",
-
-        OperatorPlus => "+",
-        OperatorMinus => "-",
-        OperatorMultiply => "*",
-        OperatorDivide => "/",
-        OperatorModulo => "%",
-        OperatorPow => "**",
-        OperatorBitwiseXor => "^",
-        OperatorBitwiseAnd => "&",
-        OperatorBitwiseOr => "|",
-        OperatorBitwiseShl => "<<",
-        OperatorBitwiseShr => ">>",
-
-        OperatorPlusAssign => "+=",
-        OperatorMinusAssign => "-=",
-        OperatorMultiplyAssign => "*=",
-        OperatorDivideAssign => "/=",
-        OperatorModuloAssign => "%=",
-        OperatorPowAssign => "**=",
-        OperatorBitwiseXorAssign => "^=",
-        OperatorBitwiseAndAssign => "&=",
-        OperatorBitwiseOrAssign => "|=",
-        OperatorBitwiseShlAssign => "<<=",
-        OperatorBitwiseShrAssign => ">>=",
-
-        OperatorTernary => "?",
-        Dot => ".",
-        Comma => ",",
-        Colon => ":",
-        SemiColon => ";",
-
-        // Keywords
-        Let => "let",
-        Const => "const",
-        Entry => "entry",
-        Function => "fn",
-        Closure => "closure",
-        Hook => "hook",
-        Return => "return",
-        If => "if",
-        Else => "else",
-        For => "for",
-        ForEach => "foreach",
-        While => "while",
-        Break => "break",
-        Continue => "continue",
-        In => "in",
-        IsNot => "!",
-
-        Import => "import",
-        From => "from",
-        As => "as",
-        ReturnType => "->",
-        Match => "match",
-        FatArrow => "=>",
-        Pub => "pub",
-        Any => "any",
-
         // Values and types
         Value(Literal::Null) => "null",
         Value(Literal::Bool(true)) => "true",
@@ -161,14 +87,7 @@ impl<'a> fmt::Display for Token<'a> {
         Number(t) => return write!(f, "{:?}", t),
 
         // Types
-        Bool => "bool",
-        Bytes => "bytes",
-        String => "string",
-        Optional => "optional",
-        Range => "range",
-        Map => "map",
-        Enum => "enum",
-        Struct => "struct",
+        token => return write!(f, "{}", token.as_str().expect("Token has no string representation")),
       };
 
       write!(f, "{}", output)
@@ -366,6 +285,114 @@ impl<'a> Token<'a> {
 
             e => Number(NumberType::value_of(e)?),
         })
+    }
+
+    pub fn as_str(&self) -> Option<&'a str> {
+        use Token::*;
+
+        Some(match self {
+            BraceOpen => "{",
+            BraceClose => "}",
+            BracketOpen => "[",
+            BracketClose => "]",
+            ParenthesisOpen => "(",
+            ParenthesisClose => ")",
+
+            OperatorAssign => "=",
+            OperatorEquals => "==",
+            OperatorNotEquals => "!=",
+            OperatorAnd => "&&",
+            OperatorOr => "||",
+            OperatorGreaterThan => ">",
+            OperatorLessThan => "<",
+            OperatorGreaterOrEqual => ">=",
+            OperatorLessOrEqual => "<=",
+
+            OperatorPlus => "+",
+            OperatorMinus => "-",
+            OperatorMultiply => "*",
+            OperatorDivide => "/",
+            OperatorModulo => "%",
+            OperatorPow => "**",
+            OperatorBitwiseXor => "^",
+            OperatorBitwiseAnd => "&",
+            OperatorBitwiseOr => "|",
+            OperatorBitwiseShl => "<<",
+            OperatorBitwiseShr => ">>",
+
+            OperatorPlusAssign => "+=",
+            OperatorMinusAssign => "-=",
+            OperatorMultiplyAssign => "*=",
+            OperatorDivideAssign => "/=",
+            OperatorModuloAssign => "%=",
+            OperatorPowAssign => "**=",
+            OperatorBitwiseXorAssign => "^=",
+            OperatorBitwiseAndAssign => "&=",
+            OperatorBitwiseOrAssign => "|=",
+            OperatorBitwiseShlAssign => "<<=",
+            OperatorBitwiseShrAssign => ">>=",
+
+            OperatorTernary => "?",
+            Dot => ".",
+            Comma => ",",
+            Colon => ":",
+            SemiColon => ";",
+
+            // Keywords
+            Let => "let",
+            Const => "const",
+            Entry => "entry",
+            Function => "fn",
+            Closure => "closure",
+            Hook => "hook",
+            Return => "return",
+            If => "if",
+            Else => "else",
+            For => "for",
+            ForEach => "foreach",
+            While => "while",
+            Break => "break",
+            Continue => "continue",
+            In => "in",
+            IsNot => "!",
+
+            Import => "import",
+            From => "from",
+            As => "as",
+            ReturnType => "->",
+            Match => "match",
+            FatArrow => "=>",
+            Pub => "pub",
+            Any => "any",
+
+            Bool => "bool",
+            Bytes => "bytes",
+            String => "string",
+            Optional => "optional",
+            Range => "range",
+            Map => "map",
+            Enum => "enum",
+            Struct => "struct",
+            Identifier(id) => id,
+
+            _ => return None,
+        })
+    }
+
+    pub fn as_identifier(&self) -> Option<&'a str> {
+        match self {
+            Token::Identifier(_)
+            | Token::Map
+            | Token::Optional
+            | Token::Range
+            | Token::Bytes
+            | Token::Bool
+            | Token::String
+            | Token::From
+            | Token::Entry => self.as_str(),
+
+            _ => None,
+        }
     }
 
     pub fn accept_generic(&self) -> bool {
