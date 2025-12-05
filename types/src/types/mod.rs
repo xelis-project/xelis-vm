@@ -382,15 +382,15 @@ impl Type {
             },
             Type::Enum(e) => match self {
                 Type::Enum(e2) => e == e2,
-                _ => self.is_generic() || other.is_compatible_with(self)
+                _ => false
             },
             Type::Struct(a) => match self {
                 Type::Struct(b) => a == b,
-                _ => self.is_generic() || other.is_compatible_with(self)
+                _ => false
             },
             Type::Opaque(a) => match self {
                 Type::Opaque(b) => a == b,
-                _ => self.is_generic() || other.is_compatible_with(self)
+                _ => false
             },
             Type::Any | Type::T(None) => true,
             Type::Array(sub_type) => match self {
