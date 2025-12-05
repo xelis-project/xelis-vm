@@ -1969,95 +1969,8 @@ impl<'a, M> Parser<'a, M> {
                     }
                     continue;
                 },
-                Token::Identifier(id) => {
-                    match self.peek() {
-                        // function call
-                        Ok(Token::ParenthesisOpen) => {
-                            let prev_expr = match queue.pop() {
-                                Some(QueueItem::Expression(v)) => Some(v),
-                                None | Some(QueueItem::Separator) => None,
-                                _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
-                            };
-                            self.read_function_call(prev_expr, on_type.is_some(), on_type, expected_type, id, context)?
-                        },
-                        // Range creation
-                        Ok(Token::Dot) if matches!(self.peek_n(1), Ok(Token::Dot)) => {
-                            self.expect_token(Token::Dot)?;
-                            self.expect_token(Token::Dot)?;
-                            let end_expr = self.read_expr(delimiter, None, false, true, expected_type, context)?;
-                            let end_type = self.get_type_from_expression(None, &end_expr, context)?;
-                            let start_expr = Expression::Variable(context.get_variable_id(id)
-                                .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?);
-                            let start_type = self.get_type_from_expression(None, &start_expr, context)?;
-
-                            if *start_type != *end_type {
-                                return Err(err!(self, ParserErrorKind::InvalidRangeType(start_type.into_owned(), end_type.into_owned())))
-                            }
-
-                            if !start_type.is_primitive() {
-                                return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(start_type.into_owned())))
-                            }
-
-                            Expression::RangeConstructor(Box::new(start_expr), Box::new(end_expr))
-                        },
-                        Ok(Token::Colon) if matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
-                        _ => {
-                            match on_type {
-                                Some(t) => match t {
-                                    Type::Function(f) => {
-                                        let id = self.global_mapper.functions()
-                                            .get_by_signature(id, f.on_type())
-                                            .map_err(|e| err!(self, e.into()))?;
-
-                                        Expression::FunctionPointer(id, false)
-                                    },
-                                    // mostly an access to a struct field
-                                    Type::Struct(_type) => {
-                                        let builder = self.global_mapper.structs()
-                                            .get_by_ref(_type)
-                                            .map_err(|e| err!(self, e.into()))?;
-                                        let id = builder.get_id_for_sub(id)
-                                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedAttributeOnType(id, t.clone())))?;
-
-                                        Expression::Variable(id)
-                                    },
-                                    _ => {
-                                        context.get_variable_id(id)
-                                            .map(Expression::Variable)
-                                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(t.clone())))?
-                                    }
-                                },
-                                None => {
-                                    if let Some(num_id) = context.get_variable_id(id) {
-                                        Expression::Variable(num_id)
-                                    } else if let Some(constant) = self.constants.get(id) {
-                                        Expression::Constant(constant.value.clone())
-                                    } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
-                                        // Check if we have an expected type that's a specialized version
-                                        let struct_type = if let Some(Type::Struct(expected_struct)) = expected_type {
-                                            // Use the expected specialized type if the struct IDs match
-                                            if expected_struct.id() == builder.get_type().id() {
-                                                expected_struct.clone()
-                                            } else {
-                                                builder.get_type().clone()
-                                            }
-                                        } else {
-                                            builder.get_type().clone()
-                                        };
-                                        self.read_struct_constructor(struct_type, context)?
-                                    } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
-                                        self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
-                                    } else if let Ok(id) = self.global_mapper.functions()
-                                        .get_by_signature(id, on_type) {
-                                        Expression::FunctionPointer(id, false)
-                                    } else {
-                                        return Err(err!(self, ParserErrorKind::UnexpectedVariable(id)))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
+                Token::Identifier(id) => self.on_identifier_token(id, context, &mut queue, delimiter, on_type, expected_type, true)?
+                    .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?,
                 Token::Value(value) => match (on_type, value) {
                      (Some(Type::Tuples(tuples)), Literal::Number(n)) => {
                         let id = n as usize;
@@ -2230,8 +2143,10 @@ impl<'a, M> Parser<'a, M> {
                     self.read_map_constructor(key, value, context)?
                 },
                 token => {
-                    trace!("no specific case for {:?}, expected type: {:?}", token, expected_type);
-                    if matches!(token, Token::Map) && self.peek_is(Token::ParenthesisOpen) {
+                    trace!("no specific case for {:?}, on type: {:?}, expected type: {:?}", token, on_type, expected_type);
+                    if let Some(Some(expr)) = token.as_identifier().map(|id| self.on_identifier_token(id, context, &mut queue, delimiter, on_type, expected_type, false)).transpose()? {
+                        expr
+                    } else if matches!(token, Token::Map) && self.peek_is(Token::ParenthesisOpen) {
                         let prev_expr = match queue.pop() {
                             Some(QueueItem::Expression(v)) => Some(v),
                             None | Some(QueueItem::Separator) => None,
@@ -2253,12 +2168,10 @@ impl<'a, M> Parser<'a, M> {
                             .map_err(|_| err!(self, ParserErrorKind::FunctionNotFound))?;
 
                         Expression::FunctionPointer(f, false)
-                    } else {
+                    } else if token.is_operator() {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,
-                            None => {
-                                return Err(err!(self, ParserErrorKind::OperatorNotFound(token)))
-                            }
+                            None => return Err(err!(self, ParserErrorKind::OperatorNotFound(token)))
                         };
 
                         while let Some(top_op) = operator_stack.pop() {
@@ -2281,6 +2194,8 @@ impl<'a, M> Parser<'a, M> {
                         required_operator = false;
                         trace!("pushed operator in queue: {:?}", queue);
                         continue;
+                    } else {
+                        return Err(err!(self, ParserErrorKind::UnexpectedToken(token)))
                     }
                 }
             };
@@ -2330,6 +2245,96 @@ impl<'a, M> Parser<'a, M> {
         } else {
             Ok(false)
         }
+    }
+
+    fn on_identifier_token(&mut self, id: &'a str, context: &mut Context<'a>, queue: &mut Vec<QueueItem>, delimiter: Option<&Token>, on_type: Option<&Type>, expected_type: Option<&Type>, type_constant: bool) -> Result<Option<Expression>, ParserError<'a>> {
+        Ok(Some(match self.peek() {
+            // function call
+            Ok(Token::ParenthesisOpen) => {
+                let prev_expr = match queue.pop() {
+                    Some(QueueItem::Expression(v)) => Some(v),
+                    None | Some(QueueItem::Separator) => None,
+                    _ => return Err(err!(self, ParserErrorKind::InvalidOperation))
+                };
+                self.read_function_call(prev_expr, on_type.is_some(), on_type, expected_type, id, context)?
+            },
+            // Range creation
+            Ok(Token::Dot) if matches!(self.peek_n(1), Ok(Token::Dot)) => {
+                self.expect_token(Token::Dot)?;
+                self.expect_token(Token::Dot)?;
+                let end_expr = self.read_expr(delimiter, None, false, true, expected_type, context)?;
+                let end_type = self.get_type_from_expression(None, &end_expr, context)?;
+                let start_expr = Expression::Variable(context.get_variable_id(id)
+                    .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?);
+                let start_type = self.get_type_from_expression(None, &start_expr, context)?;
+
+                if *start_type != *end_type {
+                    return Err(err!(self, ParserErrorKind::InvalidRangeType(start_type.into_owned(), end_type.into_owned())))
+                }
+
+                if !start_type.is_primitive() {
+                    return Err(err!(self, ParserErrorKind::InvalidRangeTypePrimitive(start_type.into_owned())))
+                }
+
+                Expression::RangeConstructor(Box::new(start_expr), Box::new(end_expr))
+            },
+            Ok(Token::Colon) if type_constant && matches!(self.peek_n(1), Ok(Token::Colon)) => self.read_type_constant(Token::Identifier(id), context)?,
+            _ => {
+                match on_type {
+                    Some(t) => match t {
+                        Type::Function(f) => {
+                            let id = self.global_mapper.functions()
+                                .get_by_signature(id, f.on_type())
+                                .map_err(|e| err!(self, e.into()))?;
+
+                            Expression::FunctionPointer(id, false)
+                        },
+                        // mostly an access to a struct field
+                        Type::Struct(_type) => {
+                            let builder = self.global_mapper.structs()
+                                .get_by_ref(_type)
+                                .map_err(|e| err!(self, e.into()))?;
+                            let id = builder.get_id_for_sub(id)
+                                .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedAttributeOnType(id, t.clone())))?;
+
+                            Expression::Variable(id)
+                        },
+                        _ => {
+                            context.get_variable_id(id)
+                                .map(Expression::Variable)
+                                .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(t.clone())))?
+                        }
+                    },
+                    None => {
+                        if let Some(num_id) = context.get_variable_id(id) {
+                            Expression::Variable(num_id)
+                        } else if let Some(constant) = self.constants.get(id) {
+                            Expression::Constant(constant.value.clone())
+                        } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
+                            // Check if we have an expected type that's a specialized version
+                            let struct_type = if let Some(Type::Struct(expected_struct)) = expected_type {
+                                // Use the expected specialized type if the struct IDs match
+                                if expected_struct.id() == builder.get_type().id() {
+                                    expected_struct.clone()
+                                } else {
+                                    builder.get_type().clone()
+                                }
+                            } else {
+                                builder.get_type().clone()
+                            };
+                            self.read_struct_constructor(struct_type, context)?
+                        } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
+                            self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
+                        } else if let Ok(id) = self.global_mapper.functions()
+                            .get_by_signature(id, on_type) {
+                            Expression::FunctionPointer(id, false)
+                        } else {
+                            return Ok(None)
+                        }
+                    }
+                }
+            }
+        }))
     }
 
     fn verify_operator(&self, op: &Operator, left_type: Type, right_type: Type, left_expr: &mut Expression, right_expr: &mut Expression) -> Result<(), ParserError<'a>> {

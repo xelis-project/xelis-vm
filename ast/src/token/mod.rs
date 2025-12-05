@@ -386,7 +386,6 @@ impl<'a> Token<'a> {
             | Token::Optional
             | Token::Range
             | Token::Bytes
-            | Token::Bool
             | Token::String
             | Token::From
             | Token::Entry => self.as_str(),

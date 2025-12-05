@@ -2876,3 +2876,26 @@ fn test_array_sort_by_key() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_reserved_word_as_var_name() {
+    let code = r#"
+        struct Foo {
+            entry: u64,
+            bytes: u64,
+            string: u64,
+        }
+
+        entry main() {
+            let string = Foo {
+                entry: 42,
+                bytes: 15,
+                string: 1
+            };
+
+            return string.string + string.bytes + string.entry;
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(58));
+}
