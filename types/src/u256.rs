@@ -1620,4 +1620,43 @@ mod tests {
         let z = U256::new(0, 0, 0, u64::MAX >> 1);
         assert_eq!(z.leading_ones(), 0); // starts with 0
     }
+
+    #[test]
+    fn test_json_serde() {
+        // Test serialization: U256 should be serialized as a string
+        let value = U256::from(1234567890u64);
+        let json = serde_json::to_string(&value).unwrap();
+        assert_eq!(json, "\"1234567890\"");
+
+        // Test deserialization: string should deserialize to U256
+        let deserialized: U256 = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, value);
+
+        // Test with ZERO
+        let zero = U256::ZERO;
+        let json = serde_json::to_string(&zero).unwrap();
+        assert_eq!(json, "\"0\"");
+        let deserialized: U256 = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, zero);
+
+        // Test with ONE
+        let one = U256::ONE;
+        let json = serde_json::to_string(&one).unwrap();
+        assert_eq!(json, "\"1\"");
+        let deserialized: U256 = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, one);
+
+        // Test with MAX
+        let max = U256::MAX;
+        let json = serde_json::to_string(&max).unwrap();
+        assert_eq!(json, "\"115792089237316195423570985008687907853269984665640564039457584007913129639935\"");
+        let deserialized: U256 = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, max);
+
+        // Test roundtrip with a large value
+        let large = U256::from(u128::MAX);
+        let json = serde_json::to_string(&large).unwrap();
+        let deserialized: U256 = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, large);
+    }
 }
