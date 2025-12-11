@@ -20,6 +20,23 @@ pub use constant::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+// Helper functions for U64 string serialization/deserialization
+// JSON parsers may have issues with large integers above 2^53
+fn serialize_u64_as_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn deserialize_u64_from_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<u64>().map_err(serde::de::Error::custom)
+}
+
 // Helper functions for U128 string serialization
 // See https://github.com/serde-rs/json/issues/740
 fn serialize_u128_as_string<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
@@ -62,6 +79,7 @@ pub enum Primitive {
     U8(u8),
     U16(u16),
     U32(u32),
+    #[serde(serialize_with = "serialize_u64_as_string", deserialize_with = "deserialize_u64_from_string")]
     U64(u64),
     #[serde(serialize_with = "serialize_u128_as_string", deserialize_with = "deserialize_u128_from_string")]
     U128(u128),
@@ -658,6 +676,35 @@ mod tests {
 
         for val in test_values {
             let primitive = Primitive::U128(val);
+            let json = serde_json::to_string(&primitive).expect("Failed to serialize");
+            let deserialized: Primitive = serde_json::from_str(&json).expect("Failed to deserialize");
+            assert_eq!(primitive, deserialized, "Roundtrip failed for value: {}", val);
+        }
+    }
+
+    #[test]
+    fn test_u64_deserialize_from_string() {
+        // U64 should deserialize from string input
+        let json = r#"{"type":"u64","value":"12345678901234"}"#;
+        let deserialized: Primitive = serde_json::from_str(json).expect("Failed to deserialize from string");
+        assert_eq!(deserialized, Primitive::U64(12345678901234u64));
+    }
+
+    #[test]
+    fn test_u64_serialize_as_string() {
+        // U64 should serialize as a string
+        let value = Primitive::U64(12345678901234u64);
+        let json = serde_json::to_string(&value).expect("Failed to serialize");
+        // Should contain the value as a string
+        assert!(json.contains("\"12345678901234\""), "U64 should be serialized as string, got: {}", json);
+    }
+
+    #[test]
+    fn test_u64_roundtrip() {
+        let test_values = vec![0u64, 1u64, u64::MAX];
+
+        for val in test_values {
+            let primitive = Primitive::U64(val);
             let json = serde_json::to_string(&primitive).expect("Failed to serialize");
             let deserialized: Primitive = serde_json::from_str(&json).expect("Failed to deserialize");
             assert_eq!(primitive, deserialized, "Roundtrip failed for value: {}", val);
