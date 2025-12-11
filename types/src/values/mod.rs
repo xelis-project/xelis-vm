@@ -18,7 +18,24 @@ pub use cell::*;
 pub use error::*;
 pub use constant::*;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+// Helper functions for U128 string serialization
+// See https://github.com/serde-rs/json/issues/740
+fn serialize_u128_as_string<S>(value: &u128, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn deserialize_u128_from_string<'de, D>(deserializer: D) -> Result<u128, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<u128>().map_err(serde::de::Error::custom)
+}
 
 macro_rules! checked_cast {
     ($self: expr, $type: expr) => {
@@ -46,6 +63,7 @@ pub enum Primitive {
     U16(u16),
     U32(u32),
     U64(u64),
+    #[serde(serialize_with = "serialize_u128_as_string", deserialize_with = "deserialize_u128_from_string")]
     U128(u128),
     U256(U256),
     String(String),
@@ -601,6 +619,48 @@ impl std::fmt::Display for Primitive {
             Primitive::Boolean(b) => write!(f, "{}", b),
             Primitive::Range(range) => write!(f, "{}..{}", range.0, range.1),
             Primitive::Opaque(o) => write!(f, "{}", o)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_u128_serialization_as_string() {
+        // Test that U128 is serialized as a string
+        let value = Primitive::U128(340282366920938463463374607431768211455u128); // max u128
+        
+        // Serialize to JSON
+        let json = serde_json::to_string(&value).expect("Failed to serialize");
+        
+        // Should contain the value as a string, not a number
+        assert!(json.contains("\"340282366920938463463374607431768211455\""), 
+            "U128 should be serialized as a string, got: {}", json);
+        
+        // Deserialize back
+        let deserialized: Primitive = serde_json::from_str(&json).expect("Failed to deserialize");
+        
+        // Should match the original value
+        assert_eq!(value, deserialized, "Deserialized value should match original");
+    }
+
+    #[test]
+    fn test_u128_roundtrip() {
+        let test_values = vec![
+            0u128,
+            1u128,
+            u64::MAX as u128,
+            u64::MAX as u128 + 1,
+            u128::MAX,
+        ];
+
+        for val in test_values {
+            let primitive = Primitive::U128(val);
+            let json = serde_json::to_string(&primitive).expect("Failed to serialize");
+            let deserialized: Primitive = serde_json::from_str(&json).expect("Failed to deserialize");
+            assert_eq!(primitive, deserialized, "Roundtrip failed for value: {}", val);
         }
     }
 }
