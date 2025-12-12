@@ -236,7 +236,10 @@ impl U256 {
         let mut result = U256::ZERO;
         for c in s.chars() {
             if let Some(digit) = c.to_digit(radix) {
-                result = result * U256::from(radix) + U256::from(digit as u64);
+                result = result.checked_mul(U256::from(radix))
+                    .ok_or(())?
+                    .checked_add(U256::from(digit as u64))
+                    .ok_or(())?;
             } else {
                 return Err(());
             }
@@ -1652,6 +1655,11 @@ mod tests {
         assert_eq!(json, "\"115792089237316195423570985008687907853269984665640564039457584007913129639935\"");
         let deserialized: U256 = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, max);
+
+        // Test max + 1
+        let overflow_str = "\"115792089237316195423570985008687907853269984665640564039457584007913129639936\"";
+        let deserialized: Result<U256, _> = serde_json::from_str(overflow_str);
+        assert!(deserialized.is_err());
 
         // Test roundtrip with a large value
         let large = U256::from(u128::MAX);
