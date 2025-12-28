@@ -10,7 +10,7 @@ use xelis_builder::Builder;
 
 #[warn(unused_extern_crates)]
 
-const ABI_VERSION: &str = "1.1.0";
+const ABI_VERSION: &str = "1.1.1";
 
 pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
     let tokens = Lexer::new(code)
@@ -191,7 +191,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
             let abi_entry = json!({
                 "name": mapping.name.to_owned(),
                 "type": "entry",
-                "chunk_id": i as u16,
+                "entry_id": i as u16,
                 "params": flattened_params,
                 "outputs": func.return_type().clone().map(|rt| rt.to_string()).unwrap_or_else(|| "void".to_string()),
             });

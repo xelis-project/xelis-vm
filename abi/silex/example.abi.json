@@ -66,14 +66,14 @@
   ],
   "data": [
     {
-      "chunk_id": 2,
+      "entry_id": 2,
       "name": "path_test",
       "outputs": "u64",
       "params": [],
       "type": "entry"
     },
     {
-      "chunk_id": 4,
+      "entry_id": 4,
       "name": "get_factorial",
       "outputs": "u64",
       "params": [
@@ -82,7 +82,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 5,
+      "entry_id": 5,
       "name": "address_test",
       "outputs": "u64",
       "params": [
@@ -92,7 +92,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 6,
+      "entry_id": 6,
       "name": "person_param_test",
       "outputs": "u64",
       "params": [
@@ -105,7 +105,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 7,
+      "entry_id": 7,
       "name": "status_test",
       "outputs": "u64",
       "params": [
@@ -118,7 +118,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 8,
+      "entry_id": 8,
       "name": "action_test",
       "outputs": "u64",
       "params": [
@@ -131,7 +131,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 9,
+      "entry_id": 9,
       "name": "batch_configure",
       "outputs": "u64",
       "params": [
@@ -143,7 +143,7 @@
       "type": "entry"
     },
     {
-      "chunk_id": 10,
+      "entry_id": 10,
       "name": "set_permissions",
       "outputs": "u64",
       "params": [
@@ -155,5 +155,5 @@
       "type": "entry"
     }
   ],
-  "version": "1.1.0"
+  "version": "1.1.1"
 }
