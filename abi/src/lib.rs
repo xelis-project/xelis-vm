@@ -1,3 +1,4 @@
+use serde_json::json;
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
@@ -70,14 +71,14 @@ fn register_type(
                     .iter()
                     .enumerate()
                     .map(|(field_index, (_field_name, field_type))| {
-                        serde_json::json!({
+                        json!({
                             "name": struct_field_names[field_index],
                             "type": field_type.to_string()
                         })
                     })
                     .collect();
 
-                internal_types.push(serde_json::json!({
+                internal_types.push(json!({
                     "name": name_info,
                     "kind": "struct",
                     "fields": fields
@@ -104,21 +105,21 @@ fn register_type(
                             .fields()
                             .iter()
                             .map(|(field_name, field_type)| {
-                                serde_json::json!({
+                                json!({
                                     "name": field_name.as_ref(),
                                     "type": field_type.to_string()
                                 })
                             })
                             .collect();
 
-                        serde_json::json!({
+                        json!({
                             "name": variant_name.as_ref(),
                             "fields": fields
                         })
                     })
                     .collect();
 
-                internal_types.push(serde_json::json!({
+                internal_types.push(json!({
                     "name": name_info,
                     "kind": "enum",
                     "variants": variants
@@ -157,7 +158,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
                         let builder = mapper.structs();
                         let name_info = builder.get_name_by_ref(&struct_type)?;
                         
-                        flattened_params.push(serde_json::json!({
+                        flattened_params.push(json!({
                             "name": name,
                             "type": "struct",
                             "internal_type": name_info
@@ -167,7 +168,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
                         let builder = mapper.enums();
                         let name_info = builder.get_name_by_ref(&enum_type)?;
                         
-                        flattened_params.push(serde_json::json!({
+                        flattened_params.push(json!({
                             "name": name.to_string(),
                             "type": "enum",
                             "internal_type": name_info
@@ -175,7 +176,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
                     },
                     _ => {
                         // Primitives, arrays, maps, etc.
-                        flattened_params.push(serde_json::json!({
+                        flattened_params.push(json!({
                             "name": name.to_string(),
                             "type": _type.to_string(),
                         }));
@@ -187,7 +188,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
                 register_type(return_type, mapper, &mut internal_types, &mut seen_types)?;
             }
 
-            let abi_entry = serde_json::json!({
+            let abi_entry = json!({
                 "name": mapping.name.to_owned(),
                 "type": "entry",
                 "chunk_id": i as u16,
@@ -198,7 +199,7 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
         }
     }
 
-    let abi_root = serde_json::json!({
+    let abi_root = json!({
         "version": ABI_VERSION,
         "internal_types": internal_types,
         "data": abi_functions
@@ -246,7 +247,7 @@ mod tests {
 
             impl JSONHelper for $name {
                 fn serialize_json(&self) -> anyhow::Result<serde_json::Value> {
-                    Ok(serde_json::json!("dummy"))
+                    Ok(json!("dummy"))
                 }
 
                 fn is_json_supported(&self) -> bool {
