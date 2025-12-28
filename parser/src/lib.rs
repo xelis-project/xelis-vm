@@ -300,6 +300,9 @@ pub struct Parser<'a, M> {
     // This let the user customize its return
     // If None, return type can be anything
     entry_forced_return_type: Option<Option<Type>>,
+    // Entry default return type
+    // This is set when the user declare an entry function with no return type
+    entry_default_return_type: Option<Type>,
     // TODO: Path to use to import files
     // _path: Option<&'a str>
     // Used for errors, we track the line and column
@@ -336,7 +339,8 @@ impl<'a, M> Parser<'a, M> {
             environment,
             disable_const_upgrading: false,
             disable_shadowing_variables: false,
-            entry_forced_return_type: Some(Some(Type::U64)),
+            entry_forced_return_type: None,
+            entry_default_return_type: Some(Type::U64),
             line: 0,
             column_start: 0,
             column_end: 0,
@@ -3131,15 +3135,25 @@ impl<'a, M> Parser<'a, M> {
             return Err(err!(self, ParserErrorKind::EntryFunctionCannotHaveForType))
         }
 
-        // all entries must return a u64 value without being specified
-        let return_type: Option<Type> = if let Some(forced_type) = self.entry_forced_return_type.clone().filter(|_| kind.is_entry()) {
-            forced_type
-        } else if self.peek_is(Token::ReturnType) { // read returned type
+        // read the return type wanted for the function
+        // In case its an entry, we can default to a type without writing it
+        let return_type: Option<Type> = if self.peek_is(Token::ReturnType) { // read returned type
             self.advance()?;
             Some(self.read_type()?)
+        } else if let Some(default_ty) = self.entry_default_return_type.as_ref().filter(|_| kind.is_entry()) {
+            Some(default_ty.clone())
         } else {
             None
         };
+
+        // Verify that entry function return type is correct
+        if kind.is_entry() {
+            if let Some(expected_ty) = self.entry_forced_return_type.as_ref() {
+                if return_type.as_ref() != expected_ty.as_ref() {
+                    return Err(err!(self, ParserErrorKind::InvalidEntryReturnType { expected: expected_ty.clone(), found: return_type.clone() }))
+                }
+            }
+        }
 
         // Check that the function name is a known hook
         let mut hook_id = None;

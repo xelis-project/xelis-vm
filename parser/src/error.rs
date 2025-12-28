@@ -20,6 +20,17 @@ pub enum ParserErrorKind<'a> {
     InvalidParameterCount {
         name: &'a str,
     },
+    #[error(
+        "invalid entry function return type, expected '{0}' but found '{1}'",
+        expected.as_ref()
+            .map_or("nothing".to_string(), |t| format!("{t}")),
+        found.as_ref()
+            .map_or("nothing".to_string(), |t| format!("{t}")))
+    ]
+    InvalidEntryReturnType {
+        expected: Option<Type>,
+        found: Option<Type>,
+    },
     #[error("division by zero")]
     DivisionByZero,
     #[error("arithmetic overflow")]
