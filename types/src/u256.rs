@@ -735,7 +735,9 @@ impl U256 {
     pub fn to_be_bytes(&self) -> [u8; 32] {
         let mut result = [0u8; 32];
         for (i, part) in self.0.iter().enumerate() {
-            result[i * 8..(i + 1) * 8].copy_from_slice(&part.to_be_bytes());
+            // most significant limb first
+            let offset = (3 - i) * 8;
+            result[offset..offset + 8].copy_from_slice(&part.to_be_bytes());
         }
 
         result
@@ -746,7 +748,9 @@ impl U256 {
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let mut data = [0u64; 4];
         for i in 0..4 {
-            data[i] = u64::from_be_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+            // read MS limb from the first 8 bytes
+            let offset = i * 8;
+            data[3 - i] = u64::from_be_bytes(bytes[offset..offset + 8].try_into().expect("slice with incorrect length"));
         }
 
         U256(data)
@@ -1530,21 +1534,19 @@ mod tests {
         let value = U256::from(0x0123456789ABCDEFu64);
         let bytes = value.to_be_bytes();
         
-        // In the current implementation, to_be_bytes puts each u64 section in big-endian order,
-        // but keeps the array in the order of least significant to most significant u64
+        // Canonical big-endian over the full 256-bit value:
+        // most significant limb first, so the low 64-bit value appears in the last 8 bytes.
+        assert_eq!(bytes[24], 0x01);
+        assert_eq!(bytes[25], 0x23);
+        assert_eq!(bytes[26], 0x45);
+        assert_eq!(bytes[27], 0x67);
+        assert_eq!(bytes[28], 0x89);
+        assert_eq!(bytes[29], 0xAB);
+        assert_eq!(bytes[30], 0xCD);
+        assert_eq!(bytes[31], 0xEF);
         
-        // First 8 bytes (u64[0]) should contain the value in big-endian order
-        assert_eq!(bytes[0], 0x01);
-        assert_eq!(bytes[1], 0x23);
-        assert_eq!(bytes[2], 0x45);
-        assert_eq!(bytes[3], 0x67);
-        assert_eq!(bytes[4], 0x89);
-        assert_eq!(bytes[5], 0xAB);
-        assert_eq!(bytes[6], 0xCD);
-        assert_eq!(bytes[7], 0xEF);
-        
-        // The remaining bytes should be zero
-        for i in 8..32 {
+        // The leading bytes should be zero
+        for i in 0..24 {
             assert_eq!(bytes[i], 0);
         }
         
@@ -1554,8 +1556,7 @@ mod tests {
         // Test little-endian byte order with the same value
         let bytes = value.to_le_bytes();
         
-        // In the current implementation, to_le_bytes puts each u64 section in little-endian order,
-        // and keeps the array in the order of least significant to most significant u64
+        // Little-endian: least significant limb first, and within-limb little-endian
         assert_eq!(bytes[0], 0xEF);
         assert_eq!(bytes[1], 0xCD);
         assert_eq!(bytes[2], 0xAB);
