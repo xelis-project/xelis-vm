@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use thiserror::Error;
 use xelis_bytecode::ChunkReaderError;
 use xelis_environment::EnvironmentError;
@@ -71,8 +69,6 @@ pub enum VMError {
     ModulesStackOverflow,
     #[error("illegal state")]
     IllegalState,
-    #[error("{0}")]
-    Static(Cow<'static, str>),
     #[error("out of memory")]
     OutOfMemory,
     #[error(transparent)]
@@ -86,17 +82,5 @@ impl From<EnvironmentError> for VMError {
             EnvironmentError::OutOfMemory => VMError::OutOfMemory,
             other => VMError::EnvironmentError(other),
         }
-    }
-}
-
-impl From<&'static str> for VMError {
-    fn from(value: &'static str) -> Self {
-        VMError::Static(Cow::Borrowed(value))
-    }
-}
-
-impl From<String> for VMError {
-    fn from(value: String) -> Self {
-        VMError::Static(Cow::Owned(value))
     }
 }
