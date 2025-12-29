@@ -1,7 +1,9 @@
+use std::borrow::Cow;
+
 use thiserror::Error;
 use xelis_bytecode::ChunkReaderError;
 use xelis_environment::EnvironmentError;
-use xelis_types::{Primitive, ValueError};
+use xelis_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum VMError {
@@ -15,50 +17,30 @@ pub enum VMError {
     IteratorOverflow,
     #[error("chunk manager not found with id {0}")]
     ChunkManagerNotFound(usize),
-    #[error("instance callback")]
-    InstanceCallback,
     #[error("invalid dynamic call")]
     InvalidDynamicCall,
-    #[error("no stack checkpoint")]
-    NoCheckPoint,
     #[error("no module found")]
     NoModule,
-    #[error("Expected checkpoint")]
-    ExpectedCheckPoint,
     #[error("register max size reached")]
     RegisterMaxSize,
     #[error("register overflow")]
     RegisterOverflow,
-    #[error("invalid return value")]
-    InvalidReturnValue,
     #[error("division by zero")]
     DivisionByZero,
     #[error("illegal call: expected a public chunk")]
     ExpectedPublicChunk,
     #[error("illegal call: expected a normal chunk")]
     ExpectedNormalChunk,
-    #[error("string too large")]
-    StringTooLarge,
-    #[error("out of bounds")]
-    OutOfBounds,
-    #[error("enum not found")]
-    EnumNotFound,
-    #[error("enum variant not found")]
-    InvalidEnumVariant,
     #[error("stack not cleaned, we have {0} elements left")]
     StackNotCleaned(usize),
     #[error("invalid range type")]
     InvalidRangeType,
     #[error("empty stack")]
     EmptyStack,
-    #[error("incompatible values: {0:?} and {1:?}")]
-    IncompatibleValues(Primitive, Primitive),
     #[error("chunk was not found")]
     ChunkNotFound,
     #[error("chunk is not an entry")]
     ChunkNotEntry,
-    #[error("struct was not found")]
-    StructNotFound,
     #[error("register {0} was not found")]
     RegisterNotFound(usize),
     #[error("empty register")]
@@ -72,7 +54,7 @@ pub enum VMError {
     #[error("error from environment: {0}")]
     EnvironmentError(EnvironmentError),
     #[error("error from value: {0}")]
-    ValueError(ValueError),
+    ValueError(#[from] ValueError),
     #[error("empty iterator")]
     EmptyIterator,
     #[error("stack index out of bounds")]
@@ -87,12 +69,12 @@ pub enum VMError {
     CallStackUnderflow,
     #[error("modules stack overflow")]
     ModulesStackOverflow,
-    #[error("unexpected type")]
-    UnexpectedType,
+    #[error("illegal state")]
+    IllegalState,
     #[error("{0}")]
-    Static(&'static str),
-    #[error("Error, memory not cleaned, we have {0} bytes left")]
-    MemoryNotCleaned(usize),
+    Static(Cow<'static, str>),
+    #[error("out of memory")]
+    OutOfMemory,
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }
@@ -101,19 +83,20 @@ impl From<EnvironmentError> for VMError {
     fn from(error: EnvironmentError) -> Self {
         match error {
             EnvironmentError::DivisionByZero => VMError::DivisionByZero,
-            _ => VMError::EnvironmentError(error)
+            EnvironmentError::OutOfMemory => VMError::OutOfMemory,
+            other => VMError::EnvironmentError(other),
         }
-    }
-}
-
-impl From<ValueError> for VMError {
-    fn from(error: ValueError) -> Self {
-        VMError::ValueError(error)
     }
 }
 
 impl From<&'static str> for VMError {
     fn from(value: &'static str) -> Self {
-        VMError::Static(value)
+        VMError::Static(Cow::Borrowed(value))
+    }
+}
+
+impl From<String> for VMError {
+    fn from(value: String) -> Self {
+        VMError::Static(Cow::Owned(value))
     }
 }

@@ -54,7 +54,6 @@ pub enum EnvironmentError {
     Static(&'static str)
 }
 
-
 impl From<&'static str> for EnvironmentError {
     fn from(value: &'static str) -> Self {
         EnvironmentError::Static(value)

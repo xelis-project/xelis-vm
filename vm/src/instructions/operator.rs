@@ -21,9 +21,9 @@ macro_rules! op {
                 (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
                 (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
                 (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
-                _ => return Err(VMError::UnexpectedType)
+                _ => return Err(VMError::IllegalState)
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     }};
 }
@@ -39,9 +39,9 @@ macro_rules! op_bool {
                 (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
                 (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
                 (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
-                _ => return Err(VMError::UnexpectedType)
+                _ => return Err(VMError::IllegalState)
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     }};
 }
@@ -60,7 +60,7 @@ macro_rules! op_string {
                     // Verify the final len is less than u32::MAX
                     let len = (a.len() as u32).checked_add(b.len() as u32);
                     if len.is_none() {
-                        return Err(VMError::StringTooLarge);
+                        return Err(VMError::OutOfMemory);
                     }
 
                     Primitive::String(a.to_owned() $op b)
@@ -73,16 +73,16 @@ macro_rules! op_string {
                         // Verify the final len is less than u32::MAX
                         let len = (left.len() as u32).checked_add(right.len() as u32);
                         if len.is_none() {
-                            return Err(VMError::StringTooLarge);
+                            return Err(VMError::OutOfMemory);
                         }
 
                         Primitive::String(left $op &right)
                     } else {
-                        return Err(VMError::UnexpectedType)
+                        return Err(VMError::IllegalState)
                     }
                 }
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     }};
 }
@@ -99,9 +99,9 @@ macro_rules! op_bool_res {
                 (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
                 (Primitive::U256(a), Primitive::U256(b)) => Primitive::Boolean(a $op b),
                 (Primitive::String(a), Primitive::String(b)) => Primitive::Boolean(a $op b),
-                _ => return Err(VMError::UnexpectedType)
+                _ => return Err(VMError::IllegalState)
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     }};
 }
@@ -163,9 +163,9 @@ macro_rules! op_div {
                     }
                     Primitive::U256(*a $op *b)
                 },
-                _ => return Err(VMError::UnexpectedType)
+                _ => return Err(VMError::IllegalState)
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     }};
 }
@@ -263,10 +263,10 @@ pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
                 Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
                 Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
                 Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
-                _ => return Err(VMError::UnexpectedType)
+                _ => return Err(VMError::IllegalState)
             }
         }
-        _ => return Err(VMError::UnexpectedType)
+        _ => return Err(VMError::IllegalState)
     };
     stack.push_stack_unchecked(result.into());
     Ok(InstructionResult::Nothing)
@@ -288,10 +288,10 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
                     Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
                     Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
                     Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
-                    _ => return Err(VMError::UnexpectedType)
+                    _ => return Err(VMError::IllegalState)
                 }
             }
-            _ => return Err(VMError::UnexpectedType)
+            _ => return Err(VMError::IllegalState)
         }
     };
 
