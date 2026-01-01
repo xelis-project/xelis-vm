@@ -10,6 +10,9 @@ mod op_code;
 /// (Lexer, Parser, Compiler) to produce a valid Module.
 mod full;
 
+/// This module contains comprehensive tests for all standard library functions
+mod stdlib_tests;
+
 #[track_caller]
 fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator
