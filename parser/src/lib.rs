@@ -2105,10 +2105,13 @@ impl<'a, M> Parser<'a, M> {
                     // any -> T (force type)
                     // T -> optional<T> (cast)
                     // T -> U (cast) if T castable to U and U primitive
-                    if left_type.is_any() || (right_type.is_optional() && right_type.get_inner_type() == &left_type) {
+                    if (left_type.is_any() && !right_type.is_primitive()) || right_type.is_optional() && right_type.get_inner_type() == &left_type {
                         Expression::ForceType(Box::new(prev_expr), right_type)
                     } else {
-                        if !left_type.is_castable_to(&right_type) {
+                        // This may cause runtime issues if the generic type is not compatible,
+                        // but we can't check that at parse time
+                        // So we have to trust the user on that part
+                        if !left_type.is_castable_to(&right_type) && !left_type.is_generic() {
                             return Err(err!(self, ParserErrorKind::CastError(left_type, right_type)))
                         }
 

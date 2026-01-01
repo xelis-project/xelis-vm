@@ -527,7 +527,7 @@ impl Type {
                 _ => false,
             },
             Type::Voidable(inner) => inner.is_castable_to(other),
-            _ => false
+            _ => false,
         }
     }
 

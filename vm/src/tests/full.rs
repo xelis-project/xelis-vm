@@ -2899,3 +2899,14 @@ fn test_reserved_word_as_var_name() {
 
     assert_eq!(run_code(code), Primitive::U64(58));
 }
+
+#[test]
+fn test_u64_behind_any() {
+    let code = r#"
+        entry main() {
+            let a: any = 42u64;
+            return ((a as u256) + 8u256) as u64;
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(50));
+}
