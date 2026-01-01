@@ -184,19 +184,21 @@ impl Type {
 
     // get the generic type with the given id
     pub fn get_generic_type(&self, id: u8) -> Option<&Type> {
-        match id {
-            0 => match &self {
-                Type::Map(key, _) => Some(key.as_ref()),
-                Type::Array(inner) => Some(inner.as_ref()),
-                Type::Optional(inner) => Some(inner.as_ref()),
-                Type::Range(inner) => Some(inner.as_ref()),
-                _ => None
+        match self {
+            Type::Map(key, value) => match id {
+                0 => Some(key.as_ref()),
+                1 => Some(value.as_ref()),
+                _ => None,
             },
-            1 => match &self {
-                Type::Map(_, value) => Some(value.as_ref()),
-                _ => None
-            }
-            _ => None
+            Type::Array(inner) | Type::Optional(inner) | Type::Range(inner) => match id {
+                0 => Some(inner.as_ref()),
+                _ => None,
+            },
+            Type::Tuples(types) => types.get(id as usize),
+            _ => match id {
+                0 => Some(self),
+                _ => None,
+            },
         }
     }
 
@@ -236,15 +238,67 @@ impl Type {
 
     pub fn map_generic_type(&self, replacement: Option<&Type>) -> Self {
         match self {
-            Type::T(Some(id)) => replacement.and_then(|ty| ty.get_generic_type(*id).cloned()).unwrap_or_else(|| self.clone()),
-            Type::Optional(inner) => Type::Optional(Box::new(inner.map_generic_type(replacement))),
-            Type::Array(inner) => Type::Array(Box::new(inner.map_generic_type(replacement))),
-            Type::Range(inner) => Type::Range(Box::new(inner.map_generic_type(replacement))),
-            Type::Map(k, v) => Type::Map(
-                Box::new(k.map_generic_type(replacement)),
-                Box::new(v.map_generic_type(replacement)),
-            ),
-            Type::Tuples(types) => Type::Tuples(types.iter().map(|t| t.map_generic_type(replacement)).collect()),
+            Type::T(None) => replacement.cloned().unwrap_or_else(|| self.clone()),
+            Type::T(Some(id)) => replacement
+                .and_then(|ty| ty.get_generic_type(*id).cloned())
+                .or_else(|| replacement.cloned())
+                .unwrap_or_else(|| self.clone()),
+            Type::Optional(inner) => {
+                let next = replacement
+                    .and_then(|ty| match ty {
+                        Type::Optional(r) => Some(r.as_ref()),
+                        _ => None,
+                    })
+                    .or(replacement);
+
+                Type::Optional(Box::new(inner.map_generic_type(next)))
+            }
+            Type::Array(inner) => {
+                let next = replacement
+                    .and_then(|ty| match ty {
+                        Type::Array(r) => Some(r.as_ref()),
+                        _ => None,
+                    })
+                    .or(replacement);
+
+                Type::Array(Box::new(inner.map_generic_type(next)))
+            }
+            Type::Range(inner) => {
+                let next = replacement
+                    .and_then(|ty| match ty {
+                        Type::Range(r) => Some(r.as_ref()),
+                        _ => None,
+                    })
+                    .or(replacement);
+
+                Type::Range(Box::new(inner.map_generic_type(next)))
+            }
+            Type::Map(k, v) => {
+                let (rep_k, rep_v) = match replacement {
+                    Some(Type::Map(k2, v2)) => (Some(k2.as_ref()), Some(v2.as_ref())),
+                    _ => (replacement, replacement),
+                };
+
+                Type::Map(
+                    Box::new(k.map_generic_type(rep_k)),
+                    Box::new(v.map_generic_type(rep_v)),
+                )
+            }
+            Type::Tuples(types) => {
+                if let Some(Type::Tuples(expected)) = replacement {
+                    if expected.len() == types.len() {
+                        return Type::Tuples(
+                            types
+                                .iter()
+                                .zip(expected.iter())
+                                .map(|(t, expected)| t.map_generic_type(Some(expected)))
+                                .collect(),
+                        );
+                    }
+                }
+
+                Type::Tuples(types.iter().map(|t| t.map_generic_type(replacement)).collect())
+            }
             Type::Closure(f) => Type::Closure(f.map_generic_type(replacement)),
             Type::Function(f) => Type::Function(f.map_generic_type(replacement)),
             _ => self.clone(),
@@ -361,7 +415,7 @@ impl Type {
 
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
-        if other.is_any() || self.is_any() {
+        if other.is_generic() || self.is_generic() {
             return true
         }
 
@@ -663,11 +717,12 @@ mod tests {
 
     #[test]
     fn test_compatibility_deep_types() {
-        // let expected = Type::Array(Box::new(Type::Tuples(vec![Type::String, Type::U64])));
-        // let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
+        let expected = Type::Array(Box::new(Type::Tuples(vec![Type::String, Type::U64])));
+        let ty = Type::Array(Box::new(Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])));
 
-        // assert!(expected.is_compatible_with(&ty));
-        // assert!(expected.is_assign_compatible_with(&ty));
+        assert_eq!(expected, ty.map_generic_type(Some(&expected)));
+        assert!(expected.is_compatible_with(&ty));
+        assert!(expected.is_assign_compatible_with(&ty));
 
         let expected = Type::Tuples(vec![Type::String, Type::U64]);
         let ty = Type::Tuples(vec![Type::String, Type::Optional(Box::new(Type::U64))]);
