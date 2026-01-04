@@ -338,7 +338,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         // We go through every modules injected
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(call_stack) = self.call_stack.pop() {
-                debug!("Processing call stack: {:?}", call_stack);
+                debug!("Processing call stack: {:?} with stack [{}]", call_stack, self.stack.get_inner().iter().map(|v| format!("{}", v.as_ref())).collect::<Vec<_>>().join(", "));
                 match call_stack {
                     CallStack::Chunk(mut manager) => {
                         // Retrieve the required chunk
