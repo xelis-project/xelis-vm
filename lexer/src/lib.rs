@@ -464,6 +464,30 @@ impl<'a> Lexer<'a> {
                         column_end: self.column
                     }
                 },
+                // Handle '!' specially - can be standalone '!' or '!='
+                // Consecutive '!' operators (like !!) are valid
+                '!' => {
+                    let column_start = self.column;
+                    
+                    // Only special case: '!=' 
+                    if self.peek()? == '=' {
+                        self.advance()?;
+                        TokenResult {
+                            token: Token::OperatorNotEquals,
+                            line: self.line,
+                            column_start,
+                            column_end: self.column
+                        }
+                    } else {
+                        // Everything else: just return '!' and let parser handle validity
+                        TokenResult {
+                            token: Token::IsNot,
+                            line: self.line,
+                            column_start,
+                            column_end: self.column
+                        }
+                    }
+                },
                 // it's only a comment, skip until its end
                 '/' if {
                     let v = self.peek()?;

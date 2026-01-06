@@ -2047,15 +2047,30 @@ impl<'a, M> Parser<'a, M> {
                         _ => return Err(err!(self, ParserErrorKind::UnexpectedToken(Token::Dot)))
                     }
                 },
-                Token::IsNot => { // it's an operator, but not declared as
-                    let expr = self.read_expression(context)?;
+                Token::IsNot => {
+                    // Count consecutive IsNot tokens
+                    let mut not_count = 1;
+                    while self.peek_is(Token::IsNot) {
+                        self.advance()?;
+                        not_count += 1;
+                    }
+                    
+                    // Read the expression that follows all the ! operators
+                    let expr = self.read_expr(delimiter, on_type, false, false, Some(&Type::Bool), context)?;
                     let expr_type = self.get_type_from_expression(on_type, &expr, context)?;
                     if *expr_type != Type::Bool {
                         return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), Type::Bool)))
                     }
-
-                    Expression::IsNot(Box::new(expr))
-                },
+                    
+                    // Always wrap at least once for coercion
+                    // If odd count: single wrap
+                    // If even count: double wrap (!!x becomes IsNot(IsNot(x)))
+                    if not_count % 2 == 1 {
+                        Expression::IsNot(Box::new(expr))
+                    } else {
+                        Expression::IsNot(Box::new(Expression::IsNot(Box::new(expr))))
+                    }
+                }
                 Token::OperatorTernary => {
                     if queue.is_empty() {
                         return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression));
