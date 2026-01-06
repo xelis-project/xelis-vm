@@ -2064,11 +2064,11 @@ impl<'a, M> Parser<'a, M> {
                     
                     // Always wrap at least once for coercion
                     // If odd count: single wrap
-                    // If even count: double wrap (!!x becomes IsNot(IsNot(x)))
+                    // If even count: direct cast to bool, happens implicitly from expected_type arg in the read_expr call above
                     if not_count % 2 == 1 {
                         Expression::IsNot(Box::new(expr))
                     } else {
-                        Expression::IsNot(Box::new(Expression::IsNot(Box::new(expr))))
+                        expr
                     }
                 }
                 Token::OperatorTernary => {
