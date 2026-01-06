@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 use xelis_bytecode::{Chunk, ChunkReader, ChunkReaderError, OpCode};
 
 // OpCode with Args
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OpCodeWithArgs {
     // load constant at index u16, push in stack
     Constant {

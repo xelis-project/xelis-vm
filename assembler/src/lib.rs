@@ -2,7 +2,7 @@ mod opcode;
 mod disassembler;
 
 use log::{debug, trace};
-use opcode::OpCodeWithArgs;
+pub use opcode::OpCodeWithArgs;
 
 use thiserror::Error;
 use xelis_types::Constant;
