@@ -359,7 +359,7 @@ fn test_isnot_invalid_sequences() {
     assert!(try_parse_code_with("fn main() -> bool { return !*true; }", &env).is_err());
     assert!(try_parse_code_with("fn main() -> bool { return !/false; }", &env).is_err());
     assert!(try_parse_code_with("fn main() -> bool { return !%true; }", &env).is_err());
-    assert!(try_parse_code_with("fn main() -> bool { return false !!= false }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return false !!= false; }", &env).is_err());
 }
 
 #[test]
