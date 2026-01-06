@@ -2,7 +2,7 @@ use xelis_compiler::Compiler;
 use xelis_environment::{Environment, EnvironmentError};
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
-use xelis_parser::Parser;
+use xelis_parser::{Parser, ParserError};
 use xelis_types::{traits::{JSONHelper, Serializable}, Primitive};
 use super::*;
 
@@ -20,6 +20,28 @@ fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> (Modu
     let module = Compiler::new(&program, &env).compile().unwrap();
 
     (module, env)
+}
+
+#[track_caller]
+fn parse_code(code: &str) {
+    parse_code_with(code, EnvironmentBuilder::default())
+}
+
+#[track_caller]
+fn parse_code_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) {
+    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
+    let (_, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
+}
+
+#[track_caller]
+fn try_parse_code_with<'a>(code: &'a str, env: &'a EnvironmentBuilder<'a, ()>) -> Result<(), ParserError<'a>> {
+    let tokens: Vec<_> = Lexer::new(code)
+        .into_iter()
+        .collect::<Result<_, _>>().unwrap();
+    
+    Parser::with(tokens.into_iter(), &env)
+        .parse()
+        .map(|_| ())
 }
 
 #[track_caller]
@@ -125,6 +147,226 @@ fn test_ternary_negative() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(30));
+}
+
+#[test]
+fn test_isnot_basic() {
+    test_code_expect_return("fn main() -> bool { return !false; }", Primitive::Boolean(true));
+    test_code_expect_return("fn main() -> bool { return !true; }", Primitive::Boolean(false));
+}
+
+#[test]
+fn test_isnot_precedence_with_and() {
+    test_code_expect_return(
+        "fn main() -> bool { let feeless: bool = false; return !feeless && false; }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { let feeless: bool = true; return !feeless && false; }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { let feeless: bool = false; return !feeless && true; }", 
+        Primitive::Boolean(true)
+    );
+}
+
+#[test]
+fn test_isnot_precedence_with_and_parentheses() {
+    test_code_expect_return(
+        "fn main() -> bool { let feeless: bool = false; return (!feeless) && false; }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { let feeless: bool = false; return (!feeless) && true; }", 
+        Primitive::Boolean(true)
+    );
+}
+
+#[test]
+fn test_isnot_precedence_with_equals() {
+    test_code_expect_return(
+        "fn main() -> bool { return !true == false; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !false == true; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true == true; }", 
+        Primitive::Boolean(false)
+    );
+}
+
+#[test]
+fn test_isnot_with_or() {
+    test_code_expect_return(
+        "fn main() -> bool { return !false || false; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true || false; }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true || true; }", 
+        Primitive::Boolean(true)
+    );
+}
+
+#[test]
+fn test_isnot_grouped_expression() {
+    test_code_expect_return(
+        "fn main() -> bool { return !(true && false); }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !(true && true); }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !(false || false); }", 
+        Primitive::Boolean(true)
+    );
+}
+
+#[test]
+fn test_isnot_grouped_vs_precedence() {
+    test_code_expect_return(
+        "fn main() -> bool { return !(true || false); }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true || false; }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !(false || true); }", 
+        Primitive::Boolean(false)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !false || true; }", 
+        Primitive::Boolean(true)
+    );
+}
+
+#[test]
+fn test_isnot_chain() {
+    test_code_expect_return(
+        "fn main() -> bool { let x: bool = true; return !!x; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { let x: bool = false; return !!x; }", 
+        Primitive::Boolean(false)
+    );
+}
+
+#[test]
+fn test_isnot_complex_precedence() {
+    test_code_expect_return(
+        "fn main() -> bool { return !false && true || false; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true && false || true; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { return !true && true || false; }", 
+        Primitive::Boolean(false)
+    );
+}
+
+#[test]
+fn test_isnot_with_variable_expressions() {
+    test_code_expect_return(
+        "fn main() -> bool { let a: bool = true; let b: bool = false; let c: bool = !a == b; return c; }", 
+        Primitive::Boolean(true)
+    );
+    
+    test_code_expect_return(
+        "fn main() -> bool { let a: bool = false; let b: bool = false; let c: bool = !a == b; return c; }", 
+        Primitive::Boolean(false)
+    );
+}
+
+#[test]
+fn test_isnot_in_conditions() {
+    test_code_expect_return(
+        "entry main() { let x: bool = false; if !x { return 1; } return 0; }", 
+        Primitive::U64(1)
+    );
+    
+    test_code_expect_return(
+        "entry main() { let x: bool = true; if !x { return 1; } return 0; }", 
+        Primitive::U64(0)
+    );
+    
+    test_code_expect_return(
+        "entry main() { let x: bool = false; if !x && false { return 0; } return 1; }", 
+        Primitive::U64(1)
+    );
+
+    test_code_expect_return(
+        "entry main() { let x: bool = false; if !(x && false) { return 0; } return 1; }", 
+        Primitive::U64(0)
+    );
+}
+
+#[test]
+fn test_isnot_longer_chains() {
+    test_code_expect_return("fn main() -> bool { return !!!true; }", Primitive::Boolean(false));
+    test_code_expect_return("fn main() -> bool { return !!!!true; }", Primitive::Boolean(true));
+    test_code_expect_return("fn main() -> bool { return !!!!!false; }", Primitive::Boolean(true));
+    test_code_expect_return("fn main() -> bool { return !!!!!!false; }", Primitive::Boolean(false));
+}
+
+#[test]
+fn test_isnot_chains_with_variables() {
+    test_code_expect_return("fn main() -> bool { let x: bool = false; return !!!x; }", Primitive::Boolean(true));
+    test_code_expect_return("fn main() -> bool { let x: bool = true; return !!!!x; }", Primitive::Boolean(true));
+}
+
+#[test]
+fn test_isnot_chains_with_expressions() {
+    test_code_expect_return("fn main() -> bool { return !!(true && false); }", Primitive::Boolean(false));
+    test_code_expect_return("fn main() -> bool { return !!!(true || false); }", Primitive::Boolean(false));
+    test_code_expect_return("fn main() -> bool { return !!!!(false || false); }", Primitive::Boolean(false));
+}
+
+#[test]
+fn test_isnot_invalid_sequences() {
+    let env = EnvironmentBuilder::<()>::default();
+    assert!(try_parse_code_with("fn main() -> bool { return !+true; }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return !-false; }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return !*true; }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return !/false; }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return !%true; }", &env).is_err());
+    assert!(try_parse_code_with("fn main() -> bool { return false !!= false; }", &env).is_err());
+}
+
+#[test]
+fn test_isnot_valid_edge_cases() {
+    test_code_expect_return("fn main() -> bool { return !(true); }", Primitive::Boolean(false));
+    test_code_expect_return("fn main() -> bool { let x: bool[] = [!true, !false]; return x[0]; }", Primitive::Boolean(false));
+    test_code_expect_return("fn main() -> bool { return !true != false; }", Primitive::Boolean(false));
 }
 
 #[test]
