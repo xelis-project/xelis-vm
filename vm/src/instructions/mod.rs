@@ -227,6 +227,8 @@ fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<
 
 fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
+    debug!("jump at address {}", addr);
+
     reader.set_index(addr as usize)?;
     Ok(InstructionResult::Nothing)
 }
@@ -234,7 +236,9 @@ fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _
 fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
+    debug!("jump_if_false at address {}", addr);
     if !value.as_bool()? {
+        debug!("jumping to {}", addr);
         reader.set_index(addr as usize)?;
     }
     Ok(InstructionResult::Nothing)
