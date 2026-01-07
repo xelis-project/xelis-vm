@@ -95,6 +95,16 @@ impl Chunk {
         self.instructions[index - 3..=index].copy_from_slice(&bytes);
     }
 
+    // Write a jump address (u32) and return the index to use for patching later
+    // This ensures consistent tracking of jump address positions
+    #[inline]
+    pub fn write_jump_address(&mut self, addr: u32) -> usize {
+        let index_before = self.instructions.len();
+        self.write_u32(addr);
+        // After writing 4 bytes, the last byte is at index_before + 3
+        index_before + 3
+    }
+
     // Write a byte in the instructions
     #[inline]
     pub fn write_u8(&mut self, instruction: u8) {

@@ -278,16 +278,14 @@ impl<'a, M> Compiler<'a, M> {
                 // Emit the jump if false
                 // We will overwrite the addr later
                 chunk.emit_opcode(OpCode::JumpIfFalse);
-                chunk.write_u32(INVALID_ADDR);
-                let jump_addr = chunk.last_index();
+                let jump_addr = chunk.write_jump_address(INVALID_ADDR);
 
                 // Compile the valid condition
                 self.compile_expr(chunk, chunk_id, valid, false)?;
 
                 // Once finished, we must jump the false condition
                 chunk.emit_opcode(OpCode::Jump);
-                chunk.write_u32(INVALID_ADDR);
-                let jump_valid_index = chunk.last_index();
+                let jump_valid_index = chunk.write_jump_address(INVALID_ADDR);
 
                 // Patch the jump if false
                 let jump_false_addr = chunk.index();
@@ -670,8 +668,7 @@ impl<'a, M> Compiler<'a, M> {
 
                     // We will overwrite the addr later
                     // to jump to the next condition
-                    chunk.write_u32(INVALID_ADDR);
-                    let jump_addr = chunk.last_index();
+                    let jump_addr = chunk.write_jump_address(INVALID_ADDR);
 
                     if let MatchStatement::Variant(exprs, _) = condition {
                         trace!("storing {} values for variant match", exprs);
@@ -695,8 +692,7 @@ impl<'a, M> Compiler<'a, M> {
 
                     // Jump to the end of the match
                     chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(INVALID_ADDR);
-                    jumps_end.push(chunk.last_index());
+                    jumps_end.push(chunk.write_jump_address(INVALID_ADDR));
 
                     // Patch it directly to jump to the next condition
                     chunk.patch_jump(jump_addr, chunk.index() as _);
@@ -734,8 +730,7 @@ impl<'a, M> Compiler<'a, M> {
                 // Emit the jump if false
                 // We will overwrite the addr later
                 chunk.emit_opcode(OpCode::JumpIfFalse);
-                chunk.write_u32(INVALID_ADDR);
-                let jump_addr = chunk.last_index();
+                let jump_addr = chunk.write_jump_address(INVALID_ADDR);
 
                 // One is used for the jump if false
                 self.decrease_values_on_stack()?;
@@ -749,8 +744,7 @@ impl<'a, M> Compiler<'a, M> {
                 // Once finished, we must jump the false condition
                 let jump_valid_index = if append_jump {
                     chunk.emit_opcode(OpCode::Jump);
-                    chunk.write_u32(INVALID_ADDR);
-                    Some(chunk.last_index())
+                    Some(chunk.write_jump_address(INVALID_ADDR))
                 } else {
                     None
                 };
@@ -779,8 +773,7 @@ impl<'a, M> Compiler<'a, M> {
                 // Emit the jump if false
                 // We will overwrite the addr later
                 chunk.emit_opcode(OpCode::JumpIfFalse);
-                chunk.write_u32(INVALID_ADDR);
-                let jump_addr = chunk.last_index();
+                let jump_addr = chunk.write_jump_address(INVALID_ADDR);
 
                 // One is used for the jump if false
                 self.decrease_values_on_stack()?;
@@ -815,8 +808,7 @@ impl<'a, M> Compiler<'a, M> {
                 chunk.emit_opcode(OpCode::IteratorNext);
 
                 let iterator_index = chunk.last_index();
-                chunk.write_u32(INVALID_ADDR);
-                let jump_end = chunk.last_index();
+                let jump_end = chunk.write_jump_address(INVALID_ADDR);
 
                 self.push_mem_scope();
                 // IteratorNext is adding a value on stack if not
@@ -856,8 +848,7 @@ impl<'a, M> Compiler<'a, M> {
                 // Emit the jump if false
                 // We will overwrite the addr later
                 chunk.emit_opcode(OpCode::JumpIfFalse);
-                chunk.write_u32(INVALID_ADDR);
-                let jump_addr = chunk.last_index();
+                let jump_addr = chunk.write_jump_address(INVALID_ADDR);
 
                 // One is used for the jump if false
                 self.decrease_values_on_stack()?;
@@ -1574,5 +1565,138 @@ mod tests {
 
             ]
         );
+    }
+
+    #[test]
+    fn test_nested_if_else_depth() {
+        // Test deeply nested if/else conditions to verify jump patching works correctly
+        let module = prepare_program(r#"
+            entry main() {
+                let x: u64 = 5
+                
+                if x == 1 {
+                    return 1
+                } else if x == 2 {
+                    return 2
+                } else if x == 3 {
+                    return 3
+                } else if x == 4 {
+                    return 4
+                } else if x == 5 {
+                    return 5
+                } else {
+                    return 99
+                }
+            }
+        "#);
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        // Verify the module compiles without errors
+        assert!(!chunk.get_instructions().is_empty());
+        // Verify there are jumps present for the conditional branches
+        let instructions = chunk.get_instructions();
+        let jump_count = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
+        assert!(jump_count >= 5, "Expected at least 5 JumpIfFalse instructions, found {}", jump_count);
+    }
+
+    #[test]
+    fn test_nested_if_with_inner_conditions() {
+        // Test nested if statements where inner scopes have their own conditions
+        let module = prepare_program(r#"
+            entry main() {
+                let a: u64 = 10
+                
+                if a > 5 {
+                    let b: u64 = 3
+                    if b == 3 {
+                        if a == 10 {
+                            return 100
+                        } else {
+                            return 101
+                        }
+                    } else if b == 2 {
+                        return 200
+                    } else {
+                        return 300
+                    }
+                } else {
+                    return 1
+                }
+
+                return 9999
+            }
+        "#);
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        // Verify the module compiles without errors
+        assert!(!chunk.get_instructions().is_empty());
+        // Verify there are multiple jump instructions for nested conditions
+        let instructions = chunk.get_instructions();
+        let jump_count = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
+        assert!(jump_count >= 4, "Expected at least 4 JumpIfFalse instructions in nested conditions, found {}", jump_count);
+    }
+
+    #[test]
+    fn test_multiple_ternary_operators() {
+        // Test multiple ternary operators in sequence to verify jump address tracking
+        let module = prepare_program(r#"
+            entry main() {
+                let x: u64 = 5
+                let y: u64 = 10
+                let z: u64 = 15
+                
+                let result: u64 = x > 3 ? 100 : 1
+                let result2: u64 = y < 20 ? 200 : 2
+                let result3: u64 = z == 15 ? 300 : 3
+                
+                return result + result2 + result3
+            }
+        "#);
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        // Verify the module compiles without errors
+        assert!(!chunk.get_instructions().is_empty());
+        // Verify there are Jump instructions for ternary operators
+        let instructions = chunk.get_instructions();
+        let jump_count = instructions.iter().filter(|&&b| b == OpCode::Jump.as_byte()).count();
+        assert!(jump_count >= 3, "Expected at least 3 Jump instructions for ternary operators, found {}", jump_count);
+    }
+
+    #[test]
+    fn test_if_else_in_loop_with_conditions() {
+        // Test if/else conditions inside loops with break/continue
+        let module = prepare_program(r#"
+            entry main() {
+                let sum: u64 = 0
+                let i: u64 = 0
+                
+                while i < 20 {
+                    if i == 5 {
+                        i += 1
+                        continue
+                    } else if i == 10 {
+                        break
+                    } else if (i % 2) == 0 {
+                        sum += i
+                    } else {
+                        sum += i * 2
+                    }
+                    
+                    i += 1
+                }
+                
+                return sum
+            }
+        "#);
+
+        let chunk = module.get_chunk_at(0).unwrap();
+        // Verify the module compiles without errors
+        assert!(!chunk.get_instructions().is_empty());
+        // Verify there are conditional jumps and loop jumps
+        let instructions = chunk.get_instructions();
+        let jump_if_false = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
+        let jumps = instructions.iter().filter(|&&b| b == OpCode::Jump.as_byte()).count();
+        assert!(jump_if_false >= 3, "Expected at least 3 JumpIfFalse for conditions, found {}", jump_if_false);
+        assert!(jumps >= 3, "Expected at least 3 Jump instructions for loop and continue, found {}", jumps);
     }
 }

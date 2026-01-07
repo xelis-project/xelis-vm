@@ -23,17 +23,6 @@ fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> (Modu
 }
 
 #[track_caller]
-fn parse_code(code: &str) {
-    parse_code_with(code, EnvironmentBuilder::default())
-}
-
-#[track_caller]
-fn parse_code_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) {
-    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
-    let (_, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
-}
-
-#[track_caller]
 fn try_parse_code_with<'a>(code: &'a str, env: &'a EnvironmentBuilder<'a, ()>) -> Result<(), ParserError<'a>> {
     let tokens: Vec<_> = Lexer::new(code)
         .into_iter()
