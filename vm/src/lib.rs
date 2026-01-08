@@ -368,7 +368,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         if let Some(callback) = self.stack.get_callback() {
                                             let mut params = VecDeque::with_capacity(callback.params_len);
                                             for _ in 0..callback.params_len {
-                                                params.push_front(self.stack.pop_stack().unwrap());
+                                                params.push_front(self.stack.pop_stack()?);
                                             }
 
                                             let res = (callback.callback)(
