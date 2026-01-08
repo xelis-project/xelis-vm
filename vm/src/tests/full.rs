@@ -3141,3 +3141,22 @@ fn test_u64_behind_any() {
     "#;
     assert_eq!(run_code(code), Primitive::U64(50));
 }
+
+#[test]
+fn test_multi_condition() {
+    let code = r#"
+        entry main() {
+            if true {
+                if true {
+                } else {
+                    return 1
+                }
+            } else {
+                return 2
+            }
+            return 0;
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
