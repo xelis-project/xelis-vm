@@ -134,7 +134,7 @@ pub enum Token<'a> {
     Break,
     Continue,
     In,
-    IsNot, // !
+    Not, // !
 
     ParenthesisOpen,
     ParenthesisClose,
@@ -268,7 +268,7 @@ impl<'a> Token<'a> {
             "break" => Break,
             "continue" => Continue,
             "in" => In,
-            "!" => IsNot,
+            "!" => Not,
 
             "null" => Value(Literal::Null),
             "true" => Value(Literal::Bool(true)),
@@ -354,7 +354,7 @@ impl<'a> Token<'a> {
             Break => "break",
             Continue => "continue",
             In => "in",
-            IsNot => "!",
+            Not => "!",
 
             Import => "import",
             From => "from",

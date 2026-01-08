@@ -64,6 +64,7 @@ impl<'a, M> Compiler<'a, M> {
     fn map_operator_to_opcode(op: &Operator) -> Result<OpCode, CompilerError> {
         trace!("Mapping operator to opcode: {:?}", op);
         Ok(match op {
+            Operator::Not => OpCode::Neg,
             Operator::Add => OpCode::Add,
             Operator::Sub => OpCode::Sub,
             Operator::Mul => OpCode::Mul,

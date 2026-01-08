@@ -2,6 +2,8 @@ use super::Token;
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum Operator {
+    Not, // ! (unary prefix)
+    
     Eq, // ==
     Neq, // !=
     And, // &&
@@ -38,6 +40,7 @@ impl Operator {
     pub fn value_of(token: &Token) -> Option<Operator> {
         use Operator::*;
         let value = match token {
+            Token::Not => Not,
             Token::OperatorEquals => Eq,
             Token::OperatorNotEquals => Neq,
             Token::OperatorAnd => And,
@@ -78,9 +81,17 @@ impl Operator {
         Some(value)
     }
 
+    pub fn is_unary(&self) -> bool {
+        match self {
+            Operator::Not => true,
+            _ => false,
+        }
+    }
+
     pub fn to_token(&self) -> Token<'static> {
         use Operator::*;
         match self {
+            Not => Token::Not,
             Eq => Token::OperatorEquals,
             Neq => Token::OperatorNotEquals,
             And => Token::OperatorAnd,
@@ -122,7 +133,10 @@ impl Operator {
     pub fn precedence(&self) -> (u8, Associativity) {
         use Associativity::*;
         match self {
-            // Unary operators
+            // Unary prefix operators
+            Operator::Not => (12, RightToLeft), // ! unary prefix, high precedence
+            
+            // Power and arithmetic
             Operator::Pow => (11, RightToLeft), // ** in Rust is right-associative
             Operator::Mul | Operator::Div | Operator::Mod => (10, LeftToRight),
             Operator::Add | Operator::Sub => (9, LeftToRight),
@@ -183,7 +197,8 @@ impl Operator {
 
     pub fn is_bool_operator(&self) -> bool {
         match &self {
-            Operator::Eq
+            Operator::Not
+            | Operator::Eq
             | Operator::Neq
             | Operator::And
             | Operator::Or

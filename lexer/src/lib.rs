@@ -481,7 +481,7 @@ impl<'a> Lexer<'a> {
                     } else {
                         // Everything else: just return '!' and let parser handle validity
                         TokenResult {
-                            token: Token::IsNot,
+                            token: Token::Not,
                             line: self.line,
                             column_start,
                             column_end: self.column

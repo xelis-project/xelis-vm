@@ -185,6 +185,8 @@ pub enum ParserErrorKind<'a> {
     NotImplemented,
     #[error("invalid operation")]
     InvalidOperation,
+    #[error("invalid unary operation")]
+    InvalidUnaryOperation,
     #[error("invalid ternary: no previous expression")]
     InvalidTernaryNoPreviousExpression,
     #[error("code after a return is not possible")]

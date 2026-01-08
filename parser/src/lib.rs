@@ -904,7 +904,8 @@ impl<'a, M> Parser<'a, M> {
             // Compatibility checks are done when constructing the expression
             Expression::Operator(op, left, right) => match op {
                 // Condition operators
-                Operator::Or
+                Operator::Not
+                | Operator::Or
                 | Operator::Eq
                 | Operator::Neq
                 | Operator::Gte
@@ -1459,6 +1460,8 @@ impl<'a, M> Parser<'a, M> {
     // Execute the selected operator
     fn execute_operator(&self, op: &Operator, left: &Primitive, right: &Primitive) -> Result<Option<Primitive>, ParserError<'a>> {
         Ok(Some(match op {
+            // Unary operators should not appear in binary operator execution
+            Operator::Not => unreachable!("Not is a unary operator, handled separately"),
             Operator::Add => {
                 if left.is_string() || right.is_string() {
                     Primitive::String(format!("{}{}", left, right))
@@ -1743,23 +1746,37 @@ impl<'a, M> Parser<'a, M> {
                     collapse_queue.push(expr);
                 }
                 QueueItem::Operator(op) => {
-                    let (mut right, mut left) = match (collapse_queue.pop(), collapse_queue.pop()) {
-                        (Some(right), Some(left)) => (right, left),
-                        _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
-                    };
+                    if op.is_unary() {
+                        // Unary operator - pop one operand
+                        let expr = collapse_queue.pop()
+                            .ok_or_else(|| err!(self, ParserErrorKind::InvalidExpression))?;
+                        
+                        let expr_type = self.get_type_from_expression(None, &expr, context)?;
+                        if *expr_type != Type::Bool {
+                            return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), Type::Bool)));
+                        }
+                        
+                        collapse_queue.push(Expression::IsNot(Box::new(expr)));
+                    } else {
+                        // Binary operator - pop two operands
+                        let (mut right, mut left) = match (collapse_queue.pop(), collapse_queue.pop()) {
+                            (Some(right), Some(left)) => (right, left),
+                            _ => return Err(err!(self, ParserErrorKind::InvalidExpression)),
+                        };
 
-                    let left_type = self.get_type_from_expression(None, &left, context)?
-                        .into_owned();
-                    let right_type = self.get_type_from_expression_internal(None, &right, context)?;
-                    if right_type.is_none() && !left_type.allow_null() {
-                        return Err(err!(self, ParserErrorKind::EmptyValue(right)));
+                        let left_type = self.get_type_from_expression(None, &left, context)?
+                            .into_owned();
+                        let right_type = self.get_type_from_expression_internal(None, &right, context)?;
+                        if right_type.is_none() && !left_type.allow_null() {
+                            return Err(err!(self, ParserErrorKind::EmptyValue(right)));
+                        }
+
+                        if let Some(right_type) = right_type {
+                            self.verify_operator(&op, left_type, &mut left, Some((right_type.into_owned(), &mut right)))?;
+                        }
+
+                        collapse_queue.push(Expression::Operator(op, Box::new(left), Box::new(right)));
                     }
-
-                    if let Some(right_type) = right_type {
-                        self.verify_operator(&op, left_type, right_type.into_owned(), &mut left, &mut right)?;
-                    }
-
-                    collapse_queue.push(Expression::Operator(op, Box::new(left), Box::new(right)));
                 },
                 _ => {}
             }
@@ -2047,30 +2064,6 @@ impl<'a, M> Parser<'a, M> {
                         _ => return Err(err!(self, ParserErrorKind::UnexpectedToken(Token::Dot)))
                     }
                 },
-                Token::IsNot => {
-                    // Count consecutive IsNot tokens
-                    let mut not_count = 1;
-                    while self.peek_is(Token::IsNot) {
-                        self.advance()?;
-                        not_count += 1;
-                    }
-                    
-                    // Read the expression that follows all the ! operators
-                    let expr = self.read_expr(delimiter, on_type, false, false, Some(&Type::Bool), context)?;
-                    let expr_type = self.get_type_from_expression(on_type, &expr, context)?;
-                    if *expr_type != Type::Bool {
-                        return Err(err!(self, ParserErrorKind::InvalidValueType(expr_type.into_owned(), Type::Bool)))
-                    }
-                    
-                    // Always wrap at least once for coercion
-                    // If odd count: single wrap
-                    // If even count: direct cast to bool, happens implicitly from expected_type arg in the read_expr call above
-                    if not_count % 2 == 1 {
-                        Expression::IsNot(Box::new(expr))
-                    } else {
-                        expr
-                    }
-                }
                 Token::OperatorTernary => {
                     if queue.is_empty() {
                         return Err(err!(self, ParserErrorKind::InvalidTernaryNoPreviousExpression));
@@ -2190,6 +2183,12 @@ impl<'a, M> Parser<'a, M> {
                             .map_err(|_| err!(self, ParserErrorKind::FunctionNotFound))?;
 
                         Expression::FunctionPointer(f, false)
+                    } else if token == Token::Not {
+                        // Handle ! as a prefix unary operator
+                        // We don't toggle required_operator here because we're still expecting a value after the !
+                        operator_stack.push(Operator::Not);
+                        trace!("pushed prefix operator Not to stack");
+                        continue;
                     } else if token.is_operator() {
                         let op = match Operator::value_of(&token) {
                             Some(op) => op,
@@ -2359,8 +2358,27 @@ impl<'a, M> Parser<'a, M> {
         }))
     }
 
-    fn verify_operator(&self, op: &Operator, left_type: Type, right_type: Type, left_expr: &mut Expression, right_expr: &mut Expression) -> Result<(), ParserError<'a>> {
+    fn verify_operator(&self, op: &Operator, left_type: Type, left_expr: &mut Expression, right: Option<(Type, &mut Expression)>) -> Result<(), ParserError<'a>> {
+        if matches!(op, Operator::Not) {
+            if right.is_some() {
+                return Err(err!(self, ParserErrorKind::InvalidOperation))
+            }
+
+            if !left_type.is_boolean() {
+                return Err(err!(self, ParserErrorKind::InvalidOperationNotSameType(left_type, Type::Bool)))
+            }
+
+            return Ok(())
+        }
+
+        let (right_type, right_expr) = match right {
+            Some((ty, expr)) => (ty, expr),
+            None => return Err(err!(self, ParserErrorKind::InvalidOperation))
+        };
+
         match op {
+            // Unary operators should not appear in binary operator verification
+            Operator::Not => {},
             Operator::Sub
             | Operator::Mod
             | Operator::Div
@@ -2440,7 +2458,7 @@ impl<'a, M> Parser<'a, M> {
                     }
                 }
             },
-            Operator::Assign(Some(inner)) => self.verify_operator(inner, left_type, right_type, left_expr, right_expr)?,
+            Operator::Assign(Some(inner)) => self.verify_operator(inner, left_type, left_expr, Some((right_type, right_expr)))?,
         };
 
         Ok(())
