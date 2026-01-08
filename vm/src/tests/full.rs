@@ -1397,7 +1397,16 @@ fn test_if() {
 
 #[test]
 fn test_nested_if() {
-    test_code_expect_return("entry main() { let a: u64 = 10; if a > 0 { if a == 10 { return 10; } else { return 0; } } else { return 0; } }", Primitive::U64(10));
+    test_code_expect_return(
+        "entry main() {
+            let a: u64 = 10;
+            if a > 0 {
+                if a == 10 { return 10; }
+                else { return 0; }
+            } else {
+                return 0;
+            }
+        }", Primitive::U64(10));
     test_code_expect_return("entry main() { let a: u64 = 10; if a != 0 { if a == 10 { return 0; } else { return 11; } } return 999; }", Primitive::U64(0));
 }
 

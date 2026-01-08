@@ -27,6 +27,8 @@ pub struct Compiler<'a, M> {
     environment: &'a Environment<M>,
     // Final module to return
     module: Module,
+    // Index of jumps to patch in case of nested conditionals
+    jumps: Vec<(usize, u32)>,
     // Index of break jump to patch
     loop_break_patch: Vec<Vec<usize>>,
     // Index of continue jump to patch
@@ -52,6 +54,7 @@ impl<'a, M> Compiler<'a, M> {
             program,
             environment,
             module: Module::new(),
+            jumps: Vec::new(),
             loop_break_patch: Vec::new(),
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
@@ -741,7 +744,7 @@ impl<'a, M> Compiler<'a, M> {
 
                 self.pop_mem_scope(chunk)?;
 
-                let append_jump = else_statements.is_some() && chunk.last_instruction() != Some(&OpCode::Return.as_byte());
+                let append_jump = else_statements.is_some() || chunk.last_instruction() != Some(&OpCode::Return.as_byte());
                 // Once finished, we must jump the false condition
                 let jump_valid_index = if append_jump {
                     chunk.emit_opcode(OpCode::Jump);
@@ -763,8 +766,8 @@ impl<'a, M> Compiler<'a, M> {
 
                 if let Some(jump_valid_index) = jump_valid_index {
                     // Patch the jump if valid
-                    let jump_valid_addr = chunk.index();
-                    chunk.patch_jump(jump_valid_index, jump_valid_addr as u32);
+                    let jump_valid_addr = chunk.index() as u32;
+                    self.jumps.push((jump_valid_index, jump_valid_addr));
                 }
             },
             Statement::While(expr, statements) => {
@@ -963,6 +966,18 @@ impl<'a, M> Compiler<'a, M> {
             // If the function has no return, we add a return
             // at the end of the chunk
             chunk.emit_opcode(OpCode::Return);
+        }
+
+        // Patch all the jumps at the end of a if statement
+        let last_addr = chunk.index() as u32;
+        for (index, addr) in self.jumps.drain(..) {
+            let valid = if addr == last_addr {
+                last_addr - 1
+            } else {
+                addr
+            };
+
+            chunk.patch_jump(index, valid);
         }
 
         // Add the chunk to the module
@@ -1183,9 +1198,10 @@ mod tests {
             chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
-                OpCode::JumpIfFalse.as_byte(), 12, 0, 0, 0,
+                OpCode::JumpIfFalse.as_byte(), 17, 0, 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
                 OpCode::Return.as_byte(),
+                OpCode::Jump.as_byte(), 20, 0, 0, 0,
                 OpCode::Constant.as_byte(), 2, 0,
                 OpCode::Return.as_byte()
             ]
