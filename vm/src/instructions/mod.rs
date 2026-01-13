@@ -255,23 +255,6 @@ fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     Ok(InstructionResult::Nothing)
 }
 
-fn is_value_in_range<T: PartialOrd>(
-    value: T,
-    expected_ref: &ValueCell,
-    range_matcher: fn(&Box<(Primitive, Primitive)>) -> Option<(T, T)>
-) -> bool {
-    match expected_ref {
-        ValueCell::Primitive(Primitive::Range(range)) => {
-            if let Some((min, max)) = range_matcher(range) {
-                value >= min && value <= max
-            } else {
-                false
-            }
-        },
-        _ => false,
-    }
-}
-
 fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
@@ -293,23 +276,22 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
             .as_ref();
     
         let expected_ref = expected.as_ref();
-        if let ValueCell::Primitive(v) = actual {
+        if let (ValueCell::Primitive(v), ValueCell::Primitive(Primitive::Range(range))) = (actual, expected_ref) {
             macro_rules! match_range {
                 ($prim:ident, $val:ident) => {
-                    is_value_in_range(*$val, expected_ref, |range| {
-                        match &**range {
-                            (Primitive::$prim(min), Primitive::$prim(max)) => Some((*min, *max)),
-                            _ => None
-                        }
-                    })
-                };
+                    if let (Primitive::$prim(min), Primitive::$prim(max)) = &**range {
+                        *$val >= *min && *$val < *max
+                    } else {
+                        false
+                    }
+                }
             }
-    
+
             match v {
-                Primitive::U8(v)   => match_range!(U8, v),
-                Primitive::U16(v)  => match_range!(U16, v),
-                Primitive::U32(v)  => match_range!(U32, v),
-                Primitive::U64(v)  => match_range!(U64, v),
+                Primitive::U8(v) => match_range!(U8, v),
+                Primitive::U16(v) => match_range!(U16, v),
+                Primitive::U32(v) => match_range!(U32, v),
+                Primitive::U64(v) => match_range!(U64, v),
                 Primitive::U128(v) => match_range!(U128, v),
                 _ => actual == expected_ref
             }

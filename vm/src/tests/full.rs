@@ -3169,3 +3169,35 @@ fn test_multi_condition() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_enum_matching() {
+    let code = r#"
+        entry main() {
+            let v: u8 = 1;
+            match v {
+                1 => return 1,
+                _ => panic("should not match")
+            };
+
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(1));
+
+        let code = r#"
+        entry main() {
+            let v: u8 = 1;
+            match v {
+                0..1 => return 1,
+                1..2 => return 0,
+                _ => panic("should not match")
+            };
+
+            return 999
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
