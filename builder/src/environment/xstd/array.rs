@@ -1,5 +1,5 @@
 use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
-use xelis_environment::{CallbackState, Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
+use xelis_environment::{CallbackState, CallbackType, Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use super::EnvironmentBuilder;
 use paste::paste;
 
@@ -492,7 +492,7 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             params: vec![next.into()].into(),
             state,
             callback_params_len: 1,
-            callback: map_callback,
+            callback: CallbackType::Sync(map_callback),
         })
     }
 
@@ -506,7 +506,7 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             tmp: ValueCell::Object(Vec::new()).into(),
         }),
         callback_params_len: 1,
-        callback: map_callback,
+        callback: CallbackType::Sync(map_callback),
     })
 }
 
@@ -633,7 +633,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
                     params: vec![next.into()].into(),
                     state,
                     callback_params_len: 1,
-                    callback: sort_by_key_callback,
+                    callback: CallbackType::Sync(sort_by_key_callback),
                 })
             },
             None => {
@@ -676,7 +676,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
             ascending,
         }),
         callback_params_len: 1,
-        callback: sort_by_key_callback,
+        callback: CallbackType::Sync(sort_by_key_callback),
     })
 }
 

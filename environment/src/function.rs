@@ -15,6 +15,15 @@ pub type CallbackFunction<M> = fn(
     params: FnParams,
 ) -> Result<SysCallResult<M>, EnvironmentError>;
 
+/// Callback type can be sync or async
+pub enum CallbackType<M> {
+    Sync(CallbackFunction<M>),
+    Async(fn(
+        state: CallbackState,
+        params: FnParams,
+    ) -> BoxFuture<'static, Result<SysCallResult<M>, EnvironmentError>>),
+}
+
 // SysCall Result represent all possible actions
 // from a SysCall
 pub enum SysCallResult<M> {
@@ -58,7 +67,7 @@ pub enum SysCallResult<M> {
         // Count of required parameters for the callback
         callback_params_len: usize,
         // The callback function to call after execution
-        callback: CallbackFunction<M>,
+        callback: CallbackType<M>,
     }
 }
 

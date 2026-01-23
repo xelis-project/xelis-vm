@@ -371,10 +371,16 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 params.push_front(self.stack.pop_stack()?);
                                             }
 
-                                            let res = (callback.callback)(
-                                                callback.state,
-                                                params.into(),
-                                            )?;
+                                            let res = match callback.callback {
+                                                CallbackType::Sync(f) => f(
+                                                    callback.state,
+                                                    params.into(),
+                                                ),
+                                                CallbackType::Async(f) => f(
+                                                    callback.state,
+                                                    params.into(),
+                                                ).await,
+                                            }?;
 
                                             let tmp = handle_perform_syscall(&mut self.stack, &mut self.context, res, &m)?;
                                             result = perform_syscall(&self.backend, tmp, &mut self.stack, &mut self.context);

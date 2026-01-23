@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{CallbackFunction, CallbackState, Context, ModuleMetadata, SysCallResult};
+use xelis_environment::{CallbackType, CallbackState, Context, ModuleMetadata, SysCallResult};
 use xelis_types::StackValue;
 
 use crate::{stack::Stack, Backend, InstructionResult, VMError};
@@ -8,7 +8,7 @@ use crate::{stack::Stack, Backend, InstructionResult, VMError};
 pub struct Callback<M> {
     pub state: CallbackState,
     pub params_len: usize,
-    pub callback: CallbackFunction<M>,
+    pub callback: CallbackType<M>,
 }
 
 pub enum PerformSysCallHelper<'a, M> {
