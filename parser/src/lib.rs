@@ -562,8 +562,7 @@ impl<'a, M> Parser<'a, M> {
                 }
 
                 self.expect_token(Token::Comma)?;
-                let token = self.advance()?;
-                let value = self.get_type_from_token_with_generics(token, generics)?;
+                let value = self.read_type_with_generics(generics)?;
                 self.expect_token(Token::OperatorGreaterThan)?;
 
                 Type::Map(Box::new(key), Box::new(value))
@@ -1993,15 +1992,15 @@ impl<'a, M> Parser<'a, M> {
                 Token::Identifier(id) => self.on_identifier_token(id, context, &mut queue, delimiter, on_type, expected_type, true)?
                     .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(id)))?,
                 Token::Value(value) => match (on_type, value) {
-                     (Some(Type::Tuples(tuples)), Literal::Number(n)) => {
+                    (Some(Type::Tuples(tuples)), Literal::Number(n)) => {
                         let id = n as usize;
                         if id < tuples.len() {
                             Expression::Variable(id as _)
                         } else {
                             return Err(err!(self, ParserErrorKind::InvalidTupleIndex(id)))
                         }
-                     },
-                     (_, value) => match value {
+                    },
+                    (_, value) => match value {
                         Literal::U8(n) => Expression::ForceType(Box::new(Primitive::U8(n).into()), Type::U8),
                         Literal::U16(n) => Expression::ForceType(Box::new(Primitive::U16(n).into()), Type::U16),
                         Literal::U32(n) => Expression::ForceType(Box::new(Primitive::U32(n).into()), Type::U32),
@@ -4107,6 +4106,39 @@ mod tests {
                 DeclarationStatement {
                     id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
+                    value: Expression::Constant(Constant::Map(IndexMap::new()))
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_map_with_array_value() {
+        // let a: map<string, u64[]> = {};
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Map,
+            Token::OperatorLessThan,
+            Token::String,
+            Token::Comma,
+            Token::Number(NumberType::U64),
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::BraceOpen,
+            Token::BraceClose
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: Some(0),
+                    value_type: Type::Map(Box::new(Type::String), Box::new(Type::Array(Box::new(Type::U64)))),
                     value: Expression::Constant(Constant::Map(IndexMap::new()))
                 }
             )
