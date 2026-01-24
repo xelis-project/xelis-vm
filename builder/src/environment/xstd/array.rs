@@ -1,12 +1,14 @@
 use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
-use xelis_environment::{CallbackState, CallbackType, VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
+use xelis_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
+use crate::ConstFunctionError;
+
 use super::EnvironmentBuilder;
 use paste::paste;
 
 macro_rules! array_number_with_size {
     ($env: expr, $op: ident, $t: ident) => {
         paste! {
-            fn [<with_size_ $op>](params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
+            fn [<with_size_ $op>](params: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
                 let count = params[0].as_u32()? as usize;
                 let values = vec![Constant::Primitive(Primitive::$t(Default::default())); count];
                 Ok(Constant::Array(values))
@@ -340,7 +342,7 @@ fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: 
     Ok(SysCallResult::Return(ValueCell::Object(result).into()))
 }
 
-fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
+fn const_with(mut params: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
     let default = params.remove(1);
     let count = params[0].as_u32()? as usize;
     let values = vec![default; count];

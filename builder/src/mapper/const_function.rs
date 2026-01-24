@@ -1,11 +1,22 @@
 use std::collections::HashMap;
 
-use xelis_types::{Constant, Type};
+use thiserror::Error;
+use xelis_types::{Constant, Type, ValueError};
 
 use crate::BuilderError;
 
 pub type ConstFnParams = Vec<Constant>;
-pub type ConstFnCall = fn(ConstFnParams) -> Result<Constant, anyhow::Error>;
+pub type ConstFnCall = fn(ConstFnParams) -> Result<Constant, ConstFunctionError>;
+
+#[derive(Debug, Error)]
+pub enum ConstFunctionError {
+    #[error("Invalid parameters for const function")]
+    InvalidParameters,
+    #[error(transparent)]
+    ValueError(#[from] ValueError),
+    #[error(transparent)]
+    BuilderError(#[from] BuilderError),
+}
 
 /// Function structure
 /// It contains the name of the function and its parameters
@@ -17,7 +28,7 @@ pub struct ConstFunction<'a> {
 }
 
 impl<'a> ConstFunction<'a> {
-    pub fn call(&self, parameters: Vec<Constant>) -> Result<Constant, anyhow::Error> {
+    pub fn call(&self, parameters: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
         // Check that the params match
         if self.parameters.len() != parameters.len() {
             return Err(BuilderError::InvalidConstFnParametersMismatch.into());

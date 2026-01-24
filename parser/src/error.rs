@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use thiserror::Error;
 use xelis_ast::{Expression, Token};
-use xelis_builder::BuilderError;
+use xelis_builder::{BuilderError, ConstFunctionError};
 use xelis_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug, Error)]
@@ -229,6 +229,8 @@ pub enum ParserErrorKind<'a> {
     UnknownError,
     #[error("incompatible closure params")]
     IncompatibleClosureParams,
+    #[error("error on const function call: {0}")]
+    ConstFunctionError(#[from] ConstFunctionError),
     #[error(transparent)]
     Any(#[from] anyhow::Error)
 }
