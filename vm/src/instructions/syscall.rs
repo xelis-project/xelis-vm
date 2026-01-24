@@ -100,7 +100,7 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                     params,
                 })
             } else {
-                for param in params {
+                for param in params.into_iter().rev() {
                     let memory_usage = param.estimate_memory_usage(context.memory_left())?;
                     context.increase_memory_usage_unchecked(memory_usage)?;
                     stack.push_stack(param)?;

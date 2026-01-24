@@ -3201,3 +3201,147 @@ fn test_enum_matching() {
 
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_async_callback_with_two_params() {
+    use futures::future::BoxFuture;
+    use futures::FutureExt;
+
+    // Define state for async callback
+    struct AsyncMapState {
+        closure_ptr: StackValue,
+        index: usize,
+        ptr: StackValue,
+        tmp: StackValue,
+    }
+
+    // Async callback function that receives element and index as parameters
+    fn async_map_callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> BoxFuture<'static, Result<SysCallResult<M>, EnvironmentError>> {
+        async move {
+            let mut state = state
+                .downcast::<AsyncMapState>()
+                .map_err(|_| EnvironmentError::InvalidCallbackState)?;
+
+            // First param is the mapped value from the closure
+            let mapped_value = params
+                .first()
+                .ok_or(EnvironmentError::InvalidCallbackParameters)?
+                .clone();
+
+            let tmp = state.tmp.as_mut_vec()?;
+            tmp.push(mapped_value.into_owned().into());
+
+            state.index += 1;
+
+            let next = state.ptr
+                .as_vec()?
+                .get(state.index)
+                .cloned();
+
+            if let Some(next_element) = next {
+                Ok(SysCallResult::ExecuteAndCallback {
+                    ptr: state.closure_ptr.clone(),
+                    params: vec![
+                        next_element.into(),
+                        Primitive::U32(state.index as u32).into()
+                    ].into(),
+                    state: Box::new(*state),
+                    callback_params_len: 1,
+                    callback: CallbackType::Async(async_map_callback),
+                })
+            } else {
+                Ok(SysCallResult::Return(state.tmp))
+            }
+        }.boxed()
+    }
+
+    // Native function that uses async callback
+    fn async_map_indexed<'a, 'ty, 'r, M: 'static>(
+        zelf: FnInstance<'a>,
+        mut parameters: FnParams,
+        _: &'a ModuleMetadata<'_, M>,
+        context: &'a mut Context<'ty, 'r>
+    ) -> BoxFuture<'a, FnReturnType<M>> {
+        async move {
+            let closure_ptr = parameters.remove(0);
+            let zelf = zelf?;
+            
+            let vec = zelf.as_vec()?;
+            let len = vec.len();
+            context.increase_gas_usage(len as u64 * 10)?;
+
+            let Some(first) = vec.first().cloned() else {
+                return Ok(SysCallResult::Return(ValueCell::Object(Vec::new()).into()))
+            };
+
+            Ok(SysCallResult::ExecuteAndCallback {
+                ptr: closure_ptr.clone(),
+                params: vec![
+                    first.into(),
+                    Primitive::U32(0).into()
+                ].into(),
+                state: Box::new(AsyncMapState {
+                    closure_ptr,
+                    index: 0,
+                    ptr: zelf,
+                    tmp: ValueCell::Object(Vec::new()).into(),
+                }),
+                callback_params_len: 1,
+                callback: CallbackType::Async(async_map_callback),
+            })
+        }.boxed()
+    }
+
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            // Pack element and index into a tuple, then pass as single parameter
+            let result: u64[] = arr.async_map_indexed(|element: u64, index: u32| {
+                assert(index < 3);
+                return element + index as u64
+            });
+            assert(result.len() == 3);
+            assert(result[0] == 10);
+            assert(result[1] == 21);
+            assert(result[2] == 32);
+
+            return result[0] + result[1] + result[2]
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::<()>::default();
+    env.register_native_function(
+        "async_map_indexed",
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+        vec![
+            ("mapper", Type::Closure(ClosureType::new(
+                // Takes a tuple of (element, index)
+                vec![Type::T(Some(0)), Type::U32],
+                Some(Type::T(Some(0)))
+            )))
+        ],
+        FunctionHandler::Async(async_map_indexed),
+        10,
+        Some(Type::Array(Box::new(Type::T(Some(0))))),
+    );
+
+    let (module, environment) = prepare_module_with(code, env);
+    
+    // Use async execution for async callbacks
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    vm.invoke_chunk_id(0).expect("valid entry chunk");
+    
+    let result = vm.run_blocking().expect("run failed");
+    let result = result.as_u64().expect("u64 result");
+    // Expected: [10+0, 20+1, 30+2] = [10, 21, 32] => sum = 63
+    assert_eq!(result, 63);
+}
