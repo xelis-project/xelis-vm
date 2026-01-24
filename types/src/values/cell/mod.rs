@@ -52,6 +52,16 @@ pub enum ValueCell {
     Map(Box<CellMap>),
 }
 
+impl PartialOrd for ValueCell {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Primitive(a), Self::Primitive(b)) => a.partial_cmp(b),
+            (Self::Bytes(a), Self::Bytes(b)) => a.partial_cmp(b),
+            _ => None
+        }
+    }
+}
+
 // NOTE: we implement JsonSchema manually to reflect the serde_map serialization
 // and to prevent the stack overflow on the Map variant.
 impl JsonSchema for ValueCell {
