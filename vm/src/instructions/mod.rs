@@ -18,7 +18,7 @@ use xelis_bytecode::OpCode;
 use xelis_environment::{ModuleMetadata, OnCallAsyncFn};
 use xelis_types::{Primitive, StackValue, ValueCell};
 
-use crate::{ChunkReader, Context};
+use crate::{ChunkReader, VMContext};
 
 use super::{stack::Stack, Backend, ChunkManager, VMError};
 
@@ -87,7 +87,7 @@ pub type OpCodeHandler<'a, 'ty, 'r, M> = fn(
     &mut Stack<M>,
     &mut ChunkManager,
     &mut ChunkReader<'_>,
-    &mut Context<'ty, 'r>,
+    &mut VMContext<'ty, 'r>,
 ) -> Result<InstructionResult<'a, M>, VMError>;
 
 // Table of instructions
@@ -206,7 +206,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
 
     // Execute an instruction
     #[inline(always)]
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
@@ -217,15 +217,15 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
     }
 }
 
-fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Err(VMError::UnknownOpCode)
 }
 
-fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     debug!("jump at address {}", addr);
 
@@ -233,7 +233,7 @@ fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
     debug!("jump_if_false at address {}", addr);
@@ -244,7 +244,7 @@ fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     Ok(InstructionResult::Nothing)
 }
 
-fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.into_owned()
         .to_vec()?;
@@ -255,7 +255,7 @@ fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     Ok(InstructionResult::Nothing)
 }
 
-fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut Context<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?

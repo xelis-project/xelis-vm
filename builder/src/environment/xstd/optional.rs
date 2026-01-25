@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use xelis_types::{ClosureType, Primitive, Type, ValueError};
 use xelis_environment::{
-    Context,
+    VMContext,
     EnvironmentError,
     FnInstance,
     FnParams,
@@ -25,15 +25,15 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))));
 }
 
-fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     Ok(SysCallResult::Return(Primitive::Boolean(zelf?.is_null()).into()))
 }
 
-fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     Ok(SysCallResult::Return(Primitive::Boolean(!zelf?.is_null()).into()))
 }
 
-fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     if zelf.is_null() {
         return Err(ValueError::OptionalIsNull.into());
@@ -42,7 +42,7 @@ fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut C
     Ok(SysCallResult::Return(zelf))
 }
 
-fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let zelf = zelf?;
 
@@ -53,7 +53,7 @@ fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'
     }))
 }
 
-fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let zelf = zelf?;
     Ok(if zelf.is_null() {
@@ -66,7 +66,7 @@ fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetad
     })
 }
 
-fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let mut param = parameters.remove(0)
         .into_owned();
     let msg = param.into_string()?;

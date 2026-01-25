@@ -6,7 +6,7 @@ use xelis_environment::{
     FnParams,
     FnReturnType,
     ModuleMetadata,
-    Context,
+    VMContext,
     EnvironmentError,
 };
 use xelis_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
@@ -18,7 +18,7 @@ macro_rules! checked_fn {
     // Special cases for div and rem with primitive types to check for division by zero
     ($env: expr, div, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_div_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_div_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
@@ -47,7 +47,7 @@ macro_rules! checked_fn {
     };
     ($env: expr, rem, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_rem_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_rem_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
                 
@@ -77,7 +77,7 @@ macro_rules! checked_fn {
     // General case for all other operations
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let other = parameters[0]
                     .as_ref()
                     .[<as_ $param>]()?;
@@ -129,7 +129,7 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut Context
+                _: &mut VMContext
             ) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -159,7 +159,7 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut Context
+                _: &mut VMContext
             ) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -189,7 +189,7 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut Context
+                _: &mut VMContext
             ) -> FnReturnType<M> {
                 // Extract and convert parameters
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
@@ -239,7 +239,7 @@ macro_rules! integer_param_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut Context
+                _: &mut VMContext
             ) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -270,7 +270,7 @@ macro_rules! integer_param_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut Context
+                _: &mut VMContext
             ) -> FnReturnType<M> {
                 let other = parameters[0].as_ref().[<as_ $param>]()?;
                 let value = zelf?.[<as_ $f>]()?;
@@ -307,7 +307,7 @@ macro_rules! register_saturating_fns {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let bytes = value.[<to_ $endian _bytes>]();
                 Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
@@ -328,7 +328,7 @@ macro_rules! to_endian_bytes {
 macro_rules! from_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = params[0].as_bytes()?;
                 let slice: &[u8] = &value;
                 let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().context("invalid bytes size")?);
@@ -350,7 +350,7 @@ macro_rules! from_endian_bytes {
 macro_rules! integer_no_param_fn {
     ($env: expr, $t: ident, $f: ident, $func: ident) => {
         paste! {
-            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 Ok(SysCallResult::Return(Primitive::U32(value.[<$func>]()).into()))
             }
@@ -386,7 +386,7 @@ macro_rules! integer_numbers {
 macro_rules! register_reverse_bits {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
-            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 Ok(SysCallResult::Return(Primitive::$t(value.reverse_bits()).into()))
             }
@@ -416,7 +416,7 @@ macro_rules! register_endian_bytes {
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
@@ -439,7 +439,7 @@ macro_rules! min {
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
@@ -469,7 +469,7 @@ macro_rules! to_string {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                context: &mut Context
+                context: &mut VMContext
             ) -> FnReturnType<M> {
                 let value = zelf?.as_u256()?;
                 let base = parameters[0].as_ref().as_u32()?;
@@ -544,7 +544,7 @@ macro_rules! to_string {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                context: &mut Context
+                context: &mut VMContext
             ) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
                 let base = parameters[0].as_ref().as_u32()?;

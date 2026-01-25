@@ -4,7 +4,7 @@ use futures::future::BoxFuture;
 use indexmap::IndexMap;
 use xelis_bytecode::Module;
 use xelis_types::{Primitive, StackValue, Type, ValueCell};
-use crate::{Context, Environment, IdentityBuildHasher, ModuleMetadata};
+use crate::{VMContext, Environment, IdentityBuildHasher, ModuleMetadata};
 
 use super::EnvironmentError;
 
@@ -113,14 +113,14 @@ pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
         &'a ModuleMetadata<'_, M>,
-        &'a mut Context<'ty, 'r>,
+        &'a mut VMContext<'ty, 'r>,
     ) -> FnReturnType<M>;
 
 pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
         FnParams,
         &'a ModuleMetadata<'_, M>,
-        &'a mut Context<'ty, 'r>,
+        &'a mut VMContext<'ty, 'r>,
     ) -> BoxFuture<'a, FnReturnType<M>>;
 
 #[derive(Clone, Copy, Debug)]
@@ -173,7 +173,7 @@ impl<M> NativeFunction<M> {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut Context<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len()));
         }

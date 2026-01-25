@@ -1,4 +1,4 @@
-use xelis_environment::{Context, FunctionHandler};
+use xelis_environment::{VMContext, FunctionHandler};
 use xelis_types::{Type, Primitive, ValueCell};
 use super::{
     FnInstance,
@@ -51,17 +51,17 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     );
 }
 
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_string()?.len();
     Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn trim<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn trim<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let s = zelf?.as_string()?.trim().to_string();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?;
@@ -73,7 +73,7 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let handle = param.as_ref();
     let value = handle.as_string()?.to_lowercase();
@@ -81,17 +81,17 @@ fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &Modul
     Ok(SysCallResult::Return(Primitive::Boolean(s.contains(&value)).into()))
 }
 
-fn to_uppercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn to_uppercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let s: String = zelf?.as_string()?.to_uppercase();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let s: String = zelf?.as_string()?.to_lowercase();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -103,7 +103,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
     Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
 }
 
-fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -119,7 +119,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     }
 }
 
-fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -135,7 +135,7 @@ fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetada
     }
 }
 
-fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -150,7 +150,7 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_,
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -161,7 +161,7 @@ fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     Ok(SysCallResult::Return(Primitive::Boolean(s.starts_with(value)).into()))
 }
 
-fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -172,7 +172,7 @@ fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'
     Ok(SysCallResult::Return(Primitive::Boolean(s.ends_with(value)).into()))
 }
 
-fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -187,7 +187,7 @@ fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }
 
-fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let param =  parameters.remove(0);
     let index = param.as_u32()? as usize;
 
@@ -203,7 +203,7 @@ fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_,
     }
 }
 
-fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -211,7 +211,7 @@ fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut
     Ok(SysCallResult::Return(Primitive::Boolean(s.is_empty()).into()))
 }
 
-fn string_matches<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn string_matches<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -224,7 +224,7 @@ fn string_matches<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<
     Ok(SysCallResult::Return(ValueCell::Object(m.map(|s| Primitive::String(s.to_string()).into()).collect()).into()))
 }
 
-fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -238,7 +238,7 @@ fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadat
     }
 }
 
-fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref()
         .as_string()?;
@@ -253,7 +253,7 @@ fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleM
     }
 }
 
-fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let bytes = parameters[0]
         .as_bytes()?;
 
@@ -267,7 +267,7 @@ fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'
     Ok(SysCallResult::Return(str.into()))
 }
 
-fn string_from_utf8_lossy<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn string_from_utf8_lossy<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let bytes = parameters[0]
         .as_bytes()?;
 

@@ -1,5 +1,5 @@
 use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
-use xelis_environment::{CallbackState, CallbackType, Context, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
+use xelis_environment::{CallbackState, CallbackType, VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use super::EnvironmentBuilder;
 use paste::paste;
 
@@ -111,12 +111,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 }
 
 // native functions
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_vec()?.len();
     Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let array = zelf.as_mut().as_mut_vec()?;
     if array.len() >= u32::MAX as usize {
@@ -137,7 +137,7 @@ fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
     Ok(SysCallResult::None)
 }
 
-fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let index = parameters.remove(0)
         .as_u32()? as usize;
 
@@ -155,7 +155,7 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     Ok(SysCallResult::Return(array.remove(index).into()))
 }
 
-fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
@@ -167,7 +167,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     Ok(SysCallResult::Return(array.swap_remove(index).into()))
 }
 
-fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
     let param = parameters.remove(0);
     let depth = param.depth();
@@ -198,7 +198,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     Ok(SysCallResult::None)
 }
 
-fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref();
     let zelf = zelf?;
@@ -216,7 +216,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(Primitive::Null.into())
 }
 
-fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let array = zelf.as_mut().as_mut_vec()?;
     if let Some(value) = array.pop() {
@@ -226,7 +226,7 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Cont
     }
 }
 
-fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let range = param.as_ref();
     let (start, end) = range.as_range()?;
@@ -256,7 +256,7 @@ fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M
     Ok(SysCallResult::Return(ValueCell::Object(slice).into()))
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let handle = value.as_ref();
     let zelf = zelf?;
@@ -268,7 +268,7 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| *v.as_ref() == *handle).is_some()).into()))
 }
 
-fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
     let zelf = zelf?;
     let vec = zelf.as_vec()?;
@@ -279,7 +279,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
     }
 }
 
-fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec()?;
     if let Some(value) = vec.first() {
@@ -289,7 +289,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Co
     }
 }
 
-fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec()?;
     if let Some(value) = vec.last() {
@@ -299,7 +299,7 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Con
     }
 }
 
-fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let other = parameters.remove(0)
         .into_owned()
         .to_vec()?;
@@ -319,7 +319,7 @@ fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     Ok(SysCallResult::None)
 }
 
-fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec()?;
     context.increase_gas_usage(vec.len() as u64)?;
@@ -347,7 +347,7 @@ fn const_with(mut params: Vec<Constant>) -> Result<Constant, anyhow::Error> {
     Ok(Constant::Array(values))
 }
 
-fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let values = zelf.as_vec()?;
     let len = values.len();
@@ -361,7 +361,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
     Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
 }
 
-fn split_off<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn split_off<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let index = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
@@ -377,7 +377,7 @@ fn split_off<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'
     Ok(SysCallResult::Return(ValueCell::Object(second).into()))
 }
 
-fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let size = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
@@ -391,7 +391,7 @@ fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(SysCallResult::None)
 }
 
-fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
 
     let ascending = params[0].as_bool()?;
@@ -428,7 +428,7 @@ fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, contex
     Ok(SysCallResult::None)
 }
 
-fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let vec = zelf.as_mut().as_mut_vec()?;
 
@@ -447,7 +447,7 @@ pub struct MapState {
     tmp: StackValue,
 }
 
-fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let key_fn = parameters.remove(0);
     let mut zelf = zelf?;
 
@@ -574,7 +574,7 @@ enum OrdKeyKind {
     Bytes,
 }
 
-fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let ascending = parameters.remove(1).as_bool()?;
     let key_fn = parameters.remove(0);
     let mut zelf = zelf?;

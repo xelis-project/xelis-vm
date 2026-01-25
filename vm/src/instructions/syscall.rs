@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{CallbackType, CallbackState, Context, ModuleMetadata, SysCallResult};
+use xelis_environment::{CallbackType, CallbackState, VMContext, ModuleMetadata, SysCallResult};
 use xelis_types::StackValue;
 
 use crate::{stack::Stack, Backend, InstructionResult, VMError};
@@ -22,7 +22,7 @@ pub enum PerformSysCallHelper<'a, M> {
 
 pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
     stack: &mut Stack<M>,
-    context: &mut Context<'ty, 'r>,
+    context: &mut VMContext<'ty, 'r>,
     result: SysCallResult<M>,
     metadata: &ModuleMetadata<'a, M>,
 ) -> Result<PerformSysCallHelper<'a, M>, VMError> {
@@ -119,7 +119,7 @@ pub fn perform_syscall<'a, 'ty, 'r, M>(
     backend: &Backend<'a, 'ty, 'r, M>,
     mut syscall: PerformSysCallHelper<'a, M>,
     stack: &mut Stack<M>,
-    context: &mut Context<'ty, 'r>,
+    context: &mut VMContext<'ty, 'r>,
 ) -> Result<InstructionResult<'a, M>, VMError> {
     let m = backend.current()?;
     loop {

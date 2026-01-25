@@ -1,5 +1,5 @@
 use xelis_environment::{
-    Context,
+    VMContext,
     EnvironmentError,
     FnInstance,
     FnParams,
@@ -28,12 +28,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("entries", Some(_type.clone()), vec![], FunctionHandler::Sync(entries), 40, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))));
 }
 
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_map()?.len();
     Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
 }
 
-fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
     if k.is_map() {
@@ -44,7 +44,7 @@ fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
     Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
     if k.is_map() {
@@ -61,7 +61,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
     }))
 }
 
-fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let key_depth = param.depth();
     // Key is deep cloned here
@@ -101,7 +101,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     }))
 }
 
-fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     // We make it owned in case the key contains our only reference to itself
     let key = parameters.remove(0)
         .into_owned();
@@ -124,7 +124,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
     }))
 }
 
-fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     // We make it owned in case the key contains our only reference to itself
     let key = parameters.remove(0)
         .into_owned();
@@ -143,7 +143,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     }))
 }
 
-fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Context) -> FnReturnType<M> {
+fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     zelf?.as_mut()
         .as_mut_map()?
         .clear();
@@ -151,7 +151,7 @@ fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut Co
     Ok(SysCallResult::None)
 }
 
-fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let map = zelf.as_map()?;
 
@@ -165,7 +165,7 @@ fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &m
     Ok(SysCallResult::Return(ValueCell::Object(keys).into()))
 }
 
-fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let map = zelf.as_map()?;
 
@@ -179,7 +179,7 @@ fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: 
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))
 }
 
-fn entries<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut Context) -> FnReturnType<M> {
+fn entries<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
     let map = zelf.as_map()?;
 
