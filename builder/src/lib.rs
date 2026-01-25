@@ -53,7 +53,7 @@ mod tests {
     use std::collections::VecDeque;
 
     use xelis_bytecode::Module;
-    use xelis_environment::{Context, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
+    use xelis_environment::{VMContext, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
     use xelis_types::Reference;
     use crate::EnvironmentBuilder;
 
@@ -68,7 +68,7 @@ mod tests {
 
     tid! { impl<'a, F: 'static> TidAble<'a> for FooWrapper<F> where F: Foo }
 
-    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &ModuleMetadata<'_, M>, context: &'a mut Context<'ty, 'r>) -> FnReturnType<M> {
+    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &ModuleMetadata<'_, M>, context: &'a mut VMContext<'ty, 'r>) -> FnReturnType<M> {
         let _: &FooWrapper<F> = context.get().unwrap();
         Ok(SysCallResult::None)
     }
@@ -94,7 +94,7 @@ mod tests {
             .last()
             .unwrap();
 
-        let mut context = Context::new();
+        let mut context = VMContext::new();
         context.insert(FooWrapper(FooImpl));
 
         assert!((f.call_function(VecDeque::new(), &ModuleMetadata {

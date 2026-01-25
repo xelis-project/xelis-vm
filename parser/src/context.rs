@@ -1,5 +1,8 @@
 use xelis_types::{IdentifierType, Type};
 
+/// Function Context used during parsing
+/// It stores variable names and their types in scopes
+/// It also manages scopes and loop contexts
 #[derive(Clone, Debug)]
 pub struct Context<'a> {
     // scopes are used to store variables

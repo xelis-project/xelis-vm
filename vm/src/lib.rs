@@ -82,7 +82,7 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r, M: 'static> {
     // Every values are stored here
     stack: Stack<M>,
     // Context given to each instruction
-    context: Context<'ty, 'r>,
+    context: VMContext<'ty, 'r>,
     // Flag to enable/disable the tail call optimization
     // in our VM
     tail_call_optimization: bool
@@ -90,13 +90,13 @@ pub struct VM<'a: 'r, 'ty: 'a, 'r, M: 'static> {
 
 impl<'a: 'r, 'ty: 'a, 'r, M: 'static> Default for VM<'a, 'ty, 'r, M> {
     fn default() -> Self {
-        Self::new(InstructionTable::default(), Context::default())
+        Self::new(InstructionTable::default(), VMContext::default())
     }
 }
 
 impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Create a new VM with a given table and context
-    pub fn new(table: InstructionTable<'a, 'ty, 'r, M>, context: Context<'ty, 'r>) -> Self {
+    pub fn new(table: InstructionTable<'a, 'ty, 'r, M>, context: VMContext<'ty, 'r>) -> Self {
         Self {
             backend: Backend {
                 table,
@@ -130,13 +130,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Get the context
     #[inline(always)]
-    pub fn context(&self) -> &Context<'ty, 'r> {
+    pub fn context(&self) -> &VMContext<'ty, 'r> {
         &self.context
     }
 
     // Get a mutable reference to the context
     #[inline(always)]
-    pub fn context_mut(&mut self) -> &mut Context<'ty, 'r> {
+    pub fn context_mut(&mut self) -> &mut VMContext<'ty, 'r> {
         &mut self.context
     }
 
