@@ -2486,7 +2486,7 @@ fn test_max_array_depth() {
             (a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0] = [50];
 
             // 17 depth
-            return 0 //(a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
+            return (a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
         }
     "#;
     assert!(try_run_code(code, 0).is_err());
@@ -3263,7 +3263,7 @@ fn test_async_callback_with_two_params() {
         zelf: FnInstance<'a>,
         mut parameters: FnParams,
         _: &'a ModuleMetadata<'_, M>,
-        context: &'a mut Context<'ty, 'r>
+        context: &'a mut VMContext<'ty, 'r>
     ) -> BoxFuture<'a, FnReturnType<M>> {
         async move {
             let closure_ptr = parameters.remove(0);
