@@ -6,31 +6,67 @@ use crate::IdentifierType;
 use super::Type;
 
 // Represents a variant of an enum
-// This is similar to a struct
+// Supports both tuple-style (unnamed) and struct-style (named) fields
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct EnumVariant(Vec<(Cow<'static, str>, Type)>);
+pub struct EnumVariant {
+    // Fields of the variant (name is empty for tuple-style)
+    fields: Vec<(Cow<'static, str>, Type)>,
+    // Whether this is a tuple-style variant (e.g., Some(T)) vs struct-style (e.g., Some { value: T })
+    is_tuple: bool,
+}
 
 impl EnumVariant {
+    // Create a new struct-style variant with named fields
     #[inline(always)]
-    pub fn new(types: Vec<(Cow<'static, str>, Type)>) -> Self {
-        Self(types)
+    pub fn new(fields: Vec<(Cow<'static, str>, Type)>) -> Self {
+        Self { fields, is_tuple: false }
+    }
+
+    // Create a new tuple-style variant with unnamed fields
+    #[inline(always)]
+    pub fn new_tuple(types: Vec<Type>) -> Self {
+        // For tuple variants, we generate field names like "0", "1", "2", etc.
+        let fields = types.into_iter()
+            .enumerate()
+            .map(|(i, ty)| (Cow::Owned(i.to_string()), ty))
+            .collect();
+        Self { fields, is_tuple: true }
     }
 
     #[inline(always)]
     pub fn fields(&self) -> &[(Cow<'static, str>, Type)] {
-        &self.0
+        &self.fields
+    }
+
+    // Check if this is a tuple-style variant
+    #[inline(always)]
+    pub fn is_tuple(&self) -> bool {
+        self.is_tuple
+    }
+
+    // Get the types only (useful for tuple-style variants)
+    #[inline(always)]
+    pub fn types(&self) -> impl Iterator<Item = &Type> {
+        self.fields.iter().map(|(_, ty)| ty)
     }
 }
 
 impl From<Vec<(Cow<'static, str>, Type)>> for EnumVariant {
     fn from(value: Vec<(Cow<'static, str>, Type)>) -> Self {
-        Self(value)
+        Self::new(value)
     }
 }
 
 impl From<Vec<(&'static str, Type)>> for EnumVariant {
     fn from(value: Vec<(&'static str, Type)>) -> Self {
-        Self(value.into_iter().map(|(k, v)| (Cow::Borrowed(k), v)).collect())
+        Self::new(value.into_iter().map(|(k, v)| (Cow::Borrowed(k), v)).collect())
+    }
+}
+
+// Allow creating tuple variants from a Vec of types
+impl From<Vec<Type>> for EnumVariant {
+    fn from(value: Vec<Type>) -> Self {
+        Self::new_tuple(value)
     }
 }
 

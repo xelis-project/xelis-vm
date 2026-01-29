@@ -2101,6 +2101,187 @@ fn test_match() {
     assert_eq!(run_code(code), Primitive::U64(0));
 }
 
+#[test]
+fn test_tuple_enum_variant() {
+    // Test basic tuple-style enum variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let opt: Option = Option::Some(42);
+            match opt {
+                Option::Some(val) => return val,
+                Option::None => return 0
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_tuple_enum_variant_none() {
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let opt: Option = Option::None;
+            match opt {
+                Option::Some(val) => return val,
+                Option::None => return 99
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(99));
+}
+
+#[test]
+fn test_tuple_enum_multiple_fields() {
+    let code = r#"
+        enum Either {
+            Left(u64),
+            Right(string, bool)
+        }
+
+        entry main() {
+            let e: Either = Either::Right("hello", true);
+            match e {
+                Either::Left(val) => return 0,
+                Either::Right(s, b) => {
+                    if b {
+                        return 42
+                    }
+                    return 1
+                }
+            };
+            return 99
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_generic_enum() {
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 0
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(100));
+}
+
+#[test]
+fn test_generic_enum_err() {
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Err("error");
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 999
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(999));
+}
+
+#[test]
+fn test_generic_enum_type_inference() {
+    // Test that generic type can be inferred from usage
+    let code = r#"
+        enum Wrapper<T> {
+            Value(T)
+        }
+
+        entry main() {
+            let w = Wrapper::Value(55);
+            match w {
+                Wrapper::Value(v) => return v
+            };
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(55));
+}
+
+#[test]
+fn test_mixed_enum_variants() {
+    // Test enum with both tuple and struct-style variants
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m1: Mixed = Mixed::Tuple(10, true);
+            let m2: Mixed = Mixed::Struct { name: "test", value: 20 };
+            let m3: Mixed = Mixed::Unit;
+
+            let sum: u64 = 0;
+
+            match m1 {
+                Mixed::Unit => {},
+                Mixed::Tuple(n, b) => {
+                    if b {
+                        sum = sum + n
+                    }
+                },
+                Mixed::Struct { name, value } => {}
+            };
+
+            match m2 {
+                Mixed::Unit => {},
+                Mixed::Tuple(n, b) => {},
+                Mixed::Struct { name, value } => {
+                    sum = sum + value
+                }
+            };
+
+            match m3 {
+                Mixed::Unit => {
+                    sum = sum + 5
+                },
+                Mixed::Tuple(n, b) => {},
+                Mixed::Struct { name, value } => {}
+            };
+
+            return sum
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(35)); // 10 + 20 + 5
+}
+
 
 #[test]
 fn test_match_variant() {
