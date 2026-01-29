@@ -1312,6 +1312,11 @@ impl<'a, M> Parser<'a, M> {
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
 
+        // Clone the enum type info upfront since EnumType contains an Arc
+        let enum_id = enum_type.id();
+        let enum_name = enum_type.name().to_string();
+        let generics_len = enum_type.generics().len();
+
         let (variant_id, fields) = {
             let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
@@ -1319,13 +1324,94 @@ impl<'a, M> Parser<'a, M> {
             let (variant_id, variant) = builder.get_variant_by_name(&variant_name)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            (variant_id, variant.fields().iter().map(|(_, ty)| ty.clone()).collect::<Vec<_>>())
+            (variant_id, variant.fields().iter().map(|(name, ty)| (name.clone(), ty.clone())).collect::<Vec<_>>())
         };
 
-        // If its an enum variant with fields
+        // If its an enum variant with fields and has generics
+        if !fields.is_empty() && generics_len > 0 {
+            self.expect_token(Token::BraceOpen)?;
+            
+            // For generic enums, we need to infer the concrete types from field values
+            let mut inferred_generics: Vec<Option<Type>> = vec![None; generics_len];
+            let mut field_exprs = Vec::new();
+            
+            for (field_name_expected, field_type) in &fields {
+                let field_name = self.next_identifier()?;
+                if field_name != *field_name_expected {
+                    return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
+                }
+                
+                let expr = match self.peek()? {
+                    Token::Comma | Token::BraceClose => {
+                        let id = context.get_variable_id(field_name)
+                            .ok_or_else(|| err!(self, ParserErrorKind::UnexpectedVariable(field_name)))?;
+                        Expression::Variable(id)
+                    },
+                    Token::Colon => {
+                        self.expect_token(Token::Colon)?;
+                        self.read_expr(None, None, true, true, None, context)?
+                    },
+                    token => return Err(err!(self, ParserErrorKind::UnexpectedToken(token.clone())))
+                };
+                
+                // Infer generic type from expression
+                if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
+                    Self::infer_generic_types(field_type, &expr_type, &mut inferred_generics);
+                }
+                
+                field_exprs.push((field_name, expr));
+                
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                }
+            }
+            
+            self.expect_token(Token::BraceClose)?;
+            
+            // Build specialized enum type with inferred generics
+            let concrete_types: Vec<Type> = inferred_generics.into_iter()
+                .enumerate()
+                .map(|(i, opt)| opt.ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(Type::T(Some(i as u8))))))
+                .collect::<Result<Vec<_>, _>>()?;
+            
+            // Clone all variants and substitute generic types
+            let all_variants: Vec<(Cow<'static, str>, EnumVariant)> = enum_type.variants().iter()
+                .map(|(name, variant)| {
+                    let specialized_fields: Vec<(Cow<'static, str>, Type)> = variant.fields().iter()
+                        .map(|(fname, ftype)| {
+                            let concrete_type = Self::substitute_generic_type(ftype, &concrete_types);
+                            (fname.clone(), concrete_type)
+                        })
+                        .collect();
+                    (name.clone(), EnumVariant::new(specialized_fields))
+                })
+                .collect();
+            
+            let specialized = EnumType::new(enum_id, enum_name, all_variants);
+            
+            // Get the specialized variant fields
+            let specialized_variant = specialized.get_variant(variant_id)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+            
+            // Now verify and collect final expressions
+            let mut fields_expressions = Vec::with_capacity(field_exprs.len());
+            for ((field_name, mut field_expr), (field_name_expected, field_type)) in field_exprs.into_iter().zip(specialized_variant.1.fields().iter()) {
+                if field_name != *field_name_expected {
+                    return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
+                }
+                
+                self.verify_type_of(&mut field_expr, field_type, context, true)?;
+                fields_expressions.push(field_expr);
+            }
+            
+            let variant = EnumValueType::new(specialized, variant_id);
+            return Ok(Expression::EnumConstructor(fields_expressions, variant));
+        }
+
+        // If its an enum variant with fields (non-generic path)
         let exprs = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
-            let fields = self.read_constructor_fields(context, fields.iter())?;
+            let fields_read = self.read_constructor_fields(context, fields.iter().map(|(_, ty)| ty))?;
 
             // Now we verify that we have all fields needed
             let builder = self.global_mapper.enums()
@@ -1335,12 +1421,12 @@ impl<'a, M> Parser<'a, M> {
             let (_, variant) = builder.get_variant_by_id(variant_id)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            if variant.fields().len() != fields.len() {
+            if variant.fields().len() != fields_read.len() {
                 return Err(err!(self, ParserErrorKind::InvalidFieldCount))
             }
 
             let mut fields_expressions = Vec::with_capacity(variant.fields().len());
-            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields.into_iter().zip(variant.fields()) {
+            for ((field_name, mut field_expr), (expected_name, expected_type)) in fields_read.into_iter().zip(variant.fields()) {
                 if field_name != *expected_name {
                     return Err(err!(self, ParserErrorKind::InvalidEnumFieldName(field_name)))
                 }
@@ -3456,6 +3542,32 @@ impl<'a, M> Parser<'a, M> {
             None => return Err(err!(self, ParserErrorKind::EmptyEnumName))
         };
 
+        // Parse generic parameters if present: enum Result<T, E>
+        let generics = if self.peek_is(Token::OperatorLessThan) {
+            self.expect_token(Token::OperatorLessThan)?;
+            let mut generic_params = Vec::new();
+            
+            loop {
+                let generic_name = self.next_identifier()?;
+                generic_params.push(Cow::Owned(generic_name.to_owned()));
+                
+                if !self.peek_is(Token::Comma) {
+                    break;
+                }
+                self.expect_token(Token::Comma)?;
+            }
+            
+            self.expect_token(Token::OperatorGreaterThan)?;
+            
+            if generic_params.len() > u8::MAX as usize {
+                return Err(err!(self, ParserErrorKind::TooManyParameters))
+            }
+            
+            generic_params
+        } else {
+            Vec::new()
+        };
+
         self.expect_token(Token::BraceOpen)?;
         let mut variants = Vec::new();
         while self.peek_is_identifier() {
@@ -3468,7 +3580,7 @@ impl<'a, M> Parser<'a, M> {
 
             let fields = if self.peek_is(Token::BraceOpen) {
                 self.expect_token(Token::BraceOpen)?;
-                let fields = self.read_parameters()?;
+                let fields = self.read_parameters_with_generics(&generics)?;
                 if fields.len() > u8::MAX as usize {
                     return Err(err!(self, ParserErrorKind::TooManyParameters))
                 }
@@ -3496,7 +3608,7 @@ impl<'a, M> Parser<'a, M> {
 
         self.global_mapper
             .enums_mut()
-            .add(Cow::Owned(name.to_owned()), variants)
+            .add(Cow::Owned(name.to_owned()), (generics, variants))
             .map_err(|e| err!(self, e.into()))?;
 
         Ok(())
@@ -5540,5 +5652,223 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
+    }
+
+    #[test]
+    fn test_generic_enum() {
+        // enum Result<T, E> { Ok { value: T }, Err { error: E } }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Result"),
+            Token::OperatorLessThan,
+            Token::Identifier("T"),
+            Token::Comma,
+            Token::Identifier("E"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Ok"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Identifier("T"),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("Err"),
+            Token::BraceOpen,
+            Token::Identifier("error"),
+            Token::Colon,
+            Token::Identifier("E"),
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (_program, mapper) = parser.parse().unwrap();
+
+        // Verify the enum was registered with generics
+        let enums = mapper.enums();
+        let result_builder = enums.get_by_name("Result").unwrap();
+        let result_type = result_builder.get_type();
+        
+        assert_eq!(result_type.generics().len(), 2);
+        assert_eq!(result_type.generics()[0].as_ref(), "T");
+        assert_eq!(result_type.generics()[1].as_ref(), "E");
+        
+        // Verify variants use generic types
+        let variants = result_type.variants();
+        assert_eq!(variants.len(), 2);
+        
+        // Ok variant
+        assert_eq!(variants[0].0.as_ref(), "Ok");
+        let ok_fields = variants[0].1.fields();
+        assert_eq!(ok_fields.len(), 1);
+        assert_eq!(ok_fields[0].0.as_ref(), "value");
+        assert_eq!(ok_fields[0].1, Type::T(Some(0))); // T = position 0
+        
+        // Err variant
+        assert_eq!(variants[1].0.as_ref(), "Err");
+        let err_fields = variants[1].1.fields();
+        assert_eq!(err_fields.len(), 1);
+        assert_eq!(err_fields[0].0.as_ref(), "error");
+        assert_eq!(err_fields[0].1, Type::T(Some(1))); // E = position 1
+    }
+
+    #[test]
+    fn test_generic_enum_constructor() {
+        // enum Option<T> { Some { value: T }, None }
+        // let x = Option::Some { value: 42 };
+        let tokens = vec![
+            // enum Option<T> { Some { value: T }, None }
+            Token::Enum,
+            Token::Identifier("Option"),
+            Token::OperatorLessThan,
+            Token::Identifier("T"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Some"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Identifier("T"),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("None"),
+            Token::BraceClose,
+            // fn main() { let x = Option::Some { value: 42 }; }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("x"),
+            Token::OperatorAssign,
+            Token::Identifier("Option"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Some"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Value(Literal::U64(42)),
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_generic_enum_type_inference() {
+        // enum Wrapper<T> { Value { inner: T } }
+        // let val: u64 = 100;
+        // let w = Wrapper::Value { inner: val };
+        let tokens = vec![
+            // enum Wrapper<T> { Value { inner: T } }
+            Token::Enum,
+            Token::Identifier("Wrapper"),
+            Token::OperatorLessThan,
+            Token::Identifier("T"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Value"),
+            Token::BraceOpen,
+            Token::Identifier("inner"),
+            Token::Colon,
+            Token::Identifier("T"),
+            Token::BraceClose,
+            Token::BraceClose,
+            // fn main() { let val: u64 = 100; let w = Wrapper::Value { inner: val }; }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("val"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::Value(Literal::U64(100)),
+            Token::Let,
+            Token::Identifier("w"),
+            Token::OperatorAssign,
+            Token::Identifier("Wrapper"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Value"),
+            Token::BraceOpen,
+            Token::Identifier("inner"),
+            Token::Colon,
+            Token::Identifier("val"),
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_generic_enum_multiple_fields() {
+        // enum Pair<A, B> { Both { first: A, second: B }, Empty }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Pair"),
+            Token::OperatorLessThan,
+            Token::Identifier("A"),
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Both"),
+            Token::BraceOpen,
+            Token::Identifier("first"),
+            Token::Colon,
+            Token::Identifier("A"),
+            Token::Comma,
+            Token::Identifier("second"),
+            Token::Colon,
+            Token::Identifier("B"),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("Empty"),
+            Token::BraceClose,
+            // fn main() { let p = Pair::Both { first: 10, second: "hello" }; }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("p"),
+            Token::OperatorAssign,
+            Token::Identifier("Pair"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Both"),
+            Token::BraceOpen,
+            Token::Identifier("first"),
+            Token::Colon,
+            Token::Value(Literal::U64(10)),
+            Token::Comma,
+            Token::Identifier("second"),
+            Token::Colon,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+        
+        // Verify the enum has the correct generics
+        let enum_type = &program.enums()[0];
+        assert_eq!(enum_type.generics().len(), 2);
     }
 }

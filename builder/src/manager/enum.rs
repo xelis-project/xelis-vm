@@ -30,12 +30,17 @@ impl EnumBuilder {
 pub type EnumManager<'a> = TypeManager<'a, EnumBuilder>;
 
 impl Builder for EnumBuilder {
-    type Data = Vec<(Cow<'static, str>, EnumVariant)>;
+    type Data = (Vec<Cow<'static, str>>, Vec<(Cow<'static, str>, EnumVariant)>);
     type Type = EnumType;
 
     fn build_with(id: IdentifierType, name: impl Into<Cow<'static, str>>, data: Self::Data) -> Self {
+        let (generics, variants) = data;
         Self {
-            inner: EnumType::new(id, name, data)
+            inner: if generics.is_empty() {
+                EnumType::new(id, name, variants)
+            } else {
+                EnumType::new_with_generics(id, name, generics, variants)
+            }
         }
     }
 

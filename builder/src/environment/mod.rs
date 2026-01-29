@@ -101,9 +101,10 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Register an enum in the environment
     // Panic if the enum name is already used
     pub fn register_enum<const N: usize>(&mut self, name: impl Into<Cow<'static, str>>, variants: [(impl Into<Cow<'static, str>>, impl Into<EnumVariant>); N]) -> EnumType {
-        let data = variants.into_iter()
+        let variants_data = variants.into_iter()
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
+        let data = (Vec::new(), variants_data); // No generics for register_enum
 
         self.enum_manager.build(name, data)
             .expect("Failed to build enum")

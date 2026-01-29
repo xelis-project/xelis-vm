@@ -40,6 +40,8 @@ impl From<Vec<(&'static str, Type)>> for EnumVariant {
 pub struct Enum {
     id: IdentifierType,
     name: Cow<'static, str>,
+    // Generic parameter names (e.g., ["T", "E"] for Result<T, E>)
+    generics: Vec<Cow<'static, str>>,
     variants: Vec<(Cow<'static, str>, EnumVariant)>,
 }
 
@@ -70,7 +72,17 @@ pub struct EnumValueType {
 impl EnumType {
     // Create a new enum type
     pub fn new(id: IdentifierType, name: impl Into<Cow<'static, str>>, variants: Vec<(Cow<'static, str>, EnumVariant)>) -> Self {
-        Self(Arc::new(Enum { id, name: name.into(), variants }))
+        Self(Arc::new(Enum { id, name: name.into(), generics: Vec::new(), variants }))
+    }
+
+    // Create a new enum type with generic parameters
+    pub fn new_with_generics(
+        id: IdentifierType,
+        name: impl Into<Cow<'static, str>>,
+        generics: Vec<Cow<'static, str>>,
+        variants: Vec<(Cow<'static, str>, EnumVariant)>
+    ) -> Self {
+        Self(Arc::new(Enum { id, name: name.into(), generics, variants }))
     }
 
     // Get the unique identifier of the enum
@@ -79,10 +91,16 @@ impl EnumType {
         self.0.id
     }
 
-    // Get the unique identifier of the enum
+    // Get the name of the enum
     #[inline(always)]
     pub fn name(&self) -> &str {
         &self.0.name
+    }
+
+    // Get the generic parameter names
+    #[inline(always)]
+    pub fn generics(&self) -> &Vec<Cow<'static, str>> {
+        &self.0.generics
     }
 
     // Get the variants of the enum
