@@ -151,6 +151,12 @@ impl<'a, M> Compiler<'a, M> {
         Ok(())
     }
 
+    // Compile a cast operation
+    fn compile_cast(&self, chunk: &mut Chunk, id: u8) {
+        chunk.emit_opcode(OpCode::Cast);
+        chunk.write_u8(id);
+    }
+
     // Compile the expression
     fn compile_expr(&mut self, chunk: &mut Chunk, chunk_id: u16, expr: &Expression, standalone: bool) -> Result<(), CompilerError> {
         trace!("Compiling expression: {:?}", expr);
@@ -308,8 +314,10 @@ impl<'a, M> Compiler<'a, M> {
             },
             Expression::Cast(expr, primitive_type) => {
                 self.compile_expr(chunk, chunk_id, expr, false)?;
-                chunk.emit_opcode(OpCode::Cast);
-                chunk.write_u8(primitive_type.primitive_byte().ok_or(CompilerError::ExpectedPrimitiveType)?);
+
+                let byte = primitive_type.primitive_byte()
+                    .ok_or(CompilerError::ExpectedPrimitiveType)?;
+                self.compile_cast(chunk, byte);
 
                 self.decrease_values_on_stack()?;
                 self.add_value_on_stack(chunk.last_index())?;
@@ -948,11 +956,23 @@ impl<'a, M> Compiler<'a, M> {
             self.memstore(&mut chunk)?;
         }
 
+        let is_public = function.kind().is_public();
+
         // Store the parameters
         self.parameters_ids.clear();
         for param in function.get_parameters() {
             trace!("Adding parameter: {:?}", param);
+            // if the function is an entry or a public function
+            // we add a check for primitive types to avoid invalid data from outside
+            if is_public {
+                if let Some(id) = param.get_type().primitive_byte() {
+                    trace!("Adding primitive type check for parameter {}", param.get_name());
+                    self.compile_cast(&mut chunk, id);
+                }
+            }
+
             self.memstore(&mut chunk)?;
+
 
             self.parameters_ids.insert(*param.get_name());
         }

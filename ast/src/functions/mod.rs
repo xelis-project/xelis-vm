@@ -108,6 +108,14 @@ impl FunctionKind {
     pub fn is_normal(&self) -> bool {
         matches!(self, Self::Declared { .. })
     }
+
+    pub fn is_public(&self) -> bool {
+        match self {
+            Self::Declared { public } => *public,
+            Self::Entry => true,
+            _ => false,
+        }
+    }
 }
 
 impl FunctionType {
