@@ -303,11 +303,11 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
 pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("cast");
 
-    let _type = reader.read_type()?;
+    let ty = reader.read_type()?;
     let mut current = stack.pop_stack()?
         .into_owned();
 
-    let value = match _type {
+    let value = match ty {
         Type::U8 => Primitive::U8(current.cast_to_u8()?),
         Type::U16 => Primitive::U16(current.cast_to_u16()?),
         Type::U32 => Primitive::U32(current.cast_to_u32()?),

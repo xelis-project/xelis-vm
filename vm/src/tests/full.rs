@@ -3298,7 +3298,6 @@ fn test_async_callback_with_two_params() {
     let code = r#"
         entry main() {
             let arr: u64[] = [10, 20, 30];
-            // Pack element and index into a tuple, then pass as single parameter
             let result: u64[] = arr.async_map_indexed(|element: u64, index: u32| {
                 assert(index < 3);
                 return element + index as u64
