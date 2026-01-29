@@ -3518,7 +3518,7 @@ fn test_async_callback_with_two_params() {
         metadata: (&()).into(),
     }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.invoke_chunk_id(0).expect("valid entry chunk");
+    vm.invoke_chunk_id_unchecked(0).expect("valid entry chunk");
     
     let result = vm.run_blocking().expect("run failed");
     let result = result.as_u64().expect("u64 result");

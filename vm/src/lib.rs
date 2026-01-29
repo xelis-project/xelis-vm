@@ -158,7 +158,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Invoke a chunk using its id
     #[inline(always)]
-    pub fn invoke_chunk_id(&mut self, id: usize) -> Result<(), VMError> {
+    pub fn invoke_chunk_id_unchecked(&mut self, id: usize) -> Result<(), VMError> {
         self.invoke_chunk_id_internal(ChunkManager::new(id))
     }
 
@@ -199,17 +199,56 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         if !self.backend.modules.last().map_or(false, |m| m.module.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
         }
-        self.invoke_chunk_id(id as _)
+
+        self.invoke_chunk_id_unchecked(id as _)
     }
 
     // Invoke an entry chunk using its id
     // This will use the latest module added
     pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
-        self.invoke_entry_chunk(id)?;
+        let Some(m) = self.backend.modules.last() else {
+            return Err(VMError::NoModule);
+        };
 
-        for arg in args {
-            self.push_stack(arg)?;
+        let chunk = m.module.get_chunk_at(id as usize)
+            .ok_or(VMError::ChunkNotFound)?;
+
+        match &chunk.access {
+            Access::Entry { parameters } => {
+                // If we have enforced parameters to verify, process it
+                if let Some(params) = parameters {
+                    if params.len() != args.len() {
+                        return Err(VMError::InvalidEntryParametersCount {
+                            expected: params.len(),
+                            found: args.len(),
+                        });
+                    }
+
+                    let mut checked_args = Vec::with_capacity(args.len());
+                    for (i, (expected, provided)) in params.iter().zip(args).enumerate() {
+                        let value = provided.into();
+                        if !expected.check(&value) {
+                            return Err(VMError::InvalidEntryParameterType(i));
+                        }
+
+                        checked_args.push(value);
+                    }
+
+                    for arg in checked_args {
+                        self.push_stack(arg)?;
+                    }
+                } else {
+                    // no enforced parameters set for the chunk
+                    // just push them as is
+                    for arg in args {
+                        self.push_stack(arg)?;
+                    }
+                }
+            },
+            _ => return Err(VMError::ChunkNotEntry),
         }
+
+        self.invoke_chunk_id_unchecked(id as _)?;
 
         Ok(())
     }
@@ -222,7 +261,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             .ok_or(VMError::NoModule)?;
 
         match m.module.get_chunk_id_of_hook(hook_id) {
-            Some(id) => self.invoke_chunk_id(id as _).map(|_| true),
+            Some(id) => self.invoke_chunk_id_unchecked(id as _).map(|_| true),
             None => Ok(false)
         }
     }
@@ -236,7 +275,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
         match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
-                self.invoke_chunk_id(id as _)?;
+                self.invoke_chunk_id_unchecked(id as _)?;
 
                 for arg in args {
                     self.push_stack(arg)?;
@@ -346,7 +385,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             .ok_or(VMError::ChunkNotFound)?;
 
                         // Create the chunk reader for it
-                        let mut reader = ChunkReader::new(chunk, manager.ip());
+                        let mut reader = ChunkReader::new(&chunk.chunk, manager.ip());
                         'opcodes: while let Some(opcode) = reader.next_u8() {
                             let mut result = self.backend.table.execute(
                                 opcode,
@@ -397,7 +436,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         }
 
                                         self.push_back_call_stack(manager, reader)?;
-                                        self.invoke_chunk_id(id as _)?;
+                                        self.invoke_chunk_id_unchecked(id as _)?;
     
                                         // Jump to the next call stack
                                         continue 'call_stack;
@@ -487,7 +526,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         self.push_back_call_stack(manager, reader)?;
     
                                         self.append_module(new_module)?;
-                                        self.invoke_chunk_id(chunk_id as _)?;
+                                        self.invoke_chunk_id_unchecked(chunk_id as _)?;
     
                                         // Jump to the next module
                                         continue 'modules;

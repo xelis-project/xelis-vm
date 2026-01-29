@@ -17,6 +17,8 @@ pub enum ValidatorError {
     TooMuchMemoryUsage,
     #[error("too many constants")]
     TooManyConstants,
+    #[error("too many parameters")]
+    TooManyParameters,
     #[error("constant too deep")]
     ConstantTooDeep,
     #[error("too many chunks")]
@@ -159,30 +161,33 @@ impl<'a, M> ModuleValidator<'a, M> {
             return Err(ValidatorError::EmptyModule);
         }
 
-        // Verify that the entry ids are valid
-        let mut used_ids = HashSet::new();
-
         // All hook ids, ensure uniqueness
         let mut hook_ids = HashSet::new();
 
         // Verify all the chunks
         for (i, entry) in self.module.chunks().iter().enumerate() {
-            match entry.access {
-                Access::Entry => {
-                    if !used_ids.insert(i) {
-                        return Err(ValidatorError::ChunkIdAlreadyUsed(i))
+            match &entry.access {
+                Access::Entry { parameters } | Access::All { parameters } => {
+                    if let Some(params) = parameters {
+                        if params.len() > u8::MAX as usize {
+                            return Err(ValidatorError::TooManyParameters);
+                        }
+
+                        for param in params {
+                            param.verify(self.constant_max_depth)?;
+                        }
                     }
                 },
                 Access::Hook { id } => {
                     if !hook_ids.insert(id) {
-                        return Err(ValidatorError::InvalidHookId(id, i));
+                        return Err(ValidatorError::InvalidHookId(*id, i));
                     }
 
                     // Ensure both pointers are pointing to each others
                     if !self.module.hook_chunk_ids()
-                        .get(&id)
+                        .get(id)
                         .map_or(false, |id| *id == i) {
-                        return Err(ValidatorError::InvalidHookId(id, i));
+                        return Err(ValidatorError::InvalidHookId(*id, i));
                     }
                 },
                 _ => {}
@@ -201,9 +206,9 @@ impl<'a, M> ModuleValidator<'a, M> {
                             .map_err(|_| ValidatorError::InvalidOpCode)? as usize;
 
                         // Make sure the chunk id is valid
-                        if chunk_id >= len || !self.module.get_chunk_access_at(chunk_id)
-                            .map_or(false, |entry| match entry.access {
-                                Access::Entry | Access::Hook { .. } => false,
+                        if chunk_id >= len || !self.module.get_chunk_at(chunk_id)
+                            .map_or(false, |chunk| match chunk.access {
+                                Access::Entry { .. } | Access::Hook { .. } => false,
                                 _ => true,
                             })
                         {

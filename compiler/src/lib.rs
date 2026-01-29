@@ -45,6 +45,9 @@ pub struct Compiler<'a, M> {
     // We must track function parameters
     // and clone them on first assignation
     parameters_ids: HashSet<u16>,
+    // Should the compiler enforce public parameters
+    // check for entry & public chunks
+    enforce_public_parameters: bool,
 }
 
 impl<'a, M> Compiler<'a, M> {
@@ -59,8 +62,16 @@ impl<'a, M> Compiler<'a, M> {
             loop_continue_patch: Vec::new(),
             memstore_ids: Vec::new(),
             values_on_stack: Vec::new(),
-            parameters_ids: HashSet::new()
+            parameters_ids: HashSet::new(),
+            enforce_public_parameters: false,
         }
+    }
+
+    // Set whether to enforce public parameters checking
+    #[inline]
+    pub fn with_enforce_public_parameters(mut self, enforce: bool) -> Self {
+        self.enforce_public_parameters = enforce;
+        self
     }
 
     // Map the operator to the opcode
@@ -955,16 +966,17 @@ impl<'a, M> Compiler<'a, M> {
             trace!("Adding instance variable");
             self.memstore(&mut chunk)?;
         }
-
-        let is_public = function.kind().is_public();
-
+        
         // Store the parameters
         self.parameters_ids.clear();
+
+        let check_primitive_types = function.kind().is_public() && !self.enforce_public_parameters;
+
         for param in function.get_parameters() {
             trace!("Adding parameter: {:?}", param);
             // if the function is an entry or a public function
             // we add a check for primitive types to avoid invalid data from outside
-            if is_public {
+            if check_primitive_types {
                 if let Some(id) = param.get_type().primitive_byte() {
                     trace!("Adding primitive type check for parameter {}", param.get_name());
                     self.compile_cast(&mut chunk, id);
@@ -1003,10 +1015,34 @@ impl<'a, M> Compiler<'a, M> {
         // Add the chunk to the module
         match function {
             FunctionType::Declared(f) => match f.visibility() {
-                FunctionVisibility::Public => self.module.add_public_chunk(chunk),
+                FunctionVisibility::Public => {
+                    let parameters = if self.enforce_public_parameters {
+                        Some(f.get_parameters()
+                            .iter()
+                            .map(|p| p.get_type().packed())
+                            .collect::<Option<Vec<_>>>()
+                            .ok_or(CompilerError::UnknownTypePacked)?)
+                    } else {
+                        None
+                    };
+
+                    self.module.add_public_chunk(chunk, parameters)
+                },
                 FunctionVisibility::Anonymous | FunctionVisibility::Private => self.module.add_internal_chunk(chunk),
             },
-            FunctionType::Entry(_) => self.module.add_entry_chunk(chunk),
+            FunctionType::Entry(f) => {
+                let parameters = if self.enforce_public_parameters {
+                    Some(f.get_parameters()
+                        .iter()
+                        .map(|p| p.get_type().packed())
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or(CompilerError::UnknownTypePacked)?)
+                } else {
+                    None
+                };
+
+                self.module.add_entry_chunk(chunk, parameters)
+            },
             FunctionType::Hook(h) => {
                 if self.module.add_hook_chunk(h.hook_id(), chunk).is_some() {
                     return Err(CompilerError::HookAlreadyRegistered(h.hook_id()));
@@ -1115,7 +1151,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 // The program did the opt to add the constants
                 OpCode::Constant.as_byte(), 0, 0,
@@ -1148,7 +1184,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -1181,7 +1217,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
@@ -1197,7 +1233,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::JumpIfFalse.as_byte(), 12, 0, 0, 0,
@@ -1215,7 +1251,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::JumpIfFalse.as_byte(), 17, 0, 0, 0,
@@ -1234,7 +1270,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
@@ -1258,7 +1294,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 // 1
                 OpCode::Constant.as_byte(), 0, 0,
@@ -1287,7 +1323,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
@@ -1313,7 +1349,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
@@ -1332,7 +1368,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 // Load struct
                 OpCode::Constant.as_byte(), 0, 0,
@@ -1349,7 +1385,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -1358,7 +1394,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(1).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::InvokeChunk.as_byte(), 0, 0, 0,
                 OpCode::Return.as_byte()
@@ -1372,7 +1408,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::JumpIfFalse.as_byte(), 18, 0, 0, 0,
@@ -1392,7 +1428,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::MemorySet.as_byte(), 0, 0,
@@ -1419,7 +1455,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::NewObject.as_byte(), 1,
@@ -1437,7 +1473,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::SysCall.as_byte(), 0, 0,
                 OpCode::Return.as_byte()
@@ -1451,7 +1487,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
@@ -1478,7 +1514,7 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         assert_eq!(
-            chunk.get_instructions(),
+            chunk.chunk.get_instructions(),
             &[
                 // let x: map<string, u64> = {};
                 OpCode::NewMap.as_byte(), 0,
@@ -1582,7 +1618,7 @@ mod tests {
 
         let module = prepare_program(code);
         assert_eq!(
-            module.get_chunk_at(0).unwrap().get_instructions(),
+            module.get_chunk_at(0).unwrap().chunk.get_instructions(),
             &[
                 OpCode::Constant.as_byte(), 0, 0,
                 OpCode::Constant.as_byte(), 1, 0,
@@ -1629,9 +1665,9 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         // Verify the module compiles without errors
-        assert!(!chunk.get_instructions().is_empty());
+        assert!(!chunk.chunk.get_instructions().is_empty());
         // Verify there are jumps present for the conditional branches
-        let instructions = chunk.get_instructions();
+        let instructions = chunk.chunk.get_instructions();
         let jump_count = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
         assert!(jump_count >= 5, "Expected at least 5 JumpIfFalse instructions, found {}", jump_count);
     }
@@ -1666,9 +1702,9 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         // Verify the module compiles without errors
-        assert!(!chunk.get_instructions().is_empty());
+        assert!(!chunk.chunk.get_instructions().is_empty());
         // Verify there are multiple jump instructions for nested conditions
-        let instructions = chunk.get_instructions();
+        let instructions = chunk.chunk.get_instructions();
         let jump_count = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
         assert!(jump_count >= 4, "Expected at least 4 JumpIfFalse instructions in nested conditions, found {}", jump_count);
     }
@@ -1692,9 +1728,9 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         // Verify the module compiles without errors
-        assert!(!chunk.get_instructions().is_empty());
+        assert!(!chunk.chunk.get_instructions().is_empty());
         // Verify there are Jump instructions for ternary operators
-        let instructions = chunk.get_instructions();
+        let instructions = chunk.chunk.get_instructions();
         let jump_count = instructions.iter().filter(|&&b| b == OpCode::Jump.as_byte()).count();
         assert!(jump_count >= 3, "Expected at least 3 Jump instructions for ternary operators, found {}", jump_count);
     }
@@ -1728,9 +1764,9 @@ mod tests {
 
         let chunk = module.get_chunk_at(0).unwrap();
         // Verify the module compiles without errors
-        assert!(!chunk.get_instructions().is_empty());
+        assert!(!chunk.chunk.get_instructions().is_empty());
         // Verify there are conditional jumps and loop jumps
-        let instructions = chunk.get_instructions();
+        let instructions = chunk.chunk.get_instructions();
         let jump_if_false = instructions.iter().filter(|&&b| b == OpCode::JumpIfFalse.as_byte()).count();
         let jumps = instructions.iter().filter(|&&b| b == OpCode::Jump.as_byte()).count();
         assert!(jump_if_false >= 3, "Expected at least 3 JumpIfFalse for conditions, found {}", jump_if_false);

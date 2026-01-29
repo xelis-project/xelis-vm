@@ -1,7 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, ser::SerializeSeq};
-use xelis_types::ValueCell;
+use xelis_types::{TypePacked, ValueCell};
 
 use super::{Chunk, Access};
 
@@ -129,20 +129,20 @@ impl Module {
 
     // Add a publicly callable chunk to the module
     #[inline]
-    pub fn add_public_chunk(&mut self, chunk: Chunk) {
+    pub fn add_public_chunk(&mut self, chunk: Chunk, parameters: Option<Vec<TypePacked>>) {
         self.chunks.push(ModuleChunk {
             chunk,
-            access: Access::All
+            access: Access::All { parameters }
         });
     }
 
     // Add a entry callable chunk to the module
     // Can only be called as a program main function
     #[inline]
-    pub fn add_entry_chunk(&mut self, chunk: Chunk) {
+    pub fn add_entry_chunk(&mut self, chunk: Chunk, parameters: Option<Vec<TypePacked>>) {
         self.chunks.push(ModuleChunk {
             chunk,
-            access: Access::Entry
+            access: Access::Entry { parameters }
         });
     }
 
@@ -160,41 +160,33 @@ impl Module {
     #[inline]
     pub fn is_entry_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |c| matches!(c.access, Access::Entry))
+            .map_or(false, |c| matches!(c.access, Access::Entry { .. }))
     }
 
     // Is chunk callable (not an entry or hook)
     #[inline]
     pub fn is_callable_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |c| matches!(c.access, Access::All | Access::Internal))
+            .map_or(false, |c| matches!(c.access, Access::All { .. } | Access::Internal))
     }
 
     // Is chunk callable as a public function
     #[inline]
     pub fn is_public_chunk(&self, index: usize) -> bool {
         self.chunks.get(index)
-            .map_or(false, |c| matches!(c.access, Access::All))
+            .map_or(false, |c| matches!(c.access, Access::All { .. }))
     }
 
     // Get a chunk at a specific index
     #[inline(always)]
-    pub fn get_chunk_at(&self, index: usize) -> Option<&Chunk> {
-        self.get_chunk_access_at(index)
-            .map(|c| &c.chunk)
-    }
-
-    // Get a chunk at a specific index
-    #[inline(always)]
-    pub fn get_chunk_access_at(&self, index: usize) -> Option<&ModuleChunk> {
+    pub fn get_chunk_at(&self, index: usize) -> Option<&ModuleChunk> {
         self.chunks.get(index)
     }
 
     // Get a mutable chunk at a specific index
     #[inline]
-    pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut Chunk> {
+    pub fn get_chunk_at_mut(&mut self, index: usize) -> Option<&mut ModuleChunk> {
         self.chunks.get_mut(index)
-            .map(|c| &mut c.chunk)
     }
 
     // Get the hook chunks ids called during an event
@@ -229,8 +221,8 @@ mod tests {
     fn test_serde_module_with_hooks() {
         let mut module = Module::new();
         let chunk = Chunk::new();
-        module.add_public_chunk(chunk.clone());
-        module.add_entry_chunk(chunk.clone());
+        module.add_public_chunk(chunk.clone(), None);
+        module.add_entry_chunk(chunk.clone(), None);
         module.add_internal_chunk(chunk.clone());
         module.add_hook_chunk(1, chunk.clone());
         module.add_hook_chunk(2, chunk.clone());

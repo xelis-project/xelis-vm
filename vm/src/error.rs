@@ -5,6 +5,13 @@ use xelis_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum VMError {
+    #[error("invalid entry parameter type at index {0}")]
+    InvalidEntryParameterType(usize),
+    #[error("invalid entry parameters count: expected {expected}, found {found}")]
+    InvalidEntryParametersCount {
+        expected: usize,
+        found: usize,
+    },
     #[error("call stack not empty, size is {0}")]
     CallStackNotEmpty(usize),
     #[error(transparent)]

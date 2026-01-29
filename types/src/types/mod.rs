@@ -1,6 +1,8 @@
 mod r#struct;
 mod r#enum;
 mod func;
+mod packed;
+mod number;
 
 pub mod opaque;
 
@@ -13,6 +15,8 @@ use opaque::OpaqueType;
 pub use r#struct::*;
 pub use r#enum::*;
 pub use func::*;
+pub use packed::*;
+pub use number::*;
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -66,6 +70,52 @@ pub enum DefinedType {
 }
 
 impl Type {
+    pub fn packed(&self) -> Option<TypePacked> {
+        Some(match self {
+            Type::U8 => TypePacked::Number(NumberType::U8),
+            Type::U16 => TypePacked::Number(NumberType::U16),
+            Type::U32 => TypePacked::Number(NumberType::U32),
+            Type::U64 => TypePacked::Number(NumberType::U64),
+            Type::U128 => TypePacked::Number(NumberType::U128),
+            Type::U256 => TypePacked::Number(NumberType::U256),
+            Type::String => TypePacked::String,
+            Type::Bool => TypePacked::Bool,
+            Type::Bytes => TypePacked::Bytes,
+            Type::Range(inner) => match **inner {
+                Type::U8 => TypePacked::Range(Box::new(NumberType::U8)),
+                Type::U16 => TypePacked::Range(Box::new(NumberType::U16)),
+                Type::U32 => TypePacked::Range(Box::new(NumberType::U32)),
+                Type::U64 => TypePacked::Range(Box::new(NumberType::U64)),
+                Type::U128 => TypePacked::Range(Box::new(NumberType::U128)),
+                Type::U256 => TypePacked::Range(Box::new(NumberType::U256)),
+                _ => return None
+            },
+            Type::Map(key, value) => TypePacked::Map(Box::new(key.packed()?), Box::new(value.packed()?)),
+            Type::Array(types) => TypePacked::Array(Box::new(types.packed()?)),
+            Type::Tuples(types) => types.iter()
+                .map(Type::packed)
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::Tuples)?,
+            Type::Optional(inner) => TypePacked::Optional(Box::new(inner.packed()?)),
+            Type::Voidable(ty) => ty.packed()?,
+            Type::Struct(ty) => ty.fields()
+                .iter()
+                .map(|(_, ty)| ty.packed())
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::Tuples)?,
+            Type::Enum(ty) => ty.variants()
+                .iter()
+                .map(|(_, ty)| ty.fields()
+                    .iter()
+                    .map(|(_, ty)| ty.packed())
+                    .collect::<Option<Vec<_>>>()
+                )
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::OneOf)?,
+            _ => TypePacked::Any,
+        })
+    }
+
     // transform a byte into a primitive type
     pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
         match byte {

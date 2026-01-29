@@ -25,7 +25,7 @@ fn test_casting() {
     chunk.emit_opcode(OpCode::Cast);
     chunk.write_u8(Type::String.primitive_byte().unwrap());
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::String("10".to_string()));
 }
@@ -36,7 +36,7 @@ fn test_pop_empty_stack() {
     let mut chunk = Chunk::new();
     chunk.emit_opcode(OpCode::Pop);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert!(matches!(try_run(module), Err(VMError::EmptyStack)));
 }
@@ -60,7 +60,7 @@ fn test_pop_constant() {
 
 
     chunk.emit_opcode(OpCode::Return);
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(0));
 }
@@ -72,7 +72,7 @@ fn test_pop_n_out_of_bounds() {
     chunk.emit_opcode(OpCode::PopN);
     chunk.write_u8(1);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert!(matches!(try_run(module), Err(VMError::StackIndexOutOfBounds)));
 }
@@ -99,7 +99,7 @@ fn test_pop_n_constants() {
 
     // Add a return 0
     chunk.emit_opcode(OpCode::Return);
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(0));
 }
@@ -129,7 +129,7 @@ fn test_array_call() {
     chunk.write_u16(index as u16);
 
     chunk.emit_opcode(OpCode::ArrayCall);
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(10));
 }
@@ -168,7 +168,7 @@ fn test_multi_depth_array_call() {
 
     chunk.emit_opcode(OpCode::ArrayCall);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(30));
 }
@@ -192,7 +192,7 @@ fn test_struct() {
 
     chunk.emit_opcode(OpCode::Return);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     {
         let env = Environment::new();
@@ -202,7 +202,7 @@ fn test_struct() {
             environment: (&env).into(),
             metadata: (&()).into(),
         }).expect("module");
-        vm.invoke_chunk_id(0).expect("entry chunk at 0");
+        vm.invoke_chunk_id_unchecked(0).expect("entry chunk at 0");
         assert_eq!(
             vm.run_blocking().unwrap(),
             ValueCell::Object(
@@ -214,7 +214,7 @@ fn test_struct() {
         );
     }
 
-    let chunk = module.get_chunk_at_mut(0).unwrap();
+    let chunk = &mut module.get_chunk_at_mut(0).unwrap().chunk;
     chunk.pop_instruction();
 
     // Store the struct in the memory
@@ -254,7 +254,7 @@ fn test_struct() {
         environment: (&env).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.invoke_chunk_id(0).expect("entry chunk");
+    vm.invoke_chunk_id_unchecked(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::U16(30).into());
 }
@@ -294,7 +294,7 @@ fn test_function_call() {
         environment: (&env).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.invoke_chunk_id(0).expect("entry chunk");
+    vm.invoke_chunk_id_unchecked(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::Boolean(true).into());
 }
@@ -325,7 +325,7 @@ fn test_function_call_on_value() {
     main.write_u16(1);
     main.write_u8(1);
 
-    module.add_entry_chunk(main);
+    module.add_entry_chunk(main, None);
     module.add_internal_chunk(struct_fn);
 
     let env = Environment::new();
@@ -335,7 +335,7 @@ fn test_function_call_on_value() {
         environment: (&env).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.invoke_chunk_id(0).expect("entry chunk");
+    vm.invoke_chunk_id_unchecked(0).expect("entry chunk");
 
     assert_eq!(vm.run_blocking().unwrap(), Primitive::U64(10).into());
 }
@@ -358,7 +358,7 @@ fn test_memory() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(10));
 }
@@ -455,7 +455,7 @@ fn test_for_each_index() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(1);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U8(30));
 }
@@ -485,7 +485,7 @@ fn test_memory_overwrite_self() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -524,7 +524,7 @@ fn test_safe_sub_value_pointer() {
     chunk.emit_opcode(OpCode::MemoryLoad);
     chunk.write_u16(0);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -579,7 +579,7 @@ fn test_safe_sub_intermediate_value_pointer() {
     chunk.emit_opcode(OpCode::MemorySet);
     chunk.write_u16(0);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run(module), Primitive::U64(10));
 }
@@ -640,7 +640,7 @@ fn test_for_each_iterator() {
     chunk.emit_opcode(OpCode::Return);
 
     // Execute
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
     assert_eq!(run(module), Primitive::U8(150));
 }
 
@@ -715,7 +715,7 @@ fn test_bad_program_bad_stack_pointers() {
 
     // Execute
     module.add_internal_chunk(add);
-    module.add_entry_chunk(main);
+    module.add_entry_chunk(main, None);
 
     let res = try_run_id(module, 1).unwrap();
     assert!(matches!(res, Primitive::U64(3)));
@@ -795,7 +795,7 @@ fn test_infinite_map_depth() {
     chunk.write_u16(0);
 
     // Execute
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert!(try_run(module).is_err());
 }
@@ -882,7 +882,7 @@ fn test_array_self_reference_with_pointer_sharing() {
     chunk.write_u16(module.add_constant(Primitive::Boolean(true)) as u16);
     chunk.emit_opcode(OpCode::Return);
 
-    module.add_entry_chunk(chunk);
+    module.add_entry_chunk(chunk, None);
 
     assert_eq!(run_internal(module, environment.environment(), 0).unwrap(), Primitive::Boolean(true));
 }

@@ -53,8 +53,8 @@ impl<'a> Assembler<'a> {
 
     fn add_chunk(&mut self, chunk: Chunk, access: Access) -> Result<(), AssemblerError<'a>> {
         match access {
-            Access::All => self.module.add_public_chunk(chunk),
-            Access::Entry => self.module.add_entry_chunk(chunk),
+            Access::All { parameters } => self.module.add_public_chunk(chunk, parameters),
+            Access::Entry { parameters } => self.module.add_entry_chunk(chunk, parameters),
             Access::Internal => self.module.add_internal_chunk(chunk),
             Access::Hook { id } => {
                 if self.module.add_hook_chunk(id, chunk).is_some() {
@@ -82,8 +82,8 @@ impl<'a> Assembler<'a> {
                     .skip(1);
                 let access = if let Some(str) = parts.next() {
                     match str {
-                        "all" => Access::All,
-                        "entry" => Access::Entry,
+                        "all" => Access::All { parameters: None },
+                        "entry" => Access::Entry { parameters: None },
                         "internal" => Access::Internal,
                         "hook" => {
                             let id = parts.next()
@@ -149,7 +149,7 @@ mod tests {
         let module = assembler.assemble().unwrap();
 
         let chunk = module.get_chunk_at(0).unwrap();
-        assert_eq!(chunk.get_instructions(), &[
+        assert_eq!(chunk.chunk.get_instructions(), &[
             OpCode::Constant.as_byte(), 0, 0,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
@@ -174,14 +174,14 @@ mod tests {
         let module = assembler.assemble().unwrap();
 
         let chunk = module.get_chunk_at(0).unwrap();
-        assert_eq!(chunk.get_instructions(), &[
+        assert_eq!(chunk.chunk.get_instructions(), &[
             OpCode::Constant.as_byte(), 0, 0,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
         ]);
 
         let chunk = module.get_chunk_at(1).unwrap();
-        assert_eq!(chunk.get_instructions(), &[
+        assert_eq!(chunk.chunk.get_instructions(), &[
             OpCode::Constant.as_byte(), 1, 0,
             OpCode::Copy.as_byte(),
             OpCode::Add.as_byte(),
@@ -241,13 +241,13 @@ mod tests {
         let module = assembler.assemble().unwrap();
 
         assert_eq!(module.chunks().len(), 1);
-        let access = module.chunks().last().unwrap().access;
-        assert!(access == expected);
+        let access = &module.chunks().last().unwrap().access;
+        assert!(*access == expected);
     }
 
     #[test]
     fn test_entry_chunk() {
-        test_access_kind("#main entry", Access::Entry);
+        test_access_kind("#main entry", Access::Entry { parameters: None });
     }
 
     #[test]
@@ -262,6 +262,6 @@ mod tests {
 
     #[test]
     fn test_all_chunk() {
-        test_access_kind("#main all", Access::All);
+        test_access_kind("#main all", Access::All { parameters: None });
     }
 }
