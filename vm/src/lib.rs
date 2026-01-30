@@ -203,12 +203,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         self.invoke_chunk_id_unchecked(id as _)
     }
 
-    // Invoke an entry chunk using its id
+    // Invoke a public chunk using its id (either entry or all)
     // This will use the latest module added
     // You can provide arguments to push to the stack before invoking the chunk
     // The arguments will be verified against the chunk parameters if any
     // The parameters are reversed when pushed to the stack to respect the stack order
-    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_public_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         let Some(m) = self.backend.modules.last() else {
             return Err(VMError::NoModule);
         };
@@ -218,7 +218,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
         let args_count = args.len();
         match &chunk.access {
-            Access::Entry { parameters } => {
+            Access::Entry { parameters } | Access::All { parameters } => {
                 // If we have enforced parameters to verify, process it
                 if let Some(params) = parameters {
                     if params.len() != args_count {
@@ -251,7 +251,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                     }
                 }
             },
-            _ => return Err(VMError::ChunkNotEntry),
+            _ => return Err(VMError::ChunkNotPublic),
         }
 
         self.invoke_chunk_id_unchecked(id as _)?;
