@@ -174,7 +174,10 @@ impl<'a, M> ModuleValidator<'a, M> {
                         }
 
                         for param in params {
-                            param.verify(self.constant_max_depth)?;
+                            param.verify_with_fn(
+                                self.constant_max_depth,
+                                |id| self.environment.get_opaques().get_index(id as usize).is_some()
+                            )?;
                         }
                     }
                 },

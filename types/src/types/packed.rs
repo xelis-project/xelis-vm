@@ -17,6 +17,8 @@ pub enum TypePacked {
     String,
     Bool,
     Bytes,
+    // Opaque ID
+    Opaque(u16),
     Array(Box<TypePacked>),
     // Tuples of packed types
     // it can represent enum, struct or tuples
@@ -37,7 +39,18 @@ impl TypePacked {
     /// - OneOf has no variants or more than u8::MAX variants
     /// - OneOf has a variant with no types (use empty vec for unit variants)
     /// - Map key type is Map (maps cannot be keys)
-    pub fn verify(&self, max_depth: usize) -> Result<(), ValueError> {
+    pub fn verify(
+        &self,
+        max_depth: usize
+    ) -> Result<(), ValueError> {
+        self.verify_with_fn(max_depth, |_| true)
+    }
+
+    pub fn verify_with_fn<F: Fn(u16) -> bool>(
+        &self,
+        max_depth: usize,
+        opaque_by_id: F,
+    ) -> Result<(), ValueError> {
         // Stack contains (type, current_depth)
         let mut stack: Vec<(&TypePacked, usize, bool)> = vec![(self, 0, false)];
 
@@ -54,6 +67,11 @@ impl TypePacked {
                 | TypePacked::Bytes
                 | TypePacked::Range(_) => {
                     // Primitive types are always valid
+                },
+                TypePacked::Opaque(id) => {
+                    if !opaque_by_id(*id) {
+                        return Err(ValueError::UnknownType);
+                    }
                 },
                 TypePacked::Optional(inner) => {
                     stack.push((inner, depth + 1, is_map_key));
@@ -1043,5 +1061,35 @@ mod tests {
             Box::new(TypePacked::Number(NumberType::U64)),
         );
         assert!(tp.verify(10).is_err());
+    }
+
+    #[test]
+    fn test_verify_with_fn_unregistered_opaque() {
+        // Opaque type with ID 42
+        let tp = TypePacked::Opaque(42);
+        
+        // Should fail when the opaque ID is not registered
+        assert!(tp.verify_with_fn(10, |_| false).is_err());
+        
+        // Should pass when the opaque ID is registered
+        assert!(tp.verify_with_fn(10, |id| id == 42).is_ok());
+    }
+
+    #[test]
+    fn test_verify_with_fn_nested_unregistered_opaque() {
+        // Nested opaque types in a complex structure
+        let tp = TypePacked::Tuples(vec![
+            TypePacked::String,
+            TypePacked::Optional(Box::new(TypePacked::Opaque(10))),
+            TypePacked::Array(Box::new(TypePacked::Opaque(20))),
+        ]);
+        
+        // Should fail if any opaque is unregistered
+        assert!(tp.verify_with_fn(10, |_| false).is_err());
+        assert!(tp.verify_with_fn(10, |id| id == 10).is_err()); // 20 not registered
+        assert!(tp.verify_with_fn(10, |id| id == 20).is_err()); // 10 not registered
+        
+        // Should pass when all opaques are registered
+        assert!(tp.verify_with_fn(10, |id| id == 10 || id == 20).is_ok());
     }
 }
