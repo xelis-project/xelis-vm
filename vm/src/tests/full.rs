@@ -3561,7 +3561,7 @@ fn test_entry_params_order_single_param() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct type
-    vm.invoke_public_chunk_with_args(0, [Primitive::U64(42)].into_iter()).expect("valid call");
+    vm.invoke_chunk_with_args(0, [Primitive::U64(42)].into_iter()).expect("valid call");
     let result = vm.run_blocking().expect("run failed");
     assert_eq!(result.as_u64().unwrap(), 42);
 }
@@ -3588,7 +3588,7 @@ fn test_entry_params_order_multiple_params() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct types in correct order
-    vm.invoke_public_chunk_with_args(0, [
+    vm.invoke_chunk_with_args(0, [
         Primitive::U64(100),
         Primitive::U32(50),
         Primitive::Boolean(true),
@@ -3617,7 +3617,7 @@ fn test_entry_params_wrong_type_first() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // First param is wrong type (u32 instead of u64)
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U32(100), // Wrong! Should be u64
         Primitive::U32(50),
     ].into_iter());
@@ -3644,7 +3644,7 @@ fn test_entry_params_wrong_type_second() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Second param is wrong type (u64 instead of u32)
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U64(100),
         Primitive::U64(50), // Wrong! Should be u32
     ].into_iter());
@@ -3671,7 +3671,7 @@ fn test_entry_params_wrong_count() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Too few params
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U64(100),
     ].into_iter());
     
@@ -3697,7 +3697,7 @@ fn test_entry_params_wrong_count_too_many() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Too many params
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U64(100),
         Primitive::U64(50),
     ].into_iter());
@@ -3724,7 +3724,7 @@ fn test_entry_params_string() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct string type
-    vm.invoke_public_chunk_with_args(0, [
+    vm.invoke_chunk_with_args(0, [
         Primitive::String("hello".to_string()),
     ].into_iter()).expect("valid call");
     
@@ -3751,7 +3751,7 @@ fn test_entry_params_string_wrong_type() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with wrong type (u64 instead of string)
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U64(42),
     ].into_iter());
     
@@ -3779,7 +3779,7 @@ fn test_entry_params_bool() {
     }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
-    vm.invoke_public_chunk_with_args(0, [
+    vm.invoke_chunk_with_args(0, [
         Primitive::Boolean(true),
     ].into_iter()).expect("valid call");
     
@@ -3809,7 +3809,7 @@ fn test_entry_params_bool_wrong_type() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with wrong type (u64 instead of bool)
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U64(1),
     ].into_iter());
     
@@ -3836,7 +3836,7 @@ fn test_entry_params_optional() {
         }).expect("module");
         vm.context_mut().set_gas_limit(10u64.pow(8u32));
         
-        vm.invoke_public_chunk_with_args(0, [
+        vm.invoke_chunk_with_args(0, [
             Primitive::U64(42),
         ].into_iter()).expect("valid call");
         
@@ -3854,7 +3854,7 @@ fn test_entry_params_optional() {
         }).expect("module");
         vm.context_mut().set_gas_limit(10u64.pow(8u32));
         
-        vm.invoke_public_chunk_with_args(0, [
+        vm.invoke_chunk_with_args(0, [
             Primitive::Null,
         ].into_iter()).expect("valid call");
         
@@ -3881,7 +3881,7 @@ fn test_entry_params_all_number_types() {
     }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
-    vm.invoke_public_chunk_with_args(0, [
+    vm.invoke_chunk_with_args(0, [
         Primitive::U8(1),
         Primitive::U16(2),
         Primitive::U32(3),
@@ -3912,7 +3912,7 @@ fn test_entry_params_mixed_wrong_order() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Pass params in wrong order (u32, u16, u8 instead of u8, u16, u32)
-    let result = vm.invoke_public_chunk_with_args(0, [
+    let result = vm.invoke_chunk_with_args(0, [
         Primitive::U32(1), // Wrong! Should be u8
         Primitive::U16(2),
         Primitive::U8(3),  // Wrong! Should be u32
@@ -3945,7 +3945,7 @@ fn test_entry_without_enforced_params_accepts_any() {
     // Even with "wrong" types, it should still accept the call
     // (though it may fail at runtime if types don't match the operations)
     // The point is invoke_public_chunk_with_args doesn't reject it
-    vm.invoke_public_chunk_with_args(0, [
+    vm.invoke_chunk_with_args(0, [
         Primitive::U64(100),
         Primitive::U32(50),
     ].into_iter()).expect("call should be accepted without param enforcement");

@@ -203,12 +203,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         self.invoke_chunk_id_unchecked(id as _)
     }
 
-    // Invoke a public chunk using its id (either entry or all)
+    // Invoke a chunk using its id with args
     // This will use the latest module added
     // You can provide arguments to push to the stack before invoking the chunk
     // The arguments will be verified against the chunk parameters if any
     // The parameters are reversed when pushed to the stack to respect the stack order
-    pub fn invoke_public_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    pub fn invoke_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         let Some(m) = self.backend.modules.last() else {
             return Err(VMError::NoModule);
         };
@@ -251,12 +251,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                     }
                 }
             },
-            _ => return Err(VMError::ChunkNotPublic),
+            _ => {
+                for arg in args.rev() {
+                    self.push_stack(arg)?;
+                }
+            }
         }
 
-        self.invoke_chunk_id_unchecked(id as _)?;
-
-        Ok(())
+        self.invoke_chunk_id_unchecked(id as _)
     }
 
     // Invoke a hook
@@ -275,18 +277,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Invoke a hook with args
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
-    pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
+    pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
         let m = self.backend.modules.last()
             .ok_or(VMError::NoModule)?;
 
         match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
-                self.invoke_chunk_id_unchecked(id as _)?;
-
-                for arg in args {
-                    self.push_stack(arg)?;
-                }
-
+                self.invoke_chunk_with_args(id as _, args)?;
                 Ok(true)
             },
             None => Ok(false)
@@ -294,8 +291,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     }
 
     // Push a value to the stack
-    #[inline(always)]
-    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
+    #[inline]
+    fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         let tmp = value.into();
 
         // we make sure to deep clone it to prevent any issues later

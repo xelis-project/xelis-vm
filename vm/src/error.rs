@@ -12,8 +12,6 @@ pub enum VMError {
         expected: usize,
         found: usize,
     },
-    #[error("chunk is not public")]
-    ChunkNotPublic,
     #[error("call stack not empty, size is {0}")]
     CallStackNotEmpty(usize),
     #[error(transparent)]
