@@ -205,7 +205,10 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Invoke an entry chunk using its id
     // This will use the latest module added
-    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+    // You can provide arguments to push to the stack before invoking the chunk
+    // The arguments will be verified against the chunk parameters if any
+    // The parameters are reversed when pushed to the stack to respect the stack order
+    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
         let Some(m) = self.backend.modules.last() else {
             return Err(VMError::NoModule);
         };
@@ -213,18 +216,21 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         let chunk = m.module.get_chunk_at(id as usize)
             .ok_or(VMError::ChunkNotFound)?;
 
+        let args_count = args.len();
         match &chunk.access {
             Access::Entry { parameters } => {
                 // If we have enforced parameters to verify, process it
                 if let Some(params) = parameters {
-                    if params.len() != args.len() {
+                    if params.len() != args_count {
                         return Err(VMError::InvalidEntryParametersCount {
                             expected: params.len(),
-                            found: args.len(),
+                            found: args_count,
                         });
                     }
 
-                    let mut checked_args = Vec::with_capacity(args.len());
+                    // We reverse the params because we need to push them in the stack order
+                    // So the first parameter will be the first to be popped from stack
+                    let mut checked_args = Vec::with_capacity(args_count);
                     for (i, (expected, provided)) in params.iter().zip(args).enumerate() {
                         let value = provided.into();
                         if !expected.check(&value) {
@@ -234,13 +240,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         checked_args.push(value);
                     }
 
-                    for arg in checked_args {
+                    for arg in checked_args.into_iter().rev() {
                         self.push_stack(arg)?;
                     }
                 } else {
                     // no enforced parameters set for the chunk
                     // just push them as is
-                    for arg in args {
+                    for arg in args.rev() {
                         self.push_stack(arg)?;
                     }
                 }

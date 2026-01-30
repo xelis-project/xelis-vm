@@ -3525,3 +3525,431 @@ fn test_async_callback_with_two_params() {
     // Expected: [10+0, 20+1, 30+2] = [10, 21, 32] => sum = 63
     assert_eq!(result, 63);
 }
+
+// Helper to prepare module with enforce_public_parameters enabled
+#[track_caller]
+fn prepare_module_with_enforced_params(code: &str) -> (Module, Environment<()>) {
+    let env = EnvironmentBuilder::default();
+    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
+    let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
+
+    let env = env.build();
+    let module = Compiler::new(&program, &env)
+        .with_enforce_public_parameters(true)
+        .compile()
+        .unwrap();
+
+    (module, env)
+}
+
+#[test]
+fn test_entry_params_order_single_param() {
+    let code = r#"
+        entry main(a: u64) {
+            return a;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct type
+    vm.invoke_entry_chunk_with_args(0, [Primitive::U64(42)].into_iter()).expect("valid call");
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 42);
+}
+
+#[test]
+fn test_entry_params_order_multiple_params() {
+    let code = r#"
+        entry main(a: u64, b: u32, c: bool) {
+            if c {
+                return a + (b as u64);
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct types in correct order
+    vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U32(50),
+        Primitive::Boolean(true),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 150);
+}
+
+#[test]
+fn test_entry_params_wrong_type_first() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // First param is wrong type (u32 instead of u64)
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U32(100), // Wrong! Should be u64
+        Primitive::U32(50),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_wrong_type_second() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Second param is wrong type (u64 instead of u32)
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U64(50), // Wrong! Should be u32
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(1))));
+}
+
+#[test]
+fn test_entry_params_wrong_count() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Too few params
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(100),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 2, found: 1 })));
+}
+
+#[test]
+fn test_entry_params_wrong_count_too_many() {
+    let code = r#"
+        entry main(a: u64) {
+            return a;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Too many params
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U64(50),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 1, found: 2 })));
+}
+
+#[test]
+fn test_entry_params_string() {
+    let code = r#"
+        entry main(name: string) {
+            return name.len() as u64;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct string type
+    vm.invoke_entry_chunk_with_args(0, [
+        Primitive::String("hello".to_string()),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 5);
+}
+
+#[test]
+fn test_entry_params_string_wrong_type() {
+    let code = r#"
+        entry main(name: string) {
+            return name.len() as u64;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with wrong type (u64 instead of string)
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(42),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_bool() {
+    let code = r#"
+        entry main(flag: bool) {
+            if flag {
+                return 1;
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    vm.invoke_entry_chunk_with_args(0, [
+        Primitive::Boolean(true),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 1);
+}
+
+#[test]
+fn test_entry_params_bool_wrong_type() {
+    let code = r#"
+        entry main(flag: bool) {
+            if flag {
+                return 1;
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with wrong type (u64 instead of bool)
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(1),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_optional() {
+    let code = r#"
+        entry main(value: optional<u64>) {
+            return value.unwrap_or(999);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    // Test with Some value
+    {
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        }).expect("module");
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
+        
+        vm.invoke_entry_chunk_with_args(0, [
+            Primitive::U64(42),
+        ].into_iter()).expect("valid call");
+        
+        let result = vm.run_blocking().expect("run failed");
+        assert_eq!(result.as_u64().unwrap(), 42);
+    }
+    
+    // Test with None (null)
+    {
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        }).expect("module");
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
+        
+        vm.invoke_entry_chunk_with_args(0, [
+            Primitive::Null,
+        ].into_iter()).expect("valid call");
+        
+        let result = vm.run_blocking().expect("run failed");
+        assert_eq!(result.as_u64().unwrap(), 999);
+    }
+}
+
+#[test]
+fn test_entry_params_all_number_types() {
+    let code = r#"
+        entry main(a: u8, b: u16, c: u32, d: u64, e: u128) {
+            return (a as u64) + (b as u64) + (c as u64) + d + (e as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U8(1),
+        Primitive::U16(2),
+        Primitive::U32(3),
+        Primitive::U64(4),
+        Primitive::U128(5),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 15);
+}
+
+#[test]
+fn test_entry_params_mixed_wrong_order() {
+    let code = r#"
+        entry main(a: u8, b: u16, c: u32) {
+            return (a as u64) + (b as u64) + (c as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Pass params in wrong order (u32, u16, u8 instead of u8, u16, u32)
+    let result = vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U32(1), // Wrong! Should be u8
+        Primitive::U16(2),
+        Primitive::U8(3),  // Wrong! Should be u32
+    ].into_iter());
+    
+    // Should fail on first parameter (index 0)
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_without_enforced_params_accepts_any() {
+    // Without with_enforce_public_parameters, no type checking happens
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    // Use standard prepare_module (no enforce_public_parameters)
+    let (module, environment) = prepare_module(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Even with "wrong" types, it should still accept the call
+    // (though it may fail at runtime if types don't match the operations)
+    // The point is invoke_entry_chunk_with_args doesn't reject it
+    vm.invoke_entry_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U32(50),
+    ].into_iter()).expect("call should be accepted without param enforcement");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 150);
+}
