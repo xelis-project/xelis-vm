@@ -233,7 +233,11 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                     let mut checked_args = Vec::with_capacity(args_count);
                     for (i, (expected, provided)) in params.iter().zip(args).enumerate() {
                         let value = provided.into();
-                        if !expected.check(&value) {
+                        if !expected.check_with_fn(&value, |opaque, ty| {
+                            m.environment.get_opaques()
+                                .get_index(ty as usize)
+                                .is_some_and(|(v, external)| *v == opaque.get_type_id() && *external)
+                        }) {
                             return Err(VMError::InvalidEntryParameterType(i));
                         }
 

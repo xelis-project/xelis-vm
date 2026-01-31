@@ -13,6 +13,9 @@ mod full;
 /// This module contains comprehensive tests for all standard library functions
 mod stdlib_tests;
 
+/// This module contains tests for the ModuleValidator
+mod validator;
+
 #[track_caller]
 fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator

@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{NumberType, Primitive, ValueCell, ValueError, ValuePointer};
+use crate::{NumberType, OpaqueWrapper, Primitive, ValueCell, ValueError, ValuePointer};
 
 /// A packed type representation
 /// Used for representing types in a compact way
@@ -39,6 +39,7 @@ impl TypePacked {
     /// - OneOf has no variants or more than u8::MAX variants
     /// - OneOf has a variant with no types (use empty vec for unit variants)
     /// - Map key type is Map (maps cannot be keys)
+    #[inline(always)]
     pub fn verify(
         &self,
         max_depth: usize
@@ -138,7 +139,14 @@ impl TypePacked {
 
     /// Check if a ValueCell matches the TypePacked
     /// This is iterative to prevent stack overflow with deeply nested types
+    #[inline(always)]
     pub fn check(&self, value: &ValueCell) -> bool {
+        self.check_with_fn(value, |_, _| true)
+    }
+    /// Check if a ValueCell matches the TypePacked
+    /// This is iterative to prevent stack overflow with deeply nested types
+    /// Allows providing a function to validate opaque types
+    pub fn check_with_fn<F: Fn(&OpaqueWrapper, u16) -> bool>(&self, value: &ValueCell, f: F) -> bool {
         let mut stack: Vec<(&TypePacked, &ValueCell)> = vec![(self, value)];
 
         while let Some((tp, val)) = stack.pop() {
@@ -155,6 +163,11 @@ impl TypePacked {
                 },
                 (TypePacked::String, ValueCell::Primitive(Primitive::String(_))) => {},
                 (TypePacked::Bool, ValueCell::Primitive(Primitive::Boolean(_))) => {},
+                (TypePacked::Opaque(ty), ValueCell::Primitive(Primitive::Opaque(opaque))) => {
+                    if !f(opaque, *ty) {
+                        return false;
+                    }
+                },
                 (TypePacked::Bytes, ValueCell::Bytes(_)) => {},
                 (TypePacked::Any, _) => {},
                 (TypePacked::Array(inner), ValueCell::Object(values)) => {
