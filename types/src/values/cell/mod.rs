@@ -556,11 +556,14 @@ impl ValueCell {
         }
     }
 
+    // Check if the value is a function pointer (primitive u16 or object with 3 elements)
+    // If it's a primitive u16, return the function id.
+    // If it's an object with 3 elements, return the cell array (chunk id u16, is syscall bool, from chunk u16)
     #[inline]
     pub fn as_fn_ptr<'a>(&'a self) -> Result<Either<u16, &'a CellArray>, ValueError> {
         match self {
             Self::Primitive(Primitive::U16(id)) => Ok(Either::Left(*id)),
-            Self::Object(values) => Ok(Either::Right(values)),
+            Self::Object(values) if values.len() == 3 => Ok(Either::Right(values)),
             _ => Err(ValueError::ExpectedFnType)
         }
     }

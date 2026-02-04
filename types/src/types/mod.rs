@@ -112,7 +112,14 @@ impl Type {
                 )
                 .collect::<Option<Vec<_>>>()
                 .map(TypePacked::OneOf)?,
-            _ => TypePacked::Any,
+            Type::Opaque(ty) => TypePacked::Opaque(ty.id()),
+            Type::Closure(_) => TypePacked::Tuples(vec![
+                TypePacked::Number(NumberType::U16), // chunk id
+                TypePacked::Bool, // is syscall
+                TypePacked::Number(NumberType::U16), // from chunk id
+            ]),
+            Type::Function(_) => TypePacked::Number(NumberType::U16),
+            Type::Any | Type::T(_) => TypePacked::Any,
         })
     }
 
