@@ -1,8 +1,6 @@
 use std::ops::{Deref, DerefMut};
-
+use runtime_context::Context;
 use crate::EnvironmentError;
-
-use super::Context;
 
 pub struct VMContext<'ty, 'r> {
     // main Context

@@ -12,3 +12,4 @@ thiserror = "2.0.1"
 xelis-types = { path = "../types" }
 xelis-bytecode = { path = "../bytecode" }
 futures = "0.3.31"
+runtime-context = "0.1.0"
