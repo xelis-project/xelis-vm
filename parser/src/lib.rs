@@ -3306,6 +3306,10 @@ impl<'a, M> Parser<'a, M> {
                     self.expect_token(Token::BraceOpen)?;
                     let mut patterns = Vec::new();
                     let mut default_case = None;
+                    // Track seen patterns for duplicate detection
+                    let mut seen_variant_ids: HashSet<u8> = HashSet::new();
+                    let mut seen_cond_exprs: HashSet<Expression> = HashSet::new();
+
                     while self.peek_is_not(Token::BraceClose) {
                         context.begin_scope();
                         let pattern = self.read_match_pattern(context, &expr_ty)?;
@@ -3315,6 +3319,19 @@ impl<'a, M> Parser<'a, M> {
                         context.end_scope();
 
                         if let Some(pattern) = pattern {
+                            // Check for duplicate patterns
+                            match &pattern {
+                                MatchStatement::Variant(_, variant) => {
+                                    if !seen_variant_ids.insert(variant.variant_id()) {
+                                        return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                                    }
+                                },
+                                MatchStatement::Cond(expr) => {
+                                    if !seen_cond_exprs.insert(expr.clone()) {
+                                        return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                                    }
+                                },
+                            }
                             patterns.push((pattern, body));
                         } else {
                             if default_case.is_some() {
@@ -3330,6 +3347,33 @@ impl<'a, M> Parser<'a, M> {
                     }
 
                     self.expect_token(Token::BraceClose)?;
+
+                    // Verify exhaustiveness: all patterns must be covered
+                    if default_case.is_none() {
+                        if let Type::Enum(enum_ty) = &expr_ty {
+                            let total_variants = enum_ty.variants().len();
+                            if seen_variant_ids.len() != total_variants {
+                                // Find the first missing variant name for a helpful error message
+                                for (i, (name, _)) in enum_ty.variants().iter().enumerate() {
+                                    if !seen_variant_ids.contains(&(i as u8)) {
+                                        return Err(err!(self, ParserErrorKind::NonExhaustiveMatchMissingVariant(Cow::Owned(name.to_string()))))
+                                    }
+                                }
+                            }
+                        } else if expr_ty == Type::Bool {
+                            // For booleans, we can check exhaustiveness:
+                            // both true and false must be present
+                            let has_true = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(true))));
+                            let has_false = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(false))));
+                            if !has_true || !has_false {
+                                return Err(err!(self, ParserErrorKind::NonExhaustiveMatch))
+                            }
+                        } else {
+                            // For other primitive types, we cannot determine exhaustiveness
+                            // without a default case
+                            return Err(err!(self, ParserErrorKind::NonExhaustiveMatch))
+                        }
+                    }
 
                     context.end_scope();
 

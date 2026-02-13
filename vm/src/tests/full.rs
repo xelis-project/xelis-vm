@@ -2092,6 +2092,7 @@ fn test_match() {
             match v {
                 Foo::B { value } => panic("should not match"),
                 Foo::A { value } => return 0,
+                Foo::C => panic("should not match C"),
             };
 
             return 1
@@ -2324,6 +2325,744 @@ fn test_match_variant() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_exhaustive_enum() {
+    // All variants covered
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::B;
+            match v {
+                Test::A => return 1,
+                Test::B => return 2,
+                Test::C => return 3
+            };
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_match_exhaustive_enum_with_default() {
+    // Default case covers the rest
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::C;
+            match v {
+                Test::A => return 1,
+                _ => return 99
+            };
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(99));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_missing_one() {
+    // Missing variant C: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1,
+                Test::B => return 2
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_missing_all_but_one() {
+    // Only one variant covered out of three: should fail
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_enum_variant() {
+    // Duplicate variant A: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1,
+                Test::A => return 2,
+                Test::B => return 3,
+                Test::C => return 4
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_default_case() {
+    // Two default cases: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                _ => return 1,
+                _ => return 2
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_enum_with_fields() {
+    // Enum with fields, all variants covered
+    let code = r#"
+        enum Result {
+            Ok { value: u64 },
+            Err { msg: string }
+        }
+
+        entry main() {
+            let r: Result = Result::Ok { value: 42 };
+            match r {
+                Result::Ok { value } => return value,
+                Result::Err { msg } => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_with_fields() {
+    // Enum with fields, missing one variant
+    let code = r#"
+        enum Result {
+            Ok { value: u64 },
+            Err { msg: string }
+        }
+
+        entry main() {
+            let r: Result = Result::Ok { value: 42 };
+            match r {
+                Result::Ok { value } => return value
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_tuple_enum() {
+    // Tuple-style enum, all variants covered
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v,
+                Option::None => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_tuple_enum() {
+    // Tuple-style enum, missing None variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_tuple_enum_variant() {
+    // Duplicate tuple enum variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v,
+                Option::Some(v) => return 0,
+                Option::None => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_bool() {
+    // Both true and false covered for bool
+    let code = r#"
+        entry main() {
+            let b: bool = true;
+            match b {
+                true => return 1,
+                false => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_bool() {
+    // Only true covered for bool, missing false
+    let code = r#"
+        entry main() {
+            let b: bool = true;
+            match b {
+                true => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_bool_with_default() {
+    // Bool with default case is fine
+    let code = r#"
+        entry main() {
+            let b: bool = false;
+            match b {
+                true => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_primitive_no_default() {
+    // Primitive (u64) match without default case: should fail
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                5 => return 5
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_primitive_with_default() {
+    // Primitive (u64) match with default case: should work
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                n => return n
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_primitive_pattern() {
+    // Duplicate constant patterns for primitive match
+    let code = r#"
+        entry main() {
+            match 5 {
+                5 => return 1,
+                5 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_generic_enum() {
+    // Generic enum with all variants covered
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(100));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_generic_enum() {
+    // Generic enum missing Err variant
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_mixed_enum() {
+    // Mixed enum (unit, tuple, struct variants) all covered
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m: Mixed = Mixed::Tuple(10, true);
+            match m {
+                Mixed::Unit => return 0,
+                Mixed::Tuple(n, b) => return n,
+                Mixed::Struct { name, value } => return value
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_mixed_enum() {
+    // Mixed enum missing Struct variant
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m: Mixed = Mixed::Tuple(10, true);
+            match m {
+                Mixed::Unit => return 0,
+                Mixed::Tuple(n, b) => return n
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+// ===== Number matching tests =====
+
+#[test]
+fn test_match_number_exact() {
+    let code = r#"
+        entry main() {
+            match 42 {
+                0 => return 0,
+                42 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_default_fallthrough() {
+    let code = r#"
+        entry main() {
+            match 7 {
+                0 => return 0,
+                1 => return 1,
+                n => return n
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(7));
+}
+
+#[test]
+fn test_match_number_range() {
+    let code = r#"
+        entry main() {
+            match 3 {
+                0..10 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_range_no_match() {
+    let code = r#"
+        entry main() {
+            match 50 {
+                0..10 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_number_multiple_ranges() {
+    let code = r#"
+        entry main() {
+            match 25 {
+                0..10 => return 1,
+                10..20 => return 2,
+                20..30 => return 3,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_match_number_range_and_exact() {
+    // Exact value takes priority when listed first
+    let code = r#"
+        entry main() {
+            match 5 {
+                5 => return 1,
+                0..10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_range_boundary() {
+    // Test the lower boundary of a range
+    let code = r#"
+        entry main() {
+            match 0 {
+                0..5 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_u8() {
+    let code = r#"
+        entry main() {
+            let v: u8 = 10;
+            match v {
+                0 => return 0,
+                10 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_u128() {
+    let code = r#"
+        entry main() {
+            let v: u128 = 999;
+            match v {
+                0 => return 0,
+                999 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_no_default() {
+    // Number match requires default (or is non-exhaustive)
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                1 => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_duplicate_exact() {
+    let code = r#"
+        entry main() {
+            match 10 {
+                10 => return 1,
+                10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_duplicate_range() {
+    let code = r#"
+        entry main() {
+            match 5 {
+                0..10 => return 1,
+                0..10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+// ===== String matching tests =====
+
+#[test]
+fn test_match_string_exact() {
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "world" => return 0,
+                "hello" => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_string_default() {
+    let code = r#"
+        entry main() {
+            let s: string = "unknown";
+            match s {
+                "hello" => return 1,
+                "world" => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_string_empty() {
+    let code = r#"
+        entry main() {
+            let s: string = "";
+            match s {
+                "" => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_string_multiple() {
+    let code = r#"
+        entry main() {
+            let s: string = "c";
+            match s {
+                "a" => return 1,
+                "b" => return 2,
+                "c" => return 3,
+                "d" => return 4,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_match_string_named_default() {
+    // Named default captures the value
+    let code = r#"
+        entry main() {
+            let s: string = "test";
+            match s {
+                "hello" => return 0,
+                v => {
+                    if v == "test" {
+                        return 1
+                    }
+                    return 99
+                }
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_string_no_default() {
+    // String match without default: non-exhaustive
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "hello" => return 1,
+                "world" => return 2
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_string_duplicate() {
+    // Duplicate string pattern
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "hello" => return 1,
+                "hello" => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
 }
 
 #[test]

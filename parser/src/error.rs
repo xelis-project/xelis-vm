@@ -49,6 +49,10 @@ pub enum ParserErrorKind<'a> {
     ExpectedNormalFunction,
     #[error("duplicated match pattern")]
     MatchPatternDuplicated,
+    #[error("non-exhaustive match: not all patterns are covered")]
+    NonExhaustiveMatch,
+    #[error("non-exhaustive match: missing variant '{0}'")]
+    NonExhaustiveMatchMissingVariant(Cow<'a, str>),
     #[error("invalid type for match, only primitive and enum are supported")]
     InvalidTypeMatch,
     #[error("expected a body for pattern in match")]
