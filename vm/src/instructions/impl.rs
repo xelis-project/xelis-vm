@@ -25,7 +25,7 @@ pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack
     let memory_usage = constant.calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
-    stack.push_stack(constant.clone().into())?;
+    stack.push_stack(constant.into())?;
     Ok(InstructionResult::Nothing)
 }
 

@@ -43,7 +43,7 @@ pub struct Backend<'a: 'r, 'ty: 'a, 'r, M> {
 impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
     // Get a constant registered in the module using its id
     #[inline(always)]
-    pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
+    pub fn get_constant_with_id(&self, id: usize) -> Result<ValueCell, VMError> {
         self.modules.last()
             .and_then(|m| m.module.get_constant_at(id))
             .ok_or(VMError::ConstantNotFound(id))
