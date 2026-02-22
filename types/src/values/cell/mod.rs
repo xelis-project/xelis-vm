@@ -36,7 +36,6 @@ pub enum Either<L, R> {
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
 #[derive(Debug, Eq, Serialize, Deserialize)]
-#[cfg_attr(not(feature = "infinite-cell-depth"), derive(Clone))]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ValueCell {
     Primitive(Primitive),
@@ -1104,8 +1103,8 @@ impl fmt::Display for ValueCell {
     }
 }
 
-#[cfg(feature = "infinite-cell-depth")]
 impl Clone for ValueCell {
+    #[inline(always)]
     fn clone(&self) -> Self {
         self.deep_clone()
     }
