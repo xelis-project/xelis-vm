@@ -242,7 +242,7 @@ impl PartialEq for ValueCell {
                     // Compare maps: check all keys exist and values match
                     // We need to compare both key and value pairs
                     for ((left_key, left_val), (right_key, right_val)) in a.iter().zip(b.iter()).rev() {
-                        stack.push((ValueCellRef::Owned(left_key.clone()), ValueCellRef::Owned(right_key.clone())));
+                        stack.push((ValueCellRef::Owned(left_key.clone_ref()), ValueCellRef::Owned(right_key.clone_ref())));
                         stack.push((ValueCellRef::Pointer(left_val.clone()), ValueCellRef::Pointer(right_val.clone())));
                     }
                 }
@@ -278,7 +278,7 @@ impl Hash for ValueCell {
                     13u8.hash(state);
                     stack.extend(
                         map.iter()
-                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
                     )
                 }
             }
@@ -344,7 +344,7 @@ impl ValueCell {
                 ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
                 ValueCell::Map(map) => stack.extend(
                     map.iter()
-                        .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                        .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
                 ),
                 _ => {}
             }
@@ -393,7 +393,7 @@ impl ValueCell {
                     let depth = depth + 1;
                     stack.extend(
                         map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
+                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone_ref()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
                     )
                 }
             };
@@ -434,7 +434,7 @@ impl ValueCell {
                     memory += 64;
                     stack.extend(
                         map.iter()
-                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())])
+                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
                     )
                 }
             };
@@ -944,6 +944,17 @@ impl ValueCell {
         }
     }
 
+    /// Create a clone while keeping the same references for sub values (i.e. shallow clone)
+    #[inline(always)]
+    pub fn clone_ref(&self) -> Self {
+        match self {
+            Self::Bytes(v) => return Self::Bytes(v.clone()),
+            Self::Primitive(v) => return Self::Primitive(v.clone()),
+            Self::Object(values) => return Self::Object(values.clone()),
+            Self::Map(map) => return Self::Map(map.clone()),
+        }
+    }
+
     // Create a clone in a iterative way
     pub fn deep_clone(&self) -> Self {
         match self {
@@ -981,7 +992,7 @@ impl ValueCell {
                 Self::Map(map) => {
                     queue.push(QueueItem::Map { len: map.len() });
                     stack.reserve(map.len() * 2);
-                    stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone()), ValueCellRef::Pointer(v.clone())]));
+                    stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())]));
                 }
             }
         };
@@ -1068,7 +1079,7 @@ impl fmt::Display for ValueCell {
                                 for (k, v) in map.iter().rev() {
                                     stack.push(FormatItem::Value(ValueCellRef::Pointer(v.clone())));
                                     stack.push(FormatItem::MapSeparator);
-                                    stack.push(FormatItem::Value(ValueCellRef::Owned(k.clone())));
+                                    stack.push(FormatItem::Value(ValueCellRef::Owned(k.clone_ref())));
                                     stack.push(FormatItem::ArraySeparator);
                                 }
                                 stack.push(FormatItem::OpenMap);
@@ -1126,11 +1137,11 @@ mod tests {
     #[test]
     fn test_drop_and_clone() {
         let v = ValueCell::default();
-        drop(v.clone());
+        drop(v.clone_ref());
         drop(v);
 
         let v = ValueCell::Object(vec![Default::default()]);
-        drop(v.clone());
+        drop(v.clone_ref());
         drop(v);
 
         // Create a array with a huge depth of 100000
@@ -1139,7 +1150,7 @@ mod tests {
             v = ValueCell::Object(vec![v.into()]);
         }
 
-        drop(v.clone());
+        drop(v.clone_ref());
         drop(v);
 
         // Create a map with a huge depth of 100000
@@ -1150,7 +1161,7 @@ mod tests {
             v = ValueCell::Map(Box::new(inner_map));
         }
 
-        drop(v.clone());
+        drop(v.clone_ref());
         drop(v);
     }
 
@@ -1181,6 +1192,7 @@ mod tests {
         map.hash(&mut hasher);
 
         // Try the Eq impl
+        assert_eq!(map, map.clone_ref());
         assert_eq!(map, map.clone());
     }
 

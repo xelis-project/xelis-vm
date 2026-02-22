@@ -69,7 +69,7 @@ impl ValuePointer {
 
     #[inline(always)]
     pub fn to_owned(&self) -> ValueCell {
-        self.as_ref().clone()
+        self.as_ref().clone_ref()
     }
 
     #[inline(always)]

@@ -103,7 +103,7 @@ impl<'a, M> ModuleValidator<'a, M> {
                     let depth = depth + 1;
                     stack.extend(
                         map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
+                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone_ref()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
                     );
                 },
                 ValueCell::Primitive(v) => match v {

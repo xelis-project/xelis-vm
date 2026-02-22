@@ -159,7 +159,7 @@ fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &m
     context.increase_gas_usage((map.len() as u64) * 8)?;
 
     let keys = map.keys()
-        .map(|key| key.clone().into())
+        .map(|key| key.clone_ref().into())
         .collect::<Vec<_>>();
 
     Ok(SysCallResult::Return(ValueCell::Object(keys).into()))
@@ -187,7 +187,7 @@ fn entries<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context:
     context.increase_gas_usage((map.len() as u64) * 10)?;
 
     let entries = map.iter()
-        .map(|(k, v)| ValuePointer::new(ValueCell::Object(vec![ValuePointer::new(k.clone()), v.clone()])))
+        .map(|(k, v)| ValuePointer::new(ValueCell::Object(vec![ValuePointer::new(k.clone_ref()), v.clone()])))
         .collect::<Vec<_>>();
 
     Ok(SysCallResult::Return(ValueCell::Object(entries).into()))
