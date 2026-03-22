@@ -965,7 +965,7 @@ impl<'a, M> Compiler<'a, M> {
             // if the function is an entry or a public function
             // we add a check for primitive types to avoid invalid data from outside
             if is_public {
-                if let Some(id) = param.get_type().primitive_byte() {
+                if let Some(id) = param.get_type().primitive_byte().filter(|id| *id != 6) {
                     trace!("Adding primitive type check for parameter {}", param.get_name());
                     self.compile_cast(&mut chunk, id);
                 }
