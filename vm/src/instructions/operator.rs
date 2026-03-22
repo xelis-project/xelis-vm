@@ -213,8 +213,8 @@ opcode_fn!(lte, opcode_op, op_bool_res, <=);
 opcode_fn!(add_assign, opcode_op_assign, op_string, +);
 opcode_fn!(sub_assign, opcode_op_assign, op, -);
 opcode_fn!(mul_assign, opcode_op_assign ,op, *);
-opcode_fn!(div_assign, opcode_op_assign, op, /);
-opcode_fn!(rem_assign, opcode_op_assign, op, %);
+opcode_fn!(div_assign, opcode_op_assign, op_div, /);
+opcode_fn!(rem_assign, opcode_op_assign, op_div, %);
 
 opcode_fn!(bitwise_and_assign, opcode_op_assign, op_bool, &);
 opcode_fn!(bitwise_or_assign, opcode_op_assign, op_bool, |);
@@ -315,6 +315,7 @@ pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
         Type::U128 => Primitive::U128(current.cast_to_u128()?),
         Type::U256 => Primitive::U256(current.cast_to_u256()?),
         Type::String => Primitive::String(current.cast_to_string()?),
+        Type::Bool => Primitive::Boolean(current.cast_to_bool()?),
         _ => return Err(VMError::UnsupportedCastType)
     };
 
