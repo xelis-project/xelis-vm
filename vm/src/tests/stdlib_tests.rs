@@ -19,15 +19,24 @@ fn prepare_module(code: &str) -> (Module, xelis_environment::Environment<()>) {
 }
 
 #[track_caller]
-fn run_code(code: &str) -> Primitive {
+fn run_code_result_id(code: &str, id: u16) -> Result<Primitive, VMError> {
     let (module, environment) = prepare_module(code);
-    run_internal(module, &environment, 0).unwrap()
+    run_internal(module, &environment, id)
+}
+
+#[track_caller]
+fn run_code_id(code: &str, id: u16) -> Primitive {
+    run_code_result_id(code, id).unwrap()
+}
+
+#[track_caller]
+fn run_code(code: &str) -> Primitive {
+    run_code_id(code, 0)
 }
 
 #[track_caller]
 fn run_code_result(code: &str) -> Result<Primitive, VMError> {
-    let (module, environment) = prepare_module(code);
-    run_internal(module, &environment, 0)
+    run_code_result_id(code, 0)
 }
 
 // ============================================================================
@@ -1580,6 +1589,45 @@ fn test_iter_static_unfold_empty() {
         }
     "#;
     assert_eq!(run_code(code), Primitive::U64(9)); // len(3) + 1 + 2 + 3
+}
+
+#[test]
+fn test_iter_unfold_count() {
+    // unfold can terminate by returning null after yielding values
+    let code = r#"
+        entry main() {
+            let count: u64 = Iterator::unfold(1u64, |state: u64| {
+                if state <= 3u64 {
+                    return (state, state + 1u64)
+                }
+                return null
+            }).count() as u64;
+
+            return count
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3)); // 3 items yielded, then count returns 3
+}
+
+#[test]
+fn test_iter_unfold_in_another_function() {
+    // unfold can terminate by returning null after yielding values
+    let code = r#"
+        fn foo(init: u64) -> Iterator<u64> {
+            return Iterator::unfold(init, |state: u64| {
+                if state <= 3u64 {
+                    return (state, state + 1u64)
+                }
+                return null
+            })
+        }
+
+        entry main() {
+            let count: u64 = foo(1u64).count() as u64;
+            return count
+        }
+    "#;
+    assert_eq!(run_code_id(code, 2), Primitive::U64(3));
 }
 
 #[test]
