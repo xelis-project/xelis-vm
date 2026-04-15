@@ -11,19 +11,40 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value;
 use crate::{IdentifierType, ValueError};
 use traits::*;
+use super::Type;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct OpaqueTypeInner {
     id: IdentifierType,
     name: Cow<'static, str>,
     allow_external_input: bool,
+    /// How many generic parameters this type accepts (0 = non-generic template)
+    #[serde(default)]
+    generics_count: u8,
+    /// Concrete generic parameters when instantiated (empty for template)
+    #[serde(default)]
+    generics: Vec<Type>,
+}
+
+impl PartialEq for OpaqueTypeInner {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.generics == other.generics
+    }
+}
+impl Eq for OpaqueTypeInner {}
+
+impl Hash for OpaqueTypeInner {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.generics.hash(state);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OpaqueType(OpaqueTypeInner);
 
 impl OpaqueType {
-    pub fn new(id: IdentifierType, name: &'static str,) -> Self {
+    pub fn new(id: IdentifierType, name: &'static str) -> Self {
         Self::with(id, name, false)
     }
 
@@ -31,7 +52,31 @@ impl OpaqueType {
         Self(OpaqueTypeInner {
             id,
             name: name.into(),
-            allow_external_input
+            allow_external_input,
+            generics_count: 0,
+            generics: Vec::new(),
+        })
+    }
+
+    /// Create a generic template that accepts `generics_count` type parameters.
+    pub fn with_generics_count(id: IdentifierType, name: &'static str, allow_external_input: bool, generics_count: u8) -> Self {
+        Self(OpaqueTypeInner {
+            id,
+            name: name.into(),
+            allow_external_input,
+            generics_count,
+            generics: Vec::new(),
+        })
+    }
+
+    /// Instantiate this (template) OpaqueType with concrete type arguments.
+    pub fn with_generics(&self, generics: Vec<Type>) -> Self {
+        Self(OpaqueTypeInner {
+            id: self.0.id,
+            name: self.0.name.clone(),
+            allow_external_input: self.0.allow_external_input,
+            generics_count: self.0.generics_count,
+            generics,
         })
     }
 
@@ -46,11 +91,30 @@ impl OpaqueType {
     pub fn allow_external_input(&self) -> bool {
         self.0.allow_external_input
     }
+
+    /// How many generic parameters the type declares (0 = non-generic).
+    pub fn generics_count(&self) -> u8 {
+        self.0.generics_count
+    }
+
+    /// The concrete generic parameters (empty when this is a template).
+    pub fn generics(&self) -> &[Type] {
+        &self.0.generics
+    }
 }
 
 impl fmt::Display for OpaqueType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.name)
+        write!(f, "{}", self.0.name)?;
+        if !self.0.generics.is_empty() {
+            write!(f, "<")?;
+            for (i, g) in self.0.generics.iter().enumerate() {
+                if i > 0 { write!(f, ", ")?; }
+                write!(f, "{}", g)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
     }
 }
 
@@ -299,14 +363,19 @@ mod tests {
     fn test_opaque_type_serde() {
         let opaque_type = OpaqueType::new(42, "Foo");
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false}"#);
+        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}"#);
 
         let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque_type, opaque_type2);
 
+        // Backwards-compat: old format (no generics fields) must still deserialise.
+        let old_json = r#"{"id":42,"name":"Foo","allow_external_input":false}"#;
+        let opaque_type3: OpaqueType = serde_json::from_str(old_json).unwrap();
+        assert_eq!(opaque_type, opaque_type3);
+
         let opaque_type = Type::Opaque(OpaqueType::new(42, "Foo"));
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false}}"#);
+        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}}"#);
     }
 
     #[test]

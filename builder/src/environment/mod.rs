@@ -120,6 +120,16 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         opaque
     }
 
+    // Register a generic opaque type (accepts type parameters, e.g. Iterator<T>)
+    // Panic if the opaque name is already used
+    pub fn register_generic_opaque<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> OpaqueType {
+        let ty = TypeId::of::<T>();
+        let opaque = self.opaque_manager.build_generic::<T>(name, allow_external_input, generics_count)
+            .expect("Unique opaque name");
+        self.env.add_opaque(ty, allow_external_input);
+        opaque
+    }
+
     // Get an opaque type by name
     pub fn get_opaque_by_name(&self, name: &str) -> Option<&OpaqueType> {
         self.opaque_manager.get_by_name(name)

@@ -1,11 +1,14 @@
-mod array;
-mod optional;
-mod string;
-mod integer;
-mod range;
-mod map;
-mod bytes;
-mod math;
+// All modules are public
+// So anyone can re-use them in their own environment if they want to
+pub mod array;
+pub mod iterator;
+pub mod optional;
+pub mod string;
+pub mod integer;
+pub mod range;
+pub mod map;
+pub mod bytes;
+pub mod math;
 
 use std::ptr;
 
@@ -22,6 +25,7 @@ use xelis_environment::{
 };
 use super::EnvironmentBuilder;
 
+// This module registers all the default functions and types available in the environment, like arrays, strings, integers, etc.
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     array::register(env);
     bytes::register(env);
@@ -31,7 +35,13 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     range::register(env);
     map::register(env);
     math::register(env);
+    iterator::register(env);
 
+    register_defaults(env);
+}
+
+// Register default functions available in the environment, like println, debug, panic, assert, etc.
+pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None);
     env.register_native_function("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None);
     env.register_native_function("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any));

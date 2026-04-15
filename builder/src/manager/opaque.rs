@@ -29,6 +29,16 @@ impl<'a> OpaqueManager<'a> {
         Ok(ty)
     }
 
+    // Register a new generic opaque type (accepts type parameters)
+    pub fn build_generic<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> Result<OpaqueType, BuilderError> {
+        let id = self.mapper.register(name)?;
+        let ty = OpaqueType::with_generics_count(id, name, allow_external_input, generics_count);
+        self.types.insert(id, ty.clone());
+        self.lookup.insert(TypeId::of::<T>(), ty.clone());
+
+        Ok(ty)
+    }
+
     // Get an opaque type by its registered name
     pub fn get_by_name(&self, name: &str) -> Option<&OpaqueType> {
         self.mapper.get(name)

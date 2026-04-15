@@ -226,6 +226,22 @@ impl<'a, M> Function<'a,M> {
         }
     }
 
+    /// Get the declared on_type (e.g. `Iterator<T(0)>`)
+    pub fn get_on_type(&self) -> Option<&Type> {
+        match self {
+            Function::Native(f) => f.on_type(),
+            Function::Program(FunctionType::Declared(f)) => f.get_on_type().as_ref(),
+            Function::Program(_) => None,
+        }
+    }
+
+    /// Iterate over declared parameter types (without resolution)
+    pub fn param_types(&self) -> Vec<&Type> {
+        match self {
+            Function::Native(f) => f.get_parameters().iter().collect(),
+            Function::Program(f) => f.get_parameters().iter().map(|p| p.get_type()).collect(),
+        }
+    }
 
     pub fn as_function_type(&self) -> Option<FnType> {
         Some(match self {
@@ -445,6 +461,24 @@ impl<'a, M> Parser<'a, M> {
         Ok(())
     }
 
+    // Get the maximum T(n) index referenced in a type (returns 0-based count of slots needed)
+    fn max_generic_slot(ty: &Type) -> usize {
+        match ty {
+            Type::T(Some(id)) => *id as usize + 1,
+            Type::Array(inner) | Type::Optional(inner) | Type::Range(inner) => Self::max_generic_slot(inner),
+            Type::Map(k, v) => Self::max_generic_slot(k).max(Self::max_generic_slot(v)),
+            Type::Tuples(types) => types.iter().map(Self::max_generic_slot).max().unwrap_or(0),
+            Type::Closure(c) => {
+                let from_params = c.parameters().iter().map(Self::max_generic_slot).max().unwrap_or(0);
+                let from_ret = c.return_type().map(Self::max_generic_slot).unwrap_or(0);
+                from_params.max(from_ret)
+            }
+            Type::Opaque(o) => o.generics().iter().map(Self::max_generic_slot).max().unwrap_or(0),
+            Type::Struct(s) => s.fields().iter().map(|(_, t)| Self::max_generic_slot(t)).max().unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     // Substitute generic type parameters (Type::T) with concrete types
     fn substitute_generic_type(ty: &Type, concrete_types: &[Type]) -> Type {
         match ty {
@@ -468,6 +502,19 @@ impl<'a, M> Parser<'a, M> {
                     .map(|t| Self::substitute_generic_type(t, concrete_types))
                     .collect()
             ),
+            Type::Opaque(opaque) if !opaque.generics().is_empty() => {
+                let new_generics = opaque.generics().iter()
+                    .map(|g| Self::substitute_generic_type(g, concrete_types))
+                    .collect();
+                Type::Opaque(opaque.with_generics(new_generics))
+            },
+            Type::Closure(c) => {
+                let params = c.parameters().iter()
+                    .map(|t| Self::substitute_generic_type(t, concrete_types))
+                    .collect();
+                let ret = c.return_type().map(|t| Self::substitute_generic_type(t, concrete_types));
+                Type::Closure(ClosureType::new(params, ret))
+            },
             _ => ty.clone()
         }
     }
@@ -512,6 +559,21 @@ impl<'a, M> Parser<'a, M> {
                 // Match corresponding fields
                 for ((_, field_field_type), (_, expr_field_type)) in field_struct.fields().iter().zip(expr_struct.fields().iter()) {
                     Self::infer_generic_types(field_field_type, expr_field_type, inferred);
+                }
+            }
+            // Match for Opaque types with generics - same base id
+            (Type::Opaque(field_op), Type::Opaque(expr_op)) if field_op.id() == expr_op.id() => {
+                for (fg, eg) in field_op.generics().iter().zip(expr_op.generics().iter()) {
+                    Self::infer_generic_types(fg, eg, inferred);
+                }
+            }
+            // Match for Closure types - infer from parameter types and return type
+            (Type::Closure(field_c), Type::Closure(expr_c)) => {
+                for (fp, ep) in field_c.parameters().iter().zip(expr_c.parameters().iter()) {
+                    Self::infer_generic_types(fp, ep, inferred);
+                }
+                if let (Some(fr), Some(er)) = (field_c.return_type(), expr_c.return_type()) {
+                    Self::infer_generic_types(fr, er, inferred);
                 }
             }
             // No match - types are incompatible or both concrete
@@ -667,7 +729,21 @@ impl<'a, M> Parser<'a, M> {
                         Type::Enum(base_type)
                     }
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
-                    Type::Opaque(ty.clone())
+                    // Generic opaque type: Iterator<T>, etc.
+                    if ty.generics_count() > 0 && self.peek_is(Token::OperatorLessThan) {
+                        self.expect_token(Token::OperatorLessThan)?;
+                        let mut concrete = Vec::with_capacity(ty.generics_count() as usize);
+                        loop {
+                            let inner = self.read_type_with_generics(generics)?;
+                            concrete.push(inner);
+                            if !self.peek_is(Token::Comma) { break; }
+                            self.expect_token(Token::Comma)?;
+                        }
+                        self.expect_token(Token::OperatorGreaterThan)?;
+                        Type::Opaque(ty.with_generics(concrete))
+                    } else {
+                        Type::Opaque(ty.clone())
+                    }
                 } else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
@@ -1159,6 +1235,46 @@ impl<'a, M> Parser<'a, M> {
         let mut return_type = f.return_type()
             .as_ref()
             .map(|v| v.map_generic_type(on_type));
+
+        // Infer T(n) from closure/generic parameters to get precise return type
+        // (e.g. map(fn(T(0)) -> T(1)) -> Iterator<T(1)> infers T(1) from the actual closure's return type)
+        if let Some(declared_return) = f.return_type() {
+            // Determine the total number of generic slots needed
+            let max_slots = {
+                let from_return = Self::max_generic_slot(declared_return);
+                let from_params = f.param_types().iter()
+                    .map(|t| Self::max_generic_slot(t))
+                    .max()
+                    .unwrap_or(0);
+                from_return.max(from_params)
+            };
+
+            if max_slots > 1 {
+                let mut inferred: Vec<Option<Type>> = vec![None; max_slots];
+
+                // Seed T(0) from on_type if available
+                if let Some(ot) = on_type {
+                    if let Some(declared_on_type) = f.get_on_type() {
+                        Self::infer_generic_types(declared_on_type, ot, &mut inferred);
+                    }
+                }
+
+                // Infer T(n >= 1) from actual parameter types
+                for (decl_ty, actual_expr) in f.param_types().iter().zip(parameters.iter()) {
+                    if let Ok(Some(actual_ty)) = self.get_type_from_expression_internal(on_type, actual_expr, context) {
+                        Self::infer_generic_types(decl_ty, &actual_ty, &mut inferred);
+                    }
+                }
+
+                // Only substitute if we inferred any T(n >= 1) slot
+                if inferred[1..].iter().any(|s| s.is_some()) {
+                    let concrete: Vec<Type> = inferred.into_iter()
+                        .map(|opt| opt.unwrap_or(Type::Any))
+                        .collect();
+                    return_type = Some(Self::substitute_generic_type(declared_return, &concrete));
+                }
+            }
+        }
 
         if expected_type.is_some() && return_type.as_ref().is_some_and(|ty| ty.get_inner_type().is_any()) {
             return_type = return_type.map(|v| v.map_generic_type(on_type));

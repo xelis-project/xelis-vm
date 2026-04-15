@@ -971,3 +971,684 @@ fn test_require_and_panic_failures() {
 
     assert!(run_code_result(panic_fail).is_err());
 }
+
+#[test]
+fn test_iter_once() {
+    let code = r#"
+        entry main() {
+            let it = Iterator::once(42u64);
+            let v: optional<u64> = it.next();
+            return v.unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_iter_empty_count() {
+    let code = r#"
+        entry main() {
+            let it = Iterator::empty();
+            return it.count() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_array_iter_collect() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            let collected: u64[] = arr.iter().collect();
+            return collected.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_next() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            let it = arr.iter();
+            let a: u64 = it.next().unwrap();
+            let b: u64 = it.next().unwrap();
+            return a + b
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(30));
+}
+
+#[test]
+fn test_iter_count() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let it = arr.iter();
+            return it.count() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
+
+#[test]
+fn test_iter_skip() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let it = arr.iter().skip(2u32);
+            return it.count() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_take() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let it = arr.iter().take(3u32);
+            return it.count() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_skip_take_collect() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30, 40, 50];
+            let result: u64[] = arr.iter().skip(1u32).take(3u32).collect();
+            return result[0] + result[1] + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(90)); // 20 + 30 + 40
+}
+
+#[test]
+fn test_iter_chain() {
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2];
+            let b: u64[] = [3, 4];
+            let it = a.iter().chain(b.iter());
+            let result: u64[] = it.collect();
+            return result[0] + result[1] + result[2] + result[3]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+fn test_iter_rev() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let result: u64[] = arr.iter().rev().collect();
+            return result[0] * 100 + result[1] * 10 + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(321));
+}
+
+#[test]
+fn test_iter_enumerate() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            let it = arr.iter().enumerate();
+            let (idx, val): (u32, u64) = it.next().unwrap();
+            return idx as u64 + val
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10)); // 0 + 10
+}
+
+#[test]
+fn test_iter_zip() {
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2, 3];
+            let b: u64[] = [10, 20, 30];
+            let it = a.iter().zip(b.iter());
+            let result: any[] = it.collect();
+            let first: u64[] = result[0];
+            let second: u64[] = result[1];
+            return first[0] + first[1] + second[0] + second[1]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(33)); // 1+10 + 2+20
+}
+
+#[test]
+fn test_iter_map() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let doubled: u64[] = arr.iter().map(|x: u64| { return x * 2 }).collect();
+            return doubled[0] + doubled[1] + doubled[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(12)); // 2+4+6
+}
+
+#[test]
+fn test_iter_filter() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5, 6];
+            let evens: u64[] = arr.iter().filter(|x: u64| { return x % 2 == 0 }).collect();
+            return evens.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_filter_values() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5, 6];
+            let evens: u64[] = arr.iter().filter(|x: u64| { return x % 2 == 0 }).collect();
+            return evens[0] + evens[1] + evens[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(12)); // 2+4+6
+}
+
+#[test]
+fn test_iter_map_filter_chain() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let result: u64[] = arr.iter()
+                .map(|x: u64| { return x * 2 })
+                .filter(|x: u64| { return x > 4 })
+                .collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3)); // 6, 8, 10 pass the filter
+}
+
+#[test]
+fn test_iter_for_each() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let sum: u64[] = [0];
+            arr.iter().for_each(|x: u64| {
+                sum[0] += x
+            });
+            return sum[0]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(6));
+}
+
+#[test]
+fn test_iter_find() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let found: optional<u64> = arr.iter().find(|x: u64| { return x > 3 });
+            return found.unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(4));
+}
+
+#[test]
+fn test_iter_find_none() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let found: optional<u64> = arr.iter().find(|x: u64| { return x > 10 });
+            return found.is_none() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_iter_any_true() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            return arr.iter().any(|x: u64| { return x == 2 }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_iter_any_false() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            return arr.iter().any(|x: u64| { return x == 10 }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_all_true() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [2, 4, 6];
+            return arr.iter().all(|x: u64| { return x % 2 == 0 }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_iter_all_false() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [2, 3, 6];
+            return arr.iter().all(|x: u64| { return x % 2 == 0 }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_fold() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let sum: u64 = arr.iter().fold(0u64, |acc: u64, x: u64| { return acc + x });
+            return sum
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(15));
+}
+
+#[test]
+fn test_iter_fold_product() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let product: u64 = arr.iter().fold(1u64, |acc: u64, x: u64| { return acc * x });
+            return product
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(120));
+}
+
+#[test]
+fn test_iter_sum() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            return arr.iter().sum()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(15));
+}
+
+#[test]
+fn test_iter_position() {
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30, 40];
+            let pos: optional<u32> = arr.iter().position(|x: u64| { return x == 30 });
+            return pos.unwrap() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_iter_flatten() {
+    let code = r#"
+        entry main() {
+            let nested: u64[][] = [[1, 2], [3, 4], [5]];
+            let flat: u64[] = nested.iter().flatten().collect();
+            return flat.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
+
+#[test]
+fn test_iter_complex_pipeline() {
+    // sum of squares of even numbers in 1..=10
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let result: u64 = arr.iter()
+                .filter(|x: u64| { return x % 2 == 0 })
+                .map(|x: u64| { return x * x })
+                .fold(0u64, |acc: u64, x: u64| { return acc + x });
+            return result
+        }
+    "#;
+    // 4 + 16 + 36 + 64 + 100 = 220
+    assert_eq!(run_code(code), Primitive::U64(220));
+}
+
+#[test]
+fn test_iter_chain_and_collect() {
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2, 3];
+            let b: u64[] = [4, 5, 6];
+            let c = Iterator::once(7u64);
+            let result: u64[] = a.iter().chain(b.iter()).chain(c).collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(7));
+}
+
+#[test]
+fn test_iter_typed_filter_collect() {
+    // filter preserves the element type: collect() should return u64[]
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5, 6];
+            let result: u64[] = arr.iter().filter(|x: u64| { return x > 3 }).collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_typed_skip_take_collect() {
+    // skip/take preserve the element type
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30, 40, 50];
+            let result: u64[] = arr.iter().skip(1u32).take(3u32).collect();
+            return result[0] + result[1] + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(90)); // 20 + 30 + 40
+}
+
+#[test]
+fn test_iter_typed_rev_collect() {
+    // rev preserves the element type
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let result: u64[] = arr.iter().rev().collect();
+            return result[0] * 100 + result[1] * 10 + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(321));
+}
+
+#[test]
+fn test_iter_typed_chain_collect() {
+    // chain with same-type iterators preserves element type
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2];
+            let b: u64[] = [3, 4];
+            let result: u64[] = a.iter().chain(b.iter()).collect();
+            return result[0] + result[1] + result[2] + result[3]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+fn test_iter_typed_map_collect() {
+    // map returns Iterator<T(1)> where T(1) is inferred from the closure's return type
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let iter1: Iterator<u64> = arr.iter();
+            let iter2: Iterator<u64> = iter1.map(|x: u64| { return x * 2 });
+
+            let doubled: u64[] = iter2.collect();
+            assert(doubled.len() == 3);
+            assert(doubled[0] == 2);
+            assert(doubled[1] == 4);
+            assert(doubled[2] == 6);
+
+            return doubled[0] + doubled[1] + doubled[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(12)); // 2 + 4 + 6
+}
+
+#[test]
+fn test_iter_typed_next_optional() {
+    // next() on Iterator<u64> returns optional<u64>
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [42];
+            let it = arr.iter();
+            let v: optional<u64> = it.next();
+            return v.unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_iter_typed_find_optional() {
+    // find() on Iterator<u64> returns optional<u64>
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4];
+            let result: optional<u64> = arr.iter().find(|x: u64| { return x > 2 });
+            return result.unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_typed_fold() {
+    // fold with T(0) = u64 accumulator
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let sum: u64 = arr.iter().fold(0u64, |acc: u64, x: u64| { return acc + x });
+            return sum
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(15));
+}
+
+#[test]
+fn test_iter_typed_enumerate_destructure() {
+    // enumerate() returns Iterator<(u32, u64)>; destructure with let (i, v)
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            let it = arr.iter().enumerate();
+            let (idx, val): (u32, u64) = it.next().unwrap();
+            return idx as u64 + val
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10)); // 0 + 10
+}
+
+#[test]
+fn test_iter_typed_enumerate_collect() {
+    // enumerate().collect() returns (u32, u64)[]  (tuple array)
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30];
+            let pairs = arr.iter().enumerate().collect();
+            let (idx0, val0): (u32, u64) = pairs[0];
+            let (idx1, val1): (u32, u64) = pairs[1];
+            return idx0 as u64 + val0 + idx1 as u64 + val1
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(31)); // 0+10 + 1+20
+}
+
+#[test]
+fn test_iter_typed_flatten_array() {
+    // flatten on Iterator<u64[]> → Iterator<u64>
+    let code = r#"
+        entry main() {
+            let nested: u64[][] = [[1, 2], [3, 4], [5]];
+            let flat: u64[] = nested.iter().flatten().collect();
+            return flat.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
+
+#[test]
+fn test_iter_typed_flatten_iter() {
+    // flatten on Iterator<Iterator<u64>> → Iterator<u64>
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2];
+            let b: u64[] = [3, 4];
+            let nested = [a.iter(), b.iter()];
+            let flat: u64[] = nested.iter().flatten().collect();
+            return flat[0] + flat[1] + flat[2] + flat[3]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+fn test_iter_static_once_collect() {
+    // Iterator::once produces a single-element iterator
+    let code = r#"
+        entry main() {
+            let it = Iterator::once(99u64);
+            let v: optional<u64> = it.next();
+            return v.unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(99));
+}
+
+#[test]
+fn test_iter_static_empty_collect() {
+    // Iterator::empty produces an empty iterator
+    let code = r#"
+        entry main() {
+            let it = Iterator::empty();
+            return it.count() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_static_unfold_collect() {
+    // Iterator::unfold(seed, f) builds items until f returns null
+    let code = r#"
+        entry main() {
+            let generated: u64[] = Iterator::unfold(1u64, |state: u64| {
+                if state <= 5u64 {
+                    return (state * 2u64, state + 1u64)
+                }
+                return null
+            }).collect();
+            assert(generated == [2, 4, 6, 8, 10]);
+
+            return generated[0] + generated[1] + generated[2] + generated[3] + generated[4]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(30)); // 2 + 4 + 6 + 8 + 10
+}
+
+#[test]
+fn test_iter_static_unfold_empty() {
+    // unfold can terminate by returning null after yielding values
+    let code = r#"
+        entry main() {
+            let generated: u64[] = Iterator::unfold(1u64, |state: u64| {
+                if state <= 3u64 {
+                    return (state, state + 1u64)
+                }
+                return null
+            }).collect();
+            assert(generated == [1, 2, 3]);
+
+            return generated.len() as u64 + generated[0] + generated[1] + generated[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(9)); // len(3) + 1 + 2 + 3
+}
+
+#[test]
+fn test_iter_typed_sum() {
+    // sum() on Iterator<u64> returns u64
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let s: u64 = arr.iter().sum();
+            return s
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(15));
+}
+
+#[test]
+fn test_iter_typed_position() {
+    // position() returns optional<u32>
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [10, 20, 30, 40];
+            let pos: optional<u32> = arr.iter().position(|x: u64| { return x == 30 });
+            return pos.unwrap() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_iter_typed_zip_collect() {
+    // zip returns Iterator<(T(0), T(1))>; elements are typed tuples
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2, 3];
+            let b: u64[] = [10, 20, 30];
+            let zipped: (u64, u64)[] = a.iter().zip(b.iter()).collect();
+            let (x, y): (u64, u64) = zipped[0];
+            return x + y
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(11)); // 1 + 10
+}
+
+#[test]
+fn test_iter_filter_map_collect() {
+    // chained filter -> map -> collect: map return type is inferred from closure return type
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let result: u64[] = arr.iter()
+                .filter(|x: u64| { return x % 2 == 0 })
+                .map(|x: u64| { return x * 10 })
+                .collect();
+            return result[0] + result[1]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(60)); // 20 + 40
+}
+
+#[test]
+fn test_iter_static_unfold_zero_items() {
+    // unfold that immediately returns null produces an empty iterator
+    let code = r#"
+        entry main() {
+            let generated: u64[] = Iterator::unfold(0u64, |state: u64| {
+                return null
+            }).collect();
+            return generated.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}

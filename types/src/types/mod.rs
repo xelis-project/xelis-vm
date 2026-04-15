@@ -252,6 +252,8 @@ impl Type {
                 _ => None,
             },
             Type::Tuples(types) => types.get(id as usize),
+            // Generic opaque: bare template returns None; instantiated returns the i-th generic.
+            Type::Opaque(opaque) if opaque.generics_count() > 0 => opaque.generics().get(id as usize),
             _ => match id {
                 0 => Some(self),
                 _ => None,
@@ -298,7 +300,21 @@ impl Type {
             Type::T(None) => replacement.cloned().unwrap_or_else(|| self.clone()),
             Type::T(Some(id)) => replacement
                 .and_then(|ty| ty.get_generic_type(*id).cloned())
-                .or_else(|| replacement.cloned())
+                .or_else(|| match replacement {
+                    // A bare generic opaque (template, no concrete args) carries no element-type
+                    // information → fall back to Any so callers get a useful type instead of
+                    // accidentally resolving to the Iterator/opaque type itself.
+                    Some(Type::Opaque(op)) if op.generics_count() > 0 && op.generics().is_empty() =>
+                        Some(Type::Any),
+                    // When the replacement is a "leaf" type that is its own T(0) value
+                    // (i.e. it was already deconstructed from parent context, e.g., a Tuple element),
+                    // fall back to using it directly.
+                    // But don't fall back when the replacement is a parameterized container type
+                    // (Array, Map, Opaque with generics, etc.) whose T(id) is genuinely out of range:
+                    // in that case keep T(id) unresolved so it can be inferred later from parameters.
+                    Some(r) if r.get_generic_type(0).map_or(false, |g| g == r) => Some(r.clone()),
+                    _ => None,
+                })
                 .unwrap_or_else(|| self.clone()),
             Type::Optional(inner) => {
                 let next = replacement
@@ -358,6 +374,25 @@ impl Type {
             }
             Type::Closure(f) => Type::Closure(f.map_generic_type(replacement)),
             Type::Function(f) => Type::Function(f.map_generic_type(replacement)),
+            Type::Opaque(opaque) if !opaque.generics().is_empty() => {
+                let new_generics = opaque.generics().iter()
+                    .enumerate()
+                    .map(|(i, t)| {
+                        // For each generic slot i, use the i-th generic of the replacement Opaque
+                        // (if it is the same Opaque type) as the "next" replacement, so that
+                        // T(0) can be resolved from the concrete element rather than the
+                        // whole Iterator value.
+                        let next = match replacement {
+                            Some(Type::Opaque(rep)) if rep.id() == opaque.id() => {
+                                rep.generics().get(i).map(|g| g as &Type)
+                            },
+                            _ => replacement,
+                        };
+                        t.map_generic_type(next)
+                    })
+                    .collect();
+                Type::Opaque(opaque.with_generics(new_generics))
+            },
             _ => self.clone(),
         }
     }
@@ -500,7 +535,15 @@ impl Type {
                 _ => false
             },
             Type::Opaque(a) => match self {
-                Type::Opaque(b) => a == b,
+                Type::Opaque(b) => {
+                    if a.id() != b.id() { return false; }
+                    // If either side has no generics (bare/template), accept as compatible
+                    if a.generics().is_empty() || b.generics().is_empty() { return true; }
+                    // Both have generics: each pair must be compatible
+                    a.generics().len() == b.generics().len()
+                        && a.generics().iter().zip(b.generics().iter())
+                            .all(|(ga, gb)| gb.is_compatible_with(ga))
+                },
                 _ => false
             },
             Type::Any | Type::T(None) => true,
