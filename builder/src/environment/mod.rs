@@ -214,7 +214,7 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     }
 }
 
-impl<'a, M> Default for EnvironmentBuilder<'a, M> {
+impl<'a, M: 'static> Default for EnvironmentBuilder<'a, M> {
     fn default() -> Self {
         let mut env = Self::new();
 

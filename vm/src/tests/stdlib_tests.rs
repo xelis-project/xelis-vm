@@ -1700,3 +1700,23 @@ fn test_iter_static_unfold_zero_items() {
     "#;
     assert_eq!(run_code(code), Primitive::U64(0));
 }
+
+#[test]
+fn test_iter_complex_multi() {
+    // complex pipeline with multiple iterator adaptors and a closure that captures an outer variable
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let threshold: u64 = 10;
+            let result: u64 = arr.iter()
+                .chain(Iterator::once(6u64)) // add one more element
+                .map(|x: u64| { return x * x }) // square each element
+                .filter(|x: u64| { return x > threshold }) // keep squares > 10
+                .fold(0u64, |acc: u64, x: u64| { return acc + x }) // sum them
+                ;
+            return result
+        }
+    "#;
+    // squares are [1, 4, 9, 16, 25, 36]; filter >10 gives [16, 25, 36]; sum is 77
+    assert_eq!(run_code(code), Primitive::U64(77));
+}

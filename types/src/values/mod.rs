@@ -387,15 +387,41 @@ impl Primitive {
         }
     }
 
+    // Add two numeric values, return an error if types are incompatible or if one of the values is not a number
+    pub fn add(self, other: &Primitive) -> Result<Primitive, ValueError> {
+        match (self, other) {
+            (Primitive::U8(a), Primitive::U8(b)) => Ok(Primitive::U8(a.wrapping_add(*b))),
+            (Primitive::U16(a), Primitive::U16(b)) => Ok(Primitive::U16(a.wrapping_add(*b))),
+            (Primitive::U32(a), Primitive::U32(b)) => Ok(Primitive::U32(a.wrapping_add(*b))),
+            (Primitive::U64(a), Primitive::U64(b)) => Ok(Primitive::U64(a.wrapping_add(*b))),
+            (Primitive::U128(a), Primitive::U128(b)) => Ok(Primitive::U128(a.wrapping_add(*b))),
+            (Primitive::U256(a), Primitive::U256(b)) => Ok(Primitive::U256(a.wrapping_add(*b))),
+            _ => Err(ValueError::OperationNotNumberType)
+        }
+    }
+
+    // Subtract two numeric values, return an error if types are incompatible or if one of the values is not a number
+    pub fn sub(self, other: &Primitive) -> Result<Primitive, ValueError> {
+        match (self, other) {
+            (Primitive::U8(a), Primitive::U8(b)) => Ok(Primitive::U8(a.wrapping_sub(*b))),
+            (Primitive::U16(a), Primitive::U16(b)) => Ok(Primitive::U16(a.wrapping_sub(*b))),
+            (Primitive::U32(a), Primitive::U32(b)) => Ok(Primitive::U32(a.wrapping_sub(*b))),
+            (Primitive::U64(a), Primitive::U64(b)) => Ok(Primitive::U64(a.wrapping_sub(*b))),
+            (Primitive::U128(a), Primitive::U128(b)) => Ok(Primitive::U128(a.wrapping_sub(*b))),
+            (Primitive::U256(a), Primitive::U256(b)) => Ok(Primitive::U256(a.wrapping_sub(*b))),
+            _ => Err(ValueError::OperationNotNumberType)
+        }
+    }
+
     // Increment the value
     pub fn increment(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Primitive::U8(n) => *n += 1,
-            Primitive::U16(n) => *n += 1,
-            Primitive::U32(n) => *n += 1,
-            Primitive::U64(n) => *n += 1,
-            Primitive::U128(n) => *n += 1,
-            Primitive::U256(n) => *n += U256::ONE,
+            Primitive::U8(n) => *n = n.wrapping_add(1),
+            Primitive::U16(n) => *n = n.wrapping_add(1),
+            Primitive::U32(n) => *n = n.wrapping_add(1),
+            Primitive::U64(n) => *n = n.wrapping_add(1),
+            Primitive::U128(n) => *n = n.wrapping_add(1),
+            Primitive::U256(n) => *n = n.wrapping_add(U256::ONE),
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }
@@ -403,12 +429,12 @@ impl Primitive {
     // Decrement the value
     pub fn decrement(&mut self) -> Result<(), ValueError> {
         Ok(match self {
-            Primitive::U8(n) => *n -= 1,
-            Primitive::U16(n) => *n -= 1,
-            Primitive::U32(n) => *n -= 1,
-            Primitive::U64(n) => *n -= 1,
-            Primitive::U128(n) => *n -= 1,
-            Primitive::U256(n) => *n -= U256::ONE,
+            Primitive::U8(n) => *n = n.wrapping_sub(1),
+            Primitive::U16(n) => *n = n.wrapping_sub(1),
+            Primitive::U32(n) => *n = n.wrapping_sub(1),
+            Primitive::U64(n) => *n = n.wrapping_sub(1),
+            Primitive::U128(n) => *n = n.wrapping_sub(1),
+            Primitive::U256(n) => *n = n.wrapping_sub(U256::ONE),
             _ => return Err(ValueError::OperationNotNumberType)
         })
     }

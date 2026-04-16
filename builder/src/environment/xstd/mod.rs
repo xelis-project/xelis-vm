@@ -26,7 +26,7 @@ use xelis_environment::{
 use super::EnvironmentBuilder;
 
 // This module registers all the default functions and types available in the environment, like arrays, strings, integers, etc.
-pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
+pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
     array::register(env);
     bytes::register(env);
     optional::register(env);

@@ -470,17 +470,31 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                             );
 
                                             trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
+                                            let manager_holds_from_registers = 
+                                                manager.registers_origin().map(|(o, _)| o) == Some(from);
                                             let previous = if manager.chunk_id() == from {
+                                                Some(&mut manager)
+                                            } else if manager_holds_from_registers {
+                                                // Current manager already holds `from`'s registers
+                                                // (it borrowed them when it was first invoked).
+                                                // Use it directly so that the new closure receives
+                                                // the correct register set instead of the empty one
+                                                // that `from`'s call-stack entry currently holds.
                                                 Some(&mut manager)
                                             } else {
                                                 self.find_manager_with_chunk_id(from)
                                             };
 
                                             if let Some(previous) = previous {
-
                                                 new.set_registers_origin(Some((from, previous.get_registers().len())));
                                                 new.swap_registers(previous);
                                                 previous.set_context(ChunkContext::Used);
+                                                // If the current manager was acting as a proxy for `from`'s
+                                                // registers (manager_holds_from_registers), clear its origin
+                                                // so cleanup doesn't double-swap back to `from`.
+                                                if manager_holds_from_registers {
+                                                    previous.set_registers_origin(None);
+                                                }
                                             } else {
                                                 debug!("No chunk manager found for origin {}, skipping it", from);
                                             }
