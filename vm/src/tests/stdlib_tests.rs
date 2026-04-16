@@ -1720,3 +1720,222 @@ fn test_iter_complex_multi() {
     // squares are [1, 4, 9, 16, 25, 36]; filter >10 gives [16, 25, 36]; sum is 77
     assert_eq!(run_code(code), Primitive::U64(77));
 }
+
+#[test]
+fn test_iter_map_lazy() {
+    // Panic on map closure to verify laziness of iterators
+    // (should not panic if map is lazy and we don't consume the iterator)
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let it = arr.iter().map(|x: u64| {
+                panic("map should not be called yet");
+                return x * 2
+            });
+            // We don't consume the iterator, so the panic should not occur
+            return 42
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_iter_filter_lazy() {
+    // The filter predicate must not be called when the iterator is never consumed.
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3];
+            let it = arr.iter().filter(|x: u64| {
+                panic("filter should not be called yet");
+                return true
+            });
+            return 42
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_iter_map_then_filter() {
+    // map then filter: map is eagerly evaluated when filter is applied (the VM
+    // cannot compose nested closure callbacks lazily), then filter runs on collected results.
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [1, 2, 3, 4, 5];
+            let result: u64[] = arr.iter()
+                .map(|x: u64| { return x * 2u64 })
+                .filter(|x: u64| { return x > 4u64 })
+                .collect();
+            return result.len() as u64
+        }
+    "#;
+    // doubled: [2, 4, 6, 8, 10]; > 4: [6, 8, 10] -> len 3
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_take_after_map() {
+    // take(N) after map: only N results are returned even though the map
+    // closure runs on all upstream items (eager collect at the map/take boundary).
+    let code = r#"
+        entry main() {
+            let data: u32[] = [1, 2, 3, 4, 5];
+            let result: u32[] = data.iter()
+                .map(|x: u32| { return x * 10u32 })
+                .take(2u32)
+                .collect();
+            assert(result.len() == 2);
+            return result[0] as u64 + result[1] as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(30)); // 10 + 20
+}
+
+#[test]
+fn test_iter_skip_after_map() {
+    // skip(N) after map: the first N mapped items are dropped.
+    let code = r#"
+        entry main() {
+            let data: u32[] = [10, 20, 30, 40, 50];
+            let result: u32[] = data.iter()
+                .map(|x: u32| { return x * 2u32 })
+                .skip(2u32)
+                .collect();
+            // mapped: [20, 40, 60, 80, 100]; skip 2 -> [60, 80, 100]
+            assert(result.len() == 3);
+            return result[0] as u64 + result[1] as u64 + result[2] as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(240)); // 60 + 80 + 100
+}
+
+#[test]
+fn test_iter_take_after_filter() {
+    // take(N) after filter: only N matching items are returned.
+    let code = r#"
+        entry main() {
+            let data: u32[] = [1, 2, 3, 4, 5, 6, 7, 8];
+            let result: u32[] = data.iter()
+                .filter(|x: u32| { return x % 2u32 == 0u32 })
+                .take(2u32)
+                .collect();
+            // evens: [2, 4, 6, 8]; take 2 -> [2, 4]
+            assert(result.len() == 2);
+            return result[0] as u64 + result[1] as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(6)); // 2 + 4
+}
+
+#[test]
+fn test_iter_deep_map_chain() {
+    // Many consecutive maps
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(0u64);
+            foreach _ in 0..100_000 {
+                it = it.map(|x: u64| { return x + 1u64 });
+            }
+            
+            return it.next().unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(100_000)); // 100_000 increments
+}
+
+#[test]
+fn test_iter_infinite_unfold() {
+    // An infinite iterator from unfold should not be called
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::unfold(0u64, |state: u64| {
+                return (state, state + 1u64)
+            });
+
+            return it.next().unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_on_empty() {
+    // next() on an empty iterator returns None
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::empty();
+            let v: optional<u64> = it.next();
+            assert(v.is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_on_non_empty() {
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(42u64);
+            let v = it.next();
+            assert(v.is_some());
+
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_multiple() {
+    // Calling next() after an iterator is exhausted should continue to return None
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(42u64)
+                .chain(Iterator::empty()) // should be ignored
+                .chain(Iterator::once(99u64)); // should be reached
+
+            assert(it.next() == 42); // first item
+            assert(it.next() == 99); // now exhausted
+            assert(it.next().is_none()); // None
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_chain_lazy() {
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(42u64)
+                .chain(Iterator::empty()
+                    .map(|x: u64| { return panic("second iterator should not be evaluated yet") })
+                );
+
+            assert(it.next() == 42);
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_chain_map_local() {
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(42u64)
+                .chain(
+                    Iterator::once(100u64).map(|x: u64| { return x + 1u64 })
+                );
+
+            assert(it.next() == 42);
+            assert(it.next() == 101);
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
