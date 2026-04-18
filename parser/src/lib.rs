@@ -576,6 +576,15 @@ impl<'a, M> Parser<'a, M> {
                     Self::infer_generic_types(fr, er, inferred);
                 }
             }
+            // Match for Closure expected type against an inline Function (FnType derefs to ClosureType)
+            (Type::Closure(field_c), Type::Function(expr_f)) => {
+                for (fp, ep) in field_c.parameters().iter().zip(expr_f.parameters().iter()) {
+                    Self::infer_generic_types(fp, ep, inferred);
+                }
+                if let (Some(fr), Some(er)) = (field_c.return_type(), expr_f.return_type()) {
+                    Self::infer_generic_types(fr, er, inferred);
+                }
+            }
             // No match - types are incompatible or both concrete
             _ => {}
         }
@@ -1801,6 +1810,26 @@ impl<'a, M> Parser<'a, M> {
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, ty.return_type())?;
         let max = context.max_variables_count() - current;
+
+        // If the expected return type is an unresolved generic slot (e.g. T(1) from map's
+        // closure signature), infer the actual concrete type from the first return statement
+        // while the closure params are still in scope. This lets callers (e.g. map.flatten())
+        // propagate the real element type through the chain.
+        let actual_return_type = if matches!(ty.return_type(), Some(Type::T(Some(_)))) {
+            'infer: {
+                for stmt in &statements {
+                    if let Statement::Return(Some(expr)) = stmt {
+                        if let Ok(Some(actual)) = self.get_type_from_expression_internal(None, expr, context) {
+                            break 'infer Some(actual.into_owned());
+                        }
+                    }
+                }
+                ty.return_type().cloned()
+            }
+        } else {
+            ty.return_type().cloned()
+        };
+
         context.end_scope();
 
         if ty.return_type().is_some() && !Self::ends_with_return(&statements)? {
@@ -1814,7 +1843,7 @@ impl<'a, M> Parser<'a, M> {
             None,
             new_params,
             statements,
-            ty.return_type().cloned(),
+            actual_return_type,
             max,
             variables_count,
         ));
