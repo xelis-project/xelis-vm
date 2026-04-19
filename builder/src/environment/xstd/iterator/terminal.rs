@@ -15,7 +15,7 @@ use xelis_types::{
     ValuePointer,
 };
 
-use super::iter::{BaseSource, PipeStep, XIterator, wrap_iter};
+use super::iter::{BaseSource, PipeStep, XIterator};
 
 /// A single transformation step inside an [`Aggregated`] pipeline.
 ///
@@ -77,7 +77,7 @@ pub(crate) enum TerminalOp {
     /// After popping the head, reconstructs a Dequeue
     /// iterator from the remaining items and writes it back to `write_back`.
     /// Used as fallback when Rev / Flatten / Zip force full collection.
-    Next(Option<Box<StackValue>>),
+    Next(Box<StackValue>),
     /// A flat pipeline of transformation steps followed by a simple terminal.
     /// All `Then*` logic from the old design lives here; processing is iterative.
     Aggregated {
@@ -156,7 +156,7 @@ impl TerminalOp {
             TerminalOp::Next(write_back) => {
                 let head = items.pop_front();
                 // Write remaining items back as a fresh Dequeue iterator.
-                write_back_iter(write_back.map(|b| *b), XIterator::from_dequeue(items));
+                write_back_iter(*write_back, XIterator::from_dequeue(items))?;
                 Ok(SysCallResult::Return(match head {
                     Some(ptr) => ptr.to_owned().into(),
                     None => Primitive::Null.into(),
@@ -337,9 +337,17 @@ pub(crate) fn lazy_collect<M: 'static>(
 
             let take_limit = op.take_limit();
 
-            struct LocalState { closure: StackValue, acc: VecDeque<ValuePointer>, op: TerminalOp, take_limit: Option<usize> }
+            struct LocalState {
+                closure: StackValue,
+                acc: VecDeque<ValuePointer>,
+                op: TerminalOp,
+                take_limit: Option<usize>,
+            }
 
-            fn callback<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
+            fn callback<M: 'static>(
+                state: CallbackState,
+                params: FnParams,
+            ) -> Result<SysCallResult<M>, EnvironmentError> {
                 let mut s = state.downcast::<LocalState>()
                     .map_err(|_| EnvironmentError::InvalidCallbackState)?;
 
@@ -399,7 +407,10 @@ pub(crate) fn apply_items_map<M: 'static>(
         then: TerminalOp
     }
 
-    fn callback<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let result = params.into_iter().next().ok_or(EnvironmentError::InvalidCallbackParameters)?.into_owned();
         s.mapped.push_back(ValuePointer::new(result));
@@ -417,9 +428,11 @@ pub(crate) fn apply_items_map<M: 'static>(
         s.then.finish(s.mapped)
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: closure.clone(), params: vec![item.to_owned().into()].into(),
+        ptr: closure.clone(),
+        params: vec![item.to_owned().into()].into(),
         state: Box::new(LocalState { items, closure, mapped, then }),
-        callback_params_len: 1, callback: CallbackType::Sync(callback::<M>),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -443,7 +456,10 @@ pub(crate) fn apply_items_filter<M: 'static>(
         then: TerminalOp,
     }
 
-    fn callback<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>()
             .map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let keep = params.first()
@@ -478,10 +494,19 @@ pub(crate) fn apply_items_filter<M: 'static>(
 
 /// Call `f` for every item in `items` (for_each semantics); return `None` when done.
 pub(crate) fn apply_items_none<M: 'static>(items: VecDeque<ValuePointer>, f: StackValue, index: usize) -> FnReturnType<M> {
-    let Some(item) = items.get(index) else { return Ok(SysCallResult::None); };
-    struct S { items: VecDeque<ValuePointer>, index: usize, f: StackValue }
-    fn cb<M: 'static>(state: CallbackState, _: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    let Some(item) = items.get(index) else {
+        return Ok(SysCallResult::None);
+    };
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        f: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        _: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
 
         s.index += 1;
         if let Some(next) = s.items.get(s.index) {
@@ -490,16 +515,18 @@ pub(crate) fn apply_items_none<M: 'static>(items: VecDeque<ValuePointer>, f: Sta
                 params: vec![next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 0,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::None)
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: f.clone(), params: vec![item.to_owned().into()].into(),
-        state: Box::new(S { items, index, f }),
-        callback_params_len: 0, callback: CallbackType::Sync(cb::<M>),
+        ptr: f.clone(),
+        params: vec![item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, f }),
+        callback_params_len: 0,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -508,9 +535,16 @@ pub(crate) fn apply_items_find<M: 'static>(items: VecDeque<ValuePointer>, pred: 
     let Some(item) = items.get(index) else {
         return Ok(SysCallResult::Return(Primitive::Null.into()));
     };
-    struct S { items: VecDeque<ValuePointer>, index: usize, pred: StackValue }
-    fn cb<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        pred: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool()?;
         if matched {
             return Ok(SysCallResult::Return(s.items[s.index].to_owned().into()));
@@ -523,16 +557,18 @@ pub(crate) fn apply_items_find<M: 'static>(items: VecDeque<ValuePointer>, pred: 
                 params: vec![next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 1,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: pred.clone(), params: vec![item.to_owned().into()].into(),
-        state: Box::new(S { items, index, pred }),
-        callback_params_len: 1, callback: CallbackType::Sync(cb::<M>),
+        ptr: pred.clone(),
+        params: vec![item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, pred }),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -541,9 +577,16 @@ pub(crate) fn apply_items_any<M: 'static>(items: VecDeque<ValuePointer>, pred: S
     let Some(item) = items.get(index) else {
         return Ok(SysCallResult::Return(Primitive::Boolean(false).into()));
     };
-    struct S { items: VecDeque<ValuePointer>, index: usize, pred: StackValue }
-    fn cb<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        pred: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool()?;
         if matched {
             return Ok(SysCallResult::Return(Primitive::Boolean(true).into()));
@@ -556,16 +599,18 @@ pub(crate) fn apply_items_any<M: 'static>(items: VecDeque<ValuePointer>, pred: S
                 params: vec![next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 1,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::Return(Primitive::Boolean(false).into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: pred.clone(), params: vec![item.to_owned().into()].into(),
-        state: Box::new(S { items, index, pred }),
-        callback_params_len: 1, callback: CallbackType::Sync(cb::<M>),
+        ptr: pred.clone(),
+        params: vec![item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, pred }),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -574,9 +619,16 @@ pub(crate) fn apply_items_all<M: 'static>(items: VecDeque<ValuePointer>, pred: S
     let Some(item) = items.get(index) else {
         return Ok(SysCallResult::Return(Primitive::Boolean(true).into()));
     };
-    struct S { items: VecDeque<ValuePointer>, index: usize, pred: StackValue }
-    fn cb<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        pred: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool()?;
         if !matched {
             return Ok(SysCallResult::Return(Primitive::Boolean(false).into()));
@@ -589,16 +641,18 @@ pub(crate) fn apply_items_all<M: 'static>(items: VecDeque<ValuePointer>, pred: S
                 params: vec![next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 1,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::Return(Primitive::Boolean(true).into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: pred.clone(), params: vec![item.to_owned().into()].into(),
-        state: Box::new(S { items, index, pred }),
-        callback_params_len: 1, callback: CallbackType::Sync(cb::<M>),
+        ptr: pred.clone(),
+        params: vec![item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, pred }),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -607,9 +661,16 @@ pub(crate) fn apply_items_position<M: 'static>(items: VecDeque<ValuePointer>, pr
     let Some(item) = items.get(index) else {
         return Ok(SysCallResult::Return(Primitive::Null.into()));
     };
-    struct S { items: VecDeque<ValuePointer>, index: usize, pred: StackValue }
-    fn cb<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        pred: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool()?;
         if matched {
             return Ok(SysCallResult::Return(Primitive::U32(s.index as u32).into()));
@@ -622,16 +683,18 @@ pub(crate) fn apply_items_position<M: 'static>(items: VecDeque<ValuePointer>, pr
                 params: vec![next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 1,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: pred.clone(), params: vec![item.to_owned().into()].into(),
-        state: Box::new(S { items, index, pred }),
-        callback_params_len: 1, callback: CallbackType::Sync(cb::<M>),
+        ptr: pred.clone(),
+        params: vec![item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, pred }),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -642,11 +705,21 @@ pub(crate) fn apply_items_fold<M: 'static>(
     mut acc: StackValue,
     index: usize,
 ) -> FnReturnType<M> {
-    let Some(item) = items.get(index) else { return Ok(SysCallResult::Return(acc)); };
+    let Some(item) = items.get(index) else {
+        return Ok(SysCallResult::Return(acc));
+    };
     let state_acc = acc.reference();
-    struct S { items: VecDeque<ValuePointer>, index: usize, closure: StackValue, acc: StackValue }
-    fn cb<M: 'static>(state: CallbackState, params: FnParams) -> Result<SysCallResult<M>, EnvironmentError> {
-        let mut s = state.downcast::<S>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
+    struct LocalState {
+        items: VecDeque<ValuePointer>,
+        index: usize,
+        closure: StackValue,
+        acc: StackValue,
+    }
+    fn callback<M: 'static>(
+        state: CallbackState,
+        params: FnParams,
+    ) -> Result<SysCallResult<M>, EnvironmentError> {
+        let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let new_acc = params.into_iter().next().ok_or(EnvironmentError::InvalidCallbackParameters)?;
         s.acc = new_acc;
         s.index += 1;
@@ -657,16 +730,18 @@ pub(crate) fn apply_items_fold<M: 'static>(
                 params: vec![s.acc.reference(), next.to_owned().into()].into(),
                 state: s,
                 callback_params_len: 1,
-                callback: CallbackType::Sync(cb::<M>),
+                callback: CallbackType::Sync(callback::<M>),
             });
         }
 
         Ok(SysCallResult::Return(s.acc))
     }
     Ok(SysCallResult::ExecuteAndCallback {
-        ptr: closure.clone(), params: vec![acc, item.to_owned().into()].into(),
-        state: Box::new(S { items, index, closure, acc: state_acc }),
-        callback_params_len: 1, callback: CallbackType::Sync(cb::<M>),
+        ptr: closure.clone(),
+        params: vec![acc, item.to_owned().into()].into(),
+        state: Box::new(LocalState { items, index, closure, acc: state_acc }),
+        callback_params_len: 1,
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -705,11 +780,9 @@ pub(crate) fn sum_items(items: VecDeque<ValuePointer>) -> Result<StackValue, Env
 // =============================================================================
 
 /// Write `new_iter` back to the stack slot referenced by `write_back`.
-/// No-op when `write_back` is `None`.
-fn write_back_iter(write_back: Option<StackValue>, new_iter: XIterator) {
-    if let Some(mut wb) = write_back {
-        *wb.as_mut() = wrap_iter(new_iter).into_owned();
-    }
+fn write_back_iter(mut write_back: StackValue, new_iter: XIterator) -> Result<(), EnvironmentError> {
+    *write_back.as_opaque_type_mut::<XIterator>()? = new_iter;
+    Ok(())
 }
 
 /// When the current source is exhausted, try to promote the first `Chain`
@@ -770,7 +843,7 @@ fn prepend_item_to_source(iter: &mut XIterator, item: ValuePointer) {
 /// then hand off to [`lazy_next_pipe`].
 fn lazy_next_pull<M: 'static>(
     mut iter: XIterator,
-    write_back: Option<StackValue>,
+    write_back: StackValue,
 ) -> FnReturnType<M> {
     loop {
         let raw = match &mut iter.source {
@@ -784,7 +857,7 @@ fn lazy_next_pull<M: 'static>(
             Some(item) => return lazy_next_pipe(iter, item, 0, write_back),
             None => {
                 if !promote_chain_to_source(&mut iter) {
-                    write_back_iter(write_back, XIterator::empty());
+                    write_back_iter(write_back, XIterator::empty())?;
                     return Ok(SysCallResult::Return(Primitive::Null.into()));
                 }
                 // Loop: pull from the newly-promoted source.
@@ -827,14 +900,14 @@ fn lazy_next_pipe<M: 'static>(
     mut iter: XIterator,
     mut current: ValuePointer,
     start_idx: usize,
-    write_back: Option<StackValue>,
+    write_back: StackValue,
 ) -> FnReturnType<M> {
     let mut idx = start_idx;
 
     loop {
         if idx >= iter.pipe.len() {
             // Item passed every step — yield it and write back the iterator state.
-            write_back_iter(write_back, iter);
+            write_back_iter(write_back, iter)?;
             return Ok(SysCallResult::Return(current.to_owned().into()));
         }
 
@@ -865,7 +938,7 @@ fn lazy_next_pipe<M: 'static>(
                 match r {
                     None => {
                         // Right side exhausted, zip has terminated
-                        write_back_iter(write_back, XIterator::empty());
+                        write_back_iter(write_back, XIterator::empty())?;
                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                     }
                     Some(r_val) => {
@@ -890,7 +963,7 @@ fn lazy_next_pipe<M: 'static>(
                             continue;
                         }
                         Ok(None) => {
-                            write_back_iter(write_back, XIterator::empty());
+                            write_back_iter(write_back, XIterator::empty())?;
                             return Ok(SysCallResult::Return(Primitive::Null.into()));
                         }
                         Err(_) => {
@@ -904,7 +977,7 @@ fn lazy_next_pipe<M: 'static>(
             }
             PipeStep::Take(remaining) => {
                 if *remaining == 0 {
-                    write_back_iter(write_back, XIterator::empty());
+                    write_back_iter(write_back, XIterator::empty())?;
                     return Ok(SysCallResult::Return(Primitive::Null.into()));
                 }
                 *remaining -= 1;
@@ -927,17 +1000,17 @@ fn lazy_next_pipe<M: 'static>(
             }
             PipeStep::Map(closure) => {
                 let closure = closure.clone();
-                struct S {
+                struct LocalState {
                     iter: XIterator,
                     pipe_idx: usize,
-                    write_back: Option<StackValue>,
+                    write_back: StackValue,
                 }
-                fn map_cb<M: 'static>(
+                fn callback<M: 'static>(
                     state: CallbackState,
                     params: FnParams,
                 ) -> Result<SysCallResult<M>, EnvironmentError> {
                     let s = state
-                        .downcast::<S>()
+                        .downcast::<LocalState>()
                         .map_err(|_| EnvironmentError::InvalidCallbackState)?;
                     let mapped = params
                         .into_iter()
@@ -949,25 +1022,25 @@ fn lazy_next_pipe<M: 'static>(
                 return Ok(SysCallResult::ExecuteAndCallback {
                     ptr: closure,
                     params: vec![current.to_owned().into()].into(),
-                    state: Box::new(S { iter, pipe_idx: idx, write_back }),
+                    state: Box::new(LocalState { iter, pipe_idx: idx, write_back }),
                     callback_params_len: 1,
-                    callback: CallbackType::Sync(map_cb::<M>),
+                    callback: CallbackType::Sync(callback::<M>),
                 });
             }
             PipeStep::Filter(closure) => {
                 let closure = closure.clone();
-                struct S {
+                struct LocalState {
                     iter: XIterator,
                     current: ValuePointer,
                     pipe_idx: usize,
-                    write_back: Option<StackValue>,
+                    write_back: StackValue,
                 }
-                fn filter_cb<M: 'static>(
+                fn callback<M: 'static>(
                     state: CallbackState,
                     params: FnParams,
                 ) -> Result<SysCallResult<M>, EnvironmentError> {
                     let s = state
-                        .downcast::<S>()
+                        .downcast::<LocalState>()
                         .map_err(|_| EnvironmentError::InvalidCallbackState)?;
                     let keep = params
                         .first()
@@ -983,9 +1056,9 @@ fn lazy_next_pipe<M: 'static>(
                 return Ok(SysCallResult::ExecuteAndCallback {
                     ptr: closure,
                     params: vec![current.to_owned().into()].into(),
-                    state: Box::new(S { iter, current, pipe_idx: idx, write_back }),
+                    state: Box::new(LocalState { iter, current, pipe_idx: idx, write_back }),
                     callback_params_len: 1,
-                    callback: CallbackType::Sync(filter_cb::<M>),
+                    callback: CallbackType::Sync(callback::<M>),
                 });
             }
             // Rev requires full collection (unreachable in practice: iter_rev now reverses
@@ -996,7 +1069,7 @@ fn lazy_next_pipe<M: 'static>(
                 return lazy_collect(
                     &mut iter,
                     VecDeque::new(),
-                    TerminalOp::Next(write_back.map(Box::new)),
+                    TerminalOp::Next(Box::new(write_back)),
                 );
             }
             // Flatten is fully lazy: `pending` holds remaining inner elements from the
@@ -1022,7 +1095,7 @@ fn lazy_next_pipe<M: 'static>(
                                         continue;
                                     }
                                     Ok(None) => {
-                                        write_back_iter(write_back, XIterator::empty());
+                                        write_back_iter(write_back, XIterator::empty())?;
                                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                                     }
                                     Err(_) => return lazy_next_pull(iter, write_back),
@@ -1055,7 +1128,7 @@ fn lazy_next_pipe<M: 'static>(
                                         continue;
                                     }
                                     Ok(None) => {
-                                        write_back_iter(write_back, XIterator::empty());
+                                        write_back_iter(write_back, XIterator::empty())?;
                                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                                     }
                                     Err(_) => return lazy_next_pull(iter, write_back),
@@ -1075,7 +1148,7 @@ fn lazy_next_pipe<M: 'static>(
 /// feeds the item into [`lazy_next_pipe`].
 fn lazy_next_unfold<M: 'static>(
     mut iter: XIterator,
-    write_back: Option<StackValue>,
+    write_back: StackValue,
 ) -> FnReturnType<M> {
     let (closure, seed) = match &mut iter.source {
         BaseSource::Unfold { closure, state: Some(s) } => {
@@ -1086,22 +1159,22 @@ fn lazy_next_unfold<M: 'static>(
             if promote_chain_to_source(&mut iter) {
                 return lazy_next_pull(iter, write_back);
             }
-            write_back_iter(write_back, XIterator::empty());
+            write_back_iter(write_back, XIterator::empty())?;
             return Ok(SysCallResult::Return(Primitive::Null.into()));
         }
         _ => unreachable!("lazy_next_unfold called on non-Unfold source"),
     };
 
-    struct S {
+    struct LocalState {
         iter: XIterator,
-        write_back: Option<StackValue>,
+        write_back: StackValue,
     }
-    fn unfold_cb<M: 'static>(
+    fn callback<M: 'static>(
         state: CallbackState,
         params: FnParams,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state
-            .downcast::<S>()
+            .downcast::<LocalState>()
             .map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let result = params
             .into_iter()
@@ -1115,7 +1188,7 @@ fn lazy_next_unfold<M: 'static>(
                 if promote_chain_to_source(&mut s.iter) {
                     return lazy_next_pull(s.iter, s.write_back);
                 }
-                write_back_iter(s.write_back, XIterator::empty());
+                write_back_iter(s.write_back, XIterator::empty())?;
                 Ok(SysCallResult::Return(Primitive::Null.into()))
             }
             ValueCell::Object(tuple) if tuple.len() == 2 => {
@@ -1133,9 +1206,9 @@ fn lazy_next_unfold<M: 'static>(
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure,
         params: vec![seed].into(),
-        state: Box::new(S { iter, write_back }),
+        state: Box::new(LocalState { iter, write_back }),
         callback_params_len: 1,
-        callback: CallbackType::Sync(unfold_cb::<M>),
+        callback: CallbackType::Sync(callback::<M>),
     })
 }
 
@@ -1147,7 +1220,7 @@ fn lazy_next_unfold<M: 'static>(
 /// subsequent `next()` calls see the updated state.
 pub(crate) fn lazy_next<M: 'static>(
     iter: XIterator,
-    write_back: Option<StackValue>,
+    write_back: StackValue,
 ) -> FnReturnType<M> {
     lazy_next_pull(iter, write_back)
 }

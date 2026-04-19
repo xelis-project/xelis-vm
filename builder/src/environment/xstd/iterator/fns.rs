@@ -7,7 +7,7 @@ use xelis_environment::{
     SysCallResult,
     VMContext,
 };
-use xelis_types::{Primitive, StackValue};
+use xelis_types::Primitive;
 
 use std::collections::VecDeque;
 use super::{
@@ -208,12 +208,9 @@ pub(super) fn iter_next<M: 'static>(
     // Callback path: we cannot hold `&mut XIterator` across async boundaries,
     // so we steal ownership and set up a write-back reference if `sv` was a
     // pointer (i.e. a named variable in the XELIS script).
-    let write_back = if matches!(sv, StackValue::Pointer { .. }) {
-        Some(sv.reference())
-    } else {
-        None
-    };
+    let write_back = sv.reference();
     // Steal the XIterator, leaving an empty one in the slot.
+    // We will write back the updated iterator after the callback completes, so the caller sees the mutation.
     let it = sv.as_opaque_type_mut::<XIterator>()?;
     let iter = std::mem::replace(it, XIterator::empty());
 

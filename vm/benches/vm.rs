@@ -360,6 +360,169 @@ fn prime_finder(c: &mut Criterion) {
     );
 }
 
+fn bench_iterator(c: &mut Criterion) {
+    let mut group = c.benchmark_group("iterator");
+
+    bench!(
+        group,
+        "collect",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            let result: u64[] = arr.iter().collect();
+            return result.len() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "sum",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            return arr.iter().sum()
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "count",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            return arr.iter().count() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "map",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            let result: u64[] = arr.iter().map(|x: u64| { return x * 2 }).collect();
+            return result.len() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "filter",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            let result: u64[] = arr.iter().filter(|x: u64| { return x % 2 == 0 }).collect();
+            return result.len() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "fold",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            return arr.iter().fold(0u64, |acc: u64, x: u64| { return acc + x })
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "map + filter + fold",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            return arr.iter()
+                .map(|x: u64| { return x * 2 })
+                .filter(|x: u64| { return x % 4 == 0 })
+                .fold(0u64, |acc: u64, x: u64| { return acc + x })
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "chain",
+        r#"
+        entry main() {
+            let ra = 0u64..50u64;
+            let rb = 50u64..100u64;
+            let a: u64[] = ra.collect();
+            let b: u64[] = rb.collect();
+            let result: u64[] = a.iter().chain(b.iter()).collect();
+            return result.len() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "skip + take",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            let result: u64[] = arr.iter().skip(25u32).take(50u32).collect();
+            return result.len() as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "find",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            let found: optional<u64> = arr.iter().find(|x: u64| { return x == 95 });
+            return found.unwrap()
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "any",
+        r#"
+        entry main() {
+            let r = 0u64..100u64;
+            let arr: u64[] = r.collect();
+            return arr.iter().any(|x: u64| { return x == 50 }) as u64
+        }
+        "#
+    );
+
+    bench!(
+        group,
+        "unfold",
+        r#"
+        entry main() {
+            let result: u64[] = Iterator::unfold(0u64, |state: u64| {
+                if state < 100 {
+                    return (state, state + 1u64)
+                }
+                return null
+            }).collect();
+            return result.len() as u64
+        }
+        "#
+    );
+}
+
 criterion_group!(
     benches,
     bench_struct,
@@ -368,5 +531,6 @@ criterion_group!(
     bench_while,
     bench_function_call,
     prime_finder,
+    bench_iterator,
 );
 criterion_main!(benches);
