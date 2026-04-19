@@ -728,12 +728,16 @@ fn promote_chain_to_source(iter: &mut XIterator) -> bool {
     };
 
     if let Some(PipeStep::Chain(chain_box)) = iter.pipe.remove(pos) {
+        // Use ManuallyDrop to move fields out of the boxed iterator
+        // without triggering XIterator's custom Drop.
+        let mut chain = std::mem::ManuallyDrop::new(*chain_box);
         // Drain the outer steps that come after the removed Chain position.
         let after: VecDeque<PipeStep> = iter.pipe.drain(pos..).collect();
         // New pipe = chain's own steps + outer steps that followed Chain.
-        let mut new_pipe = chain_box.pipe;
+        let mut new_pipe = std::mem::take(&mut chain.pipe);
         new_pipe.extend(after);
-        iter.source = chain_box.source;
+        iter.source = std::mem::replace(&mut chain.source, BaseSource::Empty);
+        iter.depth = chain.depth;
         iter.pipe = new_pipe;
     }
 
@@ -782,6 +786,29 @@ fn lazy_next_pull<M: 'static>(
                 if !promote_chain_to_source(&mut iter) {
                     write_back_iter(write_back, XIterator::empty());
                     return Ok(SysCallResult::Return(Primitive::Null.into()));
+                }
+                // Loop: pull from the newly-promoted source.
+            }
+        }
+    }
+}
+
+/// Pull the next item from a sync source (Dequeue / Once / Empty), handling
+/// chain promotion on exhaustion.  Returns `None` if everything is exhausted,
+/// `Err(true)` if the source is `Unfold` (needs callbacks).
+fn pull_sync_source(iter: &mut XIterator) -> Result<Option<ValuePointer>, bool> {
+    loop {
+        let raw = match &mut iter.source {
+            BaseSource::Dequeue(d) => d.pop_front(),
+            BaseSource::Once(slot) => slot.take(),
+            BaseSource::Empty => None,
+            BaseSource::Unfold { .. } => return Err(true),
+        };
+        match raw {
+            Some(item) => return Ok(Some(item)),
+            None => {
+                if !promote_chain_to_source(iter) {
+                    return Ok(None);
                 }
                 // Loop: pull from the newly-promoted source.
             }
@@ -854,8 +881,24 @@ fn lazy_next_pipe<M: 'static>(
             PipeStep::Skip(n) => {
                 if *n > 0 {
                     *n -= 1;
-                    // Item consumed by skip; fetch the next one.
-                    return lazy_next_pull(iter, write_back);
+                    // Item consumed by skip; fetch the next one iteratively
+                    // for sync sources to avoid O(n) stack growth.
+                    match pull_sync_source(&mut iter) {
+                        Ok(Some(item)) => {
+                            current = item;
+                            idx = 0;
+                            continue;
+                        }
+                        Ok(None) => {
+                            write_back_iter(write_back, XIterator::empty());
+                            return Ok(SysCallResult::Return(Primitive::Null.into()));
+                        }
+                        Err(_) => {
+                            // Unfold source: fall back to callback path (bounded
+                            // by the callback roundtrip, so no stack overflow).
+                            return lazy_next_pull(iter, write_back);
+                        }
+                    }
                 }
                 idx += 1;
             }
@@ -970,8 +1013,21 @@ fn lazy_next_pipe<M: 'static>(
                         *pending = d;
                         match first {
                             Some(f) => { current = f; idx += 1; }
-                            // Empty inner array: skip to next outer item.
-                            None => return lazy_next_pull(iter, write_back),
+                            // Empty inner array: skip to next outer item iteratively.
+                            None => {
+                                match pull_sync_source(&mut iter) {
+                                    Ok(Some(item)) => {
+                                        current = item;
+                                        idx = 0;
+                                        continue;
+                                    }
+                                    Ok(None) => {
+                                        write_back_iter(write_back, XIterator::empty());
+                                        return Ok(SysCallResult::Return(Primitive::Null.into()));
+                                    }
+                                    Err(_) => return lazy_next_pull(iter, write_back),
+                                }
+                            }
                         }
                     }
                     ValueCell::Primitive(Primitive::Opaque(w)) => {
@@ -991,7 +1047,20 @@ fn lazy_next_pipe<M: 'static>(
                         *pending = d;
                         match first {
                             Some(f) => { current = f; idx += 1; }
-                            None => return lazy_next_pull(iter, write_back),
+                            None => {
+                                match pull_sync_source(&mut iter) {
+                                    Ok(Some(item)) => {
+                                        current = item;
+                                        idx = 0;
+                                        continue;
+                                    }
+                                    Ok(None) => {
+                                        write_back_iter(write_back, XIterator::empty());
+                                        return Ok(SysCallResult::Return(Primitive::Null.into()));
+                                    }
+                                    Err(_) => return lazy_next_pull(iter, write_back),
+                                }
+                            }
                         }
                     }
                     _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),

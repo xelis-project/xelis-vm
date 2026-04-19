@@ -2296,6 +2296,45 @@ fn test_iter_next_zip_correct() {
     assert_eq!(run_code(code), Primitive::U64(0));
 }
 
+#[test]
+fn test_iter_next_flatten_opaque_iterators() {
+    // flatten of Iterator<Iterator<u64>> via next() must yield ALL inner items,
+    // not just the first item from each inner iterator.
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1, 2];
+            let b: u64[] = [3, 4];
+            let it: Iterator<u64> = [a.iter(), b.iter()].iter().flatten();
+            assert(it.next() == 1);
+            assert(it.next() == 2);
+            assert(it.next() == 3);
+            assert(it.next() == 4);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_skip_large_with_map_no_stackoverflow() {
+    // A large skip before a map should not cause stack overflow.
+    // Creates a 200-element array, skips 199, maps, and takes the last.
+    let code = r#"
+        entry main() {
+            let arr: u64[] = [];
+            foreach i in 0u64..200 {
+                arr.push(i);
+            }
+            let it: Iterator<u64> = arr.iter()
+                .skip(199u32)
+                .map(|x: u64| { return x * 10u64 });
+            return it.next().unwrap()
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1990));
+}
+
 // ============================================================================
 // ITERATOR EDGE CASES — boundary conditions
 // ============================================================================
