@@ -63,8 +63,19 @@ impl ValuePointer {
     }
 
     #[inline(always)]
-    pub fn into_owned(&self) -> ValueCell {
-        self.as_ref().deep_clone()
+    pub fn into_owned(self) -> ValueCell {
+        match Arc::try_unwrap(self.0) {
+            Ok(cell) => cell.into_inner().references_free(),
+            Err(e) => Self(e).as_ref().clone(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn raw_owned(self) -> ValueCell {
+        match Arc::try_unwrap(self.0) {
+            Ok(cell) => cell.into_inner(),
+            Err(e) => Self(e).as_ref().clone_ref(),
+        }
     }
 
     #[inline(always)]

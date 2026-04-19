@@ -2,7 +2,7 @@ mod iter;
 mod terminal;
 mod fns;
 
-pub use iter::{IterSource, XIterator};
+pub use iter::{BaseSource, XIterator};
 
 use xelis_environment::FunctionHandler;
 use xelis_types::{ClosureType, Type};

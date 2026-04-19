@@ -334,19 +334,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     #[inline]
     fn on_call_stack_end(&mut self, manager: &mut ChunkManager) -> Result<(), VMError> {
         debug!("on call stack end: {:?}", manager);
-        // call stack has been fully consummed
-        // don't push it back but clean pointers
         self.call_stack_size -= 1;
-        if let Some((origin, max_size)) = manager.registers_origin() {
-            debug!("Swapping registers for origin: {}", origin);
-            // Swap back our registers
-            manager.truncate_registers_to(max_size);
-            let previous = self.find_manager_with_chunk_id(origin)
-                .ok_or(VMError::ChunkManagerNotFound(origin))?;
-            previous.swap_registers(manager);
-            manager.set_registers_origin(None);
-        }
-
+        // Closure managers hold a Vec of Arc references into the parent's register slots.
+        // Because every VM mutation writes through those Arcs, the parent's registers are
+        // always up-to-date when the closure finishes. No swap or snapshot restore needed;
+        // just clear the origin tag so the slot can be reused.
+        manager.set_registers_origin(None);
         Ok(())
     }
 
@@ -430,7 +423,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                                             let tmp = handle_perform_syscall(&mut self.stack, &mut self.context, res, &m)?;
                                             result = perform_syscall(&self.backend, tmp, &mut self.stack, &mut self.context);
-                                            continue;
+                                            // If the callback's result is Nothing, the closure that
+                                            // triggered the Return has finished. Break out of the
+                                            // opcodes loop to avoid executing dead code that may
+                                            // follow the Return instruction (e.g. the else-branch
+                                            // of an early-return if/else in the closure body).
+                                            if !matches!(result, Ok(InstructionResult::Nothing)) {
+                                                continue;
+                                            }
                                         }
 
                                         trace!("Breaking execution");
@@ -455,9 +455,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                                         // If we need to swap the registers, check if from our current manager
                                         // we already took the pointers from another chunk
-                                        if let Some((_, len)) = manager.registers_origin().filter(|(origin, _)| *origin == from && chunk_id == manager.chunk_id()) {
+                                        if manager.registers_origin().is_some_and(|origin| origin == from && chunk_id == manager.chunk_id()) {
                                             trace!("reusing current chunk manager for dynamic call");
-                                            manager.truncate_registers_to(len);
                                             manager.set_ip(0);
 
                                             // Push back our current chunk manager
@@ -469,37 +468,41 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 Vec::new()
                                             );
 
-                                            trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
-                                            let manager_holds_from_registers = 
-                                                manager.registers_origin().map(|(o, _)| o) == Some(from);
-                                            let previous = if manager.chunk_id() == from {
-                                                Some(&mut manager)
-                                            } else if manager_holds_from_registers {
-                                                // Current manager already holds `from`'s registers
-                                                // (it borrowed them when it was first invoked).
-                                                // Use it directly so that the new closure receives
-                                                // the correct register set instead of the empty one
-                                                // that `from`'s call-stack entry currently holds.
+                                        trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
+                                            // The source of captured registers is either the current manager
+                                            // itself (when it IS `from`, or already proxies `from`'s captures
+                                            // via Arc refs) or a manager found deeper on the call stack.
+                                            let manager_is_proxy = manager.registers_origin() == Some(from);
+                                            let previous = if manager.chunk_id() == from || manager_is_proxy {
                                                 Some(&mut manager)
                                             } else {
                                                 self.find_manager_with_chunk_id(from)
                                             };
 
                                             if let Some(previous) = previous {
-                                                new.set_registers_origin(Some((from, previous.get_registers().len())));
-                                                new.swap_registers(previous);
+                                                new.set_registers_origin(Some(from));
+                                                // Give the new closure a Vec of Arc references into the
+                                                // parent's register slots. Because every assignment in the
+                                                // VM writes through those Arcs (via `as_mut()`), the
+                                                // parent's values stay up-to-date automatically – no swap
+                                                // or snapshot restore is needed when the closure exits.
+                                                *new.get_registers_mut() = previous
+                                                    .get_registers_mut()
+                                                    .iter_mut()
+                                                    .map(StackValue::reference)
+                                                    .collect();
                                                 previous.set_context(ChunkContext::Used);
-                                                // If the current manager was acting as a proxy for `from`'s
-                                                // registers (manager_holds_from_registers), clear its origin
-                                                // so cleanup doesn't double-swap back to `from`.
-                                                if manager_holds_from_registers {
-                                                    previous.set_registers_origin(None);
-                                                }
                                             } else {
                                                 debug!("No chunk manager found for origin {}, skipping it", from);
                                             }
 
-                                            self.push_back_call_stack(manager, reader)?;
+                                            // If the current manager was itself a proxy
+                                            // we can remove it directly
+                                            if manager_is_proxy {
+                                                self.on_call_stack_end(&mut manager)?;
+                                            } else {
+                                                self.push_back_call_stack(manager, reader)?;
+                                            }
 
                                             // Add our new chunk
                                             self.invoke_chunk_id_internal(new)?;
@@ -571,7 +574,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         if matches!(manager.context(), ChunkContext::ShouldKeep) && self.call_stack_size != 0 {
                             manager.set_context(ChunkContext::Pending);
                             // we must keep it, only clean the stack
-                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
+                            self.call_stack.push(CallStack::Context(manager));
 
                             // We keep it to prevent any DoS using closures
                             self.call_stack_size += 1;

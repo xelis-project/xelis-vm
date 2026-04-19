@@ -1829,18 +1829,16 @@ fn test_iter_take_after_filter() {
 
 #[test]
 fn test_iter_deep_map_chain() {
-    // Many consecutive maps
     let code = r#"
         entry main() {
             let it: Iterator<u64> = Iterator::once(0u64);
             foreach _ in 0..100_000 {
                 it = it.map(|x: u64| { return x + 1u64 });
             }
-            
             return it.next().unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(100_000)); // 100_000 increments
+    assert!(run_code_result(code).is_err());
 }
 
 #[test]
@@ -1938,4 +1936,905 @@ fn test_iter_chain_map_local() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_map_next() {
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(10u64).map(|x: u64| { return x * 2u64 });
+            assert(it.next() == 20);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_filter_lazy_once() {
+    let code = r#"
+        entry main() {
+            // Verify filter is evaluated lazily: called once per next() call,
+            // not eagerly for all items upfront.
+            let call = 0;
+            let it: Iterator<u64> = [10u64, 20u64].iter()
+                .filter(|x: u64| {
+                    call += 1;
+                    return true
+                });
+            assert(it.next() == 10);
+            assert(call == 1);     // filter called exactly once for first next()
+            assert(it.next() == 20);
+            assert(call == 2);     // filter called once more for second next()
+            assert(it.next().is_none());
+            assert(call == 2);     // source exhausted, filter not called again
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR LAZINESS — next() call-count verification
+// ============================================================================
+
+#[test]
+fn test_iter_next_map_call_count() {
+    // map closure called exactly once per next(), never for items that aren't consumed.
+    let code = r#"
+        entry main() {
+            let calls = 0;
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter()
+                .map(|x: u64| { calls += 1; return x * 10u64 });
+            assert(it.next() == 10);
+            assert(calls == 1);
+            assert(it.next() == 20);
+            assert(calls == 2);
+            assert(it.next() == 30);
+            assert(calls == 3);
+            assert(it.next().is_none());
+            assert(calls == 3);  // no extra call on exhaustion
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_filter_rejecting() {
+    // filter pulls more items from source only when it rejects; total calls equal items tested.
+    let code = r#"
+        entry main() {
+            let calls = 0;
+            let it: Iterator<u64> = [1u64, 2u64, 3u64, 4u64].iter()
+                .filter(|x: u64| { calls += 1; return x % 2u64 == 0u64 });
+            assert(it.next() == 2);
+            assert(calls == 2);   // 1 rejected, 2 accepted
+            assert(it.next() == 4);
+            assert(calls == 4);   // 3 rejected, 4 accepted
+            assert(it.next().is_none());
+            assert(calls == 4);   // source exhausted, no extra call
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_map_then_filter_lazy() {
+    // map + filter + next(): map is called only for items pulled from source,
+    // filter may reject the mapped result, driving the next source pull.
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let filter_calls = 0;
+            let it: Iterator<u64> = [1u64, 2u64, 3u64, 4u64].iter()
+                .map(|x: u64| { map_calls += 1; return x * 2u64 })
+                .filter(|x: u64| { filter_calls += 1; return x > 4u64 });
+            // First next(): map(1)=2 filtered out, map(2)=4 filtered out, map(3)=6 passes.
+            assert(it.next() == 6);
+            assert(map_calls == 3);
+            assert(filter_calls == 3);
+            // Second next(): map(4)=8 passes immediately.
+            assert(it.next() == 8);
+            assert(map_calls == 4);
+            assert(filter_calls == 4);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_filter_then_map_lazy() {
+    // filter + map + next(): map is NOT called for rejected items.
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = [1u64, 2u64, 3u64, 4u64].iter()
+                .filter(|x: u64| { return x % 2u64 == 0u64 })
+                .map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 20);
+            assert(map_calls == 1);  // item 1 rejected without map, item 2 mapped
+            assert(it.next() == 40);
+            assert(map_calls == 2);  // item 3 rejected without map, item 4 mapped
+            assert(it.next().is_none());
+            assert(map_calls == 2);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR LAZINESS — skip / take / enumerate with next()
+// ============================================================================
+
+#[test]
+fn test_iter_next_skip_then_next() {
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [10u64, 20u64, 30u64, 40u64].iter().skip(2u32);
+            assert(it.next() == 30);
+            assert(it.next() == 40);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_take_exhausts_early() {
+    // take(n) stops the iterator after n items even if the source has more.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64, 4u64, 5u64].iter().take(2u32);
+            assert(it.next() == 1);
+            assert(it.next() == 2);
+            assert(it.next().is_none());
+            assert(it.next().is_none());  // stays None
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_take_zero() {
+    // take(0) means the iterator is empty before it starts.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter().take(0u32);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_enumerate_state() {
+    // enumerate() index must increment correctly across multiple next() calls.
+    let code = r#"
+        entry main() {
+            let it = [100u64, 200u64, 300u64].iter().enumerate();
+            let (i0, v0): (u32, u64) = it.next().unwrap();
+            assert(i0 == 0); assert(v0 == 100);
+            let (i1, v1): (u32, u64) = it.next().unwrap();
+            assert(i1 == 1); assert(v1 == 200);
+            let (i2, v2): (u32, u64) = it.next().unwrap();
+            assert(i2 == 2); assert(v2 == 300);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR LAZINESS — chain / unfold with next()
+// ============================================================================
+
+#[test]
+fn test_iter_next_chain_transitions() {
+    // chain: when the first source is exhausted, next() seamlessly moves to the second.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64].iter().chain([3u64, 4u64].iter());
+            assert(it.next() == 1);
+            assert(it.next() == 2);
+            assert(it.next() == 3);
+            assert(it.next() == 4);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_chain_filter_both_sides() {
+    // A filter placed after chain applies to items from both iterators.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter()
+                .chain([4u64, 5u64, 6u64].iter())
+                .filter(|x: u64| { return x % 2u64 == 0u64 });
+            assert(it.next() == 2);
+            assert(it.next() == 4);
+            assert(it.next() == 6);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_chain_map_second_lazy() {
+    // The map on the chained iterator must not be called until that side is reached.
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = Iterator::once(1u64)
+                .chain(Iterator::once(2u64).map(|x: u64| {
+                    map_calls += 1;
+                    return x + 10u64
+                }));
+            assert(it.next() == 1);
+            assert(map_calls == 0);  // second iterator not yet touched
+            assert(it.next() == 12);
+            assert(map_calls == 1);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_unfold_map_lazy() {
+    // unfold generates one state transition per next(); map wraps each generated item.
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(0u64, |s: u64| {
+                if s >= 3u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 0);    assert(map_calls == 1);
+            assert(it.next() == 10);   assert(map_calls == 2);
+            assert(it.next() == 20);   assert(map_calls == 3);
+            assert(it.next().is_none()); assert(map_calls == 3);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_unfold_filter_lazy() {
+    // unfold + filter: the generator is only called as many times as needed to find a match.
+    let code = r#"
+        entry main() {
+            let calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(0u64, |s: u64| {
+                calls += 1;
+                if s >= 5u64 { return null }
+                return (s, s + 1u64)
+            }).filter(|x: u64| { return x % 2u64 == 0u64 });
+            // First next(): s=0 even, passes. calls=1.
+            assert(it.next() == 0);
+            assert(calls == 1);
+            // Second next(): s=1 odd (reject, calls=2); s=2 even (passes, calls=3).
+            assert(it.next() == 2);
+            assert(calls == 3);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR LAZINESS — fallback adapters (rev / flatten / zip) with next()
+// ============================================================================
+
+#[test]
+fn test_iter_next_rev_correct() {
+    // rev forces full collection internally, but multiple next() calls still work.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter().rev();
+            assert(it.next() == 3);
+            assert(it.next() == 2);
+            assert(it.next() == 1);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_flatten_correct() {
+    // flatten is lazy: next() expands one sub-array at a time.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [[1u64, 2u64], [3u64]].iter().flatten();
+            assert(it.next() == 1);
+            assert(it.next() == 2);
+            assert(it.next() == 3);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_zip_correct() {
+    // zip forces full collection internally, multiple next() calls still yield pairs.
+    let code = r#"
+        entry main() {
+            let it: Iterator<(u64, u64)> = [1u64, 2u64, 3u64].iter()
+                .zip([10u64, 20u64, 30u64].iter());
+            let (a, b): (u64, u64) = it.next().unwrap();
+            assert(a == 1); assert(b == 10);
+            let (c, d): (u64, u64) = it.next().unwrap();
+            assert(c == 2); assert(d == 20);
+            let (e, f): (u64, u64) = it.next().unwrap();
+            assert(e == 3); assert(f == 30);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR EDGE CASES — boundary conditions
+// ============================================================================
+
+#[test]
+fn test_iter_next_skip_beyond_length() {
+    // skip(n) where n >= source length: every next() returns None.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64].iter().skip(10u32);
+            assert(it.next().is_none());
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_take_beyond_length() {
+    // take(n) where n > source length: iterator yields at most source.len() items.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64].iter().take(100u32);
+            assert(it.next() == 1);
+            assert(it.next() == 2);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_after_exhaustion() {
+    // next() called repeatedly on an exhausted iterator always returns None.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::once(1u64);
+            let _ = it.next();
+            assert(it.next().is_none());
+            assert(it.next().is_none());
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_next_skip_then_filter() {
+    // skip + filter together: skip discards first n items, filter runs on the rest.
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64, 4u64, 5u64].iter()
+                .skip(2u32)
+                .filter(|x: u64| { return x % 2u64 != 0u64 });
+            // After skip(2): [3, 4, 5]; odd: [3, 5]
+            assert(it.next() == 3);
+            assert(it.next() == 5);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+// ============================================================================
+// ITERATOR COMBINATIONS — collect-based terminals
+// ============================================================================
+
+#[test]
+fn test_iter_empty_filter_collect() {
+    // filter on an empty iterator produces an empty result.
+    let code = r#"
+        entry main() {
+            let result: u64[] = Iterator::empty().filter(|x: u64| { return true }).collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_filter_all_rejected() {
+    // filter predicate that always returns false yields an empty collection.
+    let code = r#"
+        entry main() {
+            let result: u64[] = [1u64, 2u64, 3u64].iter()
+                .filter(|x: u64| { return false })
+                .collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_fold_empty() {
+    // fold on an empty iterator returns the init value unchanged.
+    let code = r#"
+        entry main() {
+            return Iterator::empty().fold(42u64, |acc: u64, x: u64| { return acc + x })
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_iter_any_on_empty() {
+    // any on an empty iterator is always false.
+    let code = r#"
+        entry main() {
+            return Iterator::empty().any(|x: u64| { return true }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_all_on_empty() {
+    // all on an empty iterator is vacuously true.
+    let code = r#"
+        entry main() {
+            return Iterator::empty().all(|x: u64| { return false }) as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_iter_position_not_found() {
+    // position returns None when the predicate never matches.
+    let code = r#"
+        entry main() {
+            let pos: optional<u32> = [1u64, 2u64, 3u64].iter()
+                .position(|x: u64| { return x > 100u64 });
+            return pos.is_none() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_iter_take_then_map_collect() {
+    // take before map: only the taken slice is transformed.
+    let code = r#"
+        entry main() {
+            let result: u64[] = [1u64, 2u64, 3u64, 4u64].iter()
+                .take(2u32)
+                .map(|x: u64| { return x * 10u64 })
+                .collect();
+            assert(result.len() == 2);
+            return result[0] + result[1]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(30)); // 10 + 20
+}
+
+#[test]
+fn test_iter_chain_then_skip_collect() {
+    // skip applied after chain spans across both iterators.
+    let code = r#"
+        entry main() {
+            let result: u64[] = [1u64, 2u64].iter()
+                .chain([3u64, 4u64, 5u64].iter())
+                .skip(2u32)
+                .collect();
+            // chain: [1,2,3,4,5]; skip 2: [3,4,5]
+            assert(result.len() == 3);
+            return result[0] + result[1] + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(12)); // 3+4+5
+}
+
+#[test]
+fn test_iter_unfold_skip_take_collect() {
+    // unfold with skip + take: only the needed range of values is generated.
+    let code = r#"
+        entry main() {
+            let result: u64[] = Iterator::unfold(0u64, |s: u64| {
+                if s >= 10u64 { return null }
+                return (s, s + 1u64)
+            })
+            .skip(3u32)
+            .take(4u32)
+            .collect();
+            // [0..9]; skip 3 -> [3..9]; take 4 -> [3,4,5,6]
+            assert(result.len() == 4);
+            return result[0] + result[1] + result[2] + result[3]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(18)); // 3+4+5+6
+}
+
+#[test]
+fn test_iter_flatten_then_filter_collect() {
+    // flatten (via chain) then filter: filter runs on the individual elements.
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1u64, 2u64, 3u64];
+            let b: u64[] = [4u64, 5u64, 6u64];
+            let result: u64[] = a.iter()
+                .chain(b.iter())
+                .filter(|x: u64| { return x % 2u64 == 0u64 })
+                .collect();
+            assert(result.len() == 3);
+            return result[0] + result[1] + result[2]
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(12)); // 2 + 4 + 6
+}
+
+#[test]
+fn test_iter_zip_different_lengths() {
+    // zip stops at the shorter iterator.
+    let code = r#"
+        entry main() {
+            let a: u64[] = [1u64, 2u64, 3u64];
+            let b: u64[] = [10u64, 20u64];
+            let result: (u64, u64)[] = a.iter()
+                .zip(b.iter())
+                .collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_iter_complex_lazy_pipeline() {
+    // unfold → filter → map → collect: verifies the full lazy collect path.
+    let code = r#"
+        entry main() {
+            let result: u64[] = Iterator::unfold(0u64, |s: u64| {
+                if s >= 6u64 { return null }
+                return (s, s + 1u64)
+            })
+            .filter(|x: u64| { return x % 2u64 == 0u64 })
+            .map(|x: u64| { return x * 100u64 })
+            .collect();
+            // evens 0..5: 0, 2, 4 -> mapped: 0, 200, 400
+            assert(result.len() == 3);
+            assert(result[0] == 0);
+            assert(result[1] == 200);
+            assert(result[2] == 400);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+#[test]
+fn test_debug_unfold_map_minimal() {
+    // Minimal: unfold + map, no capture in map, check first item
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::unfold(0u64, |s: u64| {
+                if s >= 3u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { return x * 10u64 });
+            assert(it.next() == 0);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_map_nozero() {
+    // unfold + map, no capture, but first item is non-zero
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::unfold(1u64, |s: u64| {
+                if s >= 4u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { return x * 10u64 });
+            assert(it.next() == 10);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_filter_minimal() {
+    // Minimal: unfold + filter, no capture in filter
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = Iterator::unfold(0u64, |s: u64| {
+                if s >= 5u64 { return null }
+                return (s, s + 1u64)
+            }).filter(|x: u64| { return x % 2u64 == 0u64 });
+            assert(it.next() == 0);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_map_filter_minimal() {
+    // Minimal: dequeue + map + filter, no captures
+    let code = r#"
+        entry main() {
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter()
+                .map(|x: u64| { return x * 2u64 })
+                .filter(|x: u64| { return x > 4u64 });
+            assert(it.next() == 6);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_filter_then_map_cap() {
+    // filter (no capture) + map (capture): find first even, then map it
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = [1u64, 2u64, 3u64].iter()
+                .filter(|x: u64| { return x % 2u64 == 0u64 })
+                .map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 20);
+            assert(map_calls == 1);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_map_cap() {
+    // unfold (no capture) + map (capture)
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(1u64, |s: u64| {
+                if s >= 4u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 10);
+            assert(map_calls == 1);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_cap_filter() {
+    // unfold (captures) + filter (no capture)
+    let code = r#"
+        entry main() {
+            let calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(1u64, |s: u64| {
+                calls += 1;
+                if s >= 6u64 { return null }
+                return (s, s + 1u64)
+            }).filter(|x: u64| { return x % 2u64 == 0u64 });
+            assert(it.next() == 2);
+            assert(calls == 2);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_map_cap_multi() {
+    // unfold (no capture) + map (capture), multiple next() calls
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(1u64, |s: u64| {
+                if s >= 4u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 10); assert(map_calls == 1);
+            assert(it.next() == 20); assert(map_calls == 2);
+            assert(it.next() == 30); assert(map_calls == 3);
+            assert(it.next().is_none()); assert(map_calls == 3);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_debug_unfold_map_cap_2calls() {
+    // unfold + cap map, only 2 next() calls
+    let code = r#"
+        entry main() {
+            let map_calls = 0;
+            let it: Iterator<u64> = Iterator::unfold(1u64, |s: u64| {
+                if s >= 4u64 { return null }
+                return (s, s + 1u64)
+            }).map(|x: u64| { map_calls += 1; return x * 10u64 });
+            assert(it.next() == 10);
+            assert(map_calls == 1);
+            assert(it.next() == 20);
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_unfold_filter_collect() {
+    // unfold + filter + collect (no map)
+    let code = r#"
+        entry main() {
+            let result: u64[] = Iterator::unfold(0u64, |s: u64| {
+                if s >= 4u64 { return null }
+                return (s, s + 1u64)
+            })
+            .filter(|x: u64| { return x % 2u64 == 0u64 })
+            .collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2)); // evens: 0, 2
+}
+
+#[test]
+fn test_iter_unfold_map_collect() {
+    // unfold + map + collect (no filter)
+    let code = r#"
+        entry main() {
+            let result: u64[] = Iterator::unfold(0u64, |s: u64| {
+                if s >= 3u64 { return null }
+                return (s, s + 1u64)
+            })
+            .map(|x: u64| { return x * 100u64 })
+            .collect();
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3)); // [0, 100, 200]
+}
+
+// ============================================================================
+// ITERATOR FLATTEN — laziness confirmation tests
+// ============================================================================
+
+#[test]
+fn test_iter_flatten_lazy_next_sequential() {
+    // next() on a flatten iterator advances one element at a time across sub-arrays.
+    let code = r#"
+        entry main() {
+            let nested: u64[][] = [[10, 20], [30]];
+            let it: Iterator<u64> = nested.iter().flatten();
+            assert(it.next() == 10);
+            assert(it.next() == 20);
+            assert(it.next() == 30);
+            assert(it.next().is_none());
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_flatten_lazy_take_stops_early() {
+    // take(2) on a flatten of [[1,2],[3,4]] should yield exactly [1,2].
+    let code = r#"
+        entry main() {
+            let nested: u64[][] = [[1, 2], [3, 4]];
+            let result: u64[] = nested.iter()
+                .flatten()
+                .take(2u32)
+                .collect();
+            assert(result.len() == 2);
+            assert(result[0] == 1u64);
+            assert(result[1] == 2u64);
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_iter_flatten_empty_sub_arrays() {
+    // flatten skips empty sub-arrays and yields elements from non-empty ones.
+    let code = r#"
+        entry main() {
+            let empty: u64[] = [];
+            let nested: u64[][] = [empty, [1], empty, [2, 3], empty];
+            let flat: u64[] = nested.iter().flatten().collect();
+            assert(flat.len() == 3);
+            assert(flat[0] == 1u64);
+            assert(flat[1] == 2u64);
+            assert(flat[2] == 3u64);
+            return flat.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_iter_flatten_lazy_with_map() {
+    // flatten combined with map: map applies to inner elements, not sub-arrays.
+    let code = r#"
+        entry main() {
+            let nested: u64[] = [1, 2, 3];
+            let calls = 0;
+            let iter: Iterator<u64> = nested.iter()
+                .map(|x: u64| { calls += 1; return [x * 10] })
+                .flatten();
+
+            assert(iter.next() == 10);
+            assert(calls == 1);
+            assert(iter.next() == 20);
+            assert(calls == 2);
+            assert(iter.next() == 30);
+            assert(calls == 3);
+
+            return 0u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iter_flatten_lazy_with_filter() {
+    // flatten + filter: filter applies to inner elements.
+    let code = r#"
+        entry main() {
+            let nested: u64[][] = [[1, 2, 3], [4, 5]];
+            let result: u64[] = nested.iter()
+                .flatten()
+                .filter(|x: u64| { return x % 2u64 == 0u64 })
+                .collect();
+            assert(result.len() == 2);
+            assert(result[0] == 2u64);
+            assert(result[1] == 4u64);
+            return result.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
 }

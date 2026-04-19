@@ -149,8 +149,16 @@ impl StackValue {
     #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
         match self {
-            Self::Owned(v) => v.deep_clone(),
+            Self::Owned(v) => v.references_free(),
             Self::Pointer { ptr, .. } => ptr.as_ref().deep_clone()
+        }
+    }
+
+    #[inline(always)]
+    pub fn raw_owned(self) -> ValueCell {
+        match self {
+            Self::Owned(v) => v,
+            Self::Pointer { ptr, .. } => ptr.raw_owned()
         }
     }
 

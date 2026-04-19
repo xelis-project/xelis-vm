@@ -592,6 +592,14 @@ impl ValueCell {
     }
 
     #[inline]
+    pub fn into_vec(self) -> Result<CellArray, ValueError> {
+        match self {
+            Self::Object(n) => Ok(n),
+            _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
+        }
+    }
+
+    #[inline]
     pub fn as_bytes<'a>(&'a self) -> Result<&'a Vec<u8>, ValueError> {
         match self {
             Self::Bytes(bytes) => Ok(bytes),
@@ -724,8 +732,8 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn into_opaque_type<T: Opaque>(&mut self) -> Result<T, ValueError> {
-        match mem::take(self) {
+    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
+        match self {
             Self::Primitive(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
@@ -953,6 +961,94 @@ impl ValueCell {
             Self::Object(values) => return Self::Object(values.clone()),
             Self::Map(map) => return Self::Map(map.clone()),
         }
+    }
+
+    pub fn references_free(self) -> Self {
+        match self {
+            Self::Bytes(_) | Self::Primitive(_) => return self,
+            _ => {}
+        };
+
+        #[derive(Debug)]
+        enum QueueItem {
+            Primitive(Primitive),
+            Array {
+                len: usize,
+            },
+            Map {
+                len: usize,
+            },
+            Bytes(Vec<u8>)
+        }
+
+        let mut stack = vec![ValueCellRef::Owned(self)];
+        let mut queue = Vec::new();
+
+        // Disassemble
+        while let Some(value) = stack.pop() {
+            match value {
+                ValueCellRef::Owned(owned) => match owned {
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v)),
+                    Self::Object(values) => {
+                        queue.push(QueueItem::Array { len: values.len() });
+                        stack.extend(values.into_iter().map(ValueCellRef::Pointer));
+                    },
+                    Self::Bytes(bytes) => {
+                        queue.push(QueueItem::Bytes(bytes));
+                    }
+                    Self::Map(map) => {
+                        queue.push(QueueItem::Map { len: map.len() });
+                        stack.reserve(map.len() * 2);
+                        stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
+                    }
+                },
+                ValueCellRef::Pointer(pointer) => match pointer.as_ref() {
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
+                    Self::Object(values) => {
+                        queue.push(QueueItem::Array { len: values.len() });
+                        stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
+                    },
+                    Self::Bytes(bytes) => {
+                        queue.push(QueueItem::Bytes(bytes.clone()));
+                    }
+                    Self::Map(map) => {
+                        queue.push(QueueItem::Map { len: map.len() });
+                        stack.reserve(map.len() * 2);
+                        stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())]));
+                    }
+                },
+                _ => {}
+            }
+        };
+
+        let mut stack = Vec::with_capacity(queue.len());
+        // Assemble back
+        while let Some(item) = queue.pop() {
+            match item {
+                QueueItem::Primitive(v) => {
+                    stack.push(ValueCell::Primitive(v));
+                },
+                QueueItem::Array { len } => {
+                    let values = stack.split_off(stack.len() - len);
+                    stack.push(ValueCell::Object(values.into_iter().map(Into::into).collect()));
+                },
+                QueueItem::Bytes(bytes) => {
+                    stack.push(ValueCell::Bytes(bytes));
+                }
+                QueueItem::Map { len } => {
+                    let map = stack.split_off(stack.len() - len * 2)
+                        .into_iter()
+                        .tuples()
+                        .map(|(k, v)| (k, v.into()))
+                        .collect();
+
+                    stack.push(ValueCell::Map(Box::new(map)));
+                }
+            }
+        }
+
+        debug_assert!(stack.len() == 1);
+        stack.remove(0)
     }
 
     // Create a clone in a iterative way

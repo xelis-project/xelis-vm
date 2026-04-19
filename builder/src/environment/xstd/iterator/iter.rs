@@ -17,46 +17,64 @@ use xelis_types::{
     },
 };
 
-/// Lazy iterator source tree.
-///
-/// Variants without closures (Array, Once, Empty, Skip, Take, Chain, Rev, Enumerate, Zip,
-/// Flatten) advance synchronously via `next_sync` without involving the VM.
-///
-/// Closure-based variants (Map, Filter, Unfold) must be driven by a terminal operation
-/// through `SysCallResult::ExecuteAndCallback`, one item at a time.
+/// Leaf generator: produces items without consuming another `XIterator`.
 #[derive(Debug, Clone)]
-pub enum IterSource {
-    /// Iterates over a pre-collected slice of values.
-    Dequeue { items: VecDeque<ValuePointer> },
+pub enum BaseSource {
+    /// Iterates over a pre-collected dequeue of values.
+    Dequeue(VecDeque<ValuePointer>),
     /// Yields exactly one value, then is exhausted.
     Once(Option<ValuePointer>),
     /// Always empty.
     Empty,
-    /// Skips the first `n` items of the inner iterator.
-    Skip { inner: Box<XIterator>, n: usize },
-    /// Yields at most `remaining` items from the inner iterator.
-    Take { inner: Box<XIterator>, remaining: usize },
-    /// Yields all items of `first`, then all items of `second`.
-    Chain { first: Box<XIterator>, second: Box<XIterator> },
-    /// Items stored in reverse order; advances from front.
-    Rev { items: Vec<ValuePointer>, index: usize },
-    /// Pairs each item with its zero-based index.
-    Enumerate { inner: Box<XIterator>, counter: u32 },
-    /// Pairs items from two iterators; stops when the shorter one is exhausted.
-    Zip { left: Box<XIterator>, right: Box<XIterator> },
-    /// Flattens one level of nesting (each item must be an array or Iterator).
-    Flatten { outer: Box<XIterator>, current: Option<Box<XIterator>> },
-    /// Applies `closure` to each item; requires VM callbacks.
-    Map { inner: Box<XIterator>, closure: StackValue },
-    /// Keeps only items for which `closure` returns true; requires VM callbacks.
-    Filter { inner: Box<XIterator>, closure: StackValue },
-    /// Generates items by repeatedly calling `closure(state) -> optional<(item, next_state)>`.
+    /// Generates items via `closure(state) -> optional<(item, next_state)>`.
     Unfold { closure: StackValue, state: Option<StackValue> },
 }
 
+/// One adapter step in the flat pipeline stored inside `XIterator::pipe`.
+///
+/// Steps are applied in order from front (first applied) to back (last applied)
+/// relative to the items produced by the `source`.
+/// All adapter logic that used to be recursive `Box<XIterator>` nesting is now
+/// a flat `VecDeque<PipeStep>`, making `Clone` and `Drop` trivial.
+#[derive(Debug, Clone)]
+pub enum PipeStep {
+    /// Apply `closure` to every item (requires VM callback).
+    Map(StackValue),
+    /// Keep only items where `closure` returns `true` (requires VM callback).
+    Filter(StackValue),
+    /// Drop the first `n` items.
+    Skip(usize),
+    /// Yield at most `n` items.
+    Take(usize),
+    /// Pair each item with its zero-based index starting from `counter`.
+    Enumerate(u32),
+    /// Yield all items of `self`'s current source, then all items of `next`.
+    Chain(Box<XIterator>),
+    /// Zip items with `right`; stops when the shorter side is exhausted.
+    Zip(Box<XIterator>),
+    /// Flatten one level: each item is expanded as an array or Iterator.
+    ///
+    /// `pending` holds the remaining inner elements from the current expansion.
+    /// When `pending` is empty the next outer item is pulled and expanded;
+    /// when non-empty the front element is emitted directly.
+    Flatten(VecDeque<ValuePointer>),
+    /// Collect all upstream items then reverse them.
+    Rev,
+}
+
+/// Flat lazy iterator.
+///
+/// `source` is the leaf generator; `pipe` is the ordered list of adapter steps.
+/// All adapter functions (map, filter, skip, take, …) simply push a `PipeStep`
+/// onto `pipe` — O(1), no allocation of `Box<XIterator>`.
+///
+/// Because no `XIterator` owns another `XIterator` (only `PipeStep::Chain` and
+/// `PipeStep::Zip` box a secondary iterator, and those are typically shallow),
+/// the default `Clone` and `Drop` are sufficient — no custom recursive unwinding.
 #[derive(Debug, Clone)]
 pub struct XIterator {
-    pub(crate) source: IterSource,
+    pub(crate) source: BaseSource,
+    pub(crate) pipe: VecDeque<PipeStep>,
 }
 
 impl PartialEq for XIterator {
@@ -84,138 +102,182 @@ impl Opaque for XIterator {
 impl XIterator {
     #[inline(always)]
     pub fn from_dequeue(items: VecDeque<ValuePointer>) -> Self {
-        Self { source: IterSource::Dequeue { items } }
+        Self { source: BaseSource::Dequeue(items), pipe: VecDeque::new() }
     }
 
     #[inline(always)]
     pub fn once(value: ValueCell) -> Self {
-        Self { source: IterSource::Once(Some(ValuePointer::new(value))) }
+        Self { source: BaseSource::Once(Some(ValuePointer::new(value))), pipe: VecDeque::new() }
     }
 
     #[inline(always)]
     pub fn empty() -> Self {
-        Self { source: IterSource::Empty }
+        Self { source: BaseSource::Empty, pipe: VecDeque::new() }
     }
 
     /// Returns true if advancing this iterator requires executing a VM closure.
-    ///
-    /// Closure-based sources (Map, Filter, Unfold) need callbacks.
-    /// Wrapper adapters (Skip, Take, Chain, …) propagate the flag from their
-    /// inner iterators so callers never accidentally call `next_sync` on a
-    /// chain that contains a closure-based source.
     pub fn needs_callback(&self) -> bool {
-        match &self.source {
-            IterSource::Map { .. } | IterSource::Filter { .. } | IterSource::Unfold { .. } => true,
-            // Passthrough adapters: callback-needed if any inner source needs one.
-            IterSource::Skip { inner, .. } | IterSource::Take { inner, .. }
-            | IterSource::Enumerate { inner, .. } => inner.needs_callback(),
-            IterSource::Chain { first, second } => first.needs_callback() || second.needs_callback(),
-            IterSource::Zip { left, right } => left.needs_callback() || right.needs_callback(),
-            IterSource::Flatten { outer, current } => {
-                outer.needs_callback()
-                    || current.as_deref().map_or(false, |c| c.needs_callback())
-            }
-            // Rev already materialized all items; Array / Once / Empty never need a callback.
-            _ => false,
+        if matches!(self.source, BaseSource::Unfold { .. }) {
+            return true;
         }
+        self.pipe.iter().any(|step| match step {
+            PipeStep::Map(_) | PipeStep::Filter(_) | PipeStep::Rev => true,
+            PipeStep::Chain(c) => c.needs_callback(),
+            PipeStep::Zip(z) => z.needs_callback(),
+            // Flatten is lazy: it expands each item inline.
+            // It only needs a callback if the sub-iterators it will encounter need one,
+            // which cannot be known statically from the outer pipe alone — treat as safe
+            // (no callback needed at the pipe-step level; inner sources are checked at runtime).
+            PipeStep::Flatten(_) => false,
+            _ => false,
+        })
     }
 
-    /// Advance the iterator without invoking any VM closure.
+    /// Advance a fully-sync iterator (no closures anywhere in the pipe) without VM callbacks.
     ///
-    /// Calling this on a Map, Filter, or Unfold source (or any adapter that
-    /// wraps one) is a logic error and returns `Err`.
+    /// Mutates `self` in-place. Returns `Err` if any step requires a callback.
     pub fn next_sync(&mut self) -> Result<Option<ValuePointer>, EnvironmentError> {
-        match &mut self.source {
-            IterSource::Dequeue { items} => Ok(items.pop_front()),
-            IterSource::Once(slot) => Ok(slot.take()),
-            IterSource::Empty => Ok(None),
-            IterSource::Skip { inner, n } => {
-                while *n > 0 {
-                    match inner.next_sync()? {
-                        Some(_) => *n -= 1,
-                        None => {
-                            *n = 0;
-                            break;
-                        }
-                    }
-                }
-                inner.next_sync()
-            }
-            IterSource::Take { inner, remaining } => {
-                if *remaining == 0 {
-                    return Ok(None);
-                }
-                let item = inner.next_sync()?;
-                if item.is_some() {
-                    *remaining -= 1;
-                }
-                Ok(item)
-            }
-            IterSource::Chain { first, second } => {
-                match first.next_sync()? {
-                    Some(x) => Ok(Some(x)),
-                    None => second.next_sync(),
-                }
-            }
-            IterSource::Rev { items, index } => {
-                if *index < items.len() {
-                    let item = items[*index].clone();
-                    *index += 1;
-                    Ok(Some(item))
+        'outer: loop {
+            // Pull one item from the source.
+            let item = match &mut self.source {
+                BaseSource::Dequeue(d) => d.pop_front(),
+                BaseSource::Once(slot) => slot.take(),
+                BaseSource::Empty => None,
+                BaseSource::Unfold { .. } =>
+                    return Err(EnvironmentError::Static("next_sync called on closure-based iterator")),
+            };
+
+            // Walk the pipe, transforming / filtering items.
+            let mut current = item;
+            let mut pipe_idx = 0;
+            let mut needs_restart = false;
+
+            while pipe_idx < self.pipe.len() {
+                // Handle Flatten with pending inner elements *before* the borrow in the main match.
+                // If pending is non-empty we emit the next inner element, pushing the just-pulled
+                // outer item back to the source so it is seen again on the next outer iteration.
+                let pending_front = if let PipeStep::Flatten(p) = &mut self.pipe[pipe_idx] {
+                    p.pop_front()
                 } else {
-                    Ok(None)
-                }
-            }
-            IterSource::Enumerate { inner, counter } => {
-                match inner.next_sync()? {
-                    Some(item) => {
-                        let idx = *counter;
-                        *counter += 1;
-                        let pair = ValueCell::Object(vec![
-                            ValuePointer::new(Primitive::U32(idx).into()),
-                            item,
-                        ]);
-                        Ok(Some(ValuePointer::new(pair)))
-                    }
-                    None => Ok(None),
-                }
-            }
-            IterSource::Zip { left, right } => {
-                match (left.next_sync()?, right.next_sync()?) {
-                    (Some(l), Some(r)) => Ok(Some(ValuePointer::new(ValueCell::Object(vec![l, r])))),
-                    _ => Ok(None),
-                }
-            }
-            IterSource::Flatten { outer, current } => {
-                loop {
-                    if let Some(inner) = current {
-                        match inner.next_sync()? {
-                            Some(x) => return Ok(Some(x)),
-                            None => {
-                                *current = None;
+                    None
+                };
+
+                if let Some(inner_item) = pending_front {
+                    if let Some(outer_item) = current.take() {
+                        match &mut self.source {
+                            BaseSource::Dequeue(d) => d.push_front(outer_item),
+                            BaseSource::Once(slot) if slot.is_none() => *slot = Some(outer_item),
+                            _ => {
+                                let old = std::mem::replace(&mut self.source, BaseSource::Empty);
+                                let mut d = VecDeque::new();
+                                d.push_front(outer_item);
+                                if let BaseSource::Dequeue(rest) = old {
+                                    d.extend(rest);
+                                }
+                                self.source = BaseSource::Dequeue(d);
                             }
                         }
                     }
-                    match outer.next_sync()? {
-                        None => return Ok(None),
-                        Some(ptr) => {
-                            let cell = ptr.to_owned();
-                            let new_inner = match cell {
-                                ValueCell::Object(v) => XIterator::from_dequeue(v.into()),
-                                ValueCell::Primitive(Primitive::Opaque(w)) => {
-                                    w.into_inner::<XIterator>()
-                                        .map_err(|_| EnvironmentError::Static("flatten: expected Iterator or array"))?
-                                }
-                                _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
-                            };
-                            *current = Some(Box::new(new_inner));
+                    current = Some(inner_item);
+                    pipe_idx += 1;
+                    continue;
+                }
+
+                match &mut self.pipe[pipe_idx] {
+                    PipeStep::Skip(n) => {
+                        if *n > 0 {
+                            // item is consumed; loop to pull the next one from source
+                            if current.is_some() {
+                                *n -= 1;
+                                // restart from source
+                                continue 'outer;
+                            }
+                            // exhausted before skip finished → propagate None
+                        }
+                        // skip satisfied; transparent for this and all future items
+                    }
+                    PipeStep::Take(remaining) => {
+                        if current.is_none() {
+                            // nothing more
+                        } else if *remaining == 0 {
+                            current = None;
+                        } else {
+                            *remaining -= 1;
                         }
                     }
+                    PipeStep::Enumerate(counter) => {
+                        if let Some(item) = current.take() {
+                            let idx = *counter;
+                            *counter += 1;
+                            let pair = ValueCell::Object(vec![
+                                Primitive::U32(idx).into(),
+                                item,
+                            ]);
+                            current = Some(ValuePointer::new(pair));
+                        }
+                    }
+                    PipeStep::Chain(next_iter) => {
+                        if current.is_none() {
+                            // self's source exhausted; pull directly from the Chain's iterator
+                            // and short-circuit the rest of the pipe (chain is the last logical adapter
+                            // that hands control off to a new source).
+                            current = next_iter.next_sync()?; 
+                        }
+                    }
+                    PipeStep::Zip(right) => {
+                        match current.take() {
+                            None => {
+                                current = None;
+                            }
+                            Some(l) => match right.next_sync()? {
+                                None => {
+                                    current = None;
+                                }
+                                Some(r) => {
+                                    current = Some(ValuePointer::new(ValueCell::Object(vec![l, r])));
+                                }
+                            }
+                        }
+                    }
+                    PipeStep::Flatten(pending) => {
+                        // pending is empty here (non-empty case handled above with push-back).
+                        // Expand the current outer item into `pending`, yield the first element.
+                        if let Some(ptr) = current.take() {
+                            match ptr.to_owned() {
+                                ValueCell::Object(elements) => {
+                                    // faster to take the elements and transform it than remove(0)
+                                    *pending = elements.into();
+                                    current = pending.pop_front();
+                                }
+                                ValueCell::Primitive(Primitive::Opaque(mut w)) => {
+                                    let inner = w.as_mut::<XIterator>()
+                                        .map_err(|_| EnvironmentError::Static("flatten: expected array or Iterator"))?;
+
+                                    current = inner.next_sync()?;
+                                }
+                                _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
+                            }
+
+                            // If the inner collection was empty, restart from the outer source.
+                            if current.is_none() {
+                                needs_restart = true;
+                                break;
+                            }
+                        }
+                        // current is None: nothing to flatten, propagate None through remaining steps.
+                    }
+                    PipeStep::Map(_) | PipeStep::Filter(_) | PipeStep::Rev => {
+                        return Err(EnvironmentError::Static("next_sync called on closure-based pipe step"));
+                    }
                 }
+                pipe_idx += 1;
             }
-            IterSource::Map { .. } | IterSource::Filter { .. } | IterSource::Unfold { .. } => {
-                Err(EnvironmentError::Static("next_sync called on closure-based iterator"))
+
+            if needs_restart {
+                continue 'outer;
             }
+
+            return Ok(current);
         }
     }
 }
@@ -224,12 +286,4 @@ impl XIterator {
 #[inline(always)]
 pub(crate) fn wrap_iter(iter: XIterator) -> StackValue {
     ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(iter))).into()
-}
-
-/// Unwraps an opaque `StackValue` back into an owned `XIterator`.
-#[inline(always)]
-pub(crate) fn take_iter(sv: StackValue) -> Result<XIterator, EnvironmentError> {
-    sv.into_owned()
-        .into_opaque_type::<XIterator>()
-        .map_err(|_| EnvironmentError::InvalidType)
 }
