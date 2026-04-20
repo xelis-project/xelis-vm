@@ -4,7 +4,7 @@ mod pointer;
 
 use std::{
     borrow::Cow,
-    fmt,
+    fmt::{self, Write},
     hash::{Hash, Hasher},
     mem
 };
@@ -1002,19 +1002,19 @@ impl ValueCell {
                         stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
                     }
                 },
-                ValueCellRef::Pointer(pointer) => match pointer.as_ref() {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
+                ValueCellRef::Pointer(pointer) => match pointer.unwrap() {
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v)),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
-                        stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
+                        stack.extend(values.into_iter().map(ValueCellRef::Pointer));
                     },
                     Self::Bytes(bytes) => {
-                        queue.push(QueueItem::Bytes(bytes.clone()));
+                        queue.push(QueueItem::Bytes(bytes));
                     }
                     Self::Map(map) => {
                         queue.push(QueueItem::Map { len: map.len() });
                         stack.reserve(map.len() * 2);
-                        stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())]));
+                        stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
                     }
                 },
                 _ => {}
@@ -1146,11 +1146,9 @@ impl fmt::Display for ValueCell {
                 FormatItem::Value(cell_ref) => {
                     match cell_ref.value() {
                         Self::Primitive(v) => {
-                            use std::fmt::Write;
                             write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
                         }
                         Self::Bytes(bytes) => {
-                            use std::fmt::Write;
                             write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
                         }
                         Self::Object(values) => {

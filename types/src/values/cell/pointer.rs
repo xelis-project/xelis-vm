@@ -63,6 +63,14 @@ impl ValuePointer {
     }
 
     #[inline(always)]
+    pub fn unwrap(self) -> ValueCell {
+        match Arc::try_unwrap(self.0) {
+            Ok(cell) => cell.into_inner(),
+            Err(e) => Self(e).as_ref().clone_ref(),
+        }
+    }
+
+    #[inline(always)]
     pub fn into_owned(self) -> ValueCell {
         match Arc::try_unwrap(self.0) {
             Ok(cell) => cell.into_inner().references_free(),
