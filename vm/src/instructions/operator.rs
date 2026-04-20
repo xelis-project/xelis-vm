@@ -7,7 +7,6 @@ use crate::{
     VMContext,
     VMError
 };
-use log::trace;
 use xelis_types::{Primitive, ValueCell, Type};
 
 use super::InstructionResult;
@@ -236,12 +235,6 @@ pub fn assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
 
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
-
-    // Fast path: if both values are the same pointer, we don't need to do anything
-    if left.ptr_eq(&right) {
-        trace!("asigning the same value, skipping");
-        return Ok(InstructionResult::Nothing)
-    }
 
     let owned = right.into_owned();
 
