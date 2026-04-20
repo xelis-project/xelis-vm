@@ -118,7 +118,7 @@ impl Module {
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<ValueCell> {
-        self.constants.get_index(index).map(ValueCell::deep_clone)
+        self.constants.get_index(index).cloned()
     }
 
     // Get the chunks declared in the module

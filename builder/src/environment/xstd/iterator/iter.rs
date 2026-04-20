@@ -18,13 +18,14 @@ use xelis_types::{
 };
 
 /// Leaf generator: produces items without consuming another `XIterator`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum BaseSource {
     /// Iterates over a pre-collected dequeue of values.
     Dequeue(VecDeque<ValuePointer>),
     /// Yields exactly one value, then is exhausted.
     Once(Option<ValuePointer>),
     /// Always empty.
+    #[default]
     Empty,
     /// Generates items via `closure(state) -> optional<(item, next_state)>`.
     Unfold { closure: StackValue, state: Option<StackValue> },

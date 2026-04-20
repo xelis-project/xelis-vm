@@ -800,16 +800,13 @@ fn promote_chain_to_source(iter: &mut XIterator) -> bool {
         return false;
     };
 
-    if let Some(PipeStep::Chain(chain_box)) = iter.pipe.remove(pos) {
-        // Use ManuallyDrop to move fields out of the boxed iterator
-        // without triggering XIterator's custom Drop.
-        let mut chain = std::mem::ManuallyDrop::new(*chain_box);
-        // Drain the outer steps that come after the removed Chain position.
+    if let Some(PipeStep::Chain(chain)) = iter.pipe.remove(pos) {
+        let mut chain = *chain;
         let after: VecDeque<PipeStep> = iter.pipe.drain(pos..).collect();
         // New pipe = chain's own steps + outer steps that followed Chain.
         let mut new_pipe = std::mem::take(&mut chain.pipe);
         new_pipe.extend(after);
-        iter.source = std::mem::replace(&mut chain.source, BaseSource::Empty);
+        iter.source = std::mem::take(&mut chain.source);
         iter.depth = chain.depth;
         iter.pipe = new_pipe;
     }
@@ -1162,7 +1159,7 @@ fn lazy_next_unfold<M: 'static>(
             write_back_iter(write_back, XIterator::empty())?;
             return Ok(SysCallResult::Return(Primitive::Null.into()));
         }
-        _ => unreachable!("lazy_next_unfold called on non-Unfold source"),
+        _ => return Err(EnvironmentError::Static("lazy_next_unfold called on non-Unfold source")),
     };
 
     struct LocalState {
