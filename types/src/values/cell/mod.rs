@@ -1,6 +1,7 @@
 mod stack_value;
 mod serde_map;
 mod pointer;
+mod constant_cell;
 
 use std::{
     borrow::Cow,
@@ -24,6 +25,7 @@ use super::{Constant, Primitive, ValueError};
 
 pub use stack_value::*;
 pub use pointer::*;
+pub use constant_cell::*;
 
 pub type CellArray = Vec<ValuePointer>;
 pub type CellMap = IndexMap<ValueCell, ValuePointer>;

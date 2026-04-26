@@ -598,6 +598,7 @@ impl From<OpaqueWrapper> for Constant {
         Self::Primitive(Primitive::Opaque(value))
     }
 }
+
 #[cfg(test)]
 mod tests {
     use std::hash::DefaultHasher;

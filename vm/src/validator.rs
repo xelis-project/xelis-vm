@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 use xelis_environment::Environment;
-use xelis_types::{Primitive, ValueCell, ValueCellRef, ValueError};
+use xelis_types::{ConstantValueCell, Primitive, ValueCell, ValueError};
 use xelis_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
@@ -71,67 +71,62 @@ impl<'a, M> ModuleValidator<'a, M> {
         Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 * 1024 }
     }
 
-    // Verify a constant and return the memory usage
-    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError> {
-        let mut stack = vec![(ValueCellRef::Ref(constant), 0)];
+    // Verify a constant cell natively, without converting to ValueCell
+    pub fn verify_constant(&self, constant: &ConstantValueCell) -> Result<(), ValidatorError> {
+        let mut stack: Vec<(&ConstantValueCell, usize)> = vec![(constant, 0)];
 
-        while let Some((value, depth)) = stack.pop() {
+        while let Some((cell, depth)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
             }
-
-            match value.value() {
-                ValueCell::Object(elements) => {
+            match cell {
+                ConstantValueCell::Object(elements) => {
                     if elements.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
-
-                    let depth = depth + 1;
-                    stack.extend(elements.iter().map(|v| (ValueCellRef::Pointer(v.clone()), depth)));
-                },
-                ValueCell::Bytes(values) => {
+                    let next = depth + 1;
+                    stack.extend(elements.iter().map(|v| (v, next)));
+                }
+                ConstantValueCell::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
                 }
-                ValueCell::Map(map) => {
+                ConstantValueCell::Map(map) => {
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
-
-
-                    let depth = depth + 1;
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone_ref()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
-                    );
-                },
-                ValueCell::Primitive(v) => match v {
+                    let next = depth + 1;
+                    for (k, v) in map.iter() {
+                        stack.push((v, next));
+                        stack.push((k, next));
+                    }
+                }
+                ConstantValueCell::Primitive(v) => match v {
                     Primitive::Range(range) => {
                         if !range.0.is_number() || !range.1.is_number() {
                             return Err(ValidatorError::InvalidRange);
                         }
-    
                         let left_type = range.0.get_type()?;
                         if left_type != range.1.get_type()? {
                             return Err(ValidatorError::InvalidRange);
                         }
-                    },
+                    }
                     Primitive::String(str) => {
                         if str.len() > u32::MAX as usize {
                             return Err(ValidatorError::StringTooBig);
                         }
-                    },
+                    }
                     Primitive::Opaque(opaque) => {
                         if !self.environment.get_opaques()
                             .get(&opaque.get_type_id())
                             .copied()
-                            .unwrap_or(false) {
+                            .unwrap_or(false)
+                        {
                             return Err(ValidatorError::InvalidOpaque);
                         }
-
                         opaque.validate()?;
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -141,10 +136,10 @@ impl<'a, M> ModuleValidator<'a, M> {
     }
 
     // Verify all the declared constants in the module
-    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b ConstantValueCell>>(&self, constants: I) -> Result<(), ValidatorError> {
         let mut memory_usage = 0;
         for c in constants {
-            self.verify_constant(&c)?;
+            self.verify_constant(c)?;
 
             memory_usage += c.calculate_memory_usage(self.constant_max_memory)?;
             if memory_usage > self.constant_max_memory {
