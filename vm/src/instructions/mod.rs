@@ -34,6 +34,7 @@ macro_rules! debug {
 
 /// A macro to log info messages
 /// It will only log if the feature "logging" is enabled
+#[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
         #[cfg(feature = "logging")]

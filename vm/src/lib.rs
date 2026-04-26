@@ -11,7 +11,6 @@ mod tests;
 use std::collections::VecDeque;
 
 use stack::Stack;
-use log::trace;
 
 // Re-export the necessary types
 pub use xelis_environment::*;
