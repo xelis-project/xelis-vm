@@ -88,9 +88,7 @@ impl<'a> Lexer<'a> {
 
     // advance by n characters
     fn advance_by(&mut self, n: usize) -> Result<(), LexerError> {
-        let drain = self.chars.drain(0..n);
-
-        if drain.len() != n {
+        if self.chars.len() < n {
             return Err(LexerError {
                 line: self.line,
                 column: self.column,
@@ -98,7 +96,11 @@ impl<'a> Lexer<'a> {
             });
         }
 
-        self.pos += n;
+        let byte_len: usize = self.chars.drain(0..n)
+            .map(|c| c.len_utf8())
+            .sum();
+
+        self.pos += byte_len;
         self.column += n;
 
         Ok(())
@@ -117,7 +119,7 @@ impl<'a> Lexer<'a> {
     // get the next character
     fn next_char(&mut self) -> Option<char> {
         self.chars.pop_front().map(|c| {
-            self.pos += 1;
+            self.pos += c.len_utf8();
             self.column += 1;
             c
         })
@@ -135,7 +137,7 @@ impl<'a> Lexer<'a> {
 
     // push a character back to the list
     fn push_back(&mut self, c: char) {
-        self.pos -= 1;
+        self.pos -= c.len_utf8();
         self.column -= 1;
         self.chars.push_front(c);
     }
@@ -757,6 +759,19 @@ mod tests {
     #[test]
     fn test_comment() {
         let code = "// This is a comment\nlet a = 10;";
+        let lexer = Lexer::new(code);
+        let tokens = lexer.get().unwrap();
+        assert_eq!(tokens, vec![
+            Token::Let,
+            Token::Identifier("a"),
+            Token::OperatorAssign,
+            Token::Value(Literal::Number(10))
+        ]);
+    }
+
+    #[test]
+    fn test_comment_non_ascii() {
+        let code = "// This is a comment→\nlet a = 10;";
         let lexer = Lexer::new(code);
         let tokens = lexer.get().unwrap();
         assert_eq!(tokens, vec![
