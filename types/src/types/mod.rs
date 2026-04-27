@@ -378,13 +378,24 @@ impl Type {
                 let new_generics = opaque.generics().iter()
                     .enumerate()
                     .map(|(i, t)| {
-                        // For each generic slot i, use the i-th generic of the replacement Opaque
-                        // (if it is the same Opaque type) as the "next" replacement, so that
-                        // T(0) can be resolved from the concrete element rather than the
-                        // whole Iterator value.
+                        // For each generic slot i, pick the replacement sub-type to pass down.
+                        //
+                        // When `t` is a bare `T(n)` and the replacement is the same Opaque kind,
+                        // use the *n*-th generic of the replacement (not the positional *i*-th).
+                        // This is critical for functions like `zip` whose parameter type is
+                        // `Iterator<T(1)>`: T(1) must resolve from the 1st generic of the source
+                        // Opaque (or stay unresolved when it is out of range), not accidentally
+                        // inherit the 0th generic (`string`) via the leaf-type fallback.
+                        //
+                        // For compound inner types like `Optional<T(0)>`, use the positional i-th
+                        // generic so the recursion can drill down correctly.
                         let next = match replacement {
                             Some(Type::Opaque(rep)) if rep.id() == opaque.id() => {
-                                rep.generics().get(i).map(|g| g as &Type)
+                                if let Type::T(Some(n)) = t {
+                                    rep.generics().get(*n as usize)
+                                } else {
+                                    rep.generics().get(i)
+                                }
                             },
                             _ => replacement,
                         };
@@ -505,6 +516,42 @@ impl Type {
         }
     }
 
+    /// Used exclusively in `is_compatible_with` when comparing the generic arguments
+    /// of two Opaque types with the same id (e.g. both Iterator but with different
+    /// inner types).
+    ///
+    /// When `self` is an iterable Opaque (e.g. `Iterator<T(0)>`) and `other` is an
+    /// iterable container (`Array<T>`, `Range<T>`, or another iterable Opaque) whose
+    /// element type is compatible, return `true`.  This enables method dispatch of
+    /// functions registered on `Iterator<Iterator<T>>` to also match
+    /// `Iterator<Array<T>>` — without broadening parameter-passing compatibility.
+    fn is_iterable_container_compatible_with(&self, other: &Type) -> bool {
+        let Type::Opaque(self_op) = self else {
+            return false
+        };
+        if !self_op.is_iterable() {
+            return false
+        }
+
+        // The Opaque's first generic is the expected element type.
+        let Some(expected_elem) = self_op.generics().first() else {
+            return false
+        };
+
+        match other {
+            Type::Array(inner) | Type::Range(inner) => {
+                inner.is_compatible_with(expected_elem) || expected_elem.is_generic()
+            }
+            Type::Opaque(other_op) if other_op.is_iterable() => {
+                let Some(actual_elem) = other_op.generics().first() else {
+                    return false
+                };
+                actual_elem.is_compatible_with(expected_elem) || expected_elem.is_generic()
+            }
+            _ => false,
+        }
+    }
+
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         if other.is_generic() || self.is_generic() {
@@ -542,7 +589,7 @@ impl Type {
                     // Both have generics: each pair must be compatible
                     a.generics().len() == b.generics().len()
                         && a.generics().iter().zip(b.generics().iter())
-                            .all(|(ga, gb)| gb.is_compatible_with(ga))
+                            .all(|(ga, gb)| gb.is_compatible_with(ga) || gb.is_iterable_container_compatible_with(ga))
                 },
                 _ => false
             },

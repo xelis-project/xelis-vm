@@ -5,7 +5,7 @@ mod fns;
 pub use iter::{BaseSource, XIterator};
 
 use xelis_environment::FunctionHandler;
-use xelis_types::{ClosureType, Type};
+use xelis_types::{ClosureType, OpaqueTypeTrait, Type};
 use xelis_types::opaque::OpaqueType;
 
 use crate::EnvironmentBuilder;
@@ -13,7 +13,7 @@ use crate::EnvironmentBuilder;
 use fns::*;
 
 pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
-    let iter_template = env.register_generic_opaque::<XIterator>("Iterator", false, 1);
+    let iter_template = env.register_generic_opaque_with_traits::<XIterator>("Iterator", false, 1, &[OpaqueTypeTrait::Iterable]);
     let iter_t0 = || Type::Opaque(iter_template.with_generics(vec![Type::T(Some(0))]));
 
     env.register_static_function(

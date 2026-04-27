@@ -3,15 +3,28 @@ pub mod traits;
 use std::{
     any::TypeId,
     borrow::Cow,
+    collections::HashSet,
     fmt,
     hash::{Hash, Hasher}
 };
 use schemars::*;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
 use crate::{IdentifierType, ValueError};
 use traits::*;
 use super::Type;
+
+/// Type-level markers that can be declared on an [`OpaqueType`] descriptor.
+/// These drive static type-checking behaviour (method-dispatch compatibility,
+/// etc.) and are **not** related to the runtime `dyn Opaque` value traits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpaqueTypeTrait {
+    /// The type is an iterable container (e.g. `Iterator<T>`).  Any
+    /// `Array<T>`, `Range<T>`, or other `Iterable` opaque with a compatible
+    /// element type may substitute for it during method-dispatch matching.
+    Iterable,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OpaqueTypeInner {
@@ -24,6 +37,9 @@ struct OpaqueTypeInner {
     /// Concrete generic parameters when instantiated (empty for template)
     #[serde(default)]
     generics: Vec<Type>,
+    /// Type-level trait markers declared on this opaque type descriptor.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    traits: HashSet<OpaqueTypeTrait>,
 }
 
 impl PartialEq for OpaqueTypeInner {
@@ -55,6 +71,7 @@ impl OpaqueType {
             allow_external_input,
             generics_count: 0,
             generics: Vec::new(),
+            traits: HashSet::new(),
         })
     }
 
@@ -66,6 +83,7 @@ impl OpaqueType {
             allow_external_input,
             generics_count,
             generics: Vec::new(),
+            traits: HashSet::new(),
         })
     }
 
@@ -77,7 +95,25 @@ impl OpaqueType {
             allow_external_input: self.0.allow_external_input,
             generics_count: self.0.generics_count,
             generics,
+            traits: self.0.traits.clone(),
         })
+    }
+
+    /// Builder: add a type-level trait marker to this opaque type descriptor.
+    /// Duplicate entries are silently ignored.
+    pub fn with_trait(mut self, t: OpaqueTypeTrait) -> Self {
+        self.0.traits.insert(t);
+        self
+    }
+
+    /// Check whether this opaque type has the given type-level trait marker.
+    pub fn has_trait(&self, t: OpaqueTypeTrait) -> bool {
+        self.0.traits.contains(&t)
+    }
+
+    /// Convenience: whether this type carries the [`OpaqueTypeTrait::Iterable`] marker.
+    pub fn is_iterable(&self) -> bool {
+        self.has_trait(OpaqueTypeTrait::Iterable)
     }
 
     pub fn id(&self) -> IdentifierType {

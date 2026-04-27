@@ -1,7 +1,7 @@
 pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
-use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, StructType, Type};
+use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, OpaqueTypeTrait, StructType, Type};
 use xelis_environment::{Environment, FunctionHandler, NativeFunction};
 use crate::{
     ConstFnCall,
@@ -123,8 +123,21 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Register a generic opaque type (accepts type parameters, e.g. Iterator<T>)
     // Panic if the opaque name is already used
     pub fn register_generic_opaque<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> OpaqueType {
+        self.register_generic_opaque_with_traits::<T>(name, allow_external_input, generics_count, &[])
+    }
+
+    /// Register a generic opaque type with the given type-level trait markers.
+    /// Panic if the opaque name is already used.
+    pub fn register_generic_opaque_with_traits<T: Opaque>(
+        &mut self,
+        name: &'static str,
+        allow_external_input: bool,
+        generics_count: u8,
+        traits: &[OpaqueTypeTrait],
+    ) -> OpaqueType {
         let ty = TypeId::of::<T>();
-        let opaque = self.opaque_manager.build_generic::<T>(name, allow_external_input, generics_count)
+        let opaque = self.opaque_manager
+            .build_generic_with_traits::<T>(name, allow_external_input, generics_count, traits)
             .expect("Unique opaque name");
         self.env.add_opaque(ty, allow_external_input);
         opaque

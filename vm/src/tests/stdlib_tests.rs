@@ -2566,6 +2566,27 @@ fn test_iter_zip_different_lengths() {
 }
 
 #[test]
+fn test_iter_zip_heterogeneous() {
+    // zip of Iterator<string> with Iterator<u64>: verifies that T(1) in the
+    // parameter type `Iterator<T(1)>` is not incorrectly resolved to `string`
+    // (the T(0) of the receiver type) during type-checking.
+    let code = r#"
+        entry main() {
+            let names: string[] = ["alice", "bob", "carol"];
+            let scores: u64[] = [10u64, 20u64, 30u64];
+            let paired: (string, u64)[] = names.iter().zip(scores.iter()).collect();
+            assert(paired.len() == 3);
+            assert(paired[0].0 == "alice");
+            assert(paired[0].1 == 10u64);
+            assert(paired[2].0 == "carol");
+            assert(paired[2].1 == 30u64);
+            return paired.len() as u64
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
 fn test_iter_complex_lazy_pipeline() {
     // unfold → filter → map → collect: verifies the full lazy collect path.
     let code = r#"
