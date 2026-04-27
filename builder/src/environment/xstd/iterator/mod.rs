@@ -139,15 +139,6 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
 
     env.register_native_function(
         "flatten",
-        Some(Type::Opaque(iter_template.with_generics(vec![Type::Array(Box::new(Type::T(Some(0))))]))),
-        vec![],
-        FunctionHandler::Sync(iter_flatten),
-        10,
-        Some(iter_t0())
-    );
-
-    env.register_native_function(
-        "flatten",
         Some(Type::Opaque(iter_template.with_generics(vec![iter_t0()]))),
         vec![],
         FunctionHandler::Sync(iter_flatten),
