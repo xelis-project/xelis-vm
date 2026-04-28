@@ -1,7 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, ser::SerializeSeq};
-use xelis_types::{TypePacked, ConstantValueCell, ValueCell};
+use xelis_types::{TypePacked, ValueCell};
 
 use super::{Chunk, Access};
 
@@ -66,7 +66,7 @@ where
 pub struct Module {
     // Set of constants used by the program
     #[serde(default)]
-    constants: IndexSet<ConstantValueCell>,
+    constants: IndexSet<ValueCell>,
     // Available chunks
     #[serde(default)]
     chunks: Vec<ModuleChunk>,
@@ -92,7 +92,7 @@ impl Module {
 
     // Create a new module with all needed data
     pub fn with(
-        constants: IndexSet<ConstantValueCell>,
+        constants: IndexSet<ValueCell>,
         chunks: Vec<ModuleChunk>,
         hook_chunk_ids: IndexMap<u8, usize>
     ) -> Self {
@@ -105,20 +105,20 @@ impl Module {
 
     // Get the constants declared in the module
     #[inline]
-    pub fn constants(&self) -> &IndexSet<ConstantValueCell> {
+    pub fn constants(&self) -> &IndexSet<ValueCell> {
         &self.constants
     }
 
     // Add a constant to the module
     #[inline]
-    pub fn add_constant(&mut self, value: impl Into<ConstantValueCell>) -> usize {
+    pub fn add_constant(&mut self, value: impl Into<ValueCell>) -> usize {
         self.constants.insert_full(value.into()).0
     }
 
     // Get a constant at a specific index
     #[inline]
     pub fn get_constant_at(&self, index: usize) -> Option<ValueCell> {
-        self.constants.get_index(index).map(ValueCell::from)
+        self.constants.get_index(index).cloned()
     }
 
     // Get the chunks declared in the module
