@@ -1810,7 +1810,8 @@ impl<'a, M> Parser<'a, M> {
         if self.peek_is(Token::ReturnType) {
             self.expect_token(Token::ReturnType)?;
             let return_type = self.read_type()?;
-            if Some(&return_type) != ty.return_type() {
+            // Accept if the expected return type is absent or compatible (e.g. a generic T(n)).
+            if ty.return_type().is_some_and( |expected| !expected.is_compatible_with(&return_type)) {
                 return Err(err!(self, ParserErrorKind::ClosureReturnTypeMismatch))
             }
         }
@@ -1891,16 +1892,38 @@ impl<'a, M> Parser<'a, M> {
         }
 
         // Optional explicit return-type annotation: `-> Type`
-        let return_type = if self.peek_is(Token::ReturnType) {
+        let explicit_return_type = if self.peek_is(Token::ReturnType) {
             self.expect_token(Token::ReturnType)?;
             Some(self.read_type()?)
         } else {
             None
         };
 
+        // Use Any as body hint when no annotation was given so that `return <expr>`
+        // is always consumed — enabling return type inference from the body.
+        let body_hint = explicit_return_type.as_ref().unwrap_or(&Type::Any);
         self.expect_token(Token::BraceOpen)?;
-        let statements = self.read_body(context, return_type.as_ref())?;
+        let statements = self.read_body(context, Some(body_hint))?;
         let max = context.max_variables_count() - current;
+
+        // When there is no explicit annotation, scan the body for the first
+        // `return <expr>` to infer the actual return type.  This must happen
+        // before `end_scope()` so that closure params are still in context.
+        let return_type = if explicit_return_type.is_none() {
+            'infer: {
+                for stmt in &statements {
+                    if let Statement::Return(Some(expr)) = stmt {
+                        if let Ok(Some(actual)) = self.get_type_from_expression_internal(None, expr, context) {
+                            break 'infer Some(actual.into_owned());
+                        }
+                    }
+                }
+                None
+            }
+        } else {
+            explicit_return_type
+        };
+
         context.end_scope();
 
         if return_type.is_some() && !Self::ends_with_return(&statements)? {
@@ -7257,7 +7280,7 @@ mod tests {
 
     #[test]
     fn test_closure_inferred_return_type_from_body() {
-        // let f = |a: u64| -> u64 { return a }  <- return type inferred as u64 from body
+        // let f = |a: u64| { return a }  <- no explicit annotation, return type inferred as u64 from body
         let tokens = vec![
             Token::Let,
             Token::Identifier("f"),
@@ -7267,8 +7290,6 @@ mod tests {
             Token::Colon,
             Token::Number(NumberType::U64),
             Token::OperatorBitwiseOr, // |
-            Token::ReturnType,
-            Token::Number(NumberType::U64),
             Token::BraceOpen,
             Token::Return,
             Token::Identifier("a"),
@@ -7319,5 +7340,73 @@ mod tests {
             matches!(result.unwrap_err().kind, ParserErrorKind::ClosureReturnTypeMismatch),
             "Expected ClosureReturnTypeMismatch error"
         );
+    }
+
+    #[test]
+    fn test_closure_no_return_type_rejects_return_expr() {
+        // let f: closure() = || { return 0 }
+        // closure() declares no return type, so `return 0` must be rejected
+        let tokens = VecDeque::from(vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ]);
+
+        let env = EnvironmentBuilder::<()>::new();
+        let mut parser = Parser::new(tokens, &env);
+        let mut context = Context::new();
+        context.begin_scope();
+        let result = parser.read_statements(&mut context, None);
+        assert!(
+            matches!(result.unwrap_err().kind, ParserErrorKind::NoCodeAfterReturn),
+            "Expected NoCodeAfterReturn error: closure() has no return type so return <expr> is invalid"
+        );
+    }
+
+    #[test]
+    fn test_closure_explicit_return_type_for_generic() {
+        // A function expecting closure(u64) -> T(1) (generic return) should accept
+        // a closure literal annotated with `-> u64`.
+        let mut env = EnvironmentBuilder::<()>::default();
+        env.register_native_function(
+            "transform",
+            None,
+            vec![("f", Type::Closure(ClosureType::new(vec![Type::U64], Some(Type::T(Some(1))))))],
+            FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+            0,
+            None,
+        );
+
+        // transform(|v: u64| -> u64 { return v * 2 })
+        let tokens = vec![
+            Token::Identifier("transform"),
+            Token::ParenthesisOpen,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("v"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("v"),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(2)),
+            Token::BraceClose,
+            Token::ParenthesisClose,
+        ];
+
+        let statements = test_parser_statement_with(tokens, vec![], &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }
