@@ -16,6 +16,8 @@ pub struct ParserError<'a> {
 
 #[derive(Debug, Error)]
 pub enum ParserErrorKind<'a> {
+    #[error("closure return type mismatch")]
+    ClosureReturnTypeMismatch,
     #[error("invalid parameter count for function '{name}'")]
     InvalidParameterCount {
         name: &'a str,

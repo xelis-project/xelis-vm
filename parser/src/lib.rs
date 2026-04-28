@@ -1807,6 +1807,14 @@ impl<'a, M> Parser<'a, M> {
             new_params.push(Parameter::new(id, param_type));
         }
 
+        if self.peek_is(Token::ReturnType) {
+            self.expect_token(Token::ReturnType)?;
+            let return_type = self.read_type()?;
+            if Some(&return_type) != ty.return_type() {
+                return Err(err!(self, ParserErrorKind::ClosureReturnTypeMismatch))
+            }
+        }
+
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, ty.return_type())?;
         let max = context.max_variables_count() - current;
@@ -1849,6 +1857,68 @@ impl<'a, M> Parser<'a, M> {
         ));
 
         // Inject the closure
+        self.functions.push(closure);
+        let id = self.global_mapper.functions_mut()
+            .register_closure()
+            .map_err(|e| err!(self, e.into()))?;
+
+        Ok(Expression::FunctionPointer(id, true))
+    }
+
+    // Read a closure whose type is inferred purely from the inline syntax.
+    // `empty_params` is true when the opening token was `||` (Token::OperatorOr),
+    // false when it was `|` (Token::OperatorBitwiseOr).
+    fn read_closure_inferred(&mut self, empty_params: bool, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read inferred closure, empty_params: {}", empty_params);
+        let params = if empty_params {
+            Vec::new()
+        } else {
+            let parameters = self.read_parameters()?;
+            self.expect_token(Token::OperatorBitwiseOr)?;
+            parameters
+        };
+
+        let current = context.max_variables_count();
+        let variables_count = context.variables_count();
+        context.begin_scope();
+
+        let mut new_params = Vec::with_capacity(params.len());
+        for (name, param_type) in &params {
+            let id = context.register_variable(name, param_type.clone())
+                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
+            trace!("Registered inferred closure param: {} with id {}", name, id);
+            new_params.push(Parameter::new(id, param_type.clone()));
+        }
+
+        // Optional explicit return-type annotation: `-> Type`
+        let return_type = if self.peek_is(Token::ReturnType) {
+            self.expect_token(Token::ReturnType)?;
+            Some(self.read_type()?)
+        } else {
+            None
+        };
+
+        self.expect_token(Token::BraceOpen)?;
+        let statements = self.read_body(context, return_type.as_ref())?;
+        let max = context.max_variables_count() - current;
+        context.end_scope();
+
+        if return_type.is_some() && !Self::ends_with_return(&statements)? {
+            return Err(err!(self, ParserErrorKind::NoReturnFound))
+        }
+
+        trace!("inferred closure statements: {:?}", statements);
+        let closure = FunctionType::Declared(DeclaredFunction::new(
+            FunctionVisibility::Anonymous,
+            None,
+            None,
+            new_params,
+            statements,
+            return_type,
+            max,
+            variables_count,
+        ));
+
         self.functions.push(closure);
         let id = self.global_mapper.functions_mut()
             .register_closure()
@@ -2583,6 +2653,9 @@ impl<'a, M> Parser<'a, M> {
                             .map_err(|_| err!(self, ParserErrorKind::FunctionNotFound))?;
 
                         Expression::FunctionPointer(f, false)
+                    } else if !required_operator && matches!(token, Token::OperatorOr | Token::OperatorBitwiseOr) {
+                        // Inferred closure: `|| { ... }` or `|params| { ... }`
+                        self.read_closure_inferred(token == Token::OperatorOr, context)?
                     } else if token == Token::Not {
                         // Handle ! as a prefix unary operator
                         // We don't toggle required_operator here because we're still expecting a value after the !
@@ -6924,5 +6997,327 @@ mod tests {
         let (program, _mapper) = parser.parse().unwrap();
         
         assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_closure_no_params_no_return() {
+        // let f: closure() = || {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_with_single_param_no_return() {
+        // let f: closure(u64) = |a: u64| {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![Type::U64], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_no_params_with_return() {
+        // let f: closure() -> u64 = || -> u64 { return 0 }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_with_multiple_params_and_return() {
+        // let f: closure(u64, bool) -> bool = |a: u64, b: bool| -> bool { return b }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Bool,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Bool,
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Bool,
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("b"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![Type::U64, Type::Bool], Some(Type::Bool))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_no_params_no_return() {
+        // let f = || {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_with_single_param_no_return() {
+        // let f = |a: u64| {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_no_params_with_explicit_return() {
+        // let f = || -> u64 { return 0 }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_with_params_and_explicit_return() {
+        // let f = |a: u64, b: bool| -> bool { return b }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Bool,
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("b"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64, Type::Bool], Some(Type::Bool))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_return_type_from_body() {
+        // let f = |a: u64| -> u64 { return a }  <- return type inferred as u64 from body
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("a"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_return_type_mismatch_fails() {
+        // let f: closure() -> u64 = || -> bool { return true }
+        // Return type annotation on the body (bool) conflicts with the declared closure type (u64)
+        let tokens = VecDeque::from(vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Bool, // mismatch: body says bool but type says u64
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::Bool(true)),
+            Token::BraceClose,
+        ]);
+
+        let env = EnvironmentBuilder::<()>::new();
+        let mut parser = Parser::new(tokens, &env);
+        let mut context = Context::new();
+        context.begin_scope();
+        let result = parser.read_statements(&mut context, None);
+        assert!(
+            matches!(result.unwrap_err().kind, ParserErrorKind::ClosureReturnTypeMismatch),
+            "Expected ClosureReturnTypeMismatch error"
+        );
     }
 }
