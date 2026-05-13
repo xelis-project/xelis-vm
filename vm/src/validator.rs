@@ -27,6 +27,8 @@ pub enum ValidatorError {
     InvalidOpaque,
     #[error("invalid chunk parameter at index {0}")]
     InvalidChunkParam(usize),
+    #[error("invalid chunk parameters size, expected {0}, got {1}")]
+    InvalidChunkParamsSize(usize, usize),
     #[error("invalid op code")]
     InvalidOpCode,
     #[error("invalid opcode {0:?} arguments, expected {1}")]
@@ -157,13 +159,17 @@ impl<'a, M> ModuleValidator<'a, M> {
 
     // Verify the parameters provided to invoke a chunk
     // Returns an error if the parameters are invalid
-    pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b ValueCell>>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
+    pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b ValueCell> + ExactSizeIterator>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
         let chunk = self.module.get_chunk_at(chunk_id)
             .ok_or(ValidatorError::InvalidEntryId(chunk_id))?;
 
         match &chunk.access {
             Access::Entry { parameters } | Access::All { parameters } => {
                 if let Some(expected_params) = parameters {
+                    if expected_params.len() != params.len() {
+                        return Err(ValidatorError::InvalidChunkParamsSize(expected_params.len(), params.len()));
+                    }
+
                     for (i, (expected, provided)) in expected_params.iter().zip(params).enumerate() {
                         if !expected.check_with_fn(provided, |opaque, ty| {
                             self.environment.get_opaques()
