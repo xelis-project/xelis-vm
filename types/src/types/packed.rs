@@ -211,6 +211,12 @@ impl TypePacked {
                         stack.push((value_type, v.as_ref()));
                     }
                 },
+                (TypePacked::Range(nt), ValueCell::Primitive(Primitive::Range(range))) => {
+                    if !TypePacked::from_primitive(&range.0).is_some_and(|v| v == TypePacked::Number(**nt))
+                        || !TypePacked::from_primitive(&range.1).is_some_and(|v| v == TypePacked::Number(**nt)) {
+                        return false;
+                    }
+                },
                 _ => return false,
             }
         }
