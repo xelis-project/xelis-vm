@@ -71,10 +71,6 @@ fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
         .into_owned();
     let msg = param.into_string()?;
 
-    if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
-        return Err(EnvironmentError::InvalidExpect);
-    }
-
     let zelf = zelf?;
     if zelf.is_null() {
         return Err(EnvironmentError::Expect(msg));

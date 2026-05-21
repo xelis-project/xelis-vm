@@ -96,10 +96,6 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
         .into_owned()
         .into_string()?;
 
-    if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
-        return Err(EnvironmentError::InvalidExpect);
-    }
-
     let param = &parameters[0];
     let value = param.as_bool()?;
 
