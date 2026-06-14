@@ -593,8 +593,7 @@ impl<'a, M> Parser<'a, M> {
     fn get_generic_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
-        let token = self.advance()?;
-        let inner = self.get_type_from_token_with_generics(token, generics)?;
+        let inner = self.read_type_with_generics(generics)?;
         Ok(inner)
     }
 
@@ -5474,6 +5473,42 @@ mod tests {
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 2);
+    }
+
+    #[test]
+    fn test_optional_struct_array() {
+        let mut env = EnvironmentBuilder::default();
+        let test_type = env.register_structure("Test", [
+            ("x", Type::U32),
+            ("y", Type::U32),
+        ]);
+
+        // let test_opt: optional<Test[]> = null;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("test_opt"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Test"),
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: Some(0),
+                    value_type: Type::Optional(Box::new(Type::Array(Box::new(Type::Struct(test_type))))),
+                    value: Expression::Constant(Primitive::Null.into())
+                }
+            )
+        );
     }
 
     #[test]

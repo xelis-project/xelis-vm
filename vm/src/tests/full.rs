@@ -1849,6 +1849,27 @@ fn test_hook() {
 }
 
 #[test]
+fn test_hook_optional_struct_array() {
+    let code = r#"
+        struct Test {
+            x: u32,
+            y: u32,
+        }
+
+        hook constructor() -> u64 {
+            let test_opt: optional<Test[]> = null
+            return 0
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_hook("constructor", vec![], Some(Type::U64));
+
+    let (module, env) = prepare_module_with(code, env);
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+}
+
+#[test]
 fn test_tuples() {
     let code = r#"
         entry main() {
