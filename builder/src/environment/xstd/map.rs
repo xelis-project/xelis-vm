@@ -16,16 +16,16 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let key_type = Type::T(Some(0));
     let value_type = Type::T(Some(1));
     let _type = Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()));
-    env.register_native_function("len", Some(_type.clone()), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32));
-    env.register_native_function("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(contains_key), 15, Some(Type::Bool));
-    env.register_native_function("get", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(get), 15, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], FunctionHandler::Sync(insert), 30, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(shift_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(swap_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))));
-    env.register_native_function("clear", Some(_type.clone()), vec![], FunctionHandler::Sync(clear), 5, None);
-    env.register_native_function("keys", Some(_type.clone()), vec![], FunctionHandler::Sync(keys), 20, Some(Type::Array(Box::new(key_type.clone()))));
-    env.register_native_function("values", Some(_type.clone()), vec![], FunctionHandler::Sync(values), 20, Some(Type::Array(Box::new(value_type.clone()))));
-    env.register_native_function("entries", Some(_type.clone()), vec![], FunctionHandler::Sync(entries), 40, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))));
+    env.register_native_function_with_comment("len", Some(_type.clone()), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32), "Returns the number of entries in the map.");
+    env.register_native_function_with_comment("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(contains_key), 15, Some(Type::Bool), "Returns true when the map contains the key.");
+    env.register_native_function_with_comment("get", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(get), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Returns the value for the key, or null when absent.");
+    env.register_native_function_with_comment("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], FunctionHandler::Sync(insert), 30, Some(Type::Optional(Box::new(value_type.clone()))), "Inserts a key-value pair and returns the previous value, or null.");
+    env.register_native_function_with_comment("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(shift_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key while preserving map order and returns its value, or null.");
+    env.register_native_function_with_comment("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], FunctionHandler::Sync(swap_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key by swapping with the last entry and returns its value, or null.");
+    env.register_native_function_with_comment("clear", Some(_type.clone()), vec![], FunctionHandler::Sync(clear), 5, None, "Removes all entries from the map.");
+    env.register_native_function_with_comment("keys", Some(_type.clone()), vec![], FunctionHandler::Sync(keys), 20, Some(Type::Array(Box::new(key_type.clone()))), "Returns all keys in insertion order.");
+    env.register_native_function_with_comment("values", Some(_type.clone()), vec![], FunctionHandler::Sync(values), 20, Some(Type::Array(Box::new(value_type.clone()))), "Returns all values in insertion order.");
+    env.register_native_function_with_comment("entries", Some(_type.clone()), vec![], FunctionHandler::Sync(entries), 40, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))), "Returns all key-value pairs in insertion order.");
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {

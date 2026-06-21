@@ -42,13 +42,13 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
 
 // Register default functions available in the environment, like println, debug, panic, assert, etc.
 pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
-    env.register_native_function("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None);
-    env.register_native_function("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None);
-    env.register_native_function("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any));
-    env.register_native_function("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None);
-    env.register_native_function("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool));
-    env.register_native_function("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None);
-    env.register_native_function("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)));
+    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None, "Prints a value to standard output using its display representation.");
+    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None, "Prints a value to standard output using its debug representation.");
+    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any), "Stops execution with the provided panic message.");
+    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None, "Fails execution if the condition is false.");
+    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
+    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None, "Fails execution with the message if the condition is false.");
+    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
 }
 
 fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {

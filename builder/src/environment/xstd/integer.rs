@@ -35,13 +35,14 @@ macro_rules! checked_fn {
                 ))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "checked_div",
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<checked_div_ $f>]),
                 $cost,
-                Some(Type::Optional(Box::new(Type::$t)))
+                Some(Type::Optional(Box::new(Type::$t))),
+                concat!("Returns the checked division result for ", stringify!($t), " as an optional value, failing on division by zero.")
             );
         }
     };
@@ -64,13 +65,14 @@ macro_rules! checked_fn {
                 ))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "checked_rem",
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<checked_rem_ $f>]),
                 $cost,
-                Some(Type::Optional(Box::new(Type::$t)))
+                Some(Type::Optional(Box::new(Type::$t))),
+                concat!("Returns the checked remainder result for ", stringify!($t), " as an optional value, failing on division by zero.")
             );
         }
     };
@@ -91,13 +93,14 @@ macro_rules! checked_fn {
                 ))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 stringify!([<checked_ $op>]),
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<checked_ $op _ $f>]),
                 $cost,
-                Some(Type::Optional(Box::new(Type::$t)))
+                Some(Type::Optional(Box::new(Type::$t))),
+                concat!("Returns the checked ", stringify!($op), " result for ", stringify!($t), " as an optional value.")
             );
         }
     };
@@ -143,13 +146,14 @@ macro_rules! wrapping_fn {
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "wrapping_div",
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<wrapping_div _ $f>]),
                 $cost,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the wrapping division result for ", stringify!($t), ", failing on division by zero.")
             );
         }
     };
@@ -173,13 +177,14 @@ macro_rules! wrapping_fn {
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "wrapping_rem",
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<wrapping_rem _ $f>]),
                 $cost,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the wrapping remainder result for ", stringify!($t), ", failing on division by zero.")
             );
         }
     };
@@ -202,14 +207,15 @@ macro_rules! wrapping_fn {
             }
 
             // Registering the generated function in the environment
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 stringify!($op),
                 Some(Type::$t),
                 // $param with uppercase first letter
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<$op _ $f>]),
                 $cost,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the ", stringify!($op), " result for ", stringify!($t), ".")
             );
         }
     };
@@ -253,13 +259,14 @@ macro_rules! integer_param_fn {
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "saturating_div",
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<saturating_div _ $f>]),
                 $cost,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the saturating division result for ", stringify!($t), ", failing on division by zero.")
             );
         }
     };
@@ -279,13 +286,14 @@ macro_rules! integer_param_fn {
                 Ok(SysCallResult::Return(Primitive::$t(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 stringify!($op),
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 FunctionHandler::Sync([<$op _ $f>]),
                 $cost,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the ", stringify!($op), " result for ", stringify!($t), ".")
             );
         }
     };
@@ -313,13 +321,14 @@ macro_rules! to_endian_bytes {
                 Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 stringify!([<to_ $endian _bytes>]),
                 Some(Type::$t),
                 vec![],
                 FunctionHandler::Sync([<to_ $endian _bytes_ $f>]),
                 10,
-                Some(Type::Bytes)
+                Some(Type::Bytes),
+                concat!("Converts this ", stringify!($t), " value to its ", stringify!($endian), "-endian byte representation.")
             );
         }
     };
@@ -335,13 +344,14 @@ macro_rules! from_endian_bytes {
                 Ok(SysCallResult::Return(Primitive::$t(v).into()))
             }
 
-            $env.register_static_function(
+            $env.register_static_function_with_comment(
                 stringify!([<from_ $endian _bytes>]),
                 Type::$t,
                 vec![("bytes", Type::Bytes)],
                 FunctionHandler::Sync([<from_ $endian _bytes_ $f>]),
                 10,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Builds a ", stringify!($t), " value from ", stringify!($endian), "-endian bytes.")
             );
         }
     };
@@ -355,13 +365,14 @@ macro_rules! integer_no_param_fn {
                 Ok(SysCallResult::Return(Primitive::U32(value.[<$func>]()).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 stringify!($func),
                 Some(Type::$t),
                 vec![],
                 FunctionHandler::Sync([<$f _ $func>]),
                 3,
-                Some(Type::U32)
+                Some(Type::U32),
+                concat!("Returns ", stringify!($func), " for this ", stringify!($t), " value.")
             );
         }
     };
@@ -391,13 +402,14 @@ macro_rules! register_reverse_bits {
                 Ok(SysCallResult::Return(Primitive::$t(value.reverse_bits()).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "reverse_bits",
                 Some(Type::$t),
                 vec![],
                 FunctionHandler::Sync([<reverse_bits_ $f>]),
                 10,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns this ", stringify!($t), " value with its bits reversed.")
             );
         }
     };
@@ -424,13 +436,14 @@ macro_rules! min {
                 Ok(SysCallResult::Return(Primitive::$t(min).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "min",
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 FunctionHandler::Sync([<min_ $f>]),
                 1,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the smaller of this ", stringify!($t), " value and another.")
             );
         }
     };
@@ -447,13 +460,14 @@ macro_rules! max {
                 Ok(SysCallResult::Return(Primitive::$t(min).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "max",
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 FunctionHandler::Sync([<max_ $f>]),
                 1,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the larger of this ", stringify!($t), " value and another.")
             );
         }
     };
@@ -528,13 +542,14 @@ macro_rules! to_string {
                 Ok(SysCallResult::Return(Primitive::String(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "to_string",
                 Some(Type::U256),
                 vec![("base", Type::U32)],
                 FunctionHandler::Sync(to_string_u256),
                 3,
-                Some(Type::String)
+                Some(Type::String),
+                "Converts this U256 value to a string in the requested base."
             );
         }
     };
@@ -598,13 +613,14 @@ macro_rules! to_string {
                 Ok(SysCallResult::Return(Primitive::String(result).into()))
             }
 
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "to_string",
                 Some(Type::$t),
                 vec![("base", Type::U32)],
                 FunctionHandler::Sync([<to_string_ $f>]),
                 1,
-                Some(Type::String)
+                Some(Type::String),
+                concat!("Converts this ", stringify!($t), " value to a string in the requested base.")
             );
         }
     };
@@ -631,8 +647,8 @@ macro_rules! register_constants_min_max {
         let min_inner = Constant::Primitive(Primitive::$t(min));
         let max_inner = Constant::Primitive(Primitive::$t(max));
 
-        $env.register_constant(Type::$t, "MIN", min_inner, Type::$t);
-        $env.register_constant(Type::$t, "MAX", max_inner, Type::$t);
+        $env.register_constant_with_comment(Type::$t, "MIN", min_inner, Type::$t, concat!("Minimum ", stringify!($t), " value."));
+        $env.register_constant_with_comment(Type::$t, "MAX", max_inner, Type::$t, concat!("Maximum ", stringify!($t), " value."));
     };
 }
 

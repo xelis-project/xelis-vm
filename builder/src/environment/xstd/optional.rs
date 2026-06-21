@@ -17,12 +17,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // callback function
     let f = ClosureType::new(vec![], Some(Type::T(Some(0))));
 
-    env.register_native_function("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_none), 1, Some(Type::Bool));
-    env.register_native_function("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_some), 1, Some(Type::Bool));
-    env.register_native_function("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(unwrap), 1, Some(Type::T(Some(0))));
-    env.register_native_function("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], FunctionHandler::Sync(unwrap_or), 1, Some(Type::T(Some(0))));
-    env.register_native_function("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("message", Type::String)], FunctionHandler::Sync(expect), 1, Some(Type::T(Some(0))));
-    env.register_native_function("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))));
+    env.register_native_function_with_comment("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_none), 1, Some(Type::Bool), "Returns true when the optional value is null.");
+    env.register_native_function_with_comment("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_some), 1, Some(Type::Bool), "Returns true when the optional value contains a value.");
+    env.register_native_function_with_comment("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(unwrap), 1, Some(Type::T(Some(0))), "Returns the contained value or fails if it is null.");
+    env.register_native_function_with_comment("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], FunctionHandler::Sync(unwrap_or), 1, Some(Type::T(Some(0))), "Returns the contained value or the provided default when it is null.");
+    env.register_native_function_with_comment("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("message", Type::String)], FunctionHandler::Sync(expect), 1, Some(Type::T(Some(0))), "Returns the contained value or fails with the provided message when it is null.");
+    env.register_native_function_with_comment("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))), "Returns the contained value or calls the fallback closure when it is null.");
 }
 
 fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {

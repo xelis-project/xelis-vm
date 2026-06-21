@@ -24,7 +24,8 @@ pub enum ConstFunctionError {
 pub struct ConstFunction<'a> {
     pub name: &'a str,
     pub parameters: Vec<(&'a str, Type)>,
-    pub on_call: ConstFnCall
+    pub on_call: ConstFnCall,
+    pub comment: Option<&'a str>,
 }
 
 impl<'a> ConstFunction<'a> {
@@ -74,16 +75,32 @@ impl<'a> ConstFunctionMapper<'a> {
 
     // Register a function signature
     pub fn register(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall) -> Result<(), BuilderError> {
+        self.register_with_comment(name, for_type, parameters, on_call, None)
+    }
+
+    // Register a constant function with an optional documentation comment
+    pub fn register_with_comment(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall, comment: Option<&'a str>) -> Result<(), BuilderError> {
         let const_fn = ConstFunction {
             name,
             parameters,
-            on_call
+            on_call,
+            comment
         };
 
         self.mappings.entry(for_type)
             .or_insert_with(HashMap::new)
             .insert(name, const_fn);
 
+        Ok(())
+    }
+
+    // Set the documentation comment for a constant function
+    pub fn set_comment(&mut self, for_type: &Type, name: &str, comment: &'a str) -> Result<(), BuilderError> {
+        let function = self.mappings
+            .get_mut(for_type)
+            .and_then(|m| m.get_mut(name))
+            .ok_or(BuilderError::MappingNotFound)?;
+        function.comment = Some(comment);
         Ok(())
     }
 

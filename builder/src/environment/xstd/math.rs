@@ -53,13 +53,14 @@ macro_rules! sqrt_fn {
             }
 
             // Register the sqrt function for this type
-            $env.register_native_function(
+            $env.register_native_function_with_comment(
                 "sqrt",
                 Some(Type::$t),
                 vec![],
                 FunctionHandler::Sync([<sqrt_ $f>]),
                 10,
-                Some(Type::$t)
+                Some(Type::$t),
+                concat!("Returns the integer square root of this ", stringify!($t), " value.")
             );
         }
     };

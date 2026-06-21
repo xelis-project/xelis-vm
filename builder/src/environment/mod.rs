@@ -4,6 +4,7 @@ use std::{any::TypeId, borrow::Cow, collections::HashMap};
 use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, OpaqueTypeTrait, StructType, Type};
 use xelis_environment::{Environment, FunctionHandler, NativeFunction};
 use crate::{
+    BuilderError,
     ConstFnCall,
     ConstFunction,
     ConstFunctionMapper,
@@ -13,6 +14,41 @@ use crate::{
     OpaqueManager,
     StructManager
 };
+
+#[derive(Debug, Clone)]
+pub struct ConstantInfo<'a> {
+    value: (Constant, Type),
+    comment: Option<&'a str>,
+}
+
+impl<'a> ConstantInfo<'a> {
+    pub fn new(value: Constant, value_type: Type, comment: Option<&'a str>) -> Self {
+        Self {
+            value: (value, value_type),
+            comment,
+        }
+    }
+
+    pub fn value(&self) -> &Constant {
+        &self.value.0
+    }
+
+    pub fn value_type(&self) -> &Type {
+        &self.value.1
+    }
+
+    pub fn as_tuple(&self) -> &(Constant, Type) {
+        &self.value
+    }
+
+    pub fn comment(&self) -> Option<&'a str> {
+        self.comment
+    }
+
+    pub fn set_comment(&mut self, comment: &'a str) {
+        self.comment = Some(comment);
+    }
+}
 
 // EnvironmentBuilder is used to create an environment
 // it is used to register all the native functions and structures
@@ -24,7 +60,7 @@ pub struct EnvironmentBuilder<'a, M> {
     enum_manager: EnumManager<'a>,
     opaque_manager: OpaqueManager<'a>,
     // All types constants (like u64::MAX)
-    types_constants: HashMap<Type, HashMap<&'a str, (Constant, Type)>>,
+    types_constants: HashMap<Type, HashMap<&'a str, ConstantInfo<'a>>>,
     // All types constants functions
     // Example: u64::MAX()
     types_constants_functions: ConstFunctionMapper<'a>,
@@ -48,9 +84,9 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         }
     }
 
-    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>) {
+    fn register_function_internal(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>, comment: Option<&'a str>) {
         let params: Vec<_> = parameters.iter().map(|(_, t)| t.clone()).collect();
-        let _ = self.functions_mapper.register(name, on_type.clone(), require_instance, parameters, return_type.clone(), cost).unwrap();
+        let _ = self.functions_mapper.register_with_comment(name, on_type.clone(), require_instance, parameters, return_type.clone(), cost, comment).unwrap();
         self.env.add_function(NativeFunction::new(on_type, require_instance, params, on_call, cost, return_type));
     }
 
@@ -58,7 +94,14 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Panic if the function signature is already registered
     pub fn register_native_function(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: impl Into<FunctionHandler<M>>, cost: u64, return_type: Option<Type>) {
         let instance = for_type.is_some();
-        self.register_function_internal(name, for_type, instance, parameters, on_call.into(), cost, return_type);
+        self.register_function_internal(name, for_type, instance, parameters, on_call.into(), cost, return_type, None);
+    }
+
+    // Register a native function with a documentation comment
+    // Panic if the function signature is already registered
+    pub fn register_native_function_with_comment(&mut self, name: &'a str, for_type: Option<Type>, parameters: Vec<(&'a str, Type)>, on_call: impl Into<FunctionHandler<M>>, cost: u64, return_type: Option<Type>, comment: &'a str) {
+        let instance = for_type.is_some();
+        self.register_function_internal(name, for_type, instance, parameters, on_call.into(), cost, return_type, Some(comment));
     }
 
     // Register a native static function
@@ -66,7 +109,15 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Example: u64::from_be_bytes
     // Panic if the function signature is already registered
     pub fn register_static_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>) {
-        self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type);
+        self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type, None);
+    }
+
+    // Register a native static function with a documentation comment
+    // This is function not accessible from an instance but still behind the type
+    // Example: u64::from_be_bytes
+    // Panic if the function signature is already registered
+    pub fn register_static_function_with_comment(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: FunctionHandler<M>, cost: u64, return_type: Option<Type>, comment: &'a str) {
+        self.register_function_internal(name, Some(for_type), false, parameters, on_call, cost, return_type, Some(comment));
     }
 
     // Register a constant function
@@ -75,6 +126,24 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Panic if the function signature is already registered
     pub fn register_const_function(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall) {
         self.types_constants_functions.register(name, for_type, parameters, on_call).unwrap();
+    }
+
+    // Register a constant function with a documentation comment
+    // This is only available in the builder
+    // See this function as a helper
+    // Panic if the function signature is already registered
+    pub fn register_const_function_with_comment(&mut self, name: &'a str, for_type: Type, parameters: Vec<(&'a str, Type)>, on_call: ConstFnCall, comment: &'a str) {
+        self.types_constants_functions.register_with_comment(name, for_type, parameters, on_call, Some(comment)).unwrap();
+    }
+
+    // Set a documentation comment for a registered native or static function
+    pub fn set_function_comment(&mut self, name: &str, on_type: Option<Type>, comment: &'a str) -> Result<(), BuilderError> {
+        self.functions_mapper.set_comment(name, on_type.as_ref(), comment)
+    }
+
+    // Set a documentation comment for a registered constant function
+    pub fn set_const_function_comment(&mut self, name: &str, for_type: &Type, comment: &'a str) -> Result<(), BuilderError> {
+        self.types_constants_functions.set_comment(for_type, name, comment)
     }
 
     // Get a native function by its signature
@@ -156,13 +225,44 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
     // Register a constant in the environment
     // Panic if the constant name is already used
     pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type) {
+        self.register_constant_internal(_type, name, value, value_type, None);
+    }
+
+    // Register a constant in the environment with a documentation comment
+    // Panic if the constant name is already used
+    pub fn register_constant_with_comment(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type, comment: &'a str) {
+        self.register_constant_internal(_type, name, value, value_type, Some(comment));
+    }
+
+    fn register_constant_internal(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type, comment: Option<&'a str>) {
         let constants = self.types_constants.entry(_type.clone()).or_insert_with(HashMap::new);
-        constants.insert(name, (value.clone(), value_type));
+        constants.insert(name, ConstantInfo::new(value, value_type, comment));
     }
 
     // Get a constant by name
     pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&(Constant, Type)> {
+        self.get_constant_info_by_name(_type, name)
+            .map(ConstantInfo::as_tuple)
+    }
+
+    // Get full constant metadata by name
+    pub fn get_constant_info_by_name(&self, _type: &Type, name: &str) -> Option<&ConstantInfo<'a>> {
         self.types_constants.get(_type).and_then(|v| v.get(name))
+    }
+
+    // Get all constants grouped by type
+    pub fn get_constants(&self) -> &HashMap<Type, HashMap<&'a str, ConstantInfo<'a>>> {
+        &self.types_constants
+    }
+
+    // Set a documentation comment for a registered constant
+    pub fn set_constant_comment(&mut self, _type: &Type, name: &str, comment: &'a str) -> Result<(), BuilderError> {
+        let constant = self.types_constants
+            .get_mut(_type)
+            .and_then(|v| v.get_mut(name))
+            .ok_or(BuilderError::MappingNotFound)?;
+        constant.set_comment(comment);
+        Ok(())
     }
 
     // Get a constant function by its name
@@ -240,6 +340,8 @@ impl<'a, M: 'static> Default for EnvironmentBuilder<'a, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xelis_environment::{FunctionHandler, SysCallResult};
+    use xelis_types::{Constant, Primitive};
 
     #[test]
     pub fn test_add_enum() {
@@ -257,5 +359,92 @@ mod tests {
         ]);
 
         let _ = builder.build();
+    }
+
+    #[test]
+    pub fn test_comments_can_be_registered() {
+        let mut builder: EnvironmentBuilder<()> = EnvironmentBuilder::new();
+
+        builder.register_native_function_with_comment(
+            "foo",
+            None,
+            vec![],
+            FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+            0,
+            None,
+            "Runs foo.",
+        );
+
+        let id = builder.get_functions_mapper()
+            .get_by_signature("foo", None)
+            .unwrap();
+        let function = builder.get_functions_mapper()
+            .get_function(&id)
+            .unwrap();
+        assert_eq!(function.comment, Some("Runs foo."));
+
+        builder.register_constant_with_comment(
+            Type::U8,
+            "ANSWER",
+            Primitive::U8(42).into(),
+            Type::U8,
+            "The test answer.",
+        );
+        assert_eq!(
+            builder.get_constant_info_by_name(&Type::U8, "ANSWER")
+                .unwrap()
+                .comment(),
+            Some("The test answer.")
+        );
+
+        builder.register_const_function_with_comment(
+            "new",
+            Type::Bytes,
+            vec![],
+            |_| Ok(Constant::Bytes(Vec::new())),
+            "Creates empty bytes.",
+        );
+        assert_eq!(
+            builder.get_const_fn(&Type::Bytes, "new").unwrap().comment,
+            Some("Creates empty bytes.")
+        );
+    }
+
+    #[test]
+    pub fn test_default_environment_items_are_documented() {
+        let builder: EnvironmentBuilder<()> = EnvironmentBuilder::default();
+
+        for functions in builder.get_functions_mapper().get_declared_functions().values() {
+            for (function, _) in functions {
+                assert!(
+                    function.comment.map(|v| !v.trim().is_empty()).unwrap_or(false),
+                    "missing function comment for {} on {:?}",
+                    function.name,
+                    function.on_type
+                );
+            }
+        }
+
+        for (ty, constants) in builder.get_constants() {
+            for (name, constant) in constants {
+                assert!(
+                    constant.comment().map(|v| !v.trim().is_empty()).unwrap_or(false),
+                    "missing constant comment for {:?}::{}",
+                    ty,
+                    name
+                );
+            }
+        }
+
+        for (ty, functions) in builder.get_const_functions_mapper().get_mappings() {
+            for (name, function) in functions {
+                assert!(
+                    function.comment.map(|v| !v.trim().is_empty()).unwrap_or(false),
+                    "missing const function comment for {:?}::{}",
+                    ty,
+                    name
+                );
+            }
+        }
     }
 }
