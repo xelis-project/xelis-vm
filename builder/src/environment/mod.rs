@@ -8,10 +8,12 @@ use crate::{
     ConstFnCall,
     ConstFunction,
     ConstFunctionMapper,
+    EnumBuilder,
     EnumManager,
     FunctionMapper,
     Hook,
     OpaqueManager,
+    StructBuilder,
     StructManager
 };
 
@@ -284,9 +286,19 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         &self.struct_manager
     }
 
+    // all structs registered in this environment
+    pub fn get_structs(&self) -> impl Iterator<Item = &StructBuilder> {
+        self.struct_manager.iter()
+    }
+
     // enum manager, used to find the enum id
     pub fn get_enum_manager(&self) -> &EnumManager<'a> {
         &self.enum_manager
+    }
+
+    // all enums registered in this environment
+    pub fn get_enums(&self) -> impl Iterator<Item = &EnumBuilder> {
+        self.enum_manager.iter()
     }
 
     // opaque manager, used to find the opaque id
@@ -359,6 +371,54 @@ mod tests {
         ]);
 
         let _ = builder.build();
+    }
+
+    #[test]
+    pub fn test_registered_structs_and_enums_can_be_displayed() {
+        let mut builder: EnvironmentBuilder<()> = EnvironmentBuilder::new();
+
+        let person = builder.register_structure("Person", [
+            ("name", Type::String),
+            ("age", Type::U8),
+        ]);
+        let foo = builder.register_enum("Foo", [
+            ("A", EnumVariant::new(Vec::new())),
+            ("B", EnumVariant::new(Vec::new())),
+        ]);
+        let shape = builder.register_enum("Shape", [
+            ("Point", EnumVariant::new_tuple(vec![Type::U32, Type::U32])),
+            ("Rect", EnumVariant::new(vec![
+                (Cow::Borrowed("width"), Type::U32),
+                (Cow::Borrowed("height"), Type::U32),
+            ])),
+        ]);
+
+        assert_eq!(person.to_string(), "struct Person { name: string, age: u8 }");
+        assert_eq!(foo.to_string(), "enum Foo { A, B }");
+        assert_eq!(
+            shape.to_string(),
+            "enum Shape { Point(u32, u32), Rect { width: u32, height: u32 } }"
+        );
+
+        assert_eq!(
+            builder.get_structs()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            vec!["struct Person { name: string, age: u8 }"]
+        );
+        assert_eq!(
+            builder.get_enums()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            vec![
+                "enum Foo { A, B }",
+                "enum Shape { Point(u32, u32), Rect { width: u32, height: u32 } }",
+            ]
+        );
+        assert_eq!(
+            builder.get_enum_manager().to_string(),
+            "enum Foo { A, B }\nenum Shape { Point(u32, u32), Rect { width: u32, height: u32 } }"
+        );
     }
 
     #[test]

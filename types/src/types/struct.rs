@@ -1,8 +1,8 @@
-use std::{borrow::Cow, hash::{Hash, Hasher}, sync::Arc};
+use std::{borrow::Cow, fmt, hash::{Hash, Hasher}, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::IdentifierType;
-use super::Type;
+use super::{fmt_generics, fmt_type_with_generics, Type};
 
 // Represents a struct in the language
 #[derive(Clone, Eq, Debug, Serialize, Deserialize)]
@@ -67,6 +67,25 @@ impl StructType {
     #[inline(always)]
     pub fn fields(&self) -> &Vec<(Cow<'static, str>, Type)> {
         &self.0.fields
+    }
+}
+
+impl fmt::Display for StructType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "struct {}", self.name())?;
+        fmt_generics(f, self.generics())?;
+        write!(f, " {{ ")?;
+
+        for (index, (name, ty)) in self.fields().iter().enumerate() {
+            if index > 0 {
+                write!(f, ", ")?;
+            }
+
+            write!(f, "{}: ", name)?;
+            fmt_type_with_generics(f, ty, self.generics())?;
+        }
+
+        write!(f, " }}")
     }
 }
 

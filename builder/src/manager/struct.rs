@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt};
 
 use xelis_types::{IdentifierType, StructType, Type};
 
@@ -40,6 +40,12 @@ impl Builder for StructBuilder {
 
     fn type_id(&self) -> IdentifierType {
         self.inner.id()
+    }
+}
+
+impl fmt::Display for StructBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner)
     }
 }
 

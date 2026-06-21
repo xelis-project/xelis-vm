@@ -6,7 +6,7 @@ mod number;
 
 pub mod opaque;
 
-use std::{fmt, hash::Hash};
+use std::{borrow::Cow, fmt, hash::Hash};
 use serde::{Deserialize, Serialize};
 
 use crate::{values::Primitive, Constant};
@@ -750,6 +750,119 @@ impl Type {
     }
 }
 
+pub(crate) fn fmt_generics(f: &mut fmt::Formatter, generics: &[Cow<'static, str>]) -> fmt::Result {
+    if generics.is_empty() {
+        return Ok(());
+    }
+
+    write!(f, "<")?;
+    for (index, generic) in generics.iter().enumerate() {
+        if index > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{}", generic)?;
+    }
+    write!(f, ">")
+}
+
+pub(crate) fn fmt_type_with_generics(
+    f: &mut fmt::Formatter,
+    ty: &Type,
+    generics: &[Cow<'static, str>],
+) -> fmt::Result {
+    match ty {
+        Type::T(Some(id)) => {
+            if let Some(generic) = generics.get(*id as usize) {
+                write!(f, "{}", generic)
+            } else {
+                write!(f, "T{}", id)
+            }
+        }
+        Type::T(None) => write!(f, "T"),
+        Type::Tuples(types) => {
+            write!(f, "(")?;
+            for (index, ty) in types.iter().enumerate() {
+                if index > 0 {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+            write!(f, ")")
+        }
+        Type::Array(ty) => {
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, "[]")
+        }
+        Type::Optional(ty) => {
+            write!(f, "optional<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Range(ty) => {
+            write!(f, "range<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Map(key, value) => {
+            write!(f, "map<")?;
+            fmt_type_with_generics(f, key, generics)?;
+            write!(f, ", ")?;
+            fmt_type_with_generics(f, value, generics)?;
+            write!(f, ">")
+        }
+        Type::Voidable(ty) => {
+            write!(f, "void<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Closure(closure) => {
+            write!(f, "closure(")?;
+            for (index, ty) in closure.parameters().iter().enumerate() {
+                if index > 0 {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+            write!(f, ")")?;
+
+            if let Some(ty) = closure.return_type() {
+                write!(f, " -> ")?;
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+
+            Ok(())
+        }
+        Type::Function(function) => {
+            write!(f, "fn(")?;
+            let mut has_parameter = false;
+
+            if function.on_instance() {
+                if let Some(ty) = function.on_type() {
+                    fmt_type_with_generics(f, ty, generics)?;
+                    has_parameter = true;
+                }
+            }
+
+            for ty in function.parameters() {
+                if has_parameter {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+                has_parameter = true;
+            }
+
+            write!(f, ")")?;
+            if let Some(ty) = function.return_type() {
+                write!(f, " -> ")?;
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+
+            Ok(())
+        }
+        _ => write!(f, "{}", ty),
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Use iterative formatting to avoid stack overflow on deeply nested generic types
@@ -940,6 +1053,49 @@ mod tests {
         ]);
 
         assert_eq!(format!("{}", ty), "(u8, string, bool[])");
+    }
+
+    #[test]
+    fn test_display_registered_type_declarations_with_generics() {
+        use std::borrow::Cow;
+
+        let entry = StructType::new_with_generics(
+            0,
+            "Entry",
+            vec![Cow::Borrowed("K"), Cow::Borrowed("V")],
+            vec![
+                (Cow::Borrowed("key"), Type::T(Some(0))),
+                (Cow::Borrowed("value"), Type::T(Some(1))),
+                (
+                    Cow::Borrowed("mapper"),
+                    Type::Closure(ClosureType::new(
+                        vec![Type::T(Some(0))],
+                        Some(Type::T(Some(1))),
+                    )),
+                ),
+            ],
+        );
+        assert_eq!(
+            entry.to_string(),
+            "struct Entry<K, V> { key: K, value: V, mapper: closure(K) -> V }"
+        );
+
+        let result = EnumType::new_with_generics(
+            1,
+            "Result",
+            vec![Cow::Borrowed("T"), Cow::Borrowed("E")],
+            vec![
+                (Cow::Borrowed("Ok"), EnumVariant::new_tuple(vec![Type::T(Some(0))])),
+                (
+                    Cow::Borrowed("Err"),
+                    EnumVariant::new(vec![(Cow::Borrowed("error"), Type::T(Some(1)))]),
+                ),
+            ],
+        );
+        assert_eq!(
+            result.to_string(),
+            "enum Result<T, E> { Ok(T), Err { error: E } }"
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
-use std::{borrow::Cow, hash::{Hash, Hasher}, sync::Arc};
+use std::{borrow::Cow, fmt, hash::{Hash, Hasher}, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
 use crate::IdentifierType;
-use super::Type;
+use super::{fmt_generics, fmt_type_with_generics, Type};
 
 // Represents a variant of an enum
 // Supports both tuple-style (unnamed) and struct-style (named) fields
@@ -149,6 +149,46 @@ impl EnumType {
     #[inline(always)]
     pub fn get_variant(&self, id: u8) -> Option<&(Cow<'static, str>, EnumVariant)> {
         self.0.variants.get(id as usize)
+    }
+}
+
+impl fmt::Display for EnumType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "enum {}", self.name())?;
+        fmt_generics(f, self.generics())?;
+        write!(f, " {{ ")?;
+
+        for (index, (name, variant)) in self.variants().iter().enumerate() {
+            if index > 0 {
+                write!(f, ", ")?;
+            }
+
+            write!(f, "{}", name)?;
+            if !variant.fields().is_empty() {
+                if variant.is_tuple() {
+                    write!(f, "(")?;
+                    for (field_index, ty) in variant.types().enumerate() {
+                        if field_index > 0 {
+                            write!(f, ", ")?;
+                        }
+                        fmt_type_with_generics(f, ty, self.generics())?;
+                    }
+                    write!(f, ")")?;
+                } else {
+                    write!(f, " {{ ")?;
+                    for (field_index, (field_name, ty)) in variant.fields().iter().enumerate() {
+                        if field_index > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}: ", field_name)?;
+                        fmt_type_with_generics(f, ty, self.generics())?;
+                    }
+                    write!(f, " }}")?;
+                }
+            }
+        }
+
+        write!(f, " }}")
     }
 }
 
