@@ -54,7 +54,7 @@ pub fn new_map<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     for _ in 0..len {
         let value = stack.pop_stack()?;
         let key = stack.pop_stack()?.into_owned();
-        if key.is_map() {
+        if !key.is_hashable() {
             return Err(EnvironmentError::InvalidKeyType.into());
         }
 

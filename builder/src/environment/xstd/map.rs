@@ -36,7 +36,7 @@ fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMCo
 fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
-    if k.is_map() {
+    if !k.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
@@ -47,7 +47,7 @@ fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
 fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let key = parameters.remove(0);
     let k = key.as_ref();
-    if k.is_map() {
+    if !k.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
@@ -66,7 +66,7 @@ fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     let key_depth = param.depth();
     // Key is deep cloned here
     let key = param.into_owned();
-    if key.is_map() {
+    if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
@@ -106,7 +106,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
     let key = parameters.remove(0)
         .into_owned();
 
-    if key.is_map() {
+    if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 
@@ -129,7 +129,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     let key = parameters.remove(0)
         .into_owned();
 
-    if key.is_map() {
+    if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
 

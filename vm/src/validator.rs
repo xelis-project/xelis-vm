@@ -41,6 +41,8 @@ pub enum ValidatorError {
     ReferenceNotAllowed,
     #[error("map as key not allowed")]
     MapAsKeyNotAllowed,
+    #[error("invalid map key type")]
+    InvalidMapKeyType,
     #[error("empty module")]
     EmptyModule,
     #[error("invalid entry id {0}")]
@@ -103,10 +105,14 @@ impl<'a, M> ModuleValidator<'a, M> {
 
 
                     let depth = depth + 1;
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone_ref()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
-                    );
+                    for (k, v) in map.iter() {
+                        if !k.is_hashable() {
+                            return Err(ValidatorError::InvalidMapKeyType);
+                        }
+
+                        stack.push((ValueCellRef::Owned(k.clone_ref()), depth));
+                        stack.push((ValueCellRef::Pointer(v.clone()), depth));
+                    }
                 },
                 ValueCell::Primitive(v) => match v {
                     Primitive::Range(range) => {

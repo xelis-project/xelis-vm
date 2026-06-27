@@ -627,7 +627,7 @@ impl<'a, M> Parser<'a, M> {
             Token::Any => Type::Any,
             Token::Map => {
                 let key = self.get_generic_type_with_generics(generics)?;
-                if key.is_map() {
+                if !key.is_hashable() {
                     return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
                 }
 
@@ -3007,6 +3007,9 @@ impl<'a, M> Parser<'a, M> {
             (Some(k), Some(v)) => (k, v),
             _ => (Type::Any, Type::Any)
         };
+        if !key.is_hashable() {
+            return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
+        }
 
         self.expect_token(Token::BraceClose)?;
         Ok(Expression::MapConstructor(expressions, key, value))

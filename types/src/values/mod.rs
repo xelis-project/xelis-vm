@@ -181,6 +181,17 @@ impl Default for Primitive {
 }
 
 impl Primitive {
+    #[inline]
+    pub fn is_hashable(&self) -> bool {
+        match self {
+            Primitive::Range(range) => range.0.is_hashable() && range.1.is_hashable(),
+            Primitive::Opaque(opaque) => opaque.is_hashable(),
+            _ => true,
+        }
+    }
+}
+
+impl Primitive {
     pub fn get_memory_usage(&self) -> usize {
         match self {
             Primitive::Null => 1,

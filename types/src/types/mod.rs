@@ -90,7 +90,13 @@ impl Type {
                 Type::U256 => TypePacked::Range(Box::new(NumberType::U256)),
                 _ => return None
             },
-            Type::Map(key, value) => TypePacked::Map(Box::new(key.packed()?), Box::new(value.packed()?)),
+            Type::Map(key, value) => {
+                if !key.is_hashable() {
+                    return None
+                }
+
+                TypePacked::Map(Box::new(key.packed()?), Box::new(value.packed()?))
+            },
             Type::Array(types) => TypePacked::Array(Box::new(types.packed()?)),
             Type::Tuples(types) => types.iter()
                 .map(Type::packed)
@@ -429,6 +435,19 @@ impl Type {
         match self {
             Type::Map(_, _) => true,
             _ => false
+        }
+    }
+
+    pub fn is_hashable(&self) -> bool {
+        match self {
+            Type::Map(_, _) => false,
+            Type::Array(inner) | Type::Optional(inner) | Type::Range(inner) | Type::Voidable(inner) => inner.is_hashable(),
+            Type::Tuples(types) => types.iter().all(Type::is_hashable),
+            Type::Struct(ty) => ty.fields().iter().all(|(_, ty)| ty.is_hashable()),
+            Type::Enum(ty) => ty.variants()
+                .iter()
+                .all(|(_, variant)| variant.fields().iter().all(|(_, ty)| ty.is_hashable())),
+            _ => true,
         }
     }
 

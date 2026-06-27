@@ -1,12 +1,42 @@
 use indexmap::IndexMap;
 use xelis_builder::EnvironmentBuilder;
 use xelis_bytecode::{Chunk, Module};
-use xelis_types::{impl_opaque, traits::{JSONHelper, Serializable}, NumberType, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
+use xelis_types::{impl_opaque, traits::{DynHash, DynType, JSONHelper, Serializable}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
 use xelis_lexer::Lexer;
 use xelis_parser::Parser;
 use xelis_compiler::Compiler;
 
 use crate::{ModuleValidator, ValidatorError};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NonHashableOpaque;
+
+impl DynType for NonHashableOpaque {
+    fn get_type_name(&self) -> &'static str {
+        "NonHashableOpaque"
+    }
+
+    fn get_type(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<Self>()
+    }
+}
+
+impl DynHash for NonHashableOpaque {
+    fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
+
+    fn is_hashable(&self) -> bool {
+        false
+    }
+}
+
+impl JSONHelper for NonHashableOpaque {}
+impl Serializable for NonHashableOpaque {}
+
+impl Opaque for NonHashableOpaque {
+    fn clone_box(&self) -> Box<dyn Opaque> {
+        Box::new(self.clone())
+    }
+}
 
 fn create_environment() -> xelis_environment::Environment<()> {
     EnvironmentBuilder::default().build()
@@ -731,6 +761,30 @@ fn test_verify_invoke_chunk_map_empty_is_ok() {
     let value = ValueCell::Map(Box::new(IndexMap::new()));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_verify_invoke_chunk_map_rejects_non_hashable_opaque_key() {
+    let mut env_builder = EnvironmentBuilder::<()>::default();
+    let opaque_type = env_builder.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true);
+    let env = env_builder.build();
+
+    let params = Some(vec![TypePacked::Map(
+        Box::new(TypePacked::Opaque(opaque_type.id())),
+        Box::new(TypePacked::Number(NumberType::U64)),
+    )]);
+    let module = create_module_with_entry_chunk(params);
+    let validator = ModuleValidator::new(&module, &env);
+
+    let mut map = IndexMap::new();
+    map.insert(
+        ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(NonHashableOpaque))),
+        ValueCell::Primitive(Primitive::U64(1)).into(),
+    );
+
+    let value = ValueCell::Map(Box::new(map));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
+    assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
 
 #[test]

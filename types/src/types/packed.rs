@@ -32,13 +32,25 @@ pub enum TypePacked {
 }
 
 impl TypePacked {
+    pub fn is_hashable(&self) -> bool {
+        match self {
+            TypePacked::Map(_, _) => false,
+            TypePacked::Optional(inner) | TypePacked::Array(inner) => inner.is_hashable(),
+            TypePacked::Tuples(types) => types.iter().all(TypePacked::is_hashable),
+            TypePacked::OneOf(variants) => variants
+                .iter()
+                .all(|variant| variant.iter().all(TypePacked::is_hashable)),
+            _ => true,
+        }
+    }
+
     /// Verify the TypePacked is valid
     /// This is iterative to prevent stack overflow with deeply nested types
     /// Returns an error if:
     /// - The depth exceeds max_depth
     /// - OneOf has no variants or more than u8::MAX variants
     /// - OneOf has a variant with no types (use empty vec for unit variants)
-    /// - Map key type is Map (maps cannot be keys)
+    /// - Map key type is not hashable
     #[inline(always)]
     pub fn verify(
         &self,
@@ -107,8 +119,7 @@ impl TypePacked {
                     }
                 },
                 TypePacked::Map(key_type, value_type) => {
-                    // Map keys cannot be maps themselves
-                    if is_map_key {
+                    if is_map_key || !key_type.is_hashable() {
                         return Err(ValueError::UnknownType);
                     }
 
@@ -147,13 +158,17 @@ impl TypePacked {
     /// This is iterative to prevent stack overflow with deeply nested types
     /// Allows providing a function to validate opaque types
     pub fn check_with_fn<F: Fn(&OpaqueWrapper, u16) -> bool>(&self, value: &ValueCell, f: F) -> bool {
-        let mut stack: Vec<(&TypePacked, &ValueCell)> = vec![(self, value)];
+        let mut stack: Vec<(&TypePacked, &ValueCell, bool)> = vec![(self, value, false)];
 
-        while let Some((tp, val)) = stack.pop() {
+        while let Some((tp, val, is_map_key)) = stack.pop() {
+            if is_map_key && !val.is_hashable() {
+                return false;
+            }
+
             match (tp, val) {
                 (TypePacked::Optional(_), ValueCell::Primitive(Primitive::Null)) => {},
                 (TypePacked::Optional(inner), v) => {
-                    stack.push((inner, v));
+                    stack.push((inner, v, is_map_key));
                 },
                 (TypePacked::Number(nt), ValueCell::Primitive(p)) => {
                     if !TypePacked::from_primitive(p)
@@ -172,7 +187,7 @@ impl TypePacked {
                 (TypePacked::Any, _) => {},
                 (TypePacked::Array(inner), ValueCell::Object(values)) => {
                     for v in values.iter() {
-                        stack.push((inner, v.as_ref()));
+                        stack.push((inner, v.as_ref(), is_map_key));
                     }
                 },
                 (TypePacked::Tuples(types), ValueCell::Object(values)) => {
@@ -180,7 +195,7 @@ impl TypePacked {
                         return false;
                     }
                     for (t, v) in types.iter().zip(values.iter()) {
-                        stack.push((t, v.as_ref()));
+                        stack.push((t, v.as_ref(), is_map_key));
                     }
                 },
                 (TypePacked::OneOf(variants), ValueCell::Object(values)) => {
@@ -202,13 +217,13 @@ impl TypePacked {
                     }
 
                     for (t, v) in variant_types.iter().zip(data.iter()) {
-                        stack.push((t, v.as_ref()));
+                        stack.push((t, v.as_ref(), is_map_key));
                     }
                 },
                 (TypePacked::Map(key_type, value_type), ValueCell::Map(map)) => {
                     for (k, v) in map.iter() {
-                        stack.push((key_type, k));
-                        stack.push((value_type, v.as_ref()));
+                        stack.push((key_type, k, true));
+                        stack.push((value_type, v.as_ref(), is_map_key));
                     }
                 },
                 (TypePacked::Range(nt), ValueCell::Primitive(Primitive::Range(range))) => {

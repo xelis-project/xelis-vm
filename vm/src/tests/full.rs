@@ -3,8 +3,38 @@ use xelis_environment::{Environment, EnvironmentError};
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::{Parser, ParserError};
-use xelis_types::{traits::{JSONHelper, Serializable}, Primitive};
+use xelis_types::{traits::{DynHash, DynType, JSONHelper, Serializable}, Opaque, Primitive};
 use super::*;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NonHashableOpaque;
+
+impl DynType for NonHashableOpaque {
+    fn get_type_name(&self) -> &'static str {
+        "NonHashableOpaque"
+    }
+
+    fn get_type(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<Self>()
+    }
+}
+
+impl DynHash for NonHashableOpaque {
+    fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
+
+    fn is_hashable(&self) -> bool {
+        false
+    }
+}
+
+impl JSONHelper for NonHashableOpaque {}
+impl Serializable for NonHashableOpaque {}
+
+impl Opaque for NonHashableOpaque {
+    fn clone_box(&self) -> Box<dyn Opaque> {
+        Box::new(self.clone())
+    }
+}
 
 #[track_caller]
 fn prepare_module(code: &str) -> (Module, Environment<()>) {
@@ -1616,6 +1646,50 @@ fn test_opaque_fn_call() {
         run_internal(module, &env, 0).unwrap(),
         Primitive::U64(0)
     );
+}
+
+#[test]
+fn test_map_constructor_rejects_non_hashable_opaque_key() {
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
+
+    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+    }), 0, Some(ty));
+
+    let code = r#"
+        entry main() {
+            let key: NonHashableOpaque = non_hashable();
+            let _: map<NonHashableOpaque, u64> = { key: 1u64 };
+            return 0
+        }
+    "#;
+
+    let (module, env) = prepare_module_with(code, env);
+    let result = run_internal(module, &env, 0);
+    assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))));
+}
+
+#[test]
+fn test_map_insert_rejects_non_hashable_opaque_key() {
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
+
+    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+    }), 0, Some(ty));
+
+    let code = r#"
+        entry main() {
+            let map: map<NonHashableOpaque, u64> = {};
+            map.insert(non_hashable(), 1u64);
+            return 0
+        }
+    "#;
+
+    let (module, env) = prepare_module_with(code, env);
+    let result = run_internal(module, &env, 0);
+    assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))));
 }
 
 #[test]

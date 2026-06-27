@@ -251,6 +251,11 @@ impl OpaqueWrapper {
     }
 
     #[inline]
+    pub fn is_hashable(&self) -> bool {
+        self.inner.as_ref().is_hashable()
+    }
+
+    #[inline]
     pub fn get_size(&self) -> usize {
         self.inner.get_size()
     }

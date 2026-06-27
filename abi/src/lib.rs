@@ -244,7 +244,7 @@ mod tests {
             impl DynHash for $name {
                 fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
 
-                fn can_hash(&self) -> bool {
+                fn is_hashable(&self) -> bool {
                     false
                 }
             }

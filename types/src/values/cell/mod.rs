@@ -365,6 +365,21 @@ impl ValueCell {
         self.check_serializability(OpaqueWrapper::is_serializable)
     }
 
+    #[inline]
+    pub fn is_hashable(&self) -> bool {
+        let mut stack = vec![ValueCellRef::Ref(self)];
+        while let Some(next) = stack.pop() {
+            match next.value() {
+                ValueCell::Primitive(value) if !value.is_hashable() => return false,
+                ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
+                ValueCell::Map(_) => return false,
+                _ => {}
+            }
+        }
+
+        true
+    }
+
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
