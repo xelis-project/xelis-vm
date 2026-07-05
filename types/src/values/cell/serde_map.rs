@@ -1,6 +1,6 @@
 use super::*;
 use serde::ser::SerializeSeq;
-use serde::de::{SeqAccess, Visitor};
+use serde::de::{Error, SeqAccess, Visitor};
 use serde::{Deserializer, Serializer};
 use std::fmt;
 
@@ -39,6 +39,10 @@ where
         {
             let mut map = IndexMap::new();
             while let Some((k, v)) = seq.next_element::<(ValueCell, ValueCell)>()? {
+                if !k.is_hashable() {
+                    return Err(A::Error::custom("invalid map key type"));
+                }
+
                 map.insert(k, v.into());
             }
 

@@ -17,12 +17,18 @@ pub enum ValidatorError {
     TooMuchMemoryUsage,
     #[error("too many constants")]
     TooManyConstants,
+    #[error("too many parameters")]
+    TooManyParameters,
     #[error("constant too deep")]
     ConstantTooDeep,
     #[error("too many chunks")]
     TooManyChunks,
     #[error("invalid opaque")]
     InvalidOpaque,
+    #[error("invalid chunk parameter at index {0}")]
+    InvalidChunkParam(usize),
+    #[error("invalid chunk parameters size, expected {0}, got {1}")]
+    InvalidChunkParamsSize(usize, usize),
     #[error("invalid op code")]
     InvalidOpCode,
     #[error("invalid opcode {0:?} arguments, expected {1}")]
@@ -35,6 +41,8 @@ pub enum ValidatorError {
     ReferenceNotAllowed,
     #[error("map as key not allowed")]
     MapAsKeyNotAllowed,
+    #[error("invalid map key type")]
+    InvalidMapKeyType,
     #[error("empty module")]
     EmptyModule,
     #[error("invalid entry id {0}")]
@@ -97,10 +105,14 @@ impl<'a, M> ModuleValidator<'a, M> {
 
 
                     let depth = depth + 1;
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
-                    );
+                    for (k, v) in map.iter() {
+                        if !k.is_hashable() {
+                            return Err(ValidatorError::InvalidMapKeyType);
+                        }
+
+                        stack.push((ValueCellRef::Owned(k.clone_ref()), depth));
+                        stack.push((ValueCellRef::Pointer(v.clone()), depth));
+                    }
                 },
                 ValueCell::Primitive(v) => match v {
                     Primitive::Range(range) => {
@@ -151,6 +163,36 @@ impl<'a, M> ModuleValidator<'a, M> {
         Ok(())
     }
 
+    // Verify the parameters provided to invoke a chunk
+    // Returns an error if the parameters are invalid
+    pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b ValueCell> + ExactSizeIterator>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
+        let chunk = self.module.get_chunk_at(chunk_id)
+            .ok_or(ValidatorError::InvalidEntryId(chunk_id))?;
+
+        match &chunk.access {
+            Access::Entry { parameters } | Access::All { parameters } => {
+                if let Some(expected_params) = parameters {
+                    if expected_params.len() != params.len() {
+                        return Err(ValidatorError::InvalidChunkParamsSize(expected_params.len(), params.len()));
+                    }
+
+                    for (i, (expected, provided)) in expected_params.iter().zip(params).enumerate() {
+                        if !expected.check_with_fn(provided, |opaque, ty| {
+                            self.environment.get_opaques()
+                                .get_index(ty as usize)
+                                .is_some_and(|(v, external)| *v == opaque.get_type_id() && *external)
+                        }) {
+                            return Err(ValidatorError::InvalidChunkParam(i));
+                        }
+                    }
+                }
+            },
+            _ => return Err(ValidatorError::InvalidEntryId(chunk_id)),
+        }
+
+        Ok(())
+    }
+
     // Verify all the declared chunks in the module
     // We verify that the opcodes are valid and that the count of arguments are correct
     fn verify_chunks(&self) -> Result<(), ValidatorError> {
@@ -159,30 +201,36 @@ impl<'a, M> ModuleValidator<'a, M> {
             return Err(ValidatorError::EmptyModule);
         }
 
-        // Verify that the entry ids are valid
-        let mut used_ids = HashSet::new();
-
         // All hook ids, ensure uniqueness
         let mut hook_ids = HashSet::new();
 
         // Verify all the chunks
         for (i, entry) in self.module.chunks().iter().enumerate() {
-            match entry.access {
-                Access::Entry => {
-                    if !used_ids.insert(i) {
-                        return Err(ValidatorError::ChunkIdAlreadyUsed(i))
+            match &entry.access {
+                Access::Entry { parameters } | Access::All { parameters } => {
+                    if let Some(params) = parameters {
+                        if params.len() > u8::MAX as usize {
+                            return Err(ValidatorError::TooManyParameters);
+                        }
+
+                        for param in params {
+                            param.verify_with_fn(
+                                self.constant_max_depth,
+                                |id| self.environment.get_opaques().get_index(id as usize).is_some()
+                            )?;
+                        }
                     }
                 },
                 Access::Hook { id } => {
                     if !hook_ids.insert(id) {
-                        return Err(ValidatorError::InvalidHookId(id, i));
+                        return Err(ValidatorError::InvalidHookId(*id, i));
                     }
 
                     // Ensure both pointers are pointing to each others
                     if !self.module.hook_chunk_ids()
-                        .get(&id)
+                        .get(id)
                         .map_or(false, |id| *id == i) {
-                        return Err(ValidatorError::InvalidHookId(id, i));
+                        return Err(ValidatorError::InvalidHookId(*id, i));
                     }
                 },
                 _ => {}
@@ -201,9 +249,9 @@ impl<'a, M> ModuleValidator<'a, M> {
                             .map_err(|_| ValidatorError::InvalidOpCode)? as usize;
 
                         // Make sure the chunk id is valid
-                        if chunk_id >= len || !self.module.get_chunk_access_at(chunk_id)
-                            .map_or(false, |entry| match entry.access {
-                                Access::Entry | Access::Hook { .. } => false,
+                        if chunk_id >= len || !self.module.get_chunk_at(chunk_id)
+                            .map_or(false, |chunk| match chunk.access {
+                                Access::Entry { .. } | Access::Hook { .. } => false,
                                 _ => true,
                             })
                         {

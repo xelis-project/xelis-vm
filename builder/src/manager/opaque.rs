@@ -1,6 +1,6 @@
 use std::{any::TypeId, collections::HashMap};
 
-use xelis_types::{IdentifierType, NoHashMap, Opaque, OpaqueType};
+use xelis_types::{IdentifierType, NoHashMap, Opaque, OpaqueType, OpaqueTypeTrait};
 use crate::{BuilderError, Mapper};
 
 #[derive(Debug)]
@@ -23,6 +23,30 @@ impl<'a> OpaqueManager<'a> {
     pub fn build<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool) -> Result<OpaqueType, BuilderError> {
         let id = self.mapper.register(name)?;
         let ty = OpaqueType::with(id, name, allow_external_input);
+        self.types.insert(id, ty.clone());
+        self.lookup.insert(TypeId::of::<T>(), ty.clone());
+
+        Ok(ty)
+    }
+
+    // Register a new generic opaque type (accepts type parameters)
+    pub fn build_generic<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> Result<OpaqueType, BuilderError> {
+        self.build_generic_with_traits::<T>(name, allow_external_input, generics_count, &[])
+    }
+
+    /// Register a new generic opaque type with the given type-level trait markers.
+    pub fn build_generic_with_traits<T: Opaque>(
+        &mut self,
+        name: &'static str,
+        allow_external_input: bool,
+        generics_count: u8,
+        traits: &[OpaqueTypeTrait],
+    ) -> Result<OpaqueType, BuilderError> {
+        let id = self.mapper.register(name)?;
+        let mut ty = OpaqueType::with_generics_count(id, name, allow_external_input, generics_count);
+        for &t in traits {
+            ty = ty.with_trait(t);
+        }
         self.types.insert(id, ty.clone());
         self.lookup.insert(TypeId::of::<T>(), ty.clone());
 

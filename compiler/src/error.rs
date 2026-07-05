@@ -33,6 +33,8 @@ pub enum CompilerError {
     ExpectedVariable,
     #[error("expected a primitive type")]
     ExpectedPrimitiveType,
+    #[error("unknown TypePacked")]
+    UnknownTypePacked,
     #[error("expected a value on the stack")]
     ExpectedValueOnStack,
     #[error("less value on the stack than previous")]

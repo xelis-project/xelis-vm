@@ -13,6 +13,9 @@ mod full;
 /// This module contains comprehensive tests for all standard library functions
 mod stdlib_tests;
 
+/// This module contains tests for the ModuleValidator
+mod validator;
+
 #[track_caller]
 fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -> Result<Primitive, VMError> {
     // Verify the module using validator
@@ -27,7 +30,7 @@ fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -
         metadata: (&()).into(),
     }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.invoke_chunk_id(id as _).expect("valid entry chunk");
+    vm.invoke_chunk_id_unchecked(id as _).expect("valid entry chunk");
     vm.run_blocking().map(|mut v| v.into_value().expect("primitive"))
 }
 

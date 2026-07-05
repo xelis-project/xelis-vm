@@ -1,10 +1,12 @@
 mod r#struct;
 mod r#enum;
 mod func;
+mod packed;
+mod number;
 
 pub mod opaque;
 
-use std::{fmt, hash::Hash};
+use std::{borrow::Cow, fmt, hash::Hash};
 use serde::{Deserialize, Serialize};
 
 use crate::{values::Primitive, Constant};
@@ -13,6 +15,8 @@ use opaque::OpaqueType;
 pub use r#struct::*;
 pub use r#enum::*;
 pub use func::*;
+pub use packed::*;
+pub use number::*;
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -66,6 +70,65 @@ pub enum DefinedType {
 }
 
 impl Type {
+    pub fn packed(&self) -> Option<TypePacked> {
+        Some(match self {
+            Type::U8 => TypePacked::Number(NumberType::U8),
+            Type::U16 => TypePacked::Number(NumberType::U16),
+            Type::U32 => TypePacked::Number(NumberType::U32),
+            Type::U64 => TypePacked::Number(NumberType::U64),
+            Type::U128 => TypePacked::Number(NumberType::U128),
+            Type::U256 => TypePacked::Number(NumberType::U256),
+            Type::String => TypePacked::String,
+            Type::Bool => TypePacked::Bool,
+            Type::Bytes => TypePacked::Bytes,
+            Type::Range(inner) => match **inner {
+                Type::U8 => TypePacked::Range(Box::new(NumberType::U8)),
+                Type::U16 => TypePacked::Range(Box::new(NumberType::U16)),
+                Type::U32 => TypePacked::Range(Box::new(NumberType::U32)),
+                Type::U64 => TypePacked::Range(Box::new(NumberType::U64)),
+                Type::U128 => TypePacked::Range(Box::new(NumberType::U128)),
+                Type::U256 => TypePacked::Range(Box::new(NumberType::U256)),
+                _ => return None
+            },
+            Type::Map(key, value) => {
+                if !key.is_hashable() {
+                    return None
+                }
+
+                TypePacked::Map(Box::new(key.packed()?), Box::new(value.packed()?))
+            },
+            Type::Array(types) => TypePacked::Array(Box::new(types.packed()?)),
+            Type::Tuples(types) => types.iter()
+                .map(Type::packed)
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::Tuples)?,
+            Type::Optional(inner) => TypePacked::Optional(Box::new(inner.packed()?)),
+            Type::Voidable(ty) => ty.packed()?,
+            Type::Struct(ty) => ty.fields()
+                .iter()
+                .map(|(_, ty)| ty.packed())
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::Tuples)?,
+            Type::Enum(ty) => ty.variants()
+                .iter()
+                .map(|(_, ty)| ty.fields()
+                    .iter()
+                    .map(|(_, ty)| ty.packed())
+                    .collect::<Option<Vec<_>>>()
+                )
+                .collect::<Option<Vec<_>>>()
+                .map(TypePacked::OneOf)?,
+            Type::Opaque(ty) => TypePacked::Opaque(ty.id()),
+            Type::Closure(_) => TypePacked::Tuples(vec![
+                TypePacked::Number(NumberType::U16), // chunk id
+                TypePacked::Bool, // is syscall
+                TypePacked::Number(NumberType::U16), // from chunk id
+            ]),
+            Type::Function(_) => TypePacked::Number(NumberType::U16),
+            Type::Any | Type::T(_) => TypePacked::Any,
+        })
+    }
+
     // transform a byte into a primitive type
     pub fn primitive_type_from_byte(byte: u8) -> Option<Self> {
         match byte {
@@ -195,6 +258,8 @@ impl Type {
                 _ => None,
             },
             Type::Tuples(types) => types.get(id as usize),
+            // Generic opaque: bare template returns None; instantiated returns the i-th generic.
+            Type::Opaque(opaque) if opaque.generics_count() > 0 => opaque.generics().get(id as usize),
             _ => match id {
                 0 => Some(self),
                 _ => None,
@@ -241,7 +306,21 @@ impl Type {
             Type::T(None) => replacement.cloned().unwrap_or_else(|| self.clone()),
             Type::T(Some(id)) => replacement
                 .and_then(|ty| ty.get_generic_type(*id).cloned())
-                .or_else(|| replacement.cloned())
+                .or_else(|| match replacement {
+                    // A bare generic opaque (template, no concrete args) carries no element-type
+                    // information → fall back to Any so callers get a useful type instead of
+                    // accidentally resolving to the Iterator/opaque type itself.
+                    Some(Type::Opaque(op)) if op.generics_count() > 0 && op.generics().is_empty() =>
+                        Some(Type::Any),
+                    // When the replacement is a "leaf" type that is its own T(0) value
+                    // (i.e. it was already deconstructed from parent context, e.g., a Tuple element),
+                    // fall back to using it directly.
+                    // But don't fall back when the replacement is a parameterized container type
+                    // (Array, Map, Opaque with generics, etc.) whose T(id) is genuinely out of range:
+                    // in that case keep T(id) unresolved so it can be inferred later from parameters.
+                    Some(r) if r.get_generic_type(0).map_or(false, |g| g == r) => Some(r.clone()),
+                    _ => None,
+                })
                 .unwrap_or_else(|| self.clone()),
             Type::Optional(inner) => {
                 let next = replacement
@@ -301,6 +380,36 @@ impl Type {
             }
             Type::Closure(f) => Type::Closure(f.map_generic_type(replacement)),
             Type::Function(f) => Type::Function(f.map_generic_type(replacement)),
+            Type::Opaque(opaque) if !opaque.generics().is_empty() => {
+                let new_generics = opaque.generics().iter()
+                    .enumerate()
+                    .map(|(i, t)| {
+                        // For each generic slot i, pick the replacement sub-type to pass down.
+                        //
+                        // When `t` is a bare `T(n)` and the replacement is the same Opaque kind,
+                        // use the *n*-th generic of the replacement (not the positional *i*-th).
+                        // This is critical for functions like `zip` whose parameter type is
+                        // `Iterator<T(1)>`: T(1) must resolve from the 1st generic of the source
+                        // Opaque (or stay unresolved when it is out of range), not accidentally
+                        // inherit the 0th generic (`string`) via the leaf-type fallback.
+                        //
+                        // For compound inner types like `Optional<T(0)>`, use the positional i-th
+                        // generic so the recursion can drill down correctly.
+                        let next = match replacement {
+                            Some(Type::Opaque(rep)) if rep.id() == opaque.id() => {
+                                if let Type::T(Some(n)) = t {
+                                    rep.generics().get(*n as usize)
+                                } else {
+                                    rep.generics().get(i)
+                                }
+                            },
+                            _ => replacement,
+                        };
+                        t.map_generic_type(next)
+                    })
+                    .collect();
+                Type::Opaque(opaque.with_generics(new_generics))
+            },
             _ => self.clone(),
         }
     }
@@ -326,6 +435,19 @@ impl Type {
         match self {
             Type::Map(_, _) => true,
             _ => false
+        }
+    }
+
+    pub fn is_hashable(&self) -> bool {
+        match self {
+            Type::Map(_, _) => false,
+            Type::Array(inner) | Type::Optional(inner) | Type::Range(inner) | Type::Voidable(inner) => inner.is_hashable(),
+            Type::Tuples(types) => types.iter().all(Type::is_hashable),
+            Type::Struct(ty) => ty.fields().iter().all(|(_, ty)| ty.is_hashable()),
+            Type::Enum(ty) => ty.variants()
+                .iter()
+                .all(|(_, variant)| variant.fields().iter().all(|(_, ty)| ty.is_hashable())),
+            _ => true,
         }
     }
 
@@ -413,6 +535,42 @@ impl Type {
         }
     }
 
+    /// Used exclusively in `is_compatible_with` when comparing the generic arguments
+    /// of two Opaque types with the same id (e.g. both Iterator but with different
+    /// inner types).
+    ///
+    /// When `self` is an iterable Opaque (e.g. `Iterator<T(0)>`) and `other` is an
+    /// iterable container (`Array<T>`, `Range<T>`, or another iterable Opaque) whose
+    /// element type is compatible, return `true`.  This enables method dispatch of
+    /// functions registered on `Iterator<Iterator<T>>` to also match
+    /// `Iterator<Array<T>>` — without broadening parameter-passing compatibility.
+    fn is_iterable_container_compatible_with(&self, other: &Type) -> bool {
+        let Type::Opaque(self_op) = self else {
+            return false
+        };
+        if !self_op.is_iterable() {
+            return false
+        }
+
+        // The Opaque's first generic is the expected element type.
+        let Some(expected_elem) = self_op.generics().first() else {
+            return false
+        };
+
+        match other {
+            Type::Array(inner) | Type::Range(inner) => {
+                inner.is_compatible_with(expected_elem) || expected_elem.is_generic()
+            }
+            Type::Opaque(other_op) if other_op.is_iterable() => {
+                let Some(actual_elem) = other_op.generics().first() else {
+                    return false
+                };
+                actual_elem.is_compatible_with(expected_elem) || expected_elem.is_generic()
+            }
+            _ => false,
+        }
+    }
+
     // check if the type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         if other.is_generic() || self.is_generic() {
@@ -443,7 +601,15 @@ impl Type {
                 _ => false
             },
             Type::Opaque(a) => match self {
-                Type::Opaque(b) => a == b,
+                Type::Opaque(b) => {
+                    if a.id() != b.id() { return false; }
+                    // If either side has no generics (bare/template), accept as compatible
+                    if a.generics().is_empty() || b.generics().is_empty() { return true; }
+                    // Both have generics: each pair must be compatible
+                    a.generics().len() == b.generics().len()
+                        && a.generics().iter().zip(b.generics().iter())
+                            .all(|(ga, gb)| gb.is_compatible_with(ga) || gb.is_iterable_container_compatible_with(ga))
+                },
                 _ => false
             },
             Type::Any | Type::T(None) => true,
@@ -600,6 +766,119 @@ impl Type {
             Type::Voidable(ty) => ty.is_optional(),
             _ => false
         }
+    }
+}
+
+pub(crate) fn fmt_generics(f: &mut fmt::Formatter, generics: &[Cow<'static, str>]) -> fmt::Result {
+    if generics.is_empty() {
+        return Ok(());
+    }
+
+    write!(f, "<")?;
+    for (index, generic) in generics.iter().enumerate() {
+        if index > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{}", generic)?;
+    }
+    write!(f, ">")
+}
+
+pub(crate) fn fmt_type_with_generics(
+    f: &mut fmt::Formatter,
+    ty: &Type,
+    generics: &[Cow<'static, str>],
+) -> fmt::Result {
+    match ty {
+        Type::T(Some(id)) => {
+            if let Some(generic) = generics.get(*id as usize) {
+                write!(f, "{}", generic)
+            } else {
+                write!(f, "T{}", id)
+            }
+        }
+        Type::T(None) => write!(f, "T"),
+        Type::Tuples(types) => {
+            write!(f, "(")?;
+            for (index, ty) in types.iter().enumerate() {
+                if index > 0 {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+            write!(f, ")")
+        }
+        Type::Array(ty) => {
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, "[]")
+        }
+        Type::Optional(ty) => {
+            write!(f, "optional<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Range(ty) => {
+            write!(f, "range<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Map(key, value) => {
+            write!(f, "map<")?;
+            fmt_type_with_generics(f, key, generics)?;
+            write!(f, ", ")?;
+            fmt_type_with_generics(f, value, generics)?;
+            write!(f, ">")
+        }
+        Type::Voidable(ty) => {
+            write!(f, "void<")?;
+            fmt_type_with_generics(f, ty, generics)?;
+            write!(f, ">")
+        }
+        Type::Closure(closure) => {
+            write!(f, "closure(")?;
+            for (index, ty) in closure.parameters().iter().enumerate() {
+                if index > 0 {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+            write!(f, ")")?;
+
+            if let Some(ty) = closure.return_type() {
+                write!(f, " -> ")?;
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+
+            Ok(())
+        }
+        Type::Function(function) => {
+            write!(f, "fn(")?;
+            let mut has_parameter = false;
+
+            if function.on_instance() {
+                if let Some(ty) = function.on_type() {
+                    fmt_type_with_generics(f, ty, generics)?;
+                    has_parameter = true;
+                }
+            }
+
+            for ty in function.parameters() {
+                if has_parameter {
+                    write!(f, ", ")?;
+                }
+                fmt_type_with_generics(f, ty, generics)?;
+                has_parameter = true;
+            }
+
+            write!(f, ")")?;
+            if let Some(ty) = function.return_type() {
+                write!(f, " -> ")?;
+                fmt_type_with_generics(f, ty, generics)?;
+            }
+
+            Ok(())
+        }
+        _ => write!(f, "{}", ty),
     }
 }
 
@@ -793,6 +1072,49 @@ mod tests {
         ]);
 
         assert_eq!(format!("{}", ty), "(u8, string, bool[])");
+    }
+
+    #[test]
+    fn test_display_registered_type_declarations_with_generics() {
+        use std::borrow::Cow;
+
+        let entry = StructType::new_with_generics(
+            0,
+            "Entry",
+            vec![Cow::Borrowed("K"), Cow::Borrowed("V")],
+            vec![
+                (Cow::Borrowed("key"), Type::T(Some(0))),
+                (Cow::Borrowed("value"), Type::T(Some(1))),
+                (
+                    Cow::Borrowed("mapper"),
+                    Type::Closure(ClosureType::new(
+                        vec![Type::T(Some(0))],
+                        Some(Type::T(Some(1))),
+                    )),
+                ),
+            ],
+        );
+        assert_eq!(
+            entry.to_string(),
+            "struct Entry<K, V> { key: K, value: V, mapper: closure(K) -> V }"
+        );
+
+        let result = EnumType::new_with_generics(
+            1,
+            "Result",
+            vec![Cow::Borrowed("T"), Cow::Borrowed("E")],
+            vec![
+                (Cow::Borrowed("Ok"), EnumVariant::new_tuple(vec![Type::T(Some(0))])),
+                (
+                    Cow::Borrowed("Err"),
+                    EnumVariant::new(vec![(Cow::Borrowed("error"), Type::T(Some(1)))]),
+                ),
+            ],
+        );
+        assert_eq!(
+            result.to_string(),
+            "enum Result<T, E> { Ok(T), Err { error: E } }"
+        );
     }
 
     #[test]

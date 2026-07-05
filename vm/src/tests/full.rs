@@ -3,8 +3,38 @@ use xelis_environment::{Environment, EnvironmentError};
 use xelis_builder::EnvironmentBuilder;
 use xelis_lexer::Lexer;
 use xelis_parser::{Parser, ParserError};
-use xelis_types::{traits::{JSONHelper, Serializable}, Primitive};
+use xelis_types::{traits::{DynHash, DynType, JSONHelper, Serializable}, Opaque, Primitive};
 use super::*;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NonHashableOpaque;
+
+impl DynType for NonHashableOpaque {
+    fn get_type_name(&self) -> &'static str {
+        "NonHashableOpaque"
+    }
+
+    fn get_type(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<Self>()
+    }
+}
+
+impl DynHash for NonHashableOpaque {
+    fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
+
+    fn is_hashable(&self) -> bool {
+        false
+    }
+}
+
+impl JSONHelper for NonHashableOpaque {}
+impl Serializable for NonHashableOpaque {}
+
+impl Opaque for NonHashableOpaque {
+    fn clone_box(&self) -> Box<dyn Opaque> {
+        Box::new(self.clone())
+    }
+}
 
 #[track_caller]
 fn prepare_module(code: &str) -> (Module, Environment<()>) {
@@ -1619,6 +1649,50 @@ fn test_opaque_fn_call() {
 }
 
 #[test]
+fn test_map_constructor_rejects_non_hashable_opaque_key() {
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
+
+    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+    }), 0, Some(ty));
+
+    let code = r#"
+        entry main() {
+            let key: NonHashableOpaque = non_hashable();
+            let _: map<NonHashableOpaque, u64> = { key: 1u64 };
+            return 0
+        }
+    "#;
+
+    let (module, env) = prepare_module_with(code, env);
+    let result = run_internal(module, &env, 0);
+    assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))));
+}
+
+#[test]
+fn test_map_insert_rejects_non_hashable_opaque_key() {
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
+
+    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+    }), 0, Some(ty));
+
+    let code = r#"
+        entry main() {
+            let map: map<NonHashableOpaque, u64> = {};
+            map.insert(non_hashable(), 1u64);
+            return 0
+        }
+    "#;
+
+    let (module, env) = prepare_module_with(code, env);
+    let result = run_internal(module, &env, 0);
+    assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))));
+}
+
+#[test]
 fn test_shadow_variable() {
     let code = r#"
         entry main() {
@@ -1838,6 +1912,27 @@ fn test_hook() {
 
         entry main() {
             return 0;
+        }
+    "#;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_hook("constructor", vec![], Some(Type::U64));
+
+    let (module, env) = prepare_module_with(code, env);
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+}
+
+#[test]
+fn test_hook_optional_struct_array() {
+    let code = r#"
+        struct Test {
+            x: u32,
+            y: u32,
+        }
+
+        hook constructor() -> u64 {
+            let test_opt: optional<Test[]> = null
+            return 0
         }
     "#;
 
@@ -2092,6 +2187,7 @@ fn test_match() {
             match v {
                 Foo::B { value } => panic("should not match"),
                 Foo::A { value } => return 0,
+                Foo::C => panic("should not match C"),
             };
 
             return 1
@@ -2099,6 +2195,187 @@ fn test_match() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_tuple_enum_variant() {
+    // Test basic tuple-style enum variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let opt: Option = Option::Some(42);
+            match opt {
+                Option::Some(val) => return val,
+                Option::None => return 0
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_tuple_enum_variant_none() {
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let opt: Option = Option::None;
+            match opt {
+                Option::Some(val) => return val,
+                Option::None => return 99
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(99));
+}
+
+#[test]
+fn test_tuple_enum_multiple_fields() {
+    let code = r#"
+        enum Either {
+            Left(u64),
+            Right(string, bool)
+        }
+
+        entry main() {
+            let e: Either = Either::Right("hello", true);
+            match e {
+                Either::Left(val) => return 0,
+                Either::Right(s, b) => {
+                    if b {
+                        return 42
+                    }
+                    return 1
+                }
+            };
+            return 99
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+fn test_generic_enum() {
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 0
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(100));
+}
+
+#[test]
+fn test_generic_enum_err() {
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Err("error");
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 999
+            };
+            return 1
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(999));
+}
+
+#[test]
+fn test_generic_enum_type_inference() {
+    // Test that generic type can be inferred from usage
+    let code = r#"
+        enum Wrapper<T> {
+            Value(T)
+        }
+
+        entry main() {
+            let w = Wrapper::Value(55);
+            match w {
+                Wrapper::Value(v) => return v
+            };
+            return 0
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(55));
+}
+
+#[test]
+fn test_mixed_enum_variants() {
+    // Test enum with both tuple and struct-style variants
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m1: Mixed = Mixed::Tuple(10, true);
+            let m2: Mixed = Mixed::Struct { name: "test", value: 20 };
+            let m3: Mixed = Mixed::Unit;
+
+            let sum: u64 = 0;
+
+            match m1 {
+                Mixed::Unit => {},
+                Mixed::Tuple(n, b) => {
+                    if b {
+                        sum = sum + n
+                    }
+                },
+                Mixed::Struct { name, value } => {}
+            };
+
+            match m2 {
+                Mixed::Unit => {},
+                Mixed::Tuple(n, b) => {},
+                Mixed::Struct { name, value } => {
+                    sum = sum + value
+                }
+            };
+
+            match m3 {
+                Mixed::Unit => {
+                    sum = sum + 5
+                },
+                Mixed::Tuple(n, b) => {},
+                Mixed::Struct { name, value } => {}
+            };
+
+            return sum
+        }
+    "#;
+
+    assert_eq!(run_code(code), Primitive::U64(35)); // 10 + 20 + 5
 }
 
 
@@ -2143,6 +2420,744 @@ fn test_match_variant() {
     "#;
 
     assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_exhaustive_enum() {
+    // All variants covered
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::B;
+            match v {
+                Test::A => return 1,
+                Test::B => return 2,
+                Test::C => return 3
+            };
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(2));
+}
+
+#[test]
+fn test_match_exhaustive_enum_with_default() {
+    // Default case covers the rest
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::C;
+            match v {
+                Test::A => return 1,
+                _ => return 99
+            };
+            return 0
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(99));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_missing_one() {
+    // Missing variant C: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1,
+                Test::B => return 2
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_missing_all_but_one() {
+    // Only one variant covered out of three: should fail
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_enum_variant() {
+    // Duplicate variant A: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B,
+            C
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                Test::A => return 1,
+                Test::A => return 2,
+                Test::B => return 3,
+                Test::C => return 4
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_default_case() {
+    // Two default cases: should fail at parse time
+    let code = r#"
+        enum Test {
+            A,
+            B
+        }
+
+        entry main() {
+            let v: Test = Test::A;
+            match v {
+                _ => return 1,
+                _ => return 2
+            };
+            return 0
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_enum_with_fields() {
+    // Enum with fields, all variants covered
+    let code = r#"
+        enum Result {
+            Ok { value: u64 },
+            Err { msg: string }
+        }
+
+        entry main() {
+            let r: Result = Result::Ok { value: 42 };
+            match r {
+                Result::Ok { value } => return value,
+                Result::Err { msg } => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(42));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_enum_with_fields() {
+    // Enum with fields, missing one variant
+    let code = r#"
+        enum Result {
+            Ok { value: u64 },
+            Err { msg: string }
+        }
+
+        entry main() {
+            let r: Result = Result::Ok { value: 42 };
+            match r {
+                Result::Ok { value } => return value
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_tuple_enum() {
+    // Tuple-style enum, all variants covered
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v,
+                Option::None => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_tuple_enum() {
+    // Tuple-style enum, missing None variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_tuple_enum_variant() {
+    // Duplicate tuple enum variant
+    let code = r#"
+        enum Option {
+            Some(u64),
+            None
+        }
+
+        entry main() {
+            let o: Option = Option::Some(10);
+            match o {
+                Option::Some(v) => return v,
+                Option::Some(v) => return 0,
+                Option::None => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_bool() {
+    // Both true and false covered for bool
+    let code = r#"
+        entry main() {
+            let b: bool = true;
+            match b {
+                true => return 1,
+                false => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_bool() {
+    // Only true covered for bool, missing false
+    let code = r#"
+        entry main() {
+            let b: bool = true;
+            match b {
+                true => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_bool_with_default() {
+    // Bool with default case is fine
+    let code = r#"
+        entry main() {
+            let b: bool = false;
+            match b {
+                true => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_primitive_no_default() {
+    // Primitive (u64) match without default case: should fail
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                5 => return 5
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_primitive_with_default() {
+    // Primitive (u64) match with default case: should work
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                n => return n
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(5));
+}
+
+#[test]
+#[should_panic]
+fn test_match_duplicate_primitive_pattern() {
+    // Duplicate constant patterns for primitive match
+    let code = r#"
+        entry main() {
+            match 5 {
+                5 => return 1,
+                5 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_generic_enum() {
+    // Generic enum with all variants covered
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val,
+                Result::Err(e) => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(100));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_generic_enum() {
+    // Generic enum missing Err variant
+    let code = r#"
+        enum Result<T, E> {
+            Ok(T),
+            Err(E)
+        }
+
+        entry main() {
+            let r: Result<u64, string> = Result<u64, string>::Ok(100);
+            match r {
+                Result::Ok(val) => return val
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+fn test_match_exhaustive_mixed_enum() {
+    // Mixed enum (unit, tuple, struct variants) all covered
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m: Mixed = Mixed::Tuple(10, true);
+            match m {
+                Mixed::Unit => return 0,
+                Mixed::Tuple(n, b) => return n,
+                Mixed::Struct { name, value } => return value
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(10));
+}
+
+#[test]
+#[should_panic]
+fn test_match_non_exhaustive_mixed_enum() {
+    // Mixed enum missing Struct variant
+    let code = r#"
+        enum Mixed {
+            Unit,
+            Tuple(u64, bool),
+            Struct { name: string, value: u64 }
+        }
+
+        entry main() {
+            let m: Mixed = Mixed::Tuple(10, true);
+            match m {
+                Mixed::Unit => return 0,
+                Mixed::Tuple(n, b) => return n
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+// ===== Number matching tests =====
+
+#[test]
+fn test_match_number_exact() {
+    let code = r#"
+        entry main() {
+            match 42 {
+                0 => return 0,
+                42 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_default_fallthrough() {
+    let code = r#"
+        entry main() {
+            match 7 {
+                0 => return 0,
+                1 => return 1,
+                n => return n
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(7));
+}
+
+#[test]
+fn test_match_number_range() {
+    let code = r#"
+        entry main() {
+            match 3 {
+                0..10 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_range_no_match() {
+    let code = r#"
+        entry main() {
+            match 50 {
+                0..10 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_number_multiple_ranges() {
+    let code = r#"
+        entry main() {
+            match 25 {
+                0..10 => return 1,
+                10..20 => return 2,
+                20..30 => return 3,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_match_number_range_and_exact() {
+    // Exact value takes priority when listed first
+    let code = r#"
+        entry main() {
+            match 5 {
+                5 => return 1,
+                0..10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_number_range_boundary() {
+    // Test the lower boundary of a range
+    let code = r#"
+        entry main() {
+            match 0 {
+                0..5 => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_u8() {
+    let code = r#"
+        entry main() {
+            let v: u8 = 10;
+            match v {
+                0 => return 0,
+                10 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_u128() {
+    let code = r#"
+        entry main() {
+            let v: u128 = 999;
+            match v {
+                0 => return 0,
+                999 => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_no_default() {
+    // Number match requires default (or is non-exhaustive)
+    let code = r#"
+        entry main() {
+            match 5 {
+                0 => return 0,
+                1 => return 1
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_duplicate_exact() {
+    let code = r#"
+        entry main() {
+            match 10 {
+                10 => return 1,
+                10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_number_duplicate_range() {
+    let code = r#"
+        entry main() {
+            match 5 {
+                0..10 => return 1,
+                0..10 => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+// ===== String matching tests =====
+
+#[test]
+fn test_match_string_exact() {
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "world" => return 0,
+                "hello" => return 1,
+                _ => return 99
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_string_default() {
+    let code = r#"
+        entry main() {
+            let s: string = "unknown";
+            match s {
+                "hello" => return 1,
+                "world" => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(0));
+}
+
+#[test]
+fn test_match_string_empty() {
+    let code = r#"
+        entry main() {
+            let s: string = "";
+            match s {
+                "" => return 1,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+fn test_match_string_multiple() {
+    let code = r#"
+        entry main() {
+            let s: string = "c";
+            match s {
+                "a" => return 1,
+                "b" => return 2,
+                "c" => return 3,
+                "d" => return 4,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(3));
+}
+
+#[test]
+fn test_match_string_named_default() {
+    // Named default captures the value
+    let code = r#"
+        entry main() {
+            let s: string = "test";
+            match s {
+                "hello" => return 0,
+                v => {
+                    if v == "test" {
+                        return 1
+                    }
+                    return 99
+                }
+            };
+            return 100
+        }
+    "#;
+    assert_eq!(run_code(code), Primitive::U64(1));
+}
+
+#[test]
+#[should_panic]
+fn test_match_string_no_default() {
+    // String match without default: non-exhaustive
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "hello" => return 1,
+                "world" => return 2
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
+}
+
+#[test]
+#[should_panic]
+fn test_match_string_duplicate() {
+    // Duplicate string pattern
+    let code = r#"
+        entry main() {
+            let s: string = "hello";
+            match s {
+                "hello" => return 1,
+                "hello" => return 2,
+                _ => return 0
+            };
+            return 99
+        }
+    "#;
+    run_code(code);
 }
 
 #[test]
@@ -3337,10 +4352,438 @@ fn test_async_callback_with_two_params() {
         metadata: (&()).into(),
     }).expect("module");
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
-    vm.invoke_chunk_id(0).expect("valid entry chunk");
+    vm.invoke_chunk_id_unchecked(0).expect("valid entry chunk");
     
     let result = vm.run_blocking().expect("run failed");
     let result = result.as_u64().expect("u64 result");
     // Expected: [10+0, 20+1, 30+2] = [10, 21, 32] => sum = 63
     assert_eq!(result, 63);
+}
+
+// Helper to prepare module with enforce_public_parameters enabled
+#[track_caller]
+fn prepare_module_with_enforced_params(code: &str) -> (Module, Environment<()>) {
+    let env = EnvironmentBuilder::default();
+    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
+    let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
+
+    let env = env.build();
+    let module = Compiler::new(&program, &env)
+        .with_enforce_public_parameters(true)
+        .compile()
+        .unwrap();
+
+    (module, env)
+}
+
+#[test]
+fn test_entry_params_order_single_param() {
+    let code = r#"
+        entry main(a: u64) {
+            return a;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct type
+    vm.invoke_chunk_with_args(0, [Primitive::U64(42)].into_iter()).expect("valid call");
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 42);
+}
+
+#[test]
+fn test_entry_params_order_multiple_params() {
+    let code = r#"
+        entry main(a: u64, b: u32, c: bool) {
+            if c {
+                return a + (b as u64);
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct types in correct order
+    vm.invoke_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U32(50),
+        Primitive::Boolean(true),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 150);
+}
+
+#[test]
+fn test_entry_params_wrong_type_first() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // First param is wrong type (u32 instead of u64)
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U32(100), // Wrong! Should be u64
+        Primitive::U32(50),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_wrong_type_second() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Second param is wrong type (u64 instead of u32)
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U64(50), // Wrong! Should be u32
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(1))));
+}
+
+#[test]
+fn test_entry_params_wrong_count() {
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Too few params
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U64(100),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 2, found: 1 })));
+}
+
+#[test]
+fn test_entry_params_wrong_count_too_many() {
+    let code = r#"
+        entry main(a: u64) {
+            return a;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Too many params
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U64(50),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 1, found: 2 })));
+}
+
+#[test]
+fn test_entry_params_string() {
+    let code = r#"
+        entry main(name: string) {
+            return name.len() as u64;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with correct string type
+    vm.invoke_chunk_with_args(0, [
+        Primitive::String("hello".to_string()),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 5);
+}
+
+#[test]
+fn test_entry_params_string_wrong_type() {
+    let code = r#"
+        entry main(name: string) {
+            return name.len() as u64;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with wrong type (u64 instead of string)
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U64(42),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_bool() {
+    let code = r#"
+        entry main(flag: bool) {
+            if flag {
+                return 1;
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    vm.invoke_chunk_with_args(0, [
+        Primitive::Boolean(true),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 1);
+}
+
+#[test]
+fn test_entry_params_bool_wrong_type() {
+    let code = r#"
+        entry main(flag: bool) {
+            if flag {
+                return 1;
+            }
+            return 0;
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Call with wrong type (u64 instead of bool)
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U64(1),
+    ].into_iter());
+    
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_params_optional() {
+    let code = r#"
+        entry main(value: optional<u64>) {
+            return value.unwrap_or(999);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    // Test with Some value
+    {
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        }).expect("module");
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
+        
+        vm.invoke_chunk_with_args(0, [
+            Primitive::U64(42),
+        ].into_iter()).expect("valid call");
+        
+        let result = vm.run_blocking().expect("run failed");
+        assert_eq!(result.as_u64().unwrap(), 42);
+    }
+    
+    // Test with None (null)
+    {
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        }).expect("module");
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
+        
+        vm.invoke_chunk_with_args(0, [
+            Primitive::Null,
+        ].into_iter()).expect("valid call");
+        
+        let result = vm.run_blocking().expect("run failed");
+        assert_eq!(result.as_u64().unwrap(), 999);
+    }
+}
+
+#[test]
+fn test_entry_params_all_number_types() {
+    let code = r#"
+        entry main(a: u8, b: u16, c: u32, d: u64, e: u128) {
+            return (a as u64) + (b as u64) + (c as u64) + d + (e as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    vm.invoke_chunk_with_args(0, [
+        Primitive::U8(1),
+        Primitive::U16(2),
+        Primitive::U32(3),
+        Primitive::U64(4),
+        Primitive::U128(5),
+    ].into_iter()).expect("valid call");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 15);
+}
+
+#[test]
+fn test_entry_params_mixed_wrong_order() {
+    let code = r#"
+        entry main(a: u8, b: u16, c: u32) {
+            return (a as u64) + (b as u64) + (c as u64);
+        }
+    "#;
+
+    let (module, environment) = prepare_module_with_enforced_params(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Pass params in wrong order (u32, u16, u8 instead of u8, u16, u32)
+    let result = vm.invoke_chunk_with_args(0, [
+        Primitive::U32(1), // Wrong! Should be u8
+        Primitive::U16(2),
+        Primitive::U8(3),  // Wrong! Should be u32
+    ].into_iter());
+    
+    // Should fail on first parameter (index 0)
+    assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
+}
+
+#[test]
+fn test_entry_without_enforced_params_accepts_any() {
+    // Without with_enforce_public_parameters, no type checking happens
+    let code = r#"
+        entry main(a: u64, b: u32) {
+            return a + (b as u64);
+        }
+    "#;
+
+    // Use standard prepare_module (no enforce_public_parameters)
+    let (module, environment) = prepare_module(code);
+    
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata {
+        module: (&module).into(),
+        environment: (&environment).into(),
+        metadata: (&()).into(),
+    }).expect("module");
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    
+    // Even with "wrong" types, it should still accept the call
+    // (though it may fail at runtime if types don't match the operations)
+    // The point is invoke_public_chunk_with_args doesn't reject it
+    vm.invoke_chunk_with_args(0, [
+        Primitive::U64(100),
+        Primitive::U32(50),
+    ].into_iter()).expect("call should be accepted without param enforcement");
+    
+    let result = vm.run_blocking().expect("run failed");
+    assert_eq!(result.as_u64().unwrap(), 150);
 }

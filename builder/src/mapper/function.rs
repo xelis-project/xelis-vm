@@ -18,6 +18,7 @@ pub struct Function<'a> {
     pub require_instance: bool,
     pub return_type: Option<Type>,
     pub cost: u64,
+    pub comment: Option<&'a str>,
 }
 
 /// FunctionMapper is used to store the mapping between function signatures and their identifiers
@@ -63,6 +64,11 @@ impl<'a> FunctionMapper<'a> {
 
     // Register a function signature
     pub fn register(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>, cost: u64) -> Result<IdentifierType, BuilderError> {
+        self.register_with_comment(name, on_type, require_instance, parameters, return_type, cost, None)
+    }
+
+    // Register a function signature with an optional documentation comment
+    pub fn register_with_comment(&mut self, name: &'a str, on_type: Option<Type>, require_instance: bool, parameters: Vec<(&'a str, Type)>, return_type: Option<Type>, cost: u64, comment: Option<&'a str>) -> Result<IdentifierType, BuilderError> {
         if on_type.as_ref().map_or(false, |v| v.is_closure()) {
             return Err(BuilderError::InvalidSignature)
         }
@@ -83,7 +89,8 @@ impl<'a> FunctionMapper<'a> {
             parameters,
             require_instance,
             return_type,
-            cost
+            cost,
+            comment
         });
 
         Ok(id)
@@ -104,6 +111,20 @@ impl<'a> FunctionMapper<'a> {
         }
 
         self.mappings.get(id)
+    }
+
+    // Get a mutable function mapping by id
+    pub fn get_function_mut(&mut self, id: &IdentifierType) -> Option<&mut Function<'a>> {
+        self.mappings.get_mut(id)
+    }
+
+    // Set the documentation comment for a function signature
+    pub fn set_comment(&mut self, name: &str, on_type: Option<&Type>, comment: &'a str) -> Result<(), BuilderError> {
+        let id = self.get_by_signature(name, on_type)?;
+        let function = self.get_function_mut(&id)
+            .ok_or(BuilderError::MappingNotFound)?;
+        function.comment = Some(comment);
+        Ok(())
     }
 
     pub fn get_by_signature(&self, name: &str, on_type: Option<&Type>) -> Result<IdentifierType, BuilderError> {

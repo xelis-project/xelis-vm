@@ -226,6 +226,22 @@ impl<'a, M> Function<'a,M> {
         }
     }
 
+    /// Get the declared on_type (e.g. `Iterator<T(0)>`)
+    pub fn get_on_type(&self) -> Option<&Type> {
+        match self {
+            Function::Native(f) => f.on_type(),
+            Function::Program(FunctionType::Declared(f)) => f.get_on_type().as_ref(),
+            Function::Program(_) => None,
+        }
+    }
+
+    /// Iterate over declared parameter types (without resolution)
+    pub fn param_types(&self) -> Vec<&Type> {
+        match self {
+            Function::Native(f) => f.get_parameters().iter().collect(),
+            Function::Program(f) => f.get_parameters().iter().map(|p| p.get_type()).collect(),
+        }
+    }
 
     pub fn as_function_type(&self) -> Option<FnType> {
         Some(match self {
@@ -445,6 +461,24 @@ impl<'a, M> Parser<'a, M> {
         Ok(())
     }
 
+    // Get the maximum T(n) index referenced in a type (returns 0-based count of slots needed)
+    fn max_generic_slot(ty: &Type) -> usize {
+        match ty {
+            Type::T(Some(id)) => *id as usize + 1,
+            Type::Array(inner) | Type::Optional(inner) | Type::Range(inner) => Self::max_generic_slot(inner),
+            Type::Map(k, v) => Self::max_generic_slot(k).max(Self::max_generic_slot(v)),
+            Type::Tuples(types) => types.iter().map(Self::max_generic_slot).max().unwrap_or(0),
+            Type::Closure(c) => {
+                let from_params = c.parameters().iter().map(Self::max_generic_slot).max().unwrap_or(0);
+                let from_ret = c.return_type().map(Self::max_generic_slot).unwrap_or(0);
+                from_params.max(from_ret)
+            }
+            Type::Opaque(o) => o.generics().iter().map(Self::max_generic_slot).max().unwrap_or(0),
+            Type::Struct(s) => s.fields().iter().map(|(_, t)| Self::max_generic_slot(t)).max().unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     // Substitute generic type parameters (Type::T) with concrete types
     fn substitute_generic_type(ty: &Type, concrete_types: &[Type]) -> Type {
         match ty {
@@ -468,6 +502,19 @@ impl<'a, M> Parser<'a, M> {
                     .map(|t| Self::substitute_generic_type(t, concrete_types))
                     .collect()
             ),
+            Type::Opaque(opaque) if !opaque.generics().is_empty() => {
+                let new_generics = opaque.generics().iter()
+                    .map(|g| Self::substitute_generic_type(g, concrete_types))
+                    .collect();
+                Type::Opaque(opaque.with_generics(new_generics))
+            },
+            Type::Closure(c) => {
+                let params = c.parameters().iter()
+                    .map(|t| Self::substitute_generic_type(t, concrete_types))
+                    .collect();
+                let ret = c.return_type().map(|t| Self::substitute_generic_type(t, concrete_types));
+                Type::Closure(ClosureType::new(params, ret))
+            },
             _ => ty.clone()
         }
     }
@@ -514,6 +561,30 @@ impl<'a, M> Parser<'a, M> {
                     Self::infer_generic_types(field_field_type, expr_field_type, inferred);
                 }
             }
+            // Match for Opaque types with generics - same base id
+            (Type::Opaque(field_op), Type::Opaque(expr_op)) if field_op.id() == expr_op.id() => {
+                for (fg, eg) in field_op.generics().iter().zip(expr_op.generics().iter()) {
+                    Self::infer_generic_types(fg, eg, inferred);
+                }
+            }
+            // Match for Closure types - infer from parameter types and return type
+            (Type::Closure(field_c), Type::Closure(expr_c)) => {
+                for (fp, ep) in field_c.parameters().iter().zip(expr_c.parameters().iter()) {
+                    Self::infer_generic_types(fp, ep, inferred);
+                }
+                if let (Some(fr), Some(er)) = (field_c.return_type(), expr_c.return_type()) {
+                    Self::infer_generic_types(fr, er, inferred);
+                }
+            }
+            // Match for Closure expected type against an inline Function (FnType derefs to ClosureType)
+            (Type::Closure(field_c), Type::Function(expr_f)) => {
+                for (fp, ep) in field_c.parameters().iter().zip(expr_f.parameters().iter()) {
+                    Self::infer_generic_types(fp, ep, inferred);
+                }
+                if let (Some(fr), Some(er)) = (field_c.return_type(), expr_f.return_type()) {
+                    Self::infer_generic_types(fr, er, inferred);
+                }
+            }
             // No match - types are incompatible or both concrete
             _ => {}
         }
@@ -522,8 +593,7 @@ impl<'a, M> Parser<'a, M> {
     fn get_generic_type_with_generics(&mut self, generics: &[Cow<'static, str>]) -> Result<Type, ParserError<'a>> {
         trace!("Get generic type");
         self.expect_token(Token::OperatorLessThan)?;
-        let token = self.advance()?;
-        let inner = self.get_type_from_token_with_generics(token, generics)?;
+        let inner = self.read_type_with_generics(generics)?;
         Ok(inner)
     }
 
@@ -557,7 +627,7 @@ impl<'a, M> Parser<'a, M> {
             Token::Any => Type::Any,
             Token::Map => {
                 let key = self.get_generic_type_with_generics(generics)?;
-                if key.is_map() {
+                if !key.is_hashable() {
                     return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
                 }
 
@@ -615,9 +685,73 @@ impl<'a, M> Parser<'a, M> {
                         Type::Struct(base_type)
                     }
                 } else if let Ok(builder) = self.global_mapper.enums().get_by_name(id) {
-                    Type::Enum(builder.get_type().clone())
+                    let base_type = builder.get_type().clone();
+
+                    // Check if generic type instantiation follows: Result<u64>
+                    if !base_type.generics().is_empty() && self.peek_is(Token::OperatorLessThan) {
+                        self.expect_token(Token::OperatorLessThan)?;
+
+                        let mut generic_types = Vec::with_capacity(base_type.generics().len());
+                        loop {
+                            let ty = self.read_type_with_generics(generics)?;
+                            generic_types.push(ty);
+                            
+                            if !self.peek_is(Token::Comma) {
+                                break;
+                            }
+                            self.expect_token(Token::Comma)?;
+                        }
+
+                        self.expect_token(Token::OperatorGreaterThan)?;
+
+                        // Verify we have the right number of generic arguments
+                        if generic_types.len() != base_type.generics().len() {
+                            return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+                        }
+
+                        // Create a specialized enum with concrete types
+                        // Clone all variants and substitute generic types
+                        let enum_id = base_type.id();
+                        let enum_name = base_type.name().to_owned();
+                        let all_variants: Vec<(Cow<'static, str>, EnumVariant)> = base_type.variants().iter()
+                            .map(|(name, variant)| {
+                                let specialized_types: Vec<Type> = variant.types()
+                                    .map(|ftype| Self::substitute_generic_type(ftype, &generic_types))
+                                    .collect();
+                                if variant.is_tuple() {
+                                    (name.clone(), EnumVariant::new_tuple(specialized_types))
+                                } else {
+                                    let specialized_fields: Vec<(Cow<'static, str>, Type)> = variant.fields().iter()
+                                        .map(|(fname, ftype)| {
+                                            let concrete_type = Self::substitute_generic_type(ftype, &generic_types);
+                                            (fname.clone(), concrete_type)
+                                        })
+                                        .collect();
+                                    (name.clone(), EnumVariant::new(specialized_fields))
+                                }
+                            })
+                            .collect();
+                        
+                        Type::Enum(EnumType::new(enum_id, enum_name, all_variants))
+                    } else {
+                        Type::Enum(base_type)
+                    }
                 } else if let Some(ty) = self.environment.get_opaque_by_name(id) {
-                    Type::Opaque(ty.clone())
+                    // Generic opaque type: Iterator<T>, etc.
+                    if ty.generics_count() > 0 && self.peek_is(Token::OperatorLessThan) {
+                        self.expect_token(Token::OperatorLessThan)?;
+                        let mut concrete = Vec::with_capacity(ty.generics_count() as usize);
+                        loop {
+                            let inner = self.read_type_with_generics(generics)?;
+                            concrete.push(inner);
+                            if !self.peek_is(Token::Comma) { break; }
+                            self.expect_token(Token::Comma)?;
+                        }
+                        self.expect_token(Token::OperatorGreaterThan)?;
+                        Type::Opaque(ty.with_generics(concrete))
+                    } else {
+                        Type::Opaque(ty.clone())
+                    }
                 } else {
                     return Err(err!(self, ParserErrorKind::TypeNameNotFound(id)))
                 }
@@ -1110,6 +1244,46 @@ impl<'a, M> Parser<'a, M> {
             .as_ref()
             .map(|v| v.map_generic_type(on_type));
 
+        // Infer T(n) from closure/generic parameters to get precise return type
+        // (e.g. map(fn(T(0)) -> T(1)) -> Iterator<T(1)> infers T(1) from the actual closure's return type)
+        if let Some(declared_return) = f.return_type() {
+            // Determine the total number of generic slots needed
+            let max_slots = {
+                let from_return = Self::max_generic_slot(declared_return);
+                let from_params = f.param_types().iter()
+                    .map(|t| Self::max_generic_slot(t))
+                    .max()
+                    .unwrap_or(0);
+                from_return.max(from_params)
+            };
+
+            if max_slots > 1 {
+                let mut inferred: Vec<Option<Type>> = vec![None; max_slots];
+
+                // Seed T(0) from on_type if available
+                if let Some(ot) = on_type {
+                    if let Some(declared_on_type) = f.get_on_type() {
+                        Self::infer_generic_types(declared_on_type, ot, &mut inferred);
+                    }
+                }
+
+                // Infer T(n >= 1) from actual parameter types
+                for (decl_ty, actual_expr) in f.param_types().iter().zip(parameters.iter()) {
+                    if let Ok(Some(actual_ty)) = self.get_type_from_expression_internal(on_type, actual_expr, context) {
+                        Self::infer_generic_types(decl_ty, &actual_ty, &mut inferred);
+                    }
+                }
+
+                // Only substitute if we inferred any T(n >= 1) slot
+                if inferred[1..].iter().any(|s| s.is_some()) {
+                    let concrete: Vec<Type> = inferred.into_iter()
+                        .map(|opt| opt.unwrap_or(Type::Any))
+                        .collect();
+                    return_type = Some(Self::substitute_generic_type(declared_return, &concrete));
+                }
+            }
+        }
+
         if expected_type.is_some() && return_type.as_ref().is_some_and(|ty| ty.get_inner_type().is_any()) {
             return_type = return_type.map(|v| v.map_generic_type(on_type));
         }
@@ -1307,7 +1481,8 @@ impl<'a, M> Parser<'a, M> {
     }
 
     // Read an enum variant constructor with the following syntax:
-    // enum_name::variant_name { field1: value1, field2: value2 }
+    // Struct-style: enum_name::variant_name { field1: value1, field2: value2 }
+    // Tuple-style: enum_name::variant_name(value1, value2)
     // Or if no fields: enum_name::variant_name
     fn read_enum_variant_constructor(&mut self, enum_type: EnumType, variant_name: &'a str, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
         trace!("Read enum variant constructor: {:?}::{}", enum_type, variant_name);
@@ -1317,17 +1492,114 @@ impl<'a, M> Parser<'a, M> {
         let enum_name = enum_type.name().to_string();
         let generics_len = enum_type.generics().len();
 
-        let (variant_id, fields) = {
+        let (variant_id, fields, is_tuple) = {
             let builder = self.global_mapper.enums()
                 .get_by_ref(&enum_type)
                 .map_err(|e| err!(self, e.into()))?;
             let (variant_id, variant) = builder.get_variant_by_name(&variant_name)
                 .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
 
-            (variant_id, variant.fields().iter().map(|(name, ty)| (name.clone(), ty.clone())).collect::<Vec<_>>())
+            (variant_id, variant.fields().iter().map(|(name, ty)| (name.clone(), ty.clone())).collect::<Vec<_>>(), variant.is_tuple())
         };
 
-        // If its an enum variant with fields and has generics
+        // Handle tuple-style variants with generics
+        if !fields.is_empty() && is_tuple && generics_len > 0 {
+            self.expect_token(Token::ParenthesisOpen)?;
+            
+            let mut inferred_generics: Vec<Option<Type>> = vec![None; generics_len];
+            let mut field_exprs = Vec::new();
+            
+            for (_, field_type) in &fields {
+                let expr = self.read_expr(None, None, true, true, None, context)?;
+                
+                if let Some(expr_type) = self.get_type_from_expression_internal(None, &expr, context)? {
+                    Self::infer_generic_types(field_type, &expr_type, &mut inferred_generics);
+                }
+                
+                field_exprs.push(expr);
+                
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            
+            self.expect_token(Token::ParenthesisClose)?;
+            
+            if field_exprs.len() != fields.len() {
+                return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+            }
+            
+            // Build specialized enum type with inferred generics
+            let concrete_types: Vec<Type> = inferred_generics.into_iter()
+                .enumerate()
+                .map(|(i, opt)| opt.ok_or_else(|| err!(self, ParserErrorKind::UnexpectedType(Type::T(Some(i as u8))))))
+                .collect::<Result<Vec<_>, _>>()?;
+            
+            // Clone all variants and substitute generic types
+            let all_variants: Vec<(Cow<'static, str>, EnumVariant)> = enum_type.variants().iter()
+                .map(|(name, variant)| {
+                    let specialized_types: Vec<Type> = variant.types()
+                        .map(|ftype| Self::substitute_generic_type(ftype, &concrete_types))
+                        .collect();
+                    if variant.is_tuple() {
+                        (name.clone(), EnumVariant::new_tuple(specialized_types))
+                    } else {
+                        let specialized_fields: Vec<(Cow<'static, str>, Type)> = variant.fields().iter()
+                            .map(|(fname, ftype)| {
+                                let concrete_type = Self::substitute_generic_type(ftype, &concrete_types);
+                                (fname.clone(), concrete_type)
+                            })
+                            .collect();
+                        (name.clone(), EnumVariant::new(specialized_fields))
+                    }
+                })
+                .collect();
+            
+            let specialized = EnumType::new(enum_id, enum_name, all_variants);
+            
+            let specialized_variant = specialized.get_variant(variant_id)
+                .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant_name)))?;
+            
+            let mut fields_expressions = Vec::with_capacity(field_exprs.len());
+            for (mut field_expr, (_, field_type)) in field_exprs.into_iter().zip(specialized_variant.1.fields().iter()) {
+                self.verify_type_of(&mut field_expr, field_type, context, true)?;
+                fields_expressions.push(field_expr);
+            }
+            
+            let variant = EnumValueType::new(specialized, variant_id);
+            return Ok(Expression::EnumConstructor(fields_expressions, variant));
+        }
+
+        // Handle tuple-style variants without generics
+        if !fields.is_empty() && is_tuple {
+            self.expect_token(Token::ParenthesisOpen)?;
+            
+            let mut field_exprs = Vec::new();
+            for (_, expected_type) in &fields {
+                let mut expr = self.read_expr(None, None, true, true, Some(expected_type), context)?;
+                self.verify_type_of(&mut expr, expected_type, context, true)?;
+                field_exprs.push(expr);
+                
+                if self.peek_is(Token::Comma) {
+                    self.expect_token(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            
+            self.expect_token(Token::ParenthesisClose)?;
+            
+            if field_exprs.len() != fields.len() {
+                return Err(err!(self, ParserErrorKind::InvalidFieldCount))
+            }
+            
+            let variant = EnumValueType::new(enum_type, variant_id);
+            return Ok(Expression::EnumConstructor(field_exprs, variant));
+        }
+
+        // Handle struct-style variants with generics
         if !fields.is_empty() && generics_len > 0 {
             self.expect_token(Token::BraceOpen)?;
             
@@ -1377,13 +1649,20 @@ impl<'a, M> Parser<'a, M> {
             // Clone all variants and substitute generic types
             let all_variants: Vec<(Cow<'static, str>, EnumVariant)> = enum_type.variants().iter()
                 .map(|(name, variant)| {
-                    let specialized_fields: Vec<(Cow<'static, str>, Type)> = variant.fields().iter()
-                        .map(|(fname, ftype)| {
-                            let concrete_type = Self::substitute_generic_type(ftype, &concrete_types);
-                            (fname.clone(), concrete_type)
-                        })
-                        .collect();
-                    (name.clone(), EnumVariant::new(specialized_fields))
+                    if variant.is_tuple() {
+                        let specialized_types: Vec<Type> = variant.types()
+                            .map(|ftype| Self::substitute_generic_type(ftype, &concrete_types))
+                            .collect();
+                        (name.clone(), EnumVariant::new_tuple(specialized_types))
+                    } else {
+                        let specialized_fields: Vec<(Cow<'static, str>, Type)> = variant.fields().iter()
+                            .map(|(fname, ftype)| {
+                                let concrete_type = Self::substitute_generic_type(ftype, &concrete_types);
+                                (fname.clone(), concrete_type)
+                            })
+                            .collect();
+                        (name.clone(), EnumVariant::new(specialized_fields))
+                    }
                 })
                 .collect();
             
@@ -1408,7 +1687,7 @@ impl<'a, M> Parser<'a, M> {
             return Ok(Expression::EnumConstructor(fields_expressions, variant));
         }
 
-        // If its an enum variant with fields (non-generic path)
+        // Handle struct-style variants without generics
         let exprs = if !fields.is_empty() {
             self.expect_token(Token::BraceOpen)?;
             let fields_read = self.read_constructor_fields(context, fields.iter().map(|(_, ty)| ty))?;
@@ -1472,6 +1751,23 @@ impl<'a, M> Parser<'a, M> {
             const_fn.call(constants)
                 .map(|v| Expression::Constant(v))
                 .map_err(|e| err!(self, e.into()))
+        // If its an enum with parenthesis, check if it's a tuple-style variant constructor
+        } else if let Type::Enum(ref enum_type) = _type {
+            // Check if this is a tuple-style variant (called with parentheses)
+            let is_tuple_variant = self.global_mapper.enums()
+                .get_by_ref(enum_type)
+                .ok()
+                .and_then(|builder| builder.get_variant_by_name(constant_name))
+                .map(|(_, v)| v.is_tuple())
+                .unwrap_or(false);
+            
+            if is_tuple_variant || !self.peek_is(Token::ParenthesisOpen) {
+                // It's a tuple-style variant or a unit/struct-style variant
+                self.read_enum_variant_constructor(enum_type.clone(), constant_name, context)
+            } else {
+                // Try to read a static function call
+                self.read_function_call(None, false, Some(&_type), None, constant_name, context)
+            }
         } else if self.peek_is(Token::ParenthesisOpen) {
             // Try to read a static (on type) function call from it
             self.read_function_call(None, false, Some(&_type), None,  constant_name, context)
@@ -1480,8 +1776,6 @@ impl<'a, M> Parser<'a, M> {
             // Read a function pointer
             // Like Foo::bar
             Ok(Expression::FunctionPointer(id, false))
-        } else if let Type::Enum(enum_type) = _type {
-            self.read_enum_variant_constructor(enum_type, constant_name, context)
         } else {
             Err(err!(self, ParserErrorKind::ConstantNotFound(_type, constant_name)))
         }
@@ -1512,9 +1806,38 @@ impl<'a, M> Parser<'a, M> {
             new_params.push(Parameter::new(id, param_type));
         }
 
+        if self.peek_is(Token::ReturnType) {
+            self.expect_token(Token::ReturnType)?;
+            let return_type = self.read_type()?;
+            // Accept if the expected return type is absent or compatible (e.g. a generic T(n)).
+            if ty.return_type().is_some_and( |expected| !expected.is_compatible_with(&return_type)) {
+                return Err(err!(self, ParserErrorKind::ClosureReturnTypeMismatch))
+            }
+        }
+
         self.expect_token(Token::BraceOpen)?;
         let statements = self.read_body(context, ty.return_type())?;
         let max = context.max_variables_count() - current;
+
+        // If the expected return type is an unresolved generic slot (e.g. T(1) from map's
+        // closure signature), infer the actual concrete type from the first return statement
+        // while the closure params are still in scope. This lets callers (e.g. map.flatten())
+        // propagate the real element type through the chain.
+        let actual_return_type = if matches!(ty.return_type(), Some(Type::T(Some(_)))) {
+            'infer: {
+                for stmt in &statements {
+                    if let Statement::Return(Some(expr)) = stmt {
+                        if let Ok(Some(actual)) = self.get_type_from_expression_internal(None, expr, context) {
+                            break 'infer Some(actual.into_owned());
+                        }
+                    }
+                }
+                ty.return_type().cloned()
+            }
+        } else {
+            ty.return_type().cloned()
+        };
+
         context.end_scope();
 
         if ty.return_type().is_some() && !Self::ends_with_return(&statements)? {
@@ -1528,12 +1851,96 @@ impl<'a, M> Parser<'a, M> {
             None,
             new_params,
             statements,
-            ty.return_type().cloned(),
+            actual_return_type,
             max,
             variables_count,
         ));
 
         // Inject the closure
+        self.functions.push(closure);
+        let id = self.global_mapper.functions_mut()
+            .register_closure()
+            .map_err(|e| err!(self, e.into()))?;
+
+        Ok(Expression::FunctionPointer(id, true))
+    }
+
+    // Read a closure whose type is inferred purely from the inline syntax.
+    // `empty_params` is true when the opening token was `||` (Token::OperatorOr),
+    // false when it was `|` (Token::OperatorBitwiseOr).
+    fn read_closure_inferred(&mut self, empty_params: bool, context: &mut Context<'a>) -> Result<Expression, ParserError<'a>> {
+        trace!("read inferred closure, empty_params: {}", empty_params);
+        let params = if empty_params {
+            Vec::new()
+        } else {
+            let parameters = self.read_parameters()?;
+            self.expect_token(Token::OperatorBitwiseOr)?;
+            parameters
+        };
+
+        let current = context.max_variables_count();
+        let variables_count = context.variables_count();
+        context.begin_scope();
+
+        let mut new_params = Vec::with_capacity(params.len());
+        for (name, param_type) in &params {
+            let id = context.register_variable(name, param_type.clone())
+                .ok_or_else(|| err!(self, ParserErrorKind::VariableNameAlreadyUsed(name)))?;
+            trace!("Registered inferred closure param: {} with id {}", name, id);
+            new_params.push(Parameter::new(id, param_type.clone()));
+        }
+
+        // Optional explicit return-type annotation: `-> Type`
+        let explicit_return_type = if self.peek_is(Token::ReturnType) {
+            self.expect_token(Token::ReturnType)?;
+            Some(self.read_type()?)
+        } else {
+            None
+        };
+
+        // Use Any as body hint when no annotation was given so that `return <expr>`
+        // is always consumed — enabling return type inference from the body.
+        let body_hint = explicit_return_type.as_ref().unwrap_or(&Type::Any);
+        self.expect_token(Token::BraceOpen)?;
+        let statements = self.read_body(context, Some(body_hint))?;
+        let max = context.max_variables_count() - current;
+
+        // When there is no explicit annotation, scan the body for the first
+        // `return <expr>` to infer the actual return type.  This must happen
+        // before `end_scope()` so that closure params are still in context.
+        let return_type = if explicit_return_type.is_none() {
+            'infer: {
+                for stmt in &statements {
+                    if let Statement::Return(Some(expr)) = stmt {
+                        if let Ok(Some(actual)) = self.get_type_from_expression_internal(None, expr, context) {
+                            break 'infer Some(actual.into_owned());
+                        }
+                    }
+                }
+                None
+            }
+        } else {
+            explicit_return_type
+        };
+
+        context.end_scope();
+
+        if return_type.is_some() && !Self::ends_with_return(&statements)? {
+            return Err(err!(self, ParserErrorKind::NoReturnFound))
+        }
+
+        trace!("inferred closure statements: {:?}", statements);
+        let closure = FunctionType::Declared(DeclaredFunction::new(
+            FunctionVisibility::Anonymous,
+            None,
+            None,
+            new_params,
+            statements,
+            return_type,
+            max,
+            variables_count,
+        ));
+
         self.functions.push(closure);
         let id = self.global_mapper.functions_mut()
             .register_closure()
@@ -2268,6 +2675,9 @@ impl<'a, M> Parser<'a, M> {
                             .map_err(|_| err!(self, ParserErrorKind::FunctionNotFound))?;
 
                         Expression::FunctionPointer(f, false)
+                    } else if !required_operator && matches!(token, Token::OperatorOr | Token::OperatorBitwiseOr) {
+                        // Inferred closure: `|| { ... }` or `|params| { ... }`
+                        self.read_closure_inferred(token == Token::OperatorOr, context)?
                     } else if token == Token::Not {
                         // Handle ! as a prefix unary operator
                         // We don't toggle required_operator here because we're still expecting a value after the !
@@ -2430,7 +2840,14 @@ impl<'a, M> Parser<'a, M> {
                             };
                             self.read_struct_constructor(struct_type, context)?
                         } else if let Ok(builder) = self.global_mapper.enums().get_by_name(&id) {
-                            self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
+                            // Check if this is a generic enum type specification (e.g., Result<u64, string>::Ok)
+                            // vs a simple variant constructor (e.g., Option::Some)
+                            if self.peek_is(Token::OperatorLessThan) {
+                                // This is a generic enum with type parameters, use read_type_constant
+                                self.read_type_constant(Token::Identifier(id), context)?
+                            } else {
+                                self.read_enum_variant_constructor(builder.get_type().clone(), id, context)?
+                            }
                         } else if let Ok(id) = self.global_mapper.functions()
                             .get_by_signature(id, on_type) {
                             Expression::FunctionPointer(id, false)
@@ -2590,6 +3007,9 @@ impl<'a, M> Parser<'a, M> {
             (Some(k), Some(v)) => (k, v),
             _ => (Type::Any, Type::Any)
         };
+        if !key.is_hashable() {
+            return Err(err!(self, ParserErrorKind::InvalidMapKeyType))
+        }
 
         self.expect_token(Token::BraceClose)?;
         Ok(Expression::MapConstructor(expressions, key, value))
@@ -2855,25 +3275,64 @@ impl<'a, M> Parser<'a, M> {
                 return Ok(None)
             }
 
+            // For generic enums, check if the name matches the base enum name
+            // (without requiring the generic parameters in the pattern)
             let ty = self.get_type_from_token(Token::Identifier(name))?;
-            if ty != *expected_type {
+            let types_match = match &ty {
+                Type::Enum(match_enum_ty) => {
+                    // Compare enum IDs (both are the same underlying enum)
+                    match_enum_ty.id() == enum_ty.id()
+                },
+                _ => false
+            };
+            
+            if !types_match {
                 return Err(err!(self, ParserErrorKind::ExpectedMatchingType))
             }
 
             self.expect_token(Token::Colon)?;
             self.expect_token(Token::Colon)?;
             let variant = self.next_identifier()?;
-            let (id, fields) = {
+            let (id, fields, is_tuple) = {
+                // Use get_by_id instead of get_by_ref to handle generic enums
+                // where the expected type has concrete generic parameters
                 let builder = self.global_mapper.enums()
-                    .get_by_ref(&enum_ty)
+                    .get_by_id(&enum_ty.id())
                     .map_err(|e| err!(self, e.into()))?;
 
                 // TODO: no clone
                 builder.get_variant_by_name(&variant)
-                    .map(|(id, variant)| (id, variant.fields().iter().map(|(n, v)| (n.to_string(), v.clone())).collect::<Vec<_>>()))
+                    .map(|(id, variant)| (id, variant.fields().iter().map(|(n, v)| (n.to_string(), v.clone())).collect::<Vec<_>>(), variant.is_tuple()))
                     .ok_or_else(|| err!(self, ParserErrorKind::EnumVariantNotFound(variant)))?
             };
 
+            // Handle tuple-style variants with parentheses
+            if is_tuple && !fields.is_empty() {
+                self.expect_token(Token::ParenthesisOpen)?;
+                
+                let mut variables = Vec::with_capacity(fields.len());
+                for i in 0..fields.len() {
+                    let var_name = self.next_identifier()?;
+                    variables.push(var_name);
+                    
+                    if i < fields.len() - 1 {
+                        self.expect_token(Token::Comma)?;
+                    }
+                }
+                
+                self.expect_token(Token::ParenthesisClose)?;
+                
+                let count = fields.len();
+                // Register the variables in reverse order in the context
+                for (variable, (_, ty)) in variables.into_iter().zip(fields).rev() {
+                    self.register_variable(context, variable, ty)?;
+                }
+                
+                let variant = EnumValueType::new(enum_ty.clone(), id);
+                return Ok(Some(MatchStatement::Variant(count, variant)));
+            }
+
+            // Handle struct-style variants with braces
             if !fields.is_empty() {
                 self.expect_token(Token::BraceOpen)?;
             }
@@ -3090,6 +3549,10 @@ impl<'a, M> Parser<'a, M> {
                     self.expect_token(Token::BraceOpen)?;
                     let mut patterns = Vec::new();
                     let mut default_case = None;
+                    // Track seen patterns for duplicate detection
+                    let mut seen_variant_ids: HashSet<u8> = HashSet::new();
+                    let mut seen_cond_exprs: HashSet<Expression> = HashSet::new();
+
                     while self.peek_is_not(Token::BraceClose) {
                         context.begin_scope();
                         let pattern = self.read_match_pattern(context, &expr_ty)?;
@@ -3099,6 +3562,19 @@ impl<'a, M> Parser<'a, M> {
                         context.end_scope();
 
                         if let Some(pattern) = pattern {
+                            // Check for duplicate patterns
+                            match &pattern {
+                                MatchStatement::Variant(_, variant) => {
+                                    if !seen_variant_ids.insert(variant.variant_id()) {
+                                        return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                                    }
+                                },
+                                MatchStatement::Cond(expr) => {
+                                    if !seen_cond_exprs.insert(expr.clone()) {
+                                        return Err(err!(self, ParserErrorKind::MatchPatternDuplicated))
+                                    }
+                                },
+                            }
                             patterns.push((pattern, body));
                         } else {
                             if default_case.is_some() {
@@ -3114,6 +3590,33 @@ impl<'a, M> Parser<'a, M> {
                     }
 
                     self.expect_token(Token::BraceClose)?;
+
+                    // Verify exhaustiveness: all patterns must be covered
+                    if default_case.is_none() {
+                        if let Type::Enum(enum_ty) = &expr_ty {
+                            let total_variants = enum_ty.variants().len();
+                            if seen_variant_ids.len() != total_variants {
+                                // Find the first missing variant name for a helpful error message
+                                for (i, (name, _)) in enum_ty.variants().iter().enumerate() {
+                                    if !seen_variant_ids.contains(&(i as u8)) {
+                                        return Err(err!(self, ParserErrorKind::NonExhaustiveMatchMissingVariant(Cow::Owned(name.to_string()))))
+                                    }
+                                }
+                            }
+                        } else if expr_ty == Type::Bool {
+                            // For booleans, we can check exhaustiveness:
+                            // both true and false must be present
+                            let has_true = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(true))));
+                            let has_false = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(false))));
+                            if !has_true || !has_false {
+                                return Err(err!(self, ParserErrorKind::NonExhaustiveMatch))
+                            }
+                        } else {
+                            // For other primitive types, we cannot determine exhaustiveness
+                            // without a default case
+                            return Err(err!(self, ParserErrorKind::NonExhaustiveMatch))
+                        }
+                    }
 
                     context.end_scope();
 
@@ -3578,7 +4081,8 @@ impl<'a, M> Parser<'a, M> {
                 return Err(err!(self, ParserErrorKind::EnumVariantAlreadyUsed(variant_name)))
             }
 
-            let fields = if self.peek_is(Token::BraceOpen) {
+            let variant = if self.peek_is(Token::BraceOpen) {
+                // Struct-style variant: Variant { field: Type }
                 self.expect_token(Token::BraceOpen)?;
                 let fields = self.read_parameters_with_generics(&generics)?;
                 if fields.len() > u8::MAX as usize {
@@ -3586,14 +4090,39 @@ impl<'a, M> Parser<'a, M> {
                 }
 
                 self.expect_token(Token::BraceClose)?;
-                fields.into_iter()
+                let fields = fields.into_iter()
                     .map(|(k, v)| (Cow::Owned(k.to_owned()), v))
-                    .collect()
+                    .collect();
+                EnumVariant::new(fields)
+            } else if self.peek_is(Token::ParenthesisOpen) {
+                // Tuple-style variant: Variant(Type1, Type2)
+                self.expect_token(Token::ParenthesisOpen)?;
+                let mut types = Vec::new();
+                
+                while self.peek_is_not(Token::ParenthesisClose) {
+                    let token = self.advance()?;
+                    let ty = self.get_type_from_token_with_generics(token, &generics)?;
+                    types.push(ty);
+                    
+                    if self.peek_is(Token::Comma) {
+                        self.expect_token(Token::Comma)?;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if types.len() > u8::MAX as usize {
+                    return Err(err!(self, ParserErrorKind::TooManyParameters))
+                }
+
+                self.expect_token(Token::ParenthesisClose)?;
+                EnumVariant::new_tuple(types)
             } else {
-                Vec::new()
+                // Unit variant: Variant (no fields)
+                EnumVariant::new(Vec::new())
             };
 
-            variants.push((Cow::Owned(variant_name.to_owned()), EnumVariant::new(fields)));
+            variants.push((Cow::Owned(variant_name.to_owned()), variant));
 
             if self.peek_is(Token::Comma) {
                 self.expect_token(Token::Comma)?;
@@ -4950,6 +5479,42 @@ mod tests {
     }
 
     #[test]
+    fn test_optional_struct_array() {
+        let mut env = EnvironmentBuilder::default();
+        let test_type = env.register_structure("Test", [
+            ("x", Type::U32),
+            ("y", Type::U32),
+        ]);
+
+        // let test_opt: optional<Test[]> = null;
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("test_opt"),
+            Token::Colon,
+            Token::Optional,
+            Token::OperatorLessThan,
+            Token::Identifier("Test"),
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::OperatorGreaterThan,
+            Token::OperatorAssign,
+            Token::Value(Literal::Null),
+        ];
+
+        let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(
+                DeclarationStatement {
+                    id: Some(0),
+                    value_type: Type::Optional(Box::new(Type::Array(Box::new(Type::Struct(test_type))))),
+                    value: Expression::Constant(Primitive::Null.into())
+                }
+            )
+        );
+    }
+
+    #[test]
     fn test_type_constant() {
         // let test: u64 = u64::MAX;
         let tokens = vec![
@@ -5870,5 +6435,1016 @@ mod tests {
         // Verify the enum has the correct generics
         let enum_type = &program.enums()[0];
         assert_eq!(enum_type.generics().len(), 2);
+    }
+
+    #[test]
+    fn test_tuple_enum_variant() {
+        // enum Either<L, R> { Left(L), Right(R) }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Either"),
+            Token::OperatorLessThan,
+            Token::Identifier("L"),
+            Token::Comma,
+            Token::Identifier("R"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Left"),
+            Token::ParenthesisOpen,
+            Token::Identifier("L"),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("Right"),
+            Token::ParenthesisOpen,
+            Token::Identifier("R"),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (_program, mapper) = parser.parse().unwrap();
+
+        // Verify the enum was registered with tuple variants
+        let enums = mapper.enums();
+        let either_builder = enums.get_by_name("Either").unwrap();
+        let either_type = either_builder.get_type();
+        
+        assert_eq!(either_type.generics().len(), 2);
+        
+        let variants = either_type.variants();
+        assert_eq!(variants.len(), 2);
+        
+        // Left variant
+        assert_eq!(variants[0].0.as_ref(), "Left");
+        assert!(variants[0].1.is_tuple());
+        assert_eq!(variants[0].1.fields().len(), 1);
+        assert_eq!(variants[0].1.fields()[0].1, Type::T(Some(0))); // L = position 0
+        
+        // Right variant  
+        assert_eq!(variants[1].0.as_ref(), "Right");
+        assert!(variants[1].1.is_tuple());
+        assert_eq!(variants[1].1.fields().len(), 1);
+        assert_eq!(variants[1].1.fields()[0].1, Type::T(Some(1))); // R = position 1
+    }
+
+    #[test]
+    fn test_tuple_enum_constructor() {
+        // enum Option<T> { Some(T), None }
+        // let x = Option::Some(42);
+        let tokens = vec![
+            // enum Option<T> { Some(T), None }
+            Token::Enum,
+            Token::Identifier("Option"),
+            Token::OperatorLessThan,
+            Token::Identifier("T"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Some"),
+            Token::ParenthesisOpen,
+            Token::Identifier("T"),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("None"),
+            Token::BraceClose,
+            // fn main() { let x = Option::Some(42); }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("x"),
+            Token::OperatorAssign,
+            Token::Identifier("Option"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Some"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(42)),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_tuple_enum_multiple_values() {
+        // enum Result<T, E> { Ok(T), Err(E) }
+        // enum Pair<A, B> { Both(A, B) }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Pair"),
+            Token::OperatorLessThan,
+            Token::Identifier("A"),
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Both"),
+            Token::ParenthesisOpen,
+            Token::Identifier("A"),
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+            // fn main() { let p = Pair::Both(10, "hello"); }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("p"),
+            Token::OperatorAssign,
+            Token::Identifier("Pair"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Both"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(10)),
+            Token::Comma,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+        
+        // Verify the enum has tuple variant with 2 fields
+        let enum_type = &program.enums()[0];
+        assert!(enum_type.variants()[0].1.is_tuple());
+        assert_eq!(enum_type.variants()[0].1.fields().len(), 2);
+    }
+
+    #[test]
+    fn test_tuple_enum_non_generic() {
+        // enum Status { Active(u64), Inactive }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Status"),
+            Token::BraceOpen,
+            Token::Identifier("Active"),
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("Inactive"),
+            Token::BraceClose,
+            // fn main() { let s = Status::Active(100); }
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("s"),
+            Token::OperatorAssign,
+            Token::Identifier("Status"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Active"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(100)),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+        ];
+
+        let program = test_parser(tokens);
+        assert_eq!(program.enums().len(), 1);
+        assert_eq!(program.functions().len(), 1);
+        
+        // Verify the Active variant is tuple-style
+        let enum_type = &program.enums()[0];
+        assert!(enum_type.variants()[0].1.is_tuple());
+        assert!(!enum_type.variants()[1].1.is_tuple()); // Inactive is unit
+    }
+
+    #[test]
+    fn test_mixed_enum_variants() {
+        // enum Mixed { Unit, Tuple(u64), Struct { value: string } }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Mixed"),
+            Token::BraceOpen,
+            Token::Identifier("Unit"),
+            Token::Comma,
+            Token::Identifier("Tuple"),
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("Struct"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::String,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (_program, mapper) = parser.parse().unwrap();
+
+        let enums = mapper.enums();
+        let mixed_builder = enums.get_by_name("Mixed").unwrap();
+        let mixed_type = mixed_builder.get_type();
+        
+        let variants = mixed_type.variants();
+        assert_eq!(variants.len(), 3);
+        
+        // Unit variant
+        assert_eq!(variants[0].0.as_ref(), "Unit");
+        assert!(!variants[0].1.is_tuple());
+        assert_eq!(variants[0].1.fields().len(), 0);
+        
+        // Tuple variant
+        assert_eq!(variants[1].0.as_ref(), "Tuple");
+        assert!(variants[1].1.is_tuple());
+        assert_eq!(variants[1].1.fields().len(), 1);
+        
+        // Struct variant
+        assert_eq!(variants[2].0.as_ref(), "Struct");
+        assert!(!variants[2].1.is_tuple());
+        assert_eq!(variants[2].1.fields().len(), 1);
+        assert_eq!(variants[2].1.fields()[0].0.as_ref(), "value");
+    }
+
+    #[test]
+    fn test_match_struct_enum() {
+        // enum Foo { A { value: u64 }, B { x: u64, y: u64 } }
+        // fn main() {
+        //     let foo: Foo = Foo::A { value: 10 };
+        //     match foo {
+        //         Foo::A { value } => { }
+        //         Foo::B { x, y } => { }
+        //     }
+        // }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Foo"),
+            Token::BraceOpen,
+            Token::Identifier("A"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BraceClose,
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::BraceOpen,
+            Token::Identifier("x"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Identifier("y"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::BraceClose,
+            Token::BraceClose,
+
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("foo"),
+            Token::Colon,
+            Token::Identifier("Foo"),
+            Token::OperatorAssign,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("A"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::Colon,
+            Token::Value(Literal::U64(10)),
+            Token::BraceClose,
+            Token::Match,
+            Token::Identifier("foo"),
+            Token::BraceOpen,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("A"),
+            Token::BraceOpen,
+            Token::Identifier("value"),
+            Token::BraceClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("B"),
+            Token::BraceOpen,
+            Token::Identifier("x"),
+            Token::Comma,
+            Token::Identifier("y"),
+            Token::BraceClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (program, _mapper) = parser.parse().unwrap();
+        
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_match_tuple_enum() {
+        // enum Option { Some(u64), None }
+        // fn main() {
+        //     let opt: Option = Option::Some(42);
+        //     match opt {
+        //         Option::Some(val) => { }
+        //         Option::None => { }
+        //     }
+        // }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Option"),
+            Token::BraceOpen,
+            Token::Identifier("Some"),
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("None"),
+            Token::BraceClose,
+
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("opt"),
+            Token::Colon,
+            Token::Identifier("Option"),
+            Token::OperatorAssign,
+            Token::Identifier("Option"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Some"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(42)),
+            Token::ParenthesisClose,
+            Token::Match,
+            Token::Identifier("opt"),
+            Token::BraceOpen,
+            Token::Identifier("Option"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Some"),
+            Token::ParenthesisOpen,
+            Token::Identifier("val"),
+            Token::ParenthesisClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Identifier("Option"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("None"),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (program, _mapper) = parser.parse().unwrap();
+        
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_match_tuple_enum_multiple_fields() {
+        // enum Either { Left(u64), Right(string, bool) }
+        // fn main() {
+        //     let e: Either = Either::Right("hello", true);
+        //     match e {
+        //         Either::Left(val) => { }
+        //         Either::Right(s, b) => { }
+        //     }
+        // }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Either"),
+            Token::BraceOpen,
+            Token::Identifier("Left"),
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("Right"),
+            Token::ParenthesisOpen,
+            Token::String,
+            Token::Comma,
+            Token::Bool,
+            Token::ParenthesisClose,
+            Token::BraceClose,
+
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("e"),
+            Token::Colon,
+            Token::Identifier("Either"),
+            Token::OperatorAssign,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Right"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::String(Cow::Borrowed("hello"))),
+            Token::Comma,
+            Token::Value(Literal::Bool(true)),
+            Token::ParenthesisClose,
+            Token::Match,
+            Token::Identifier("e"),
+            Token::BraceOpen,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Left"),
+            Token::ParenthesisOpen,
+            Token::Identifier("val"),
+            Token::ParenthesisClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Identifier("Either"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Right"),
+            Token::ParenthesisOpen,
+            Token::Identifier("s"),
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::ParenthesisClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (program, _mapper) = parser.parse().unwrap();
+        
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_match_generic_tuple_enum() {
+        // enum Result<T, E> { Ok(T), Err(E) }
+        // fn main() {
+        //     let r = Result::Ok(42);  // Type inference
+        //     match r {
+        //         Result::Ok(val) => { }
+        //         Result::Err(e) => { }
+        //     }
+        // }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Result"),
+            Token::OperatorLessThan,
+            Token::Identifier("T"),
+            Token::Comma,
+            Token::Identifier("E"),
+            Token::OperatorGreaterThan,
+            Token::BraceOpen,
+            Token::Identifier("Ok"),
+            Token::ParenthesisOpen,
+            Token::Identifier("T"),
+            Token::ParenthesisClose,
+            Token::Comma,
+            Token::Identifier("Err"),
+            Token::ParenthesisOpen,
+            Token::Identifier("E"),
+            Token::ParenthesisClose,
+            Token::BraceClose,
+
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("r"),
+            Token::OperatorAssign,
+            Token::Identifier("Result"),
+            Token::OperatorLessThan,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::String,
+            Token::OperatorGreaterThan,
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Ok"),
+            Token::ParenthesisOpen,
+            Token::Value(Literal::U64(42)),
+            Token::ParenthesisClose,
+            Token::Match,
+            Token::Identifier("r"),
+            Token::BraceOpen,
+            Token::Identifier("Result"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Ok"),
+            Token::ParenthesisOpen,
+            Token::Identifier("val"),
+            Token::ParenthesisClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Identifier("Result"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("Err"),
+            Token::ParenthesisOpen,
+            Token::Identifier("e"),
+            Token::ParenthesisClose,
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (program, _mapper) = parser.parse().unwrap();
+        
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_match_wildcard_pattern() {
+        // enum Foo { A, B, C }
+        // fn main() {
+        //     let foo: Foo = Foo::A;
+        //     match foo {
+        //         Foo::A => { }
+        //         other => { }
+        //     }
+        // }
+        let tokens = vec![
+            Token::Enum,
+            Token::Identifier("Foo"),
+            Token::BraceOpen,
+            Token::Identifier("A"),
+            Token::Comma,
+            Token::Identifier("B"),
+            Token::Comma,
+            Token::Identifier("C"),
+            Token::BraceClose,
+
+            Token::Function,
+            Token::Identifier("main"),
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::BraceOpen,
+            Token::Let,
+            Token::Identifier("foo"),
+            Token::Colon,
+            Token::Identifier("Foo"),
+            Token::OperatorAssign,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("A"),
+            Token::Match,
+            Token::Identifier("foo"),
+            Token::BraceOpen,
+            Token::Identifier("Foo"),
+            Token::Colon,
+            Token::Colon,
+            Token::Identifier("A"),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::Identifier("other"),
+            Token::FatArrow,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::BraceClose,
+            Token::BraceClose,
+        ];
+
+        let env = EnvironmentBuilder::<()>::new();
+        let parser = Parser::new(VecDeque::from(tokens), &env);
+        let (program, _mapper) = parser.parse().unwrap();
+        
+        assert_eq!(program.functions().len(), 1);
+    }
+
+    #[test]
+    fn test_closure_no_params_no_return() {
+        // let f: closure() = || {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_with_single_param_no_return() {
+        // let f: closure(u64) = |a: u64| {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![Type::U64], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_no_params_with_return() {
+        // let f: closure() -> u64 = || -> u64 { return 0 }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_with_multiple_params_and_return() {
+        // let f: closure(u64, bool) -> bool = |a: u64, b: bool| -> bool { return b }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Bool,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Bool,
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Bool,
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("b"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Closure(ClosureType::new(vec![Type::U64, Type::Bool], Some(Type::Bool))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_no_params_no_return() {
+        // let f = || {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_with_single_param_no_return() {
+        // let f = |a: u64| {}
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::BraceOpen,
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64], None)),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_no_params_with_explicit_return() {
+        // let f = || -> u64 { return 0 }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_with_params_and_explicit_return() {
+        // let f = |a: u64, b: bool| -> bool { return b }
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::Comma,
+            Token::Identifier("b"),
+            Token::Colon,
+            Token::Bool,
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Bool,
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("b"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64, Type::Bool], Some(Type::Bool))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_inferred_return_type_from_body() {
+        // let f = |a: u64| { return a }  <- no explicit annotation, return type inferred as u64 from body
+        let tokens = vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::OperatorAssign,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("a"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("a"),
+            Token::BraceClose,
+        ];
+
+        let statements = test_parser_statement(tokens, Vec::new());
+        assert_eq!(statements.len(), 1);
+        assert_eq!(
+            statements[0],
+            Statement::Variable(DeclarationStatement {
+                id: Some(0),
+                value_type: Type::Function(FnType::new(None, false, vec![Type::U64], Some(Type::U64))),
+                value: Expression::FunctionPointer(0, true),
+            })
+        );
+    }
+
+    #[test]
+    fn test_closure_return_type_mismatch_fails() {
+        // let f: closure() -> u64 = || -> bool { return true }
+        // Return type annotation on the body (bool) conflicts with the declared closure type (u64)
+        let tokens = VecDeque::from(vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::ReturnType,
+            Token::Bool, // mismatch: body says bool but type says u64
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::Bool(true)),
+            Token::BraceClose,
+        ]);
+
+        let env = EnvironmentBuilder::<()>::new();
+        let mut parser = Parser::new(tokens, &env);
+        let mut context = Context::new();
+        context.begin_scope();
+        let result = parser.read_statements(&mut context, None);
+        assert!(
+            matches!(result.unwrap_err().kind, ParserErrorKind::ClosureReturnTypeMismatch),
+            "Expected ClosureReturnTypeMismatch error"
+        );
+    }
+
+    #[test]
+    fn test_closure_no_return_type_rejects_return_expr() {
+        // let f: closure() = || { return 0 }
+        // closure() declares no return type, so `return 0` must be rejected
+        let tokens = VecDeque::from(vec![
+            Token::Let,
+            Token::Identifier("f"),
+            Token::Colon,
+            Token::Closure,
+            Token::ParenthesisOpen,
+            Token::ParenthesisClose,
+            Token::OperatorAssign,
+            Token::OperatorOr, // ||
+            Token::BraceOpen,
+            Token::Return,
+            Token::Value(Literal::U64(0)),
+            Token::BraceClose,
+        ]);
+
+        let env = EnvironmentBuilder::<()>::new();
+        let mut parser = Parser::new(tokens, &env);
+        let mut context = Context::new();
+        context.begin_scope();
+        let result = parser.read_statements(&mut context, None);
+        assert!(
+            matches!(result.unwrap_err().kind, ParserErrorKind::NoCodeAfterReturn),
+            "Expected NoCodeAfterReturn error: closure() has no return type so return <expr> is invalid"
+        );
+    }
+
+    #[test]
+    fn test_closure_explicit_return_type_for_generic() {
+        // A function expecting closure(u64) -> T(1) (generic return) should accept
+        // a closure literal annotated with `-> u64`.
+        let mut env = EnvironmentBuilder::<()>::default();
+        env.register_native_function(
+            "transform",
+            None,
+            vec![("f", Type::Closure(ClosureType::new(vec![Type::U64], Some(Type::T(Some(1))))))],
+            FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+            0,
+            None,
+        );
+
+        // transform(|v: u64| -> u64 { return v * 2 })
+        let tokens = vec![
+            Token::Identifier("transform"),
+            Token::ParenthesisOpen,
+            Token::OperatorBitwiseOr, // |
+            Token::Identifier("v"),
+            Token::Colon,
+            Token::Number(NumberType::U64),
+            Token::OperatorBitwiseOr, // |
+            Token::ReturnType,
+            Token::Number(NumberType::U64),
+            Token::BraceOpen,
+            Token::Return,
+            Token::Identifier("v"),
+            Token::OperatorMultiply,
+            Token::Value(Literal::U64(2)),
+            Token::BraceClose,
+            Token::ParenthesisClose,
+        ];
+
+        let statements = test_parser_statement_with(tokens, vec![], &None, &env);
+        assert_eq!(statements.len(), 1);
     }
 }

@@ -3,27 +3,64 @@ pub mod traits;
 use std::{
     any::TypeId,
     borrow::Cow,
+    collections::HashSet,
     fmt,
     hash::{Hash, Hasher}
 };
 use schemars::*;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
 use crate::{IdentifierType, ValueError};
 use traits::*;
+use super::Type;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Type-level markers that can be declared on an [`OpaqueType`] descriptor.
+/// These drive static type-checking behaviour (method-dispatch compatibility,
+/// etc.) and are **not** related to the runtime `dyn Opaque` value traits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpaqueTypeTrait {
+    /// The type is an iterable container (e.g. `Iterator<T>`).  Any
+    /// `Array<T>`, `Range<T>`, or other `Iterable` opaque with a compatible
+    /// element type may substitute for it during method-dispatch matching.
+    Iterable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct OpaqueTypeInner {
     id: IdentifierType,
     name: Cow<'static, str>,
     allow_external_input: bool,
+    /// How many generic parameters this type accepts (0 = non-generic template)
+    #[serde(default)]
+    generics_count: u8,
+    /// Concrete generic parameters when instantiated (empty for template)
+    #[serde(default)]
+    generics: Vec<Type>,
+    /// Type-level trait markers declared on this opaque type descriptor.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    traits: HashSet<OpaqueTypeTrait>,
+}
+
+impl PartialEq for OpaqueTypeInner {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.generics == other.generics
+    }
+}
+impl Eq for OpaqueTypeInner {}
+
+impl Hash for OpaqueTypeInner {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.generics.hash(state);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OpaqueType(OpaqueTypeInner);
 
 impl OpaqueType {
-    pub fn new(id: IdentifierType, name: &'static str,) -> Self {
+    pub fn new(id: IdentifierType, name: &'static str) -> Self {
         Self::with(id, name, false)
     }
 
@@ -31,8 +68,52 @@ impl OpaqueType {
         Self(OpaqueTypeInner {
             id,
             name: name.into(),
-            allow_external_input
+            allow_external_input,
+            generics_count: 0,
+            generics: Vec::new(),
+            traits: HashSet::new(),
         })
+    }
+
+    /// Create a generic template that accepts `generics_count` type parameters.
+    pub fn with_generics_count(id: IdentifierType, name: &'static str, allow_external_input: bool, generics_count: u8) -> Self {
+        Self(OpaqueTypeInner {
+            id,
+            name: name.into(),
+            allow_external_input,
+            generics_count,
+            generics: Vec::new(),
+            traits: HashSet::new(),
+        })
+    }
+
+    /// Instantiate this (template) OpaqueType with concrete type arguments.
+    pub fn with_generics(&self, generics: Vec<Type>) -> Self {
+        Self(OpaqueTypeInner {
+            id: self.0.id,
+            name: self.0.name.clone(),
+            allow_external_input: self.0.allow_external_input,
+            generics_count: self.0.generics_count,
+            generics,
+            traits: self.0.traits.clone(),
+        })
+    }
+
+    /// Builder: add a type-level trait marker to this opaque type descriptor.
+    /// Duplicate entries are silently ignored.
+    pub fn with_trait(mut self, t: OpaqueTypeTrait) -> Self {
+        self.0.traits.insert(t);
+        self
+    }
+
+    /// Check whether this opaque type has the given type-level trait marker.
+    pub fn has_trait(&self, t: OpaqueTypeTrait) -> bool {
+        self.0.traits.contains(&t)
+    }
+
+    /// Convenience: whether this type carries the [`OpaqueTypeTrait::Iterable`] marker.
+    pub fn is_iterable(&self) -> bool {
+        self.has_trait(OpaqueTypeTrait::Iterable)
     }
 
     pub fn id(&self) -> IdentifierType {
@@ -46,11 +127,30 @@ impl OpaqueType {
     pub fn allow_external_input(&self) -> bool {
         self.0.allow_external_input
     }
+
+    /// How many generic parameters the type declares (0 = non-generic).
+    pub fn generics_count(&self) -> u8 {
+        self.0.generics_count
+    }
+
+    /// The concrete generic parameters (empty when this is a template).
+    pub fn generics(&self) -> &[Type] {
+        &self.0.generics
+    }
 }
 
 impl fmt::Display for OpaqueType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.name)
+        write!(f, "{}", self.0.name)?;
+        if !self.0.generics.is_empty() {
+            write!(f, "<")?;
+            for (i, g) in self.0.generics.iter().enumerate() {
+                if i > 0 { write!(f, ", ")?; }
+                write!(f, "{}", g)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
     }
 }
 
@@ -148,6 +248,11 @@ impl OpaqueWrapper {
     #[inline]
     pub fn is_json_serializable(&self) -> bool {
         self.inner.is_json_supported()
+    }
+
+    #[inline]
+    pub fn is_hashable(&self) -> bool {
+        self.inner.as_ref().is_hashable()
     }
 
     #[inline]
@@ -299,14 +404,19 @@ mod tests {
     fn test_opaque_type_serde() {
         let opaque_type = OpaqueType::new(42, "Foo");
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false}"#);
+        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}"#);
 
         let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque_type, opaque_type2);
 
+        // Backwards-compat: old format (no generics fields) must still deserialise.
+        let old_json = r#"{"id":42,"name":"Foo","allow_external_input":false}"#;
+        let opaque_type3: OpaqueType = serde_json::from_str(old_json).unwrap();
+        assert_eq!(opaque_type, opaque_type3);
+
         let opaque_type = Type::Opaque(OpaqueType::new(42, "Foo"));
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false}}"#);
+        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}}"#);
     }
 
     #[test]

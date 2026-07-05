@@ -6,7 +6,7 @@ pub use r#struct::*;
 pub use r#enum::*;
 pub use opaque::*;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt};
 use xelis_types::IdentifierType;
 use crate::{
     BuilderError,
@@ -138,5 +138,34 @@ impl<'a, T: Builder> TypeManager<'a, T> {
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.types.iter()
+    }
+
+    fn fmt_registered_types(&self, f: &mut fmt::Formatter, first: &mut bool) -> fmt::Result
+    where
+        T: fmt::Display,
+    {
+        if let Some(parent) = self.parent {
+            parent.fmt_registered_types(f, first)?;
+        }
+
+        for ty in &self.types {
+            if !*first {
+                writeln!(f)?;
+            }
+
+            write!(f, "{}", ty)?;
+            *first = false;
+        }
+
+        Ok(())
+    }
+}
+
+impl<T> fmt::Display for TypeManager<'_, T>
+where
+    T: Builder + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.fmt_registered_types(f, &mut true)
     }
 }

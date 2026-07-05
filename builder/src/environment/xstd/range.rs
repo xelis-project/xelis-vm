@@ -59,11 +59,11 @@ macro_rules! count {
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let _type = Type::Range(Box::new(Type::T(Some(0))));
-    env.register_native_function("contains", Some(_type.clone()), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(contains), 5, Some(Type::Bool));
-    env.register_native_function("collect", Some(_type.clone()), vec![], FunctionHandler::Sync(collect), 20, Some(Type::Array(Box::new(Type::T(Some(0))))));
-    env.register_native_function("max", Some(_type.clone()), vec![], FunctionHandler::Sync(max), 1, Some(Type::T(Some(0))));
-    env.register_native_function("min", Some(_type.clone()), vec![], FunctionHandler::Sync(min), 1, Some(Type::T(Some(0))));
-    env.register_native_function("count", Some(_type.clone()), vec![], FunctionHandler::Sync(count), 5, Some(Type::T(Some(0))));
+    env.register_native_function_with_comment("contains", Some(_type.clone()), vec![("element", Type::T(Some(0)))], FunctionHandler::Sync(contains), 5, Some(Type::Bool), "Returns true when the range contains the element.");
+    env.register_native_function_with_comment("collect", Some(_type.clone()), vec![], FunctionHandler::Sync(collect), 20, Some(Type::Array(Box::new(Type::T(Some(0))))), "Collects all values in the range into an array.");
+    env.register_native_function_with_comment("max", Some(_type.clone()), vec![], FunctionHandler::Sync(max), 1, Some(Type::T(Some(0))), "Returns the range upper bound.");
+    env.register_native_function_with_comment("min", Some(_type.clone()), vec![], FunctionHandler::Sync(min), 1, Some(Type::T(Some(0))), "Returns the range lower bound.");
+    env.register_native_function_with_comment("count", Some(_type.clone()), vec![], FunctionHandler::Sync(count), 5, Some(Type::T(Some(0))), "Returns the number of values in the range.");
 }
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {

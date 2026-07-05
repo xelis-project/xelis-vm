@@ -1,11 +1,14 @@
-mod array;
-mod optional;
-mod string;
-mod integer;
-mod range;
-mod map;
-mod bytes;
-mod math;
+// All modules are public
+// So anyone can re-use them in their own environment if they want to
+pub mod array;
+pub mod iterator;
+pub mod optional;
+pub mod string;
+pub mod integer;
+pub mod range;
+pub mod map;
+pub mod bytes;
+pub mod math;
 
 use std::ptr;
 
@@ -22,7 +25,8 @@ use xelis_environment::{
 };
 use super::EnvironmentBuilder;
 
-pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
+// This module registers all the default functions and types available in the environment, like arrays, strings, integers, etc.
+pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
     array::register(env);
     bytes::register(env);
     optional::register(env);
@@ -31,14 +35,20 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     range::register(env);
     map::register(env);
     math::register(env);
+    iterator::register(env);
 
-    env.register_native_function("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None);
-    env.register_native_function("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None);
-    env.register_native_function("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any));
-    env.register_native_function("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None);
-    env.register_native_function("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool));
-    env.register_native_function("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None);
-    env.register_native_function("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)));
+    register_defaults(env);
+}
+
+// Register default functions available in the environment, like println, debug, panic, assert, etc.
+pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
+    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None, "Prints a value to standard output using its display representation.");
+    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None, "Prints a value to standard output using its debug representation.");
+    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any), "Stops execution with the provided panic message.");
+    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None, "Fails execution if the condition is false.");
+    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
+    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None, "Fails execution with the message if the condition is false.");
+    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
 }
 
 fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
@@ -85,10 +95,6 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
     let msg = parameters.remove(1)
         .into_owned()
         .into_string()?;
-
-    if !msg.chars().all(|c| c.is_alphanumeric() || c == ' ') {
-        return Err(EnvironmentError::InvalidExpect);
-    }
 
     let param = &parameters[0];
     let value = param.as_bool()?;

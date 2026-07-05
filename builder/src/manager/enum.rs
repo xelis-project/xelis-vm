@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt};
 
 use xelis_types::{EnumType, EnumVariant, IdentifierType};
 use super::{Builder, TypeManager};
@@ -58,5 +58,11 @@ impl Builder for EnumBuilder {
 
     fn type_id(&self) -> IdentifierType {
         self.inner.id()
+    }
+}
+
+impl fmt::Display for EnumBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner)
     }
 }

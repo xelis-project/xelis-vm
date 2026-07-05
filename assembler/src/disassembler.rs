@@ -4,8 +4,8 @@ use xelis_bytecode::{Access, ChunkReader, ChunkReaderError, Module};
 
 use crate::opcode::OpCodeWithArgs;
 
-pub struct Dump {
-    pub chunks: Vec<(Vec<OpCodeWithArgs>, Access)>
+pub struct Dump<'a> {
+    pub chunks: Vec<(Vec<OpCodeWithArgs>, &'a Access)>
 }
 
 pub struct Disassembler<'a> {
@@ -19,7 +19,7 @@ impl<'a> Disassembler<'a> {
         }
     }
 
-    pub fn disasemble(&mut self) -> Result<Dump, ChunkReaderError> {
+    pub fn disasemble(&mut self) -> Result<Dump<'a>, ChunkReaderError> {
         let mut chunks = Vec::with_capacity(self.module.chunks().len());
         for entry in self.module.chunks() {
             let mut opcodes = Vec::new();
@@ -31,14 +31,14 @@ impl<'a> Disassembler<'a> {
                 opcodes.push(v);
             }
 
-            chunks.push((opcodes, entry.access));
+            chunks.push((opcodes, &entry.access));
         }
 
         Ok(Dump { chunks })
     }
 }
 
-impl fmt::Display for Dump {
+impl fmt::Display for Dump<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v = self.chunks.iter()
             .enumerate()

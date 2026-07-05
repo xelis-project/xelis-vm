@@ -11,7 +11,6 @@ mod tests;
 use std::collections::VecDeque;
 
 use stack::Stack;
-use log::trace;
 
 // Re-export the necessary types
 pub use xelis_environment::*;
@@ -43,7 +42,7 @@ pub struct Backend<'a: 'r, 'ty: 'a, 'r, M> {
 impl<'a: 'r, 'ty: 'a, 'r, M> Backend<'a, 'ty, 'r, M> {
     // Get a constant registered in the module using its id
     #[inline(always)]
-    pub fn get_constant_with_id(&self, id: usize) -> Result<&ValueCell, VMError> {
+    pub fn get_constant_with_id(&self, id: usize) -> Result<ValueCell, VMError> {
         self.modules.last()
             .and_then(|m| m.module.get_constant_at(id))
             .ok_or(VMError::ConstantNotFound(id))
@@ -158,7 +157,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
     // Invoke a chunk using its id
     #[inline(always)]
-    pub fn invoke_chunk_id(&mut self, id: usize) -> Result<(), VMError> {
+    pub fn invoke_chunk_id_unchecked(&mut self, id: usize) -> Result<(), VMError> {
         self.invoke_chunk_id_internal(ChunkManager::new(id))
     }
 
@@ -199,19 +198,70 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         if !self.backend.modules.last().map_or(false, |m| m.module.is_entry_chunk(id as usize)) {
             return Err(VMError::ChunkNotEntry);
         }
-        self.invoke_chunk_id(id as _)
+
+        self.invoke_chunk_id_unchecked(id as _)
     }
 
-    // Invoke an entry chunk using its id
+    // Invoke a chunk using its id with args
     // This will use the latest module added
-    pub fn invoke_entry_chunk_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
-        self.invoke_entry_chunk(id)?;
+    // You can provide arguments to push to the stack before invoking the chunk
+    // The arguments will be verified against the chunk parameters if any
+    // The parameters are reversed when pushed to the stack to respect the stack order
+    pub fn invoke_chunk_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, id: u16, args: I) -> Result<(), VMError> {
+        let Some(m) = self.backend.modules.last() else {
+            return Err(VMError::NoModule);
+        };
 
-        for arg in args {
-            self.push_stack(arg)?;
+        let chunk = m.module.get_chunk_at(id as usize)
+            .ok_or(VMError::ChunkNotFound)?;
+
+        let args_count = args.len();
+        match &chunk.access {
+            Access::Entry { parameters } | Access::All { parameters } => {
+                // If we have enforced parameters to verify, process it
+                if let Some(params) = parameters {
+                    if params.len() != args_count {
+                        return Err(VMError::InvalidEntryParametersCount {
+                            expected: params.len(),
+                            found: args_count,
+                        });
+                    }
+
+                    // We reverse the params because we need to push them in the stack order
+                    // So the first parameter will be the first to be popped from stack
+                    let mut checked_args = Vec::with_capacity(args_count);
+                    for (i, (expected, provided)) in params.iter().zip(args).enumerate() {
+                        let value = provided.into();
+                        if !expected.check_with_fn(&value, |opaque, ty| {
+                            m.environment.get_opaques()
+                                .get_index(ty as usize)
+                                .is_some_and(|(v, external)| *v == opaque.get_type_id() && *external)
+                        }) {
+                            return Err(VMError::InvalidEntryParameterType(i));
+                        }
+
+                        checked_args.push(value);
+                    }
+
+                    for arg in checked_args.into_iter().rev() {
+                        self.push_stack(arg)?;
+                    }
+                } else {
+                    // no enforced parameters set for the chunk
+                    // just push them as is
+                    for arg in args.rev() {
+                        self.push_stack(arg)?;
+                    }
+                }
+            },
+            _ => {
+                for arg in args.rev() {
+                    self.push_stack(arg)?;
+                }
+            }
         }
 
-        Ok(())
+        self.invoke_chunk_id_unchecked(id as _)
     }
 
     // Invoke a hook
@@ -222,7 +272,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
             .ok_or(VMError::NoModule)?;
 
         match m.module.get_chunk_id_of_hook(hook_id) {
-            Some(id) => self.invoke_chunk_id(id as _).map(|_| true),
+            Some(id) => self.invoke_chunk_id_unchecked(id as _).map(|_| true),
             None => Ok(false)
         }
     }
@@ -230,18 +280,13 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     // Invoke a hook with args
     // Return true if the Module has an implementation for the hook
     // Return false if the hook isn't supported
-    pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: Iterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
+    pub fn invoke_hook_id_with_args<V: Into<StackValue>, I: DoubleEndedIterator<Item = V> + ExactSizeIterator>(&mut self, hook_id: u8, args: I) -> Result<bool, VMError> {
         let m = self.backend.modules.last()
             .ok_or(VMError::NoModule)?;
 
         match m.module.get_chunk_id_of_hook(hook_id) {
             Some(id) => {
-                self.invoke_chunk_id(id as _)?;
-
-                for arg in args {
-                    self.push_stack(arg)?;
-                }
-
+                self.invoke_chunk_with_args(id as _, args)?;
                 Ok(true)
             },
             None => Ok(false)
@@ -249,8 +294,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     }
 
     // Push a value to the stack
-    #[inline(always)]
-    pub fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
+    #[inline]
+    fn push_stack<V: Into<StackValue>>(&mut self, value: V) -> Result<(), VMError> {
         let tmp = value.into();
 
         // we make sure to deep clone it to prevent any issues later
@@ -288,19 +333,12 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
     #[inline]
     fn on_call_stack_end(&mut self, manager: &mut ChunkManager) -> Result<(), VMError> {
         debug!("on call stack end: {:?}", manager);
-        // call stack has been fully consummed
-        // don't push it back but clean pointers
         self.call_stack_size -= 1;
-        if let Some((origin, max_size)) = manager.registers_origin() {
-            debug!("Swapping registers for origin: {}", origin);
-            // Swap back our registers
-            manager.truncate_registers_to(max_size);
-            let previous = self.find_manager_with_chunk_id(origin)
-                .ok_or(VMError::ChunkManagerNotFound(origin))?;
-            previous.swap_registers(manager);
-            manager.set_registers_origin(None);
-        }
-
+        // Closure managers hold a Vec of Arc references into the parent's register slots.
+        // Because every VM mutation writes through those Arcs, the parent's registers are
+        // always up-to-date when the closure finishes. No swap or snapshot restore needed;
+        // just clear the origin tag so the slot can be reused.
+        manager.set_registers_origin(None);
         Ok(())
     }
 
@@ -346,7 +384,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                             .ok_or(VMError::ChunkNotFound)?;
 
                         // Create the chunk reader for it
-                        let mut reader = ChunkReader::new(chunk, manager.ip());
+                        let mut reader = ChunkReader::new(&chunk.chunk, manager.ip());
                         'opcodes: while let Some(opcode) = reader.next_u8() {
                             let mut result = self.backend.table.execute(
                                 opcode,
@@ -384,7 +422,14 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                                             let tmp = handle_perform_syscall(&mut self.stack, &mut self.context, res, &m)?;
                                             result = perform_syscall(&self.backend, tmp, &mut self.stack, &mut self.context);
-                                            continue;
+                                            // If the callback's result is Nothing, the closure that
+                                            // triggered the Return has finished. Break out of the
+                                            // opcodes loop to avoid executing dead code that may
+                                            // follow the Return instruction (e.g. the else-branch
+                                            // of an early-return if/else in the closure body).
+                                            if !matches!(result, Ok(InstructionResult::Nothing)) {
+                                                continue;
+                                            }
                                         }
 
                                         trace!("Breaking execution");
@@ -397,7 +442,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         }
 
                                         self.push_back_call_stack(manager, reader)?;
-                                        self.invoke_chunk_id(id as _)?;
+                                        self.invoke_chunk_id_unchecked(id as _)?;
     
                                         // Jump to the next call stack
                                         continue 'call_stack;
@@ -409,9 +454,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
 
                                         // If we need to swap the registers, check if from our current manager
                                         // we already took the pointers from another chunk
-                                        if let Some((_, len)) = manager.registers_origin().filter(|(origin, _)| *origin == from && chunk_id == manager.chunk_id()) {
+                                        if manager.registers_origin().is_some_and(|origin| origin == from && chunk_id == manager.chunk_id()) {
                                             trace!("reusing current chunk manager for dynamic call");
-                                            manager.truncate_registers_to(len);
                                             manager.set_ip(0);
 
                                             // Push back our current chunk manager
@@ -423,23 +467,41 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                                 Vec::new()
                                             );
 
-                                            trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
-                                            let previous = if manager.chunk_id() == from {
+                                        trace!("Invoking dynamic chunk id: {} from {:?}", chunk_id, from);
+                                            // The source of captured registers is either the current manager
+                                            // itself (when it IS `from`, or already proxies `from`'s captures
+                                            // via Arc refs) or a manager found deeper on the call stack.
+                                            let manager_is_proxy = manager.registers_origin() == Some(from);
+                                            let previous = if manager.chunk_id() == from || manager_is_proxy {
                                                 Some(&mut manager)
                                             } else {
                                                 self.find_manager_with_chunk_id(from)
                                             };
 
                                             if let Some(previous) = previous {
-
-                                                new.set_registers_origin(Some((from, previous.get_registers().len())));
-                                                new.swap_registers(previous);
+                                                new.set_registers_origin(Some(from));
+                                                // Give the new closure a Vec of Arc references into the
+                                                // parent's register slots. Because every assignment in the
+                                                // VM writes through those Arcs (via `as_mut()`), the
+                                                // parent's values stay up-to-date automatically – no swap
+                                                // or snapshot restore is needed when the closure exits.
+                                                *new.get_registers_mut() = previous
+                                                    .get_registers_mut()
+                                                    .iter_mut()
+                                                    .map(StackValue::reference)
+                                                    .collect();
                                                 previous.set_context(ChunkContext::Used);
                                             } else {
                                                 debug!("No chunk manager found for origin {}, skipping it", from);
                                             }
 
-                                            self.push_back_call_stack(manager, reader)?;
+                                            // If the current manager was itself a proxy
+                                            // we can remove it directly
+                                            if manager_is_proxy {
+                                                self.on_call_stack_end(&mut manager)?;
+                                            } else {
+                                                self.push_back_call_stack(manager, reader)?;
+                                            }
 
                                             // Add our new chunk
                                             self.invoke_chunk_id_internal(new)?;
@@ -487,7 +549,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                                         self.push_back_call_stack(manager, reader)?;
     
                                         self.append_module(new_module)?;
-                                        self.invoke_chunk_id(chunk_id as _)?;
+                                        self.invoke_chunk_id_unchecked(chunk_id as _)?;
     
                                         // Jump to the next module
                                         continue 'modules;
@@ -511,7 +573,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
                         if matches!(manager.context(), ChunkContext::ShouldKeep) && self.call_stack_size != 0 {
                             manager.set_context(ChunkContext::Pending);
                             // we must keep it, only clean the stack
-                            self.call_stack.insert(self.call_stack.len() - 1, CallStack::Context(manager));
+                            self.call_stack.push(CallStack::Context(manager));
 
                             // We keep it to prevent any DoS using closures
                             self.call_stack_size += 1;
