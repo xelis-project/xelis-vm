@@ -1,15 +1,15 @@
 [package]
 name = "xelis-parser"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-xelis-ast = { path = "../ast" }
-xelis-types = { path = "../types" }
-xelis-builder = { path = "../builder" }
-xelis-environment = { path = "../environment" }
-log = "0.4.22"
-thiserror = "2.0.3"
-indexmap = { version = "2.7.0", features = ["serde"] }
-anyhow = "1.0.95"
-paste = "1.0"
+xelis-ast.workspace = true
+xelis-types.workspace = true
+xelis-builder.workspace = true
+xelis-environment.workspace = true
+log.workspace = true
+thiserror.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
+anyhow.workspace = true
+paste.workspace = true

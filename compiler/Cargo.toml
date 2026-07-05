@@ -1,17 +1,17 @@
 [package]
 name = "xelis-compiler"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-xelis-ast = { path = "../ast" }
-xelis-bytecode = { path = "../bytecode" }
-xelis-types = { path = "../types" }
-xelis-environment = { path = "../environment" }
-thiserror = "2.0.1"
-log = "0.4.22"
+xelis-ast.workspace = true
+xelis-bytecode.workspace = true
+xelis-types.workspace = true
+xelis-environment.workspace = true
+thiserror.workspace = true
+log.workspace = true
 
 [dev-dependencies]
-xelis-builder = { path = "../builder" }
-xelis-lexer ={ path = "../lexer" }
-xelis-parser = { path = "../parser" }
+xelis-builder.workspace = true
+xelis-lexer.workspace = true
+xelis-parser.workspace = true

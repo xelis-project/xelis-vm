@@ -1,8 +1,8 @@
 [package]
 name = "xelis-ast"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-indexmap = "2.7.0"
-xelis-types = { path = "../types" }
+indexmap.workspace = true
+xelis-types.workspace = true

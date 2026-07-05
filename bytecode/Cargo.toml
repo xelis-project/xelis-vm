@@ -1,15 +1,15 @@
 [package]
 name = "xelis-bytecode"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-xelis-types = { path = "../types" }
-indexmap = "2.7.0"
-thiserror = "1"
-serde = { version = "1.0.215", features = ["derive"] }
-hex = { version = "0.4.3", features = ["serde"] }
-schemars = { version = "1.0.4", features = ["indexmap2"] }
+xelis-types.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"] }
+hex = { workspace = true, features = ["serde"] }
+schemars = { workspace = true, features = ["indexmap2"] }
 
 [dev-dependencies]
-serde_json = "1"
+serde_json.workspace = true

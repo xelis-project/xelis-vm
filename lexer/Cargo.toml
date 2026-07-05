@@ -1,10 +1,10 @@
 [package]
 name = "xelis-lexer"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-log = "0.4.22"
-thiserror = "2.0.3"
-xelis-ast = { path = "../ast" }
-xelis-types = { path = "../types" }
+log.workspace = true
+thiserror.workspace = true
+xelis-ast.workspace = true
+xelis-types.workspace = true
