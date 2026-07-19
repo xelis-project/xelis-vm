@@ -2,6 +2,9 @@
 name = "silex-assembler"
 version.workspace = true
 edition.workspace = true
+description = "Assembler and disassembler for Silex bytecode modules"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-types.workspace = true

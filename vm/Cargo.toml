@@ -2,6 +2,9 @@
 name = "xelis-vm"
 version.workspace = true
 edition.workspace = true
+description = "Deterministic bytecode virtual machine for executing Silex modules"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-bytecode.workspace = true

@@ -2,6 +2,9 @@
 name = "silex-lexer"
 version.workspace = true
 edition.workspace = true
+description = "Lexer for turning Silex source code into positioned tokens"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 log.workspace = true

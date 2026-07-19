@@ -2,6 +2,9 @@
 name = "silex-abi"
 version.workspace = true
 edition.workspace = true
+description = "JSON ABI generation for Silex programs"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-types.workspace = true

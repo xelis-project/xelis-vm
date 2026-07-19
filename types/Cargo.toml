@@ -2,6 +2,9 @@
 name = "silex-types"
 version.workspace = true
 edition.workspace = true
+description = "Shared Silex value, type, cell, and serialization primitives"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true

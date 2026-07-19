@@ -2,6 +2,9 @@
 name = "silex-compiler"
 version.workspace = true
 edition.workspace = true
+description = "Compiler from Silex AST programs to Xelis VM bytecode"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-ast.workspace = true

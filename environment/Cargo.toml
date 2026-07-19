@@ -2,6 +2,9 @@
 name = "silex-environment"
 version.workspace = true
 edition.workspace = true
+description = "Runtime environment model for Silex execution on the Xelis VM"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true

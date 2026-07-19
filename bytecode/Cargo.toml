@@ -2,6 +2,9 @@
 name = "silex-bytecode"
 version.workspace = true
 edition.workspace = true
+description = "Serializable bytecode module format for Silex and the Xelis VM"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-types.workspace = true

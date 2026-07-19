@@ -2,6 +2,9 @@
 name = "silex-parser"
 version.workspace = true
 edition.workspace = true
+description = "Parser and semantic checks for Silex source programs"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-ast.workspace = true

@@ -2,6 +2,9 @@
 name = "silex-builder"
 version.workspace = true
 edition.workspace = true
+description = "Environment builder for registering Silex native functions, hooks, and types"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 silex-types.workspace = true

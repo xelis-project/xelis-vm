@@ -2,6 +2,9 @@
 name = "silex-ast"
 version.workspace = true
 edition.workspace = true
+description = "Abstract syntax tree definitions for the Silex language"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 indexmap.workspace = true

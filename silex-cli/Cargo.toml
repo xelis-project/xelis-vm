@@ -2,6 +2,9 @@
 name = "silex-cli"
 version.workspace = true
 edition.workspace = true
+description = "Command-line tools for compiling, running, assembling, and disassembling Silex programs"
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "silex"

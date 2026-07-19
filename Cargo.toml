@@ -19,6 +19,9 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+description = "Silex language tooling and the Xelis virtual machine"
+license = "MIT"
+repository = "https://github.com/xelis-project/xelis-vm"
 
 [workspace.dependencies]
 silex-abi = { path = "abi" }
