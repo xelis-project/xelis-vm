@@ -6,7 +6,5 @@ fn factorial(n: u64) -> u64 {
 }
 
 entry main(a: u64) {
-    println(factorial(a))
-
-    return 0
+    return factorial(a)
 }

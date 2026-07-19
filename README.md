@@ -18,21 +18,18 @@ For more flexibility, opaque types are available to keep logic in Rust directly,
 
 File extension is `.slx` for the source code.
 
-## Tasks
+## CLI
 
-Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
+The `silex` CLI stores bytecode modules as JSON files. `compile` compiles Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.json` extension. `disasm` prints a JSON module as assembly. `run` compiles a Silex source file and invokes its first entry chunk by default; use `--entry ID` to choose another one.
 
-- **Improve Parser**
-The parser is currently operating in a fully recursive mode, which can create a stack overflow for very complex or deeply nested expressions. Rewriting the key parts to operate iteratively would prevent stack overflows.
+```sh
+cargo run -p silex -- compile examples/factorial.slx -o factorial.json
+cargo run -p silex -- run examples/factorial.slx 5
+cargo run -p silex -- disasm factorial.json
+cargo run -p silex -- asm program.asm -o program.json
+```
 
-- **Imports**
-Allow to import other files to have a better code organization.
-
-- **ABI**
-Improve ABI generation and mapping around entry functions, parameters, enums, and structs for future XSWD and dApp development.
-
-- **VM optimizations**
-The faster the VM is, the more execution cost can be reduced for smart contracts.
+`run` accepts `null`, booleans, unsigned integers, and strings as positional arguments. Pass the JSON representation of a `ValueCell` for other values or an explicit numeric type.
 
 ## Crates
 
@@ -45,6 +42,7 @@ The faster the VM is, the more execution cost can be reduced for smart contracts
 - `xelis-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
 - `xelis-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
 - `xelis-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
+- `silex` (`silex`): Command-line interface for compiling and running Silex programs, assembling bytecode, and disassembling JSON bytecode modules.
 - `xelis-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
 - `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 
