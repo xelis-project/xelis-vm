@@ -1,0 +1,19 @@
+// Bytes: byte literals, conversion from arrays and strings, hex encoding, and mutation.
+
+entry main() {
+    let literal: bytes = b"Hi"
+    let from_array: bytes = [0x48u8, 0x69u8].to_bytes()
+    let from_string: bytes = "Hi".to_bytes()
+
+    assert(literal == from_array)
+    assert(from_array == from_string)
+
+    let data: bytes = bytes::from_hex("4869")
+    data.push(0x21u8)
+
+    assert(data.to_hex() == "486921")
+    assert(data.pop().unwrap() == 0x21u8)
+
+    println(data.to_hex())
+    return 0
+}

@@ -1,0 +1,29 @@
+// Maps: literals, insertion, lookup, removal, keys, values, and entries.
+
+entry main() {
+    let scores: map<string, u64> = {
+        "alice": 10u64,
+        "bob": 20u64
+    }
+
+    let previous: optional<u64> = scores.insert("alice", 15u64)
+    scores.insert("carol", 30u64)
+
+    assert(previous.unwrap() == 10u64)
+    assert(scores.contains_key("bob"))
+    assert(scores.get("alice").unwrap() == 15u64)
+
+    let removed: optional<u64> = scores.shift_remove("bob")
+    assert(removed.unwrap() == 20u64)
+
+    let keys: string[] = scores.keys()
+    let values: u64[] = scores.values()
+    let entries: (string, u64)[] = scores.entries()
+
+    assert(keys.len() == 2u32)
+    assert(values.len() == 2u32)
+    assert(entries.len() == 2u32)
+
+    println(scores)
+    return 0
+}

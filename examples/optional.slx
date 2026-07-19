@@ -1,11 +1,26 @@
-entry main() {
-    let opt: optional<u8> = null;
-    if opt.is_some() {
-        let v: u8 = opt.unwrap();
-        return v as u64
+// Optionals: null, is_some/is_none, unwrap, unwrap_or, and unwrap_or_else.
+
+fn maybe_half(value: u64) -> optional<u64> {
+    if value % 2u64 == 0u64 {
+        return value / 2u64
     }
 
-    opt = 55;
+    return null
+}
 
-    return opt.unwrap() as u64
+entry main() {
+    let even: optional<u64> = maybe_half(10u64)
+    let odd: optional<u64> = maybe_half(9u64)
+
+    assert(even.is_some())
+    assert(odd.is_none())
+    assert(even.unwrap() == 5u64)
+    assert(odd.unwrap_or(99u64) == 99u64)
+
+    let fallback: u64 = odd.unwrap_or_else(|| -> u64 {
+        return 7u64
+    })
+
+    assert(fallback == 7u64)
+    return 0
 }

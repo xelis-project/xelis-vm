@@ -1,23 +1,34 @@
-fn is_prime(num: u64, prime_list: u64[], prime_index: u32) -> bool {
-    for i: u32 = 0; i < prime_index; i += 1 {
-        if (num % prime_list[i]) == 0 {
-            return false;
+// Prime search using indexed for loops.
+// Run with `silex run examples/prime_index.slx 10`.
+
+fn is_prime(candidate: u64, primes: u64[]) -> bool {
+    for i: u32 = 0u32; i < primes.len(); i += 1u32 {
+        let prime: u64 = primes[i]
+
+        if prime * prime > candidate {
+            break
+        }
+
+        if candidate % prime == 0u64 {
+            return false
         }
     }
-    return true;
+
+    return true
 }
 
-entry main(max: u64) {
-    let primes: u64[] = [2];
-    let check: u64 = 3;
-    let index: u32 = 1;
-    while index < max {
-        if is_prime(check, primes, index) {
-            primes.push(check);
-            index += 1;
+entry main(count: u64) {
+    let primes: u64[] = []
+    let candidate: u64 = 2u64
+
+    while primes.len() as u64 < count {
+        if is_prime(candidate, primes) {
+            primes.push(candidate)
         }
-        check += 2;
+
+        candidate += 1u64
     }
+
     println(primes)
-    return 0;
+    return primes.len() as u64
 }

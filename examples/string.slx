@@ -1,0 +1,23 @@
+// Strings: searching, replacement, casing, splitting, trimming, and substrings.
+
+entry main() {
+    let greeting: string = "  Hello Silex  "
+    let trimmed: string = greeting.trim()
+    let lower: string = trimmed.to_lowercase()
+
+    assert(trimmed.starts_with("Hello"))
+    assert(trimmed.ends_with("Silex"))
+    assert(lower.contains("silex"))
+    assert(lower.contains_ignore_case("SILEX"))
+    assert(trimmed.index_of("Silex").unwrap() == 6u32)
+
+    let replaced: string = trimmed.replace("Silex", "XVM")
+    let parts: string[] = replaced.split(" ")
+    let sub: optional<string> = replaced.substring_range(6u32, 9u32)
+
+    assert(parts.len() == 2u32)
+    assert(sub.unwrap() == "XVM")
+
+    println(replaced)
+    return 0
+}

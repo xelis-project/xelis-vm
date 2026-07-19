@@ -1,23 +1,41 @@
-struct Value {
-    value: u64
+// Structs: nested values, methods, field mutation, and cloning.
+
+struct Point {
+    x: u64,
+    y: u64
 }
 
-fn (v Value) to_int() -> u64 {
-    return v.value
+fn (point Point) manhattan() -> u64 {
+    return point.x + point.y
 }
 
 struct Rectangle {
-    height: Value,
-    width: Value
+    top_left: Point,
+    width: u64,
+    height: u64
 }
 
-fn (r Rectangle) area() -> u64 {
-    return r.height.to_int() * r.width.to_int()
+fn (rectangle Rectangle) area() -> u64 {
+    return rectangle.width * rectangle.height
 }
 
 entry main() {
-    let rectangle: Rectangle = Rectangle { height: Value { value: 10 }, width: Value { value: 20 } }
-    println("Area: " + rectangle.area())
+    let rectangle: Rectangle = Rectangle {
+        top_left: Point {
+            x: 3u64,
+            y: 4u64
+        },
+        width: 10u64,
+        height: 20u64
+    }
 
+    let moved: Rectangle = rectangle.clone()
+    moved.top_left.x += 1u64
+
+    assert(rectangle.top_left.manhattan() == 7u64)
+    assert(moved.top_left.manhattan() == 8u64)
+    assert(rectangle.area() == 200u64)
+
+    println(rectangle)
     return 0
 }

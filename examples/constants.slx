@@ -1,9 +1,17 @@
-const ZERO: u64 = 0
-const HELLO_WORLD: string = "Hello World"
+// Constants: module-level constants and type constants from the default std.
+
+const APP_NAME: string = "silex examples"
+const DEFAULT_LIMIT: u64 = 5u64
 
 entry main() {
-    let message: string = HELLO_WORLD + " " + ZERO
-    println(message)
+    let limit: u64 = DEFAULT_LIMIT
+    let max_byte: u8 = u8::MAX
+    let min_word: u16 = u16::MIN
 
+    assert(limit == 5u64)
+    assert(max_byte == 255u8)
+    assert(min_word == 0u16)
+
+    println(APP_NAME)
     return 0
 }

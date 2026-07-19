@@ -1,0 +1,16 @@
+// Tuples: construction, typed values, and deconstruction.
+
+fn pair() -> (string, u64) {
+    return ("height", 42u64)
+}
+
+entry main() {
+    let item: (string, u64) = pair()
+    let (name, value): (string, u64) = item
+
+    assert(name == "height")
+    assert(value == 42u64)
+
+    println(item)
+    return 0
+}

@@ -1,17 +1,21 @@
-fn add(a: u8, b: u8) -> u8 {
-    return a + b
-}
+// Numbers: typed literals, casts, bit operators, shifts, hex literals, and methods.
 
 entry main() {
-    let a: u8 = 5
-    let b: u8 = true ? 250 : 10
-    println(add(a, b))
+    let small: u8 = 5u8
+    let wide: u64 = small as u64
+    let hex_value: u64 = 0x10u64
+    let mask: u64 = 10u64
 
-    let res: u8 = b << 1
-    println(res)
+    let shifted: u64 = mask << 2u64
+    let combined: u64 = shifted | hex_value
+    let root: u64 = 81u64.sqrt()
 
-    // Divide by zero will cause a runtime error
-    let divide: u64 = 10 / 0
+    assert(wide == 5u64)
+    assert(hex_value == 16u64)
+    assert(shifted == 40u64)
+    assert(combined == 56u64)
+    assert(root == 9u64)
 
+    println(combined)
     return 0
 }

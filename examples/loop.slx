@@ -1,22 +1,34 @@
+// Loops: for, foreach over arrays and ranges, while, break, and continue.
+
 entry main() {
-    for i: u64 = 0; i < 10; i += 1 {
-        println(i)
+    let total: u64 = 0u64
+
+    for i: u64 = 0u64; i < 5u64; i += 1u64 {
+        total += i
     }
 
-    let array: u64[] = [11, 12, 13, 14, 15]
-    foreach a in array {
-        println(a)
+    foreach value in [10u64, 20u64, 30u64] {
+        total += value
     }
 
-    let i: u64 = 20
-    while i > 0 {
-        i -= 1
-        if i == 17 {
+    foreach value in 0u64..10u64 {
+        if value == 3u64 {
             continue
         }
 
-        println(i)
+        if value == 6u64 {
+            break
+        }
+
+        total += value
     }
 
+    let countdown: u64 = 3u64
+    while countdown > 0u64 {
+        total += countdown
+        countdown -= 1u64
+    }
+
+    println(total)
     return 0
 }

@@ -1,23 +1,34 @@
+// Paths and methods: nested field access, assignment, and receiver functions.
+
 struct Value {
-    value: string
+    inner: string
 }
 
-fn (v Value) my_value() -> string {
-    return v.value
+fn (value Value) len() -> u64 {
+    return value.inner.len() as u64
 }
 
 struct Message {
-    value: Value
+    body: Value
 }
 
-fn (m Message) to_string() -> string {
-    return m.value.value
+fn (message Message) text() -> string {
+    return message.body.inner
 }
 
 entry main() {
-    let message: Message = Message { value: Value { value: "Hello World!" } }
-    println(message.to_string())
-    message.value.value += " from path"
-    println(message.value.my_value())
+    let message: Message = Message {
+        body: Value {
+            inner: "hello"
+        }
+    }
+
+    assert(message.body.len() == 5u64)
+
+    message.body.inner += " silex"
+
+    assert(message.text() == "hello silex")
+    println(message.text())
+
     return 0
 }

@@ -1,25 +1,25 @@
-fn no_call() -> bool {
-    println("Should not be called!")
-    return true
+// Short-circuit evaluation: the skipped branches would panic if evaluated.
+
+fn should_not_run() -> bool {
+    return panic("short-circuit failed")
 }
 
-fn should_be_called() -> bool {
-    println("Should be called!")
+fn returns_false() -> bool {
     return false
 }
 
 entry main() {
-    if (false && no_call()) {
+    if false && should_not_run() {
         return 1
     }
 
-    if false || should_be_called() {
-        return 1
+    if true || should_not_run() {
+        assert(true)
     }
 
-    if true || !no_call() {
+    if returns_false() || true {
         return 0
     }
 
-    return 0
+    return 1
 }

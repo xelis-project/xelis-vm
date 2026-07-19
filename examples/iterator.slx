@@ -1,0 +1,34 @@
+// Iterators: ranges, map/filter/fold, find, any/all, chain, and collect.
+
+entry main() {
+    let first: u64[] = (0u64..5u64).collect()
+    let second: u64[] = (5u64..10u64).collect()
+
+    let all: u64[] = first.iter().chain(second.iter()).collect()
+    let evens: u64[] = all.iter()
+        .filter(|x: u64| {
+            return x % 2u64 == 0u64
+        })
+        .collect()
+
+    let doubled_sum: u64 = all.iter()
+        .map(|x: u64| {
+            return x * 2u64
+        })
+        .fold(0u64, |acc: u64, x: u64| {
+            return acc + x
+        })
+
+    let found: optional<u64> = all.iter().find(|x: u64| {
+        return x == 7u64
+    })
+
+    assert(all.len() == 10u32)
+    assert(evens.len() == 5u32)
+    assert(doubled_sum == 90u64)
+    assert(found.unwrap() == 7u64)
+    assert(all.iter().any(|x: u64| { return x == 9u64 }))
+    assert(all.iter().all(|x: u64| { return x < 10u64 }))
+
+    return 0
+}

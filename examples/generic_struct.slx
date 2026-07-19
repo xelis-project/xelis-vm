@@ -1,34 +1,36 @@
-// Example demonstrating generic structs
-// Generic types are specified with angle brackets and use Type::T(Some(id))
+// Generic structs: one definition specialized with different concrete types.
 
-// Define a generic Entry struct with two type parameters K and V
 struct Entry<K, V> {
     key: K,
     value: V
 }
 
-// K = Type::T(Some(0))  // position 0
-// V = Type::T(Some(1))  // position 1
+fn (entry Entry<string, u64>) is_large() -> bool {
+    return entry.value > 10u64
+}
 
 entry main() {
-    // Create an Entry with u64 key and string value
-    let entry1: Entry<u64, string> = Entry {
-        key: 10,
-        value: "hello"
-    };
+    let count: Entry<string, u64> = Entry {
+        key: "items",
+        value: 12u64
+    }
 
-    // Create an Entry with string key and bool value
-    let entry2: Entry<string, bool> = Entry {
+    let flag: Entry<string, bool> = Entry {
         key: "enabled",
         value: true
-    };
+    }
 
-    // Nested generics
     let nested: Entry<string, Entry<u32, u64>> = Entry {
-        key: "data",
+        key: "nested",
         value: Entry {
-            key: 5,
-            value: 100
+            key: 7u32,
+            value: 99u64
         }
-    };
+    }
+
+    assert(count.is_large())
+    assert(flag.value)
+    assert(nested.value.key == 7u32)
+
+    return 0
 }

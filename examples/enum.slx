@@ -1,16 +1,39 @@
-enum Either {
-	Left {
-		value: bool
-	},
-	Right {
-		field: u64
-	}
-	None,
+// Enums: unit, tuple, and struct variants with equality and match.
+
+enum Command {
+    Quit,
+    Move(u64, u64),
+    Write {
+        text: string
+    }
+}
+
+fn cost(command: Command) -> u64 {
+    let result: u64 = 0u64
+
+    match command {
+        Command::Quit => {
+            result = 0u64
+        }
+        Command::Move(x, y) => {
+            result = x + y
+        }
+        Command::Write { text } => {
+            result = text.len() as u64
+        }
+    }
+
+    return result
 }
 
 entry main() {
-    let either: Either = Either::None;
-    println(either);
+    let a: Command = Command::Quit
+    let b: Command = Command::Move(3u64, 4u64)
+    let c: Command = Command::Write { text: "hello" }
 
-	return 0
+    assert(a == Command::Quit)
+    assert(cost(b) == 7u64)
+    assert(cost(c) == 5u64)
+
+    return 0
 }

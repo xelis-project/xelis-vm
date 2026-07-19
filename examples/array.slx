@@ -1,33 +1,30 @@
-fn test_array() -> u64[] {
-    return [1, 2, 3]
+// Arrays: construction, indexing, mutation, slices, and optional access.
+
+fn sample() -> u64[] {
+    return [10u64, 20u64, 30u64]
 }
 
 entry main() {
-    let array: u64[] = [10, 20, 30, 40]
-    println(array)
+    let values: u64[] = sample()
 
-    array[0] = test_array()[0]
-    println(array)
+    values.push(40u64)
+    values.insert(1u32, 15u64)
 
-    array.push(50)
-    println(array)
+    let first: u64 = values[0u32]
+    let last: u64 = values.last().unwrap()
+    let maybe_missing: optional<u64> = values.get(99u32)
 
-    let size: u32 = array.len()
-    let value: u64 = array[size - 1]
-    println(value)
+    assert(first == 10u64)
+    assert(last == 40u64)
+    assert(maybe_missing.is_none())
+    assert(values.contains(30u64))
 
-    // slices are connected
-    let slice: u64[] = array.slice(0..2)
-    println(array)
-    println(slice)
+    let removed: u64 = values.remove(1u32)
+    let head: u64[] = values.slice(0u32..2u32)
 
-    slice[0] = 69
-    println(array)
-    println(slice)
+    assert(removed == 15u64)
+    assert(head.len() == 2u32)
 
-    let b: u64 = slice.remove(0);
-    println(b)
-    println(slice)
-
+    println(values)
     return 0
 }

@@ -1,0 +1,53 @@
+// Match: destructuring enum variants and using a wildcard binding.
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+fn unwrap_or_zero(result: Result<u64, string>) -> u64 {
+    let value: u64 = 0u64
+
+    match result {
+        Result::Ok(inner) => {
+            value = inner
+        }
+        Result::Err(message) => {
+            println(message)
+            value = 0u64
+        }
+    }
+
+    return value
+}
+
+enum Status {
+    Ready,
+    Waiting,
+    Failed
+}
+
+fn status_code(status: Status) -> u64 {
+    let code: u64 = 0u64
+
+    match status {
+        Status::Ready => {
+            code = 1u64
+        }
+        other => {
+            println(other)
+            code = 0u64
+        }
+    }
+
+    return code
+}
+
+entry main() {
+    assert(unwrap_or_zero(Result<u64, string>::Ok(42u64)) == 42u64)
+    assert(unwrap_or_zero(Result<u64, string>::Err("missing")) == 0u64)
+    assert(status_code(Status::Ready) == 1u64)
+    assert(status_code(Status::Waiting) == 0u64)
+
+    return 0
+}

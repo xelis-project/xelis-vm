@@ -1,10 +1,15 @@
+// Functions and recursion: run with `silex run examples/factorial.slx 5`.
+
 fn factorial(n: u64) -> u64 {
-    if n == 0 {
-        return 1
+    if n <= 1u64 {
+        return 1u64
     }
-    return n * factorial(n - 1)
+
+    return n * factorial(n - 1u64)
 }
 
-entry main(a: u64) {
-    return factorial(a)
+entry main(n: u64) {
+    let result: u64 = factorial(n)
+    println(result)
+    return result
 }

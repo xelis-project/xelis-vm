@@ -1,14 +1,21 @@
-entry main() {
-    let i: u64 = 0
-    while i <= 100 {
-        if ((i % 3) == 0) && ((i % 5) == 0) {
-            println("FizzBuzz")
-        } else if (i % 3) == 0 {
-            println("Fizz")
-        } else if (i % 5) == 0 {
-            println("Buzz")
-        }
-        i += 1
+// A small complete program: loops, modulo arithmetic, and branching.
+
+fn fizzbuzz_label(i: u64) -> string {
+    if i % 15u64 == 0u64 {
+        return "FizzBuzz"
+    } else if i % 3u64 == 0u64 {
+        return "Fizz"
+    } else if i % 5u64 == 0u64 {
+        return "Buzz"
     }
+
+    return "Number"
+}
+
+entry main(limit: u64) {
+    for i: u64 = 1u64; i <= limit; i += 1u64 {
+        println(fizzbuzz_label(i))
+    }
+
     return 0
 }
