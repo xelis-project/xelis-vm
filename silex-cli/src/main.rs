@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser as ClapParser, Subcommand, ValueEnum};
+use silex_abi::abi_from_silex;
 use silex_assembler::{Assembler, Disassembler};
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::Module;
@@ -36,6 +37,8 @@ enum SubCommands {
     Disasm(DisasmConfig),
     /// Assemble textual bytecode into a bytecode module.
     Asm(AsmConfig),
+    /// Generate a JSON ABI from a Silex source program.
+    Abi(AbiConfig),
 }
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
@@ -128,6 +131,19 @@ struct AsmConfig {
     format: OutputFormat,
 }
 
+#[derive(Debug, Args)]
+struct AbiConfig {
+    #[arg(value_name = "INPUT")]
+    input: PathBuf,
+    #[arg(
+        short,
+        long,
+        value_name = "OUTPUT",
+        help = "Output ABI JSON path (defaults to INPUT with a .abi.json extension)"
+    )]
+    output: Option<PathBuf>,
+}
+
 fn read_file(path: &Path) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
 }
@@ -140,6 +156,12 @@ fn output_path(input: &Path, output: Option<&PathBuf>, format: OutputFormat) -> 
     output
         .cloned()
         .unwrap_or_else(|| input.with_extension(format.extension()))
+}
+
+fn abi_output_path(input: &Path, output: Option<&PathBuf>) -> PathBuf {
+    output
+        .cloned()
+        .unwrap_or_else(|| input.with_extension("abi.json"))
 }
 
 fn write_module(module: &Module, path: &Path, format: OutputFormat) -> Result<()> {
@@ -235,6 +257,14 @@ fn main() -> Result<()> {
                 .disasemble()
                 .context("failed to disassemble bytecode module")?;
             println!("{dump}");
+        }
+        SubCommands::Abi(config) => {
+            let source = read_file(&config.input)?;
+            let abi = abi_from_silex(&source, EnvironmentBuilder::<()>::default())
+                .context("failed to generate ABI")?;
+            let output = abi_output_path(&config.input, config.output.as_ref());
+            fs::write(&output, format!("{abi}\n"))
+                .with_context(|| format!("failed to write {}", output.display()))?;
         }
         SubCommands::Run(config) => {
             let source = read_file(&config.input)?;

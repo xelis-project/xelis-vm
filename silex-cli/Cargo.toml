@@ -14,6 +14,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true
+silex-abi.workspace = true
 silex-assembler.workspace = true
 silex-builder.workspace = true
 silex-bytecode.workspace = true
