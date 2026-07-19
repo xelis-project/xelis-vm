@@ -20,13 +20,14 @@ File extension is `.slx` for the source code.
 
 ## CLI
 
-The `silex` CLI stores bytecode modules as JSON files. `compile` compiles Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.json` extension. `disasm` prints a JSON module as assembly. `run` compiles a Silex source file and invokes its first entry chunk by default; use `--entry ID` to choose another one.
+The `silex` CLI stores bytecode modules as binary `.slxc` files by default. `compile` compiles Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.slxc` extension. Use `--format json` to write the old JSON representation instead. `disasm` prints a binary `.slxc` or JSON module as assembly. `run` compiles a Silex source file and invokes its first entry chunk by default; use `--entry ID` to choose another one.
 
 ```sh
-cargo run -p silex-cli -- compile examples/factorial.slx -o factorial.json
+cargo run -p silex-cli -- compile examples/factorial.slx -o factorial.slxc
+cargo run -p silex-cli -- compile examples/factorial.slx --format json -o factorial.json
 cargo run -p silex-cli -- run examples/factorial.slx 5
-cargo run -p silex-cli -- disasm factorial.json
-cargo run -p silex-cli -- asm program.asm -o program.json
+cargo run -p silex-cli -- disasm factorial.slxc
+cargo run -p silex-cli -- asm program.asm -o program.slxc
 ```
 
 `run` accepts `null`, booleans, unsigned integers, and strings as positional arguments. Pass the JSON representation of a `ValueCell` for other values or an explicit numeric type.

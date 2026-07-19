@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use clap::{Args, Parser as ClapParser, Subcommand};
+use clap::{Args, Parser as ClapParser, Subcommand, ValueEnum};
 use silex_assembler::{Assembler, Disassembler};
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::Module;
@@ -13,6 +13,7 @@ use silex_environment::{Environment, ModuleMetadata};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_types::{Primitive, ValueCell};
+use xelis_common::{contract::Module as BinaryModule, serializer::Serializer};
 use xelis_vm::{ModuleValidator, VM};
 
 #[derive(Debug, ClapParser)]
@@ -27,14 +28,30 @@ struct Config {
 
 #[derive(Debug, Subcommand)]
 enum SubCommands {
-    /// Compile a Silex source program into a JSON bytecode module.
+    /// Compile a Silex source program into a bytecode module.
     Compile(CompileConfig),
     /// Compile and run an entry chunk from a Silex source program.
     Run(RunConfig),
-    /// Print a JSON bytecode module as assembly.
+    /// Print a bytecode module as assembly.
     Disasm(DisasmConfig),
-    /// Assemble textual bytecode into a JSON bytecode module.
+    /// Assemble textual bytecode into a bytecode module.
     Asm(AsmConfig),
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum OutputFormat {
+    #[default]
+    Binary,
+    Json,
+}
+
+impl OutputFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Binary => "slxc",
+            Self::Json => "json",
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -45,9 +62,17 @@ struct CompileConfig {
         short,
         long,
         value_name = "OUTPUT",
-        help = "Output JSON module path (defaults to INPUT with a .json extension)"
+        help = "Output module path (defaults to INPUT with a .slxc extension)"
     )]
     output: Option<PathBuf>,
+    #[arg(
+        short,
+        long,
+        value_enum,
+        default_value_t,
+        help = "Output format"
+    )]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -90,32 +115,67 @@ struct AsmConfig {
         short,
         long,
         value_name = "OUTPUT",
-        help = "Output JSON module path (defaults to INPUT with a .json extension)"
+        help = "Output module path (defaults to INPUT with a .slxc extension)"
     )]
     output: Option<PathBuf>,
+    #[arg(
+        short,
+        long,
+        value_enum,
+        default_value_t,
+        help = "Output format"
+    )]
+    format: OutputFormat,
 }
 
 fn read_file(path: &Path) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
-fn output_path(input: &Path, output: Option<&PathBuf>) -> PathBuf {
-    output
-        .cloned()
-        .unwrap_or_else(|| input.with_extension("json"))
+fn read_bytes(path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
-fn write_module(module: &Module, path: &Path) -> Result<()> {
-    let json =
-        serde_json::to_string_pretty(module).context("failed to serialize bytecode module")?;
-    fs::write(path, format!("{json}\n"))
-        .with_context(|| format!("failed to write {}", path.display()))
+fn output_path(input: &Path, output: Option<&PathBuf>, format: OutputFormat) -> PathBuf {
+    output
+        .cloned()
+        .unwrap_or_else(|| input.with_extension(format.extension()))
+}
+
+fn write_module(module: &Module, path: &Path, format: OutputFormat) -> Result<()> {
+    let bytes = match format {
+        OutputFormat::Binary => to_binary_module(module)?.to_bytes(),
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(module)
+                .context("failed to serialize bytecode module as JSON")?;
+            format!("{json}\n").into_bytes()
+        }
+    };
+
+    fs::write(path, bytes).with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn read_module(path: &Path) -> Result<Module> {
-    let source = read_file(path)?;
-    serde_json::from_str(&source)
-        .with_context(|| format!("failed to parse JSON bytecode module {}", path.display()))
+    if path.extension().is_some_and(|extension| extension == "json") {
+        let source = read_file(path)?;
+        return serde_json::from_str(&source)
+            .with_context(|| format!("failed to parse JSON bytecode module {}", path.display()));
+    }
+
+    let bytes = read_bytes(path)?;
+    let module = BinaryModule::from_bytes(&bytes)
+        .with_context(|| format!("failed to parse binary bytecode module {}", path.display()))?;
+    from_binary_module(module)
+}
+
+fn to_binary_module(module: &Module) -> Result<BinaryModule> {
+    serde_json::from_value(serde_json::to_value(module)?)
+        .context("failed to convert bytecode module to binary module representation")
+}
+
+fn from_binary_module(module: BinaryModule) -> Result<Module> {
+    serde_json::from_value(serde_json::to_value(module)?)
+        .context("failed to convert binary module representation to bytecode module")
 }
 
 fn compile_source(source: &str) -> Result<(Module, Environment<()>)> {
@@ -158,16 +218,16 @@ fn main() -> Result<()> {
         SubCommands::Compile(config) => {
             let source = read_file(&config.input)?;
             let (module, _) = compile_source(&source)?;
-            let output = output_path(&config.input, config.output.as_ref());
-            write_module(&module, &output)?;
+            let output = output_path(&config.input, config.output.as_ref(), config.format);
+            write_module(&module, &output, config.format)?;
         }
         SubCommands::Asm(config) => {
             let source = read_file(&config.input)?;
             let module = Assembler::new(&source)
                 .assemble()
                 .map_err(|error| anyhow::anyhow!("failed to assemble source: {error}"))?;
-            let output = output_path(&config.input, config.output.as_ref());
-            write_module(&module, &output)?;
+            let output = output_path(&config.input, config.output.as_ref(), config.format);
+            write_module(&module, &output, config.format)?;
         }
         SubCommands::Disasm(config) => {
             let module = read_module(&config.input)?;
