@@ -24,17 +24,17 @@ license = "MIT"
 repository = "https://github.com/xelis-project/xelis-vm"
 
 [workspace.dependencies]
-silex-abi = { path = "abi" }
-silex-assembler = { path = "assembler" }
-silex-ast = { path = "ast" }
-silex-builder = { path = "builder" }
-silex-bytecode = { path = "bytecode" }
-silex-compiler = { path = "compiler" }
-silex-environment = { path = "environment" }
-silex-lexer = { path = "lexer" }
-silex-parser = { path = "parser" }
-silex-types = { path = "types" }
-xelis-vm = { path = "vm" }
+silex-abi = { path = "abi", version = "0.1.0" }
+silex-assembler = { path = "assembler", version = "0.1.0" }
+silex-ast = { path = "ast", version = "0.1.0" }
+silex-builder = { path = "builder", version = "0.1.0" }
+silex-bytecode = { path = "bytecode", version = "0.1.0" }
+silex-compiler = { path = "compiler", version = "0.1.0" }
+silex-environment = { path = "environment", version = "0.1.0" }
+silex-lexer = { path = "lexer", version = "0.1.0" }
+silex-parser = { path = "parser", version = "0.1.0" }
+silex-types = { path = "types", version = "0.1.0" }
+xelis-vm = { path = "vm", version = "0.1.0" }
 
 anyhow = "1.0.95"
 better_any = "0.2.0"
