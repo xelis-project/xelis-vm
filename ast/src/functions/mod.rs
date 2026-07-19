@@ -3,7 +3,7 @@ mod hook;
 
 use std::borrow::Cow;
 
-use xelis_types::{Type, IdentifierType};
+use silex_types::{Type, IdentifierType};
 use super::Statement;
 
 pub use declared::*;

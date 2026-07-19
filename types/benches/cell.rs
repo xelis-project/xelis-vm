@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use xelis_types::{Primitive, ValueCell};
+use silex_types::{Primitive, ValueCell};
 
 fn bench_drop(c: &mut Criterion) {
     let mut group = c.benchmark_group("Cell drop");

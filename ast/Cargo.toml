@@ -1,8 +1,8 @@
 [package]
-name = "xelis-ast"
+name = "silex-ast"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 indexmap.workspace = true
-xelis-types.workspace = true
+silex-types.workspace = true

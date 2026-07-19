@@ -1,4 +1,4 @@
-use xelis_environment::{
+use silex_environment::{
     VMContext,
     EnvironmentError,
     FnInstance,
@@ -8,7 +8,7 @@ use xelis_environment::{
     SysCallResult,
     ModuleMetadata,
 };
-use xelis_types::{Type, Primitive, ValueCell, ValuePointer};
+use silex_types::{Type, Primitive, ValueCell, ValuePointer};
 
 use crate::EnvironmentBuilder;
 

@@ -1,5 +1,5 @@
-# XELIS VM
-XVM (XELIS Virtual Machine) is a customizable VM and language toolchain. The workspace includes the core VM plus crates for lexing, parsing, AST representation, bytecode, assembly/disassembly, compilation, environment construction, runtime types, and ABI generation.
+# XVM
+XVM (XELIS Virtual Machine) is a customizable VM and language toolchain. The workspace includes the core VM plus crates for the Silex language: lexing, parsing, AST representation, bytecode, assembly/disassembly, compilation, environment construction, runtime types, and ABI generation.
 
 The language used by XVM is **Silex**, whose syntax is inspired by Rust.
 
@@ -23,27 +23,27 @@ File extension is `.slx` for the source code.
 The `silex` CLI stores bytecode modules as JSON files. `compile` compiles Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.json` extension. `disasm` prints a JSON module as assembly. `run` compiles a Silex source file and invokes its first entry chunk by default; use `--entry ID` to choose another one.
 
 ```sh
-cargo run -p silex -- compile examples/factorial.slx -o factorial.json
-cargo run -p silex -- run examples/factorial.slx 5
-cargo run -p silex -- disasm factorial.json
-cargo run -p silex -- asm program.asm -o program.json
+cargo run -p silex-cli -- compile examples/factorial.slx -o factorial.json
+cargo run -p silex-cli -- run examples/factorial.slx 5
+cargo run -p silex-cli -- disasm factorial.json
+cargo run -p silex-cli -- asm program.asm -o program.json
 ```
 
 `run` accepts `null`, booleans, unsigned integers, and strings as positional arguments. Pass the JSON representation of a `ValueCell` for other values or an explicit numeric type.
 
 ## Crates
 
-- `xelis-abi` (`abi`): Generates a JSON ABI from Silex source or from a parsed program. It reports entry functions, parameters, outputs, and referenced internal structs/enums.
-- `xelis-assembler` (`assembler`): Converts textual opcode instructions into a bytecode `Module` and provides a disassembler for converting bytecode back into readable instructions.
-- `xelis-ast` (`ast`): Defines the AST used by the parser and compiler: expressions, statements, function declarations, hooks, entry functions, tokens, operators, and programs.
-- `xelis-builder` (`builder`): Builds an `Environment` by registering native functions, const functions, hooks, structs, enums, opaque types, and the default `xstd` library.
-- `xelis-bytecode` (`bytecode`): Defines the bytecode format: opcodes, chunks, module metadata, constants, access levels, hook chunk mappings, and serialization schemas.
-- `xelis-compiler` (`compiler`): Compiles a parsed AST `Program` into a bytecode `Module`, including stack/register management, control-flow jumps, calls, hooks, and constant handling.
-- `xelis-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
-- `xelis-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
-- `xelis-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
-- `silex` (`silex`): Command-line interface for compiling and running Silex programs, assembling bytecode, and disassembling JSON bytecode modules.
-- `xelis-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
+- `silex-abi` (`abi`): Generates a JSON ABI from Silex source or from a parsed program. It reports entry functions, parameters, outputs, and referenced internal structs/enums.
+- `silex-assembler` (`assembler`): Converts textual opcode instructions into a bytecode `Module` and provides a disassembler for converting bytecode back into readable instructions.
+- `silex-ast` (`ast`): Defines the AST used by the parser and compiler: expressions, statements, function declarations, hooks, entry functions, tokens, operators, and programs.
+- `silex-builder` (`builder`): Builds an `Environment` by registering native functions, const functions, hooks, structs, enums, opaque types, and the default `xstd` library.
+- `silex-bytecode` (`bytecode`): Defines the bytecode format: opcodes, chunks, module metadata, constants, access levels, hook chunk mappings, and serialization schemas.
+- `silex-compiler` (`compiler`): Compiles a parsed AST `Program` into a bytecode `Module`, including stack/register management, control-flow jumps, calls, hooks, and constant handling.
+- `silex-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
+- `silex-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
+- `silex-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
+- `silex-cli` (`silex`): Command-line interface for compiling and running Silex programs, assembling bytecode, and disassembling JSON bytecode modules.
+- `silex-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
 - `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 
 ## Types

@@ -1,4 +1,4 @@
-use xelis_types::Type;
+use silex_types::Type;
 use crate::Statement;
 use super::Parameter;
 

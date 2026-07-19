@@ -5,14 +5,14 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser as ClapParser, Subcommand};
-use xelis_assembler::{Assembler, Disassembler};
-use xelis_builder::EnvironmentBuilder;
-use xelis_bytecode::Module;
-use xelis_compiler::Compiler;
-use xelis_environment::{Environment, ModuleMetadata};
-use xelis_lexer::Lexer;
-use xelis_parser::Parser;
-use xelis_types::{Primitive, ValueCell};
+use silex_assembler::{Assembler, Disassembler};
+use silex_builder::EnvironmentBuilder;
+use silex_bytecode::Module;
+use silex_compiler::Compiler;
+use silex_environment::{Environment, ModuleMetadata};
+use silex_lexer::Lexer;
+use silex_parser::Parser;
+use silex_types::{Primitive, ValueCell};
 use xelis_vm::{ModuleValidator, VM};
 
 #[derive(Debug, ClapParser)]
@@ -190,7 +190,7 @@ fn main() -> Result<()> {
                         .chunks()
                         .iter()
                         .position(|chunk| {
-                            matches!(chunk.access, xelis_bytecode::Access::Entry { .. })
+                            matches!(chunk.access, silex_bytecode::Access::Entry { .. })
                         })
                         .and_then(|id| u16::try_from(id).ok())
                 })

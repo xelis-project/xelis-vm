@@ -1,10 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use xelis_builder::EnvironmentBuilder;
-use xelis_bytecode::Module;
-use xelis_compiler::Compiler;
-use xelis_environment::{Environment, ModuleMetadata};
-use xelis_lexer::Lexer;
-use xelis_parser::Parser;
+use silex_builder::EnvironmentBuilder;
+use silex_bytecode::Module;
+use silex_compiler::Compiler;
+use silex_environment::{Environment, ModuleMetadata};
+use silex_lexer::Lexer;
+use silex_parser::Parser;
 use xelis_vm::VM;
 
 macro_rules! bench {

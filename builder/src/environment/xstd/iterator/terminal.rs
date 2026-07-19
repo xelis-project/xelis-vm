@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{
+use silex_environment::{
     CallbackState,
     CallbackType,
     EnvironmentError,
@@ -8,7 +8,7 @@ use xelis_environment::{
     FnReturnType,
     SysCallResult,
 };
-use xelis_types::{
+use silex_types::{
     Primitive,
     StackValue,
     ValueCell,

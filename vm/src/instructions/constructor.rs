@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use indexmap::IndexMap;
-use xelis_environment::EnvironmentError;
-use xelis_types::{Primitive, ValueCell};
+use silex_environment::EnvironmentError;
+use silex_types::{Primitive, ValueCell};
 
 use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, VMContext, VMError};
 use super::InstructionResult;

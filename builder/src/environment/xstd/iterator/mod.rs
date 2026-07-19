@@ -4,9 +4,9 @@ mod fns;
 
 pub use iter::{BaseSource, XIterator};
 
-use xelis_environment::FunctionHandler;
-use xelis_types::{ClosureType, OpaqueTypeTrait, Type};
-use xelis_types::opaque::OpaqueType;
+use silex_environment::FunctionHandler;
+use silex_types::{ClosureType, OpaqueTypeTrait, Type};
+use silex_types::opaque::OpaqueType;
 
 use crate::EnvironmentBuilder;
 

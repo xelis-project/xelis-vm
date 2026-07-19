@@ -1,4 +1,4 @@
-use xelis_types::{IdentifierType, Type};
+use silex_types::{IdentifierType, Type};
 
 /// Function Context used during parsing
 /// It stores variable names and their types in scopes

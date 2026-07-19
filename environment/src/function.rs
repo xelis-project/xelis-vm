@@ -2,8 +2,8 @@ use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
-use xelis_bytecode::Module;
-use xelis_types::{Primitive, StackValue, Type, ValueCell};
+use silex_bytecode::Module;
+use silex_types::{Primitive, StackValue, Type, ValueCell};
 use crate::{VMContext, Environment, IdentityBuildHasher, ModuleMetadata};
 
 use super::EnvironmentError;
@@ -295,7 +295,7 @@ pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), Environmen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xelis_types::{ValuePointer, Primitive};
+    use silex_types::{ValuePointer, Primitive};
 
     #[test]
     fn test_no_duplicated_params_all_owned() {

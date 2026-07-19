@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use xelis_environment::{
+use silex_environment::{
     SysCallResult,
     FunctionHandler,
     FnInstance,
@@ -9,7 +9,7 @@ use xelis_environment::{
     VMContext,
     EnvironmentError,
 };
-use xelis_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
+use silex_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;

@@ -12,10 +12,10 @@ use error::ParserErrorKind;
 use indexmap::IndexMap;
 use log::trace;
 use mapper::GlobalMapper;
-use xelis_builder::{Builder, EnvironmentBuilder};
-use xelis_ast::*;
-use xelis_environment::NativeFunction;
-use xelis_types::*;
+use silex_builder::{Builder, EnvironmentBuilder};
+use silex_ast::*;
+use silex_environment::NativeFunction;
+use silex_types::*;
 use context::Context;
 
 pub use error::ParserError;
@@ -4176,8 +4176,8 @@ impl<'a, M> Parser<'a, M> {
 
 #[cfg(test)]
 mod tests {
-    use xelis_environment::{FunctionHandler, SysCallResult};
-    use xelis_types::traits::{JSONHelper, Serializable};
+    use silex_environment::{FunctionHandler, SysCallResult};
+    use silex_types::traits::{JSONHelper, Serializable};
 
     use super::*;
 
@@ -4292,7 +4292,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(xelis_types::Primitive::U64(25)))
+            Expression::Constant(Constant::Primitive(silex_types::Primitive::U64(25)))
         );
 
         // Compare the parsed AST to the expected AST
@@ -4366,7 +4366,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(xelis_types::Primitive::U64(25+255)))
+            Expression::Constant(Constant::Primitive(silex_types::Primitive::U64(25+255)))
         );
 
         // Compare the parsed AST to the expected AST

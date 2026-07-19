@@ -1,5 +1,5 @@
-use xelis_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
-use xelis_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
+use silex_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
+use silex_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use crate::ConstFunctionError;
 
 use super::EnvironmentBuilder;

@@ -1,12 +1,12 @@
 use serde_json::json;
-use xelis_builder::EnvironmentBuilder;
-use xelis_lexer::Lexer;
-use xelis_parser::Parser;
-use xelis_types::Type;
-use xelis_ast::*;
+use silex_builder::EnvironmentBuilder;
+use silex_lexer::Lexer;
+use silex_parser::Parser;
+use silex_types::Type;
+use silex_ast::*;
 
-use xelis_parser::mapper::GlobalMapper;
-use xelis_builder::Builder;
+use silex_parser::mapper::GlobalMapper;
+use silex_builder::Builder;
 
 #[warn(unused_extern_crates)]
 
@@ -213,8 +213,8 @@ mod tests {
     use super::*;
     use std::fs;
 
-    use xelis_builder::{EnvironmentBuilder};
-    use xelis_types::{Opaque, traits::{
+    use silex_builder::{EnvironmentBuilder};
+    use silex_types::{Opaque, traits::{
       DynType, DynEq, DynHash, JSONHelper, Serializable
     }};
 

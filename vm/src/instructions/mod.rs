@@ -14,9 +14,9 @@ use iterator::*;
 use constructor::*;
 use memory::*;
 
-use xelis_bytecode::OpCode;
-use xelis_environment::{ModuleMetadata, OnCallAsyncFn};
-use xelis_types::{Primitive, StackValue, ValueCell};
+use silex_bytecode::OpCode;
+use silex_environment::{ModuleMetadata, OnCallAsyncFn};
+use silex_types::{Primitive, StackValue, ValueCell};
 
 use crate::{ChunkReader, VMContext};
 

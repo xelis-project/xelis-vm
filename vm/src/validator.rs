@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use thiserror::Error;
-use xelis_environment::Environment;
-use xelis_types::{Primitive, ValueCell, ValueCellRef, ValueError};
-use xelis_bytecode::{Access, Module, OpCode};
+use silex_environment::Environment;
+use silex_types::{Primitive, ValueCell, ValueCellRef, ValueError};
+use silex_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
 

@@ -1,17 +1,17 @@
 [package]
-name = "xelis-compiler"
+name = "silex-compiler"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-ast.workspace = true
-xelis-bytecode.workspace = true
-xelis-types.workspace = true
-xelis-environment.workspace = true
+silex-ast.workspace = true
+silex-bytecode.workspace = true
+silex-types.workspace = true
+silex-environment.workspace = true
 thiserror.workspace = true
 log.workspace = true
 
 [dev-dependencies]
-xelis-builder.workspace = true
-xelis-lexer.workspace = true
-xelis-parser.workspace = true
+silex-builder.workspace = true
+silex-lexer.workspace = true
+silex-parser.workspace = true

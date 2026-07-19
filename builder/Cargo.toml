@@ -1,12 +1,12 @@
 [package]
-name = "xelis-builder"
+name = "silex-builder"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-types.workspace = true
-xelis-ast.workspace = true
-xelis-environment.workspace = true
+silex-types.workspace = true
+silex-ast.workspace = true
+silex-environment.workspace = true
 thiserror.workspace = true
 paste.workspace = true
 anyhow.workspace = true
@@ -14,5 +14,5 @@ log.workspace = true
 hex.workspace = true
 
 [dev-dependencies]
-xelis-bytecode.workspace = true
+silex-bytecode.workspace = true
 futures.workspace = true

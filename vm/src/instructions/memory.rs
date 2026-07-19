@@ -1,5 +1,5 @@
-use xelis_environment::VMContext;
-use xelis_types::Primitive;
+use silex_environment::VMContext;
+use silex_types::Primitive;
 use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, VMError};
 use super::InstructionResult;
 

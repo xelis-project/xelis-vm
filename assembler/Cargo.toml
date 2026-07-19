@@ -1,10 +1,10 @@
 [package]
-name = "xelis-assembler"
+name = "silex-assembler"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-types.workspace = true
-xelis-bytecode.workspace = true
+silex-types.workspace = true
+silex-bytecode.workspace = true
 thiserror.workspace = true
 log.workspace = true

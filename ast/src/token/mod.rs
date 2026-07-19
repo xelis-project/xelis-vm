@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use xelis_types::{U256, NumberType};
+use silex_types::{U256, NumberType};
 use std::fmt;
 
 #[derive(Debug, Clone)]

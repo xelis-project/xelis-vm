@@ -1,5 +1,5 @@
 use std::{cmp::Ordering, mem};
-use xelis_types::StackValue;
+use silex_types::StackValue;
 
 use crate::trace;
 

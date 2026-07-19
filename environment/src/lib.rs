@@ -6,8 +6,8 @@ mod identity_hasher;
 use std::any::TypeId;
 
 use indexmap::IndexMap;
-use xelis_bytecode::Module;
-use xelis_types::Reference;
+use silex_bytecode::Module;
+use silex_types::Reference;
 
 // Also re-export the necessary macro
 pub use better_any::*;

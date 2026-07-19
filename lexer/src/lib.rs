@@ -1,8 +1,8 @@
 use std::{borrow::Cow, collections::VecDeque};
 use thiserror::Error;
 use log::{debug, trace};
-use xelis_ast::{Literal, Token, TokenResult};
-use xelis_types::{NumberType, U256};
+use silex_ast::{Literal, Token, TokenResult};
+use silex_types::{NumberType, U256};
 
 macro_rules! parse_number {
     ($self: expr, $t: ident, $l: ident, $s: expr, $radix: expr) => {

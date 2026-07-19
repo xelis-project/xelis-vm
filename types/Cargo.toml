@@ -1,5 +1,5 @@
 [package]
-name = "xelis-types"
+name = "silex-types"
 version.workspace = true
 edition.workspace = true
 

@@ -1,5 +1,5 @@
 use thiserror::Error;
-use xelis_types::Type;
+use silex_types::Type;
 use crate::OpCode;
 
 use super::Chunk;

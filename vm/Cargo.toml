@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-bytecode.workspace = true
-xelis-types.workspace = true
-xelis-environment.workspace = true
+silex-bytecode.workspace = true
+silex-types.workspace = true
+silex-environment.workspace = true
 thiserror.workspace = true
 log.workspace = true
 indexmap.workspace = true
@@ -14,10 +14,10 @@ futures.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]
-xelis-builder.workspace = true
-xelis-lexer.workspace = true
-xelis-parser.workspace = true
-xelis-compiler.workspace = true
+silex-builder.workspace = true
+silex-lexer.workspace = true
+silex-parser.workspace = true
+silex-compiler.workspace = true
 criterion.workspace = true
 serde_json.workspace = true
 
@@ -26,5 +26,5 @@ name = "vm"
 harness = false
 
 [features]
-infinite-cell-depth = ["xelis-types/infinite-cell-depth"]
+infinite-cell-depth = ["silex-types/infinite-cell-depth"]
 logging = []

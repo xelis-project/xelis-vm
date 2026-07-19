@@ -1,4 +1,4 @@
-use xelis_types::{
+use silex_types::{
     Constant,
     EnumValueType,
     IdentifierType,

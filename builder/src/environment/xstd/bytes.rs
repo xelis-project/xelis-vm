@@ -1,6 +1,6 @@
 use anyhow::Context as _;
-use xelis_environment::{VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
-use xelis_types::{Constant, Primitive, Type, ValueCell};
+use silex_environment::{VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
+use silex_types::{Constant, Primitive, Type, ValueCell};
 
 use crate::EnvironmentBuilder;
 

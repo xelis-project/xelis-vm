@@ -1,16 +1,16 @@
 [package]
-name = "xelis-abi"
+name = "silex-abi"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-types.workspace = true
+silex-types.workspace = true
 xelis-vm.workspace = true
-xelis-ast.workspace = true
-xelis-compiler.workspace = true
-xelis-parser.workspace = true
-xelis-lexer.workspace = true
-xelis-builder.workspace = true
+silex-ast.workspace = true
+silex-compiler.workspace = true
+silex-parser.workspace = true
+silex-lexer.workspace = true
+silex-builder.workspace = true
 
 anyhow.workspace = true
 serde_json.workspace = true

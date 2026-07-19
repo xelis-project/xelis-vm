@@ -1,7 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, ser::SerializeSeq};
-use xelis_types::{TypePacked, ValueCell};
+use silex_types::{TypePacked, ValueCell};
 
 use super::{Chunk, Access};
 

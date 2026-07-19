@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use xelis_types::{EnumType, StructType};
+use silex_types::{EnumType, StructType};
 use crate::ConstantDeclaration;
 
 use super::FunctionType;

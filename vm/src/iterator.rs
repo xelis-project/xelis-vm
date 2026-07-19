@@ -1,4 +1,4 @@
-use xelis_types::{StackValue, Primitive, ValueCell, ValueError};
+use silex_types::{StackValue, Primitive, ValueCell, ValueError};
 
 #[derive(Debug)]
 pub struct ValueIterator {

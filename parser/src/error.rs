@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
 use thiserror::Error;
-use xelis_ast::{Expression, Token};
-use xelis_builder::{BuilderError, ConstFunctionError};
-use xelis_types::{Type, ValueError, IdentifierType};
+use silex_ast::{Expression, Token};
+use silex_builder::{BuilderError, ConstFunctionError};
+use silex_types::{Type, ValueError, IdentifierType};
 
 #[derive(Debug, Error)]
 #[error("error at line {line}, column {column_start} to {column_end}: {kind}")]

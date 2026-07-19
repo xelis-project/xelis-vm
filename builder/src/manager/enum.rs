@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt};
 
-use xelis_types::{EnumType, EnumVariant, IdentifierType};
+use silex_types::{EnumType, EnumVariant, IdentifierType};
 use super::{Builder, TypeManager};
 
 #[derive(Debug)]

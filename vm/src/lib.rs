@@ -13,9 +13,9 @@ use std::collections::VecDeque;
 use stack::Stack;
 
 // Re-export the necessary types
-pub use xelis_environment::*;
-pub use xelis_types::*;
-pub use xelis_bytecode::*;
+pub use silex_environment::*;
+pub use silex_types::*;
+pub use silex_bytecode::*;
 
 pub use validator::*;
 pub use instructions::*;

@@ -2,7 +2,7 @@ mod error;
 
 use std::{collections::HashSet, iter};
 use log::{trace, warn};
-use xelis_ast::{
+use silex_ast::{
     Expression,
     FunctionType,
     FunctionVisibility,
@@ -12,11 +12,11 @@ use xelis_ast::{
     Statement,
     TupleStatement
 };
-use xelis_environment::Environment;
-use xelis_bytecode::{Chunk, Module, OpCode};
+use silex_environment::Environment;
+use silex_bytecode::{Chunk, Module, OpCode};
 
 pub use error::CompilerError;
-use xelis_types::{Constant, Primitive};
+use silex_types::{Constant, Primitive};
 
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
@@ -1084,11 +1084,11 @@ impl<'a, M> Compiler<'a, M> {
 
 #[cfg(test)]
 mod tests {
-    use xelis_builder::EnvironmentBuilder;
-    use xelis_environment::{FunctionHandler, SysCallResult};
-    use xelis_lexer::Lexer;
-    use xelis_parser::Parser;
-    use xelis_types::{Primitive, Type};
+    use silex_builder::EnvironmentBuilder;
+    use silex_environment::{FunctionHandler, SysCallResult};
+    use silex_lexer::Lexer;
+    use silex_parser::Parser;
+    use silex_types::{Primitive, Type};
 
     use super::*;
 

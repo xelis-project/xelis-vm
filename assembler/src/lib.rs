@@ -5,8 +5,8 @@ use log::{debug, trace};
 pub use opcode::OpCodeWithArgs;
 
 use thiserror::Error;
-use xelis_types::Constant;
-use xelis_bytecode::{Access, Chunk, Module};
+use silex_types::Constant;
+use silex_bytecode::{Access, Chunk, Module};
 
 pub use disassembler::*;
 
@@ -133,7 +133,7 @@ impl<'a> Assembler<'a> {
 
 #[cfg(test)]
 mod tests {
-    use xelis_bytecode::OpCode;
+    use silex_bytecode::OpCode;
     use super::*;
 
     #[test]

@@ -1,9 +1,9 @@
-use xelis_compiler::Compiler;
-use xelis_environment::{Environment, EnvironmentError};
-use xelis_builder::EnvironmentBuilder;
-use xelis_lexer::Lexer;
-use xelis_parser::{Parser, ParserError};
-use xelis_types::{traits::{DynHash, DynType, JSONHelper, Serializable}, Opaque, Primitive};
+use silex_compiler::Compiler;
+use silex_environment::{Environment, EnvironmentError};
+use silex_builder::EnvironmentBuilder;
+use silex_lexer::Lexer;
+use silex_parser::{Parser, ParserError};
+use silex_types::{traits::{DynHash, DynType, JSONHelper, Serializable}, Opaque, Primitive};
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

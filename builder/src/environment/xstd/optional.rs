@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use xelis_types::{ClosureType, Primitive, Type, ValueError};
-use xelis_environment::{
+use silex_types::{ClosureType, Primitive, Type, ValueError};
+use silex_environment::{
     VMContext,
     EnvironmentError,
     FnInstance,

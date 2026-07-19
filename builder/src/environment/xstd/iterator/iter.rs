@@ -4,8 +4,8 @@ use std::{
     hash::{Hash, Hasher}
 };
 
-use xelis_environment::{EnvironmentError, VMContext};
-use xelis_types::{
+use silex_environment::{EnvironmentError, VMContext};
+use silex_types::{
     OpaqueWrapper,
     Primitive,
     StackValue,

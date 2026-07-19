@@ -1,10 +1,10 @@
 [package]
-name = "xelis-lexer"
+name = "silex-lexer"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 log.workspace = true
 thiserror.workspace = true
-xelis-ast.workspace = true
-xelis-types.workspace = true
+silex-ast.workspace = true
+silex-types.workspace = true

@@ -7,7 +7,7 @@ pub use r#enum::*;
 pub use opaque::*;
 
 use std::{borrow::Cow, fmt};
-use xelis_types::IdentifierType;
+use silex_types::IdentifierType;
 use crate::{
     BuilderError,
     IdMapper

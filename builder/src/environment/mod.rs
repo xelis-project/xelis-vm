@@ -1,8 +1,8 @@
 pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
-use xelis_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, OpaqueTypeTrait, StructType, Type};
-use xelis_environment::{Environment, FunctionHandler, NativeFunction};
+use silex_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, OpaqueTypeTrait, StructType, Type};
+use silex_environment::{Environment, FunctionHandler, NativeFunction};
 use crate::{
     BuilderError,
     ConstFnCall,
@@ -352,8 +352,8 @@ impl<'a, M: 'static> Default for EnvironmentBuilder<'a, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xelis_environment::{FunctionHandler, SysCallResult};
-    use xelis_types::{Constant, Primitive};
+    use silex_environment::{FunctionHandler, SysCallResult};
+    use silex_types::{Constant, Primitive};
 
     #[test]
     pub fn test_add_enum() {

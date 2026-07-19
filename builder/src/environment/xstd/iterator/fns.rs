@@ -1,4 +1,4 @@
-use xelis_environment::{
+use silex_environment::{
     EnvironmentError,
     FnInstance,
     FnParams,
@@ -7,7 +7,7 @@ use xelis_environment::{
     SysCallResult,
     VMContext,
 };
-use xelis_types::Primitive;
+use silex_types::Primitive;
 
 use std::collections::VecDeque;
 use super::{

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use xelis_environment::{CallbackType, CallbackState, VMContext, ModuleMetadata, SysCallResult};
-use xelis_types::StackValue;
+use silex_environment::{CallbackType, CallbackState, VMContext, ModuleMetadata, SysCallResult};
+use silex_types::StackValue;
 
 use crate::{stack::Stack, Backend, InstructionResult, VMError};
 

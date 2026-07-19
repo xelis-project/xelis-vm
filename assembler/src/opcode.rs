@@ -1,5 +1,5 @@
 use std::{fmt, str::FromStr};
-use xelis_bytecode::{Chunk, ChunkReader, ChunkReaderError, OpCode};
+use silex_bytecode::{Chunk, ChunkReader, ChunkReaderError, OpCode};
 
 // OpCode with Args
 #[derive(Debug, Clone)]

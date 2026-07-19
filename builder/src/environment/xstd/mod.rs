@@ -12,8 +12,8 @@ pub mod math;
 
 use std::ptr;
 
-use xelis_types::{Primitive, Type};
-use xelis_environment::{
+use silex_types::{Primitive, Type};
+use silex_environment::{
     VMContext,
     EnvironmentError,
     FnInstance,

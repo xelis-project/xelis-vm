@@ -1,6 +1,6 @@
 use std::{any::TypeId, collections::HashMap};
 
-use xelis_types::{IdentifierType, NoHashMap, Opaque, OpaqueType, OpaqueTypeTrait};
+use silex_types::{IdentifierType, NoHashMap, Opaque, OpaqueType, OpaqueTypeTrait};
 use crate::{BuilderError, Mapper};
 
 #[derive(Debug)]

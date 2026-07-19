@@ -4,7 +4,7 @@ mod mapper;
 mod hook;
 
 use thiserror::Error;
-use xelis_types::{Type, ValueError};
+use silex_types::{Type, ValueError};
 
 pub use environment::*;
 pub use manager::*;
@@ -52,9 +52,9 @@ pub enum BuilderError {
 mod tests {
     use std::collections::VecDeque;
 
-    use xelis_bytecode::Module;
-    use xelis_environment::{VMContext, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
-    use xelis_types::Reference;
+    use silex_bytecode::Module;
+    use silex_environment::{VMContext, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
+    use silex_types::Reference;
     use crate::EnvironmentBuilder;
 
     trait Foo: Send + Sync {}

@@ -1,4 +1,4 @@
-use xelis_types::Type;
+use silex_types::Type;
 
 #[derive(Debug)]
 pub struct Hook<'a> {

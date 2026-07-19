@@ -1,5 +1,5 @@
-use xelis_environment::{VMContext, FunctionHandler};
-use xelis_types::{Type, Primitive, ValueCell};
+use silex_environment::{VMContext, FunctionHandler};
+use silex_types::{Type, Primitive, ValueCell};
 use super::{
     FnInstance,
     FnParams,

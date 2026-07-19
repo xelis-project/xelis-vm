@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
-use xelis_types::{Constant, Type, ValueError};
+use silex_types::{Constant, Type, ValueError};
 
 use crate::BuilderError;
 

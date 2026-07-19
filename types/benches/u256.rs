@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, black_box};
 use std::str::FromStr;
-use xelis_types::U256;
+use silex_types::U256;
 
 /// Benchmark creation operations
 fn bench_creation(c: &mut Criterion) {

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use xelis_bytecode::{Access, ChunkReader, ChunkReaderError, Module};
+use silex_bytecode::{Access, ChunkReader, ChunkReaderError, Module};
 
 use crate::opcode::OpCodeWithArgs;
 

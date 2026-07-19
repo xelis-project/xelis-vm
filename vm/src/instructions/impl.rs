@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use xelis_types::Either;
+use silex_types::Either;
 
 use crate::{
     Backend,

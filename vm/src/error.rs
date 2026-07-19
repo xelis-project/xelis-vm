@@ -1,7 +1,7 @@
 use thiserror::Error;
-use xelis_bytecode::ChunkReaderError;
-use xelis_environment::EnvironmentError;
-use xelis_types::ValueError;
+use silex_bytecode::ChunkReaderError;
+use silex_environment::EnvironmentError;
+use silex_types::ValueError;
 
 #[derive(Debug, Error)]
 pub enum VMError {

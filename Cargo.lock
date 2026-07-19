@@ -768,21 +768,154 @@ dependencies = [
 ]
 
 [[package]]
-name = "silex"
+name = "silex-abi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "silex-ast",
+ "silex-builder",
+ "silex-compiler",
+ "silex-lexer",
+ "silex-parser",
+ "silex-types",
+ "xelis-vm",
+]
+
+[[package]]
+name = "silex-assembler"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "silex-bytecode",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-ast"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "silex-types",
+]
+
+[[package]]
+name = "silex-builder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "hex",
+ "log",
+ "paste",
+ "silex-ast",
+ "silex-bytecode",
+ "silex-environment",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-bytecode"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "indexmap",
+ "schemars",
+ "serde",
+ "serde_json",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "serde_json",
- "xelis-assembler",
- "xelis-builder",
- "xelis-bytecode",
- "xelis-compiler",
- "xelis-environment",
- "xelis-lexer",
- "xelis-parser",
- "xelis-types",
+ "silex-assembler",
+ "silex-builder",
+ "silex-bytecode",
+ "silex-compiler",
+ "silex-environment",
+ "silex-lexer",
+ "silex-parser",
+ "silex-types",
  "xelis-vm",
+]
+
+[[package]]
+name = "silex-compiler"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "silex-ast",
+ "silex-builder",
+ "silex-bytecode",
+ "silex-environment",
+ "silex-lexer",
+ "silex-parser",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-environment"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "better_any",
+ "futures",
+ "hashbrown 0.15.5",
+ "indexmap",
+ "runtime-context",
+ "silex-bytecode",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-lexer"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "silex-ast",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-parser"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "indexmap",
+ "log",
+ "paste",
+ "silex-ast",
+ "silex-builder",
+ "silex-environment",
+ "silex-types",
+ "thiserror",
+]
+
+[[package]]
+name = "silex-types"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "criterion",
+ "hex",
+ "indexmap",
+ "itertools 0.14.0",
+ "lazy_static",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1027,139 +1160,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
-name = "xelis-abi"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde_json",
- "xelis-ast",
- "xelis-builder",
- "xelis-compiler",
- "xelis-lexer",
- "xelis-parser",
- "xelis-types",
- "xelis-vm",
-]
-
-[[package]]
-name = "xelis-assembler"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror",
- "xelis-bytecode",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-ast"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-builder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures",
- "hex",
- "log",
- "paste",
- "thiserror",
- "xelis-ast",
- "xelis-bytecode",
- "xelis-environment",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-bytecode"
-version = "0.1.0"
-dependencies = [
- "hex",
- "indexmap",
- "schemars",
- "serde",
- "serde_json",
- "thiserror",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-compiler"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror",
- "xelis-ast",
- "xelis-builder",
- "xelis-bytecode",
- "xelis-environment",
- "xelis-lexer",
- "xelis-parser",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-environment"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "better_any",
- "futures",
- "hashbrown 0.15.5",
- "indexmap",
- "runtime-context",
- "thiserror",
- "xelis-bytecode",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-lexer"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror",
- "xelis-ast",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-parser"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "indexmap",
- "log",
- "paste",
- "thiserror",
- "xelis-ast",
- "xelis-builder",
- "xelis-environment",
- "xelis-types",
-]
-
-[[package]]
-name = "xelis-types"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "criterion",
- "hex",
- "indexmap",
- "itertools 0.14.0",
- "lazy_static",
- "schemars",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "xelis-vm"
 version = "0.1.0"
 dependencies = [
@@ -1169,12 +1169,12 @@ dependencies = [
  "indexmap",
  "log",
  "serde_json",
+ "silex-builder",
+ "silex-bytecode",
+ "silex-compiler",
+ "silex-environment",
+ "silex-lexer",
+ "silex-parser",
+ "silex-types",
  "thiserror",
- "xelis-builder",
- "xelis-bytecode",
- "xelis-compiler",
- "xelis-environment",
- "xelis-lexer",
- "xelis-parser",
- "xelis-types",
 ]

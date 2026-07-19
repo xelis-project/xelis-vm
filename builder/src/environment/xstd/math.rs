@@ -1,4 +1,4 @@
-use xelis_environment::{
+use silex_environment::{
     FnInstance,
     FnParams,
     FnReturnType,
@@ -7,7 +7,7 @@ use xelis_environment::{
     FunctionHandler,
     ModuleMetadata
 };
-use xelis_types::{Type, Primitive, U256 as u256};
+use silex_types::{Type, Primitive, U256 as u256};
 use paste::paste;
 use crate::EnvironmentBuilder;
 

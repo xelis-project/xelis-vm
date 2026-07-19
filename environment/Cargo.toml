@@ -1,5 +1,5 @@
 [package]
-name = "xelis-environment"
+name = "silex-environment"
 version.workspace = true
 edition.workspace = true
 
@@ -9,7 +9,7 @@ better_any.workspace = true
 hashbrown.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
-xelis-types.workspace = true
-xelis-bytecode.workspace = true
+silex-types.workspace = true
+silex-bytecode.workspace = true
 futures.workspace = true
 runtime-context.workspace = true

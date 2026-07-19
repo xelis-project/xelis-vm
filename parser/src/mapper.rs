@@ -1,4 +1,4 @@
-use xelis_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager};
+use silex_builder::{EnumManager, EnvironmentBuilder, FunctionMapper, StructManager};
 
 #[derive(Debug)]
 pub struct GlobalMapper<'a> {
@@ -52,7 +52,7 @@ impl<'a> GlobalMapper<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xelis_types::Type;
+    use silex_types::Type;
 
     #[test]
     fn test_function_instance() {

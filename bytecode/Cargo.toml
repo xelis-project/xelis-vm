@@ -1,10 +1,10 @@
 [package]
-name = "xelis-bytecode"
+name = "silex-bytecode"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-types.workspace = true
+silex-types.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }

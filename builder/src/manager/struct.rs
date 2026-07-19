@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt};
 
-use xelis_types::{IdentifierType, StructType, Type};
+use silex_types::{IdentifierType, StructType, Type};
 
 use crate::Builder;
 

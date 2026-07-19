@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use xelis_ast::{Expression, Signature, SignatureId};
-use xelis_types::{IdentifierType, NoHashMap, Type};
+use silex_ast::{Expression, Signature, SignatureId};
+use silex_types::{IdentifierType, NoHashMap, Type};
 use log::trace;
 
 use crate::BuilderError;

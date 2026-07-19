@@ -1,13 +1,13 @@
 // Comprehensive test suite for all standard library (xstd) functions
-use xelis_compiler::Compiler;
-use xelis_builder::EnvironmentBuilder;
-use xelis_lexer::Lexer;
-use xelis_parser::Parser;
-use xelis_types::Primitive;
+use silex_compiler::Compiler;
+use silex_builder::EnvironmentBuilder;
+use silex_lexer::Lexer;
+use silex_parser::Parser;
+use silex_types::Primitive;
 use super::*;
 
 #[track_caller]
-fn prepare_module(code: &str) -> (Module, xelis_environment::Environment<()>) {
+fn prepare_module(code: &str) -> (Module, silex_environment::Environment<()>) {
     let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
     let env = EnvironmentBuilder::default();
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();

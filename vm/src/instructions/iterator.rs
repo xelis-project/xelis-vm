@@ -8,7 +8,7 @@ use crate::{
     VMContext,
     VMError
 };
-use xelis_types::Primitive;
+use silex_types::Primitive;
 
 use super::InstructionResult;
 

@@ -1,10 +1,10 @@
 use indexmap::IndexMap;
-use xelis_builder::EnvironmentBuilder;
-use xelis_bytecode::{Chunk, Module};
-use xelis_types::{impl_opaque, traits::{DynHash, DynType, JSONHelper, Serializable}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
-use xelis_lexer::Lexer;
-use xelis_parser::Parser;
-use xelis_compiler::Compiler;
+use silex_builder::EnvironmentBuilder;
+use silex_bytecode::{Chunk, Module};
+use silex_types::{impl_opaque, traits::{DynHash, DynType, JSONHelper, Serializable}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
+use silex_lexer::Lexer;
+use silex_parser::Parser;
+use silex_compiler::Compiler;
 
 use crate::{ModuleValidator, ValidatorError};
 
@@ -38,7 +38,7 @@ impl Opaque for NonHashableOpaque {
     }
 }
 
-fn create_environment() -> xelis_environment::Environment<()> {
+fn create_environment() -> silex_environment::Environment<()> {
     EnvironmentBuilder::default().build()
 }
 
@@ -359,7 +359,7 @@ fn test_verify_invoke_chunk_empty_params_list() {
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParamsSize(_, _))));
 }
 
-fn compile_module_with_enforce(code: &str) -> (xelis_bytecode::Module, xelis_environment::Environment<()>) {
+fn compile_module_with_enforce(code: &str) -> (silex_bytecode::Module, silex_environment::Environment<()>) {
     let tokens = Lexer::new(code).get().unwrap();
     let env_builder = EnvironmentBuilder::<()>::default();
     let (program, _) = Parser::new(tokens, &env_builder).parse().unwrap();
@@ -371,7 +371,7 @@ fn compile_module_with_enforce(code: &str) -> (xelis_bytecode::Module, xelis_env
     (module, env)
 }
 
-fn compile_module_without_enforce(code: &str) -> (xelis_bytecode::Module, xelis_environment::Environment<()>) {
+fn compile_module_without_enforce(code: &str) -> (silex_bytecode::Module, silex_environment::Environment<()>) {
     let tokens = Lexer::new(code).get().unwrap();
     let env_builder = EnvironmentBuilder::<()>::default();
     let (program, _) = Parser::new(tokens, &env_builder).parse().unwrap();

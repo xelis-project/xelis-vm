@@ -1,13 +1,13 @@
 [package]
-name = "xelis-parser"
+name = "silex-parser"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xelis-ast.workspace = true
-xelis-types.workspace = true
-xelis-builder.workspace = true
-xelis-environment.workspace = true
+silex-ast.workspace = true
+silex-types.workspace = true
+silex-builder.workspace = true
+silex-environment.workspace = true
 log.workspace = true
 thiserror.workspace = true
 indexmap = { workspace = true, features = ["serde"] }

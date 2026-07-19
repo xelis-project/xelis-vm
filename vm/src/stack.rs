@@ -1,4 +1,4 @@
-use xelis_types::StackValue;
+use silex_types::StackValue;
 
 use crate::Callback;
 

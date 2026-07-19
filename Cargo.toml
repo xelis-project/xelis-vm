@@ -13,7 +13,7 @@ members = [
     "environment",
     "builder",
     "compiler",
-    "silex",
+    "silex-cli",
 ]
 
 [workspace.package]
@@ -21,16 +21,16 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-xelis-abi = { path = "abi" }
-xelis-assembler = { path = "assembler" }
-xelis-ast = { path = "ast" }
-xelis-builder = { path = "builder" }
-xelis-bytecode = { path = "bytecode" }
-xelis-compiler = { path = "compiler" }
-xelis-environment = { path = "environment" }
-xelis-lexer = { path = "lexer" }
-xelis-parser = { path = "parser" }
-xelis-types = { path = "types" }
+silex-abi = { path = "abi" }
+silex-assembler = { path = "assembler" }
+silex-ast = { path = "ast" }
+silex-builder = { path = "builder" }
+silex-bytecode = { path = "bytecode" }
+silex-compiler = { path = "compiler" }
+silex-environment = { path = "environment" }
+silex-lexer = { path = "lexer" }
+silex-parser = { path = "parser" }
+silex-types = { path = "types" }
 xelis-vm = { path = "vm" }
 
 anyhow = "1.0.95"

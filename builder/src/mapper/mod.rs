@@ -7,7 +7,7 @@ use std::{
     fmt::Debug,
     hash::Hash,
 };
-use xelis_types::IdentifierType;
+use silex_types::IdentifierType;
 use crate::BuilderError;
 
 pub use function::*;
