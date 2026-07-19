@@ -1,20 +1,20 @@
 # XELIS VM
-XVM (XELIS Virtual Machine) is a fully customizable VM proposed with its suite including Lexer, Parser, Assembler, Compiler and the Virtual Machine.
+XVM (XELIS Virtual Machine) is a customizable VM and language toolchain. The workspace includes the core VM plus crates for lexing, parsing, AST representation, bytecode, assembly/disassembly, compilation, environment construction, runtime types, and ABI generation.
 
-The name of the language used is **Silex**, which its syntax is inspired by Rust.
+The language used by XVM is **Silex**, whose syntax is inspired by Rust.
 
-Unlike other VMs, XVM is designed to be fully customizable (including the default std!), allowing you to define your own types, functions, structures, enums.
-It is also designed to directly include primitive types.
+Unlike other VMs, XVM is designed to be customizable, including the default std. You can define your own native functions, hooks, structures, enums, and opaque Rust-backed types.
+It also includes built-in primitive and container types.
 
-XVM is designed to be fully deterministic, stable and correctly sandboxed to ensure performance and security without limiting its usage.
+XVM is designed to be deterministic, stable, and sandboxed to ensure performance and security without limiting its usage.
 It is also compatible with `async` operations for better integration within your systems.
 
-All the verifications are mainly made at the level of the Parser and compiler to check the conformity of the code to ensure correct code compilation into op codes program.
-Nonetheless, there is still a Validator available next to the VM to ensures types and programs are still well-formed against a required Environment before any execution.
+Most verification is performed by the parser and compiler so source code can be compiled into a well-formed opcode program.
+There is also a validator next to the VM to ensure bytecode modules and their types are well-formed against a required environment before execution.
 
-Thanks to this fully customizable Environment, you can define your own types, functions, structures, enums, and even override the default std functions if required.
+Thanks to the customizable environment, you can define your own types and native functions, register hooks, and override the default std functions if required.
 
-For more flexibility, an Opaque type is also available to handle your whole logic in Rust directly increasing performances and allowing to expose a clean API.
+For more flexibility, opaque types are available to keep logic in Rust directly, which can improve performance and expose a clean API to Silex.
 
 File extension is `.slx` for the source code.
 
@@ -23,31 +23,34 @@ File extension is `.slx` for the source code.
 Here is the list of tasks left ordered by their priority to have a good MVP (Minimum Viable Product):
 
 - **Improve Parser**
-Parser is currently operating in a full recursive mode, which can create a stackoverflow in case of a too complex/deep expression to build. Rewriting the key parts to operate in an iterative way would prevent any stack overflow.
+The parser is currently operating in a fully recursive mode, which can create a stack overflow for very complex or deeply nested expressions. Rewriting the key parts to operate iteratively would prevent stack overflows.
 
 - **Imports**
 Allow to import other files to have a better code organization.
 
 - **ABI**
-Generating a "mapper" file to easily link entry functions (name, parameters), enums, structs.. to the corresponding ids on chain. This will allow easy plugin-in with future XSWD lib and dApps development.
+Improve ABI generation and mapping around entry functions, parameters, enums, and structs for future XSWD and dApp development.
 
 - **VM optimizations**
-The faster the VM is, the more we can have reduced cost for running a Smart Contract.
+The faster the VM is, the more execution cost can be reduced for smart contracts.
 
 ## Crates
 
-- `vm`: Virtual Machine to execute a (op-code) compiled program.
-- `assembler`: Assembler to convert an source code of raw instructions into a program.
-- `ast`: Convert a source code file into a AST (Abstract Syntax Tree) to create a program of statements/expressions.
-- `compiler`: Compiler to convert an AST (Abstract Syntax Tree) program into an op-code program.
-- `parser`: Parser to convert a list of tokens into an AST (Abstract Syntax Tree) program.
-- `lexer`: Lexer to convert a source code into a list of tokens.
-- `environment`: Environment types used by the VM, Compiler and Parser to support a program based on the std provided.
-- `builder`: Environment builder to create your own std, with a (limited) default one included.
+- `xelis-abi` (`abi`): Generates a JSON ABI from Silex source or from a parsed program. It reports entry functions, parameters, outputs, and referenced internal structs/enums.
+- `xelis-assembler` (`assembler`): Converts textual opcode instructions into a bytecode `Module` and provides a disassembler for converting bytecode back into readable instructions.
+- `xelis-ast` (`ast`): Defines the AST used by the parser and compiler: expressions, statements, function declarations, hooks, entry functions, tokens, operators, and programs.
+- `xelis-builder` (`builder`): Builds an `Environment` by registering native functions, const functions, hooks, structs, enums, opaque types, and the default `xstd` library.
+- `xelis-bytecode` (`bytecode`): Defines the bytecode format: opcodes, chunks, module metadata, constants, access levels, hook chunk mappings, and serialization schemas.
+- `xelis-compiler` (`compiler`): Compiles a parsed AST `Program` into a bytecode `Module`, including stack/register management, control-flow jumps, calls, hooks, and constant handling.
+- `xelis-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
+- `xelis-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
+- `xelis-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
+- `xelis-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
+- `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 
 ## Types
 
-The different primitive types are:
+The supported types are:
 - `u8` (unsigned 8 bits)
 - `u16` (unsigned 16 bits)
 - `u32` (unsigned 32 bits)
@@ -56,14 +59,18 @@ The different primitive types are:
 - `u256` (unsigned 256 bits)
 - `bool`
 - `string`
-- `struct`
-- `enum` variants
-- `optional<T>` where T is another type (it allow the value to be nullable)
-- `range<T>` where T is a number type (it allow to iterate over a range of values in a foreach, or have some functions like `contains`)
-- `map<K, V>` where K is a key type and V is a value type (it allow to have a key-value store)
-- `bytes` is a raw data type allowing to store any kind of data (like images, files..) but also to do faster computations. Its representing a `Vec<u8>` efficiently.
+- `bytes`, a raw byte sequence backed by `Vec<u8>`
+- struct types
+- enum variants
+- opaque Rust-backed types registered in the environment
+- tuple types such as `(string, u64)`
+- function types such as `fn(u64) -> bool`
+- closure types such as `closure(u64) -> bool`
+- `optional<T>` where `T` is another type, allowing the value to be `null`
+- `range<T>` where `T` is a number type, allowing iteration in a `foreach` or functions such as `contains`
+- `map<K, V>` where `K` is a hashable key type and `V` is a value type
 
-Arrays of any type are also supported, but they must contain only one type of value (example: `u64[]` and with multi-depth too).
+Arrays of any type are also supported, but each array must contain one value type, for example `u64[]` or nested arrays such as `u64[][]`.
 
 ## OpCodes
 
@@ -72,11 +79,11 @@ They are generated by the compiler and are executed by the VM.
 See the [opcodes.md](opcodes.md) file for more information.
 
 ## Documentation
-the semicolon is **optional**, thus can be added if desired without any difference in the code.
+Semicolons are **optional** in statements and can be added without changing the code behavior.
 
 Recursive functions are allowed, but limited to a configurable depth.
 
-A environment system is completely customizable to set your own native functions.
+The environment system is customizable, so you can define your own native functions.
 This helps to manage exactly what a program can interact with.
 Custom structs are also available.
 
@@ -100,25 +107,25 @@ let my_u128: u128 = 100_000_000u128
 let my_u256: u256 = 100_000_000u256
 ```
 
-Each type can be casted into another type, if an overflow is detected, the value will be truncated.
+Each numeric type can be cast into another numeric type. If an overflow is detected while casting, the value is truncated.
 ```rust
 let my_u8: u8 = 255
 let my_u16: u16 = my_u8 as u16
 ```
 
-Also, each type have a `min` and `max` value that can be used.
+Also, each numeric type has a `MIN` and `MAX` value that can be used.
 ```rust
 let min: u8 = u8::MIN
 let max: u8 = u8::MAX
 ```
 
 ### Variable
-for constant variable, it must be declared outside a function, with `const` keyword.
+Constant variables must be declared outside a function with the `const` keyword.
 
 **Rules**
 - Every variable must be declared with `let` or `const` keyword.
-- Variable name must alphanumeric characters.
-- Must provide value type.
+- Variable names must be alphanumeric.
+- A value type must be provided.
 - If no value is set, `null` is set by default.
 
 **Examples**
@@ -129,7 +136,7 @@ let world: string = "world"
 ```
 
 ### Casting
-Values of built-in types can be casted into other built-in types easily using the keyword `as`.
+Values of built-in types can be cast into other built-in types easily using the keyword `as`.
 In case of an overflow, no error will be returned, but the value will be truncated.
 
 **Rules**
@@ -144,18 +151,17 @@ let id_str: string = id as string
 ```
 
 ### Import
-Instead of having one file with all your code, you can have multiple files that will be compiled into one final program.
+Imports are reserved for splitting code across multiple files, but import resolution is not implemented yet.
+The parser currently recognizes local import declarations and rejects absolute paths or paths containing `..`.
 
 **Rules**
 - Have a unique alias if set
 - No circular import
-- ends with `.xel` if its a local import
+- ends with `.slx` if its a local import
 
 **Examples**
-
-`math` namespace
 ```rust
-import "math.xel" as math;
+use math;
 ...
 math.sum(a, b)
 ```
@@ -169,18 +175,20 @@ sum(a, b)
 `entry` function is a "public callable" function and must return a `u64` value.
 
 **Rules**
-- Must starts with `fn` or `entry` keyword.
+- Must start with `fn`, `pub fn`, `entry`, or `hook`.
 - Signature is based on function name and parameters.
-- For type functions, the type must not be primitive.
+- Methods can only be declared on user-defined structs and enums.
 - Recursive functions are allowed.
 
 **Examples**
-```go
+```rust
 entry foo() { ... }
 fn foo() { ... }
+pub fn foo() { ... }
 fn foo() -> u64 { ... }
 fn foo(a: u64, b: u64) { ... }
 fn (f Foo) bar() { ... }
+hook on_transfer(amount: u64) { ... }
 ```
 
 ### Structure
@@ -188,8 +196,8 @@ A structure can contain other structures.
 
 **Rules**
 - The name must be unique.
-- Name should start with a uppercase letter.
-- Only letters are allowed in name.
+- Name should start with an uppercase letter.
+- The name must be a valid identifier.
 - The last field does not need a comma.
 
 **Examples**
@@ -205,9 +213,9 @@ An enum is a type that can have multiple variants.
 
 **Rules**
 - The name must be unique.
-- Name should start with a uppercase letter.
+- Name should start with an uppercase letter.
 - Variants must be unique.
-- Each variants can contains fields or not.
+- Each variant can contain fields or be fieldless.
 
 **Examples**
 ```rust
@@ -255,17 +263,17 @@ let _: bool = my_range.contains(5)
 
 ### Map
 A map is a key-value store where the key and value can be of any type based on the declaration.
-It is backed by a HashMap.
+It is backed by an insertion-ordered `IndexMap`.
 
 **Rules**
 - The key and value types must be specified.
-- Key type can't be a map.
+- The key type must be hashable; maps cannot be used as keys, even when nested inside another key type.
 
 **Examples**
 ```rust
 let my_map: map<string, u64> = {"hello": 10, "world": 20}
 my_map.insert("foo", 30)
-my_map.remove("hello")
+my_map.shift_remove("hello")
 ```
 
 ### Ternary
