@@ -16,20 +16,32 @@ Thanks to the customizable environment, you can define your own types and native
 
 For more flexibility, opaque types are available to keep logic in Rust directly, which can improve performance and expose a clean API to Silex.
 
-File extension is `.slx` for the source code.
+## File Extensions
+
+Silex source files use the `.slx` extension.
+
+Compiled Silex bytecode modules use the `.slxc` extension. This is the default binary format written by `silex compile` and `silex asm`, and it is the preferred format for storing compiled programs.
+
+JSON bytecode output is still available with `--format json` when a human-readable or tooling-friendly representation is needed, but `.slxc` is the normal compiled-module extension.
 
 ## CLI
 
-The `silex` CLI stores bytecode modules as binary `.slxc` files by default. `compile` compiles Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.slxc` extension. Use `--format json` to write the old JSON representation instead. `disasm` prints a binary `.slxc` or JSON module as assembly. `abi` generates a JSON ABI from Silex source. `run` compiles a Silex source file and invokes its first entry chunk by default; use `--entry ID` to choose another one.
+The `silex` CLI stores bytecode modules as binary `.slxc` files by default. `compile` compiles `.slx` Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.slxc` extension. Use `--format json` to write a JSON representation instead. `disasm` prints a `.slxc` module, or an explicitly JSON-formatted module, as assembly. `abi` generates a JSON ABI from `.slx` source. `run` executes either a `.slx` Silex source file or a compiled bytecode module and invokes its first entry chunk by default; use `--entry ID` to choose another one.
 
 ```sh
-cargo run -p silex-cli -- compile examples/factorial.slx -o factorial.slxc
-cargo run -p silex-cli -- compile examples/factorial.slx --format json -o factorial.json
-cargo run -p silex-cli -- run examples/factorial.slx 5
-cargo run -p silex-cli -- disasm factorial.slxc
-cargo run -p silex-cli -- asm program.asm -o program.slxc
-cargo run -p silex-cli -- abi examples/factorial.slx -o factorial.abi.json
+# Install the CLI
+cargo install --path silex-cli
+
+# Available commands
+silex compile examples/factorial.slx -o factorial.slxc
+silex run examples/factorial.slx 5
+silex run factorial.slxc 5
+silex disasm factorial.slxc
+silex asm program.asm -o program.slxc
+silex abi examples/factorial.slx
 ```
+
+For compiled bytecode, prefer `.slxc`. If JSON bytecode is needed for inspection or external tooling, pass `--format json` and choose an explicit JSON output path. ABI files are JSON documents and default to `.abi.json`.
 
 `run` accepts `null`, booleans, unsigned integers, and strings as positional arguments. Pass the JSON representation of a `ValueCell` for other values or an explicit numeric type.
 
@@ -44,7 +56,7 @@ cargo run -p silex-cli -- abi examples/factorial.slx -o factorial.abi.json
 - `silex-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
 - `silex-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
 - `silex-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
-- `silex-cli` (`silex`): Command-line interface for compiling and running Silex programs, assembling bytecode, and disassembling JSON bytecode modules.
+- `silex-cli` (`silex`): Command-line interface for compiling and running `.slx` Silex programs, assembling `.slxc` bytecode modules, generating ABIs, and disassembling compiled modules.
 - `silex-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
 - `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 

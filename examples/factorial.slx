@@ -10,6 +10,5 @@ fn factorial(n: u64) -> u64 {
 
 entry main(n: u64) {
     let result: u64 = factorial(n)
-    println(result)
     return result
 }

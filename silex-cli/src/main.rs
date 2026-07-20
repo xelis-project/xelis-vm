@@ -31,7 +31,7 @@ struct Config {
 enum SubCommands {
     /// Compile a Silex source program into a bytecode module.
     Compile(CompileConfig),
-    /// Compile and run an entry chunk from a Silex source program.
+    /// Run an entry chunk from a Silex source or compiled bytecode module.
     Run(RunConfig),
     /// Print a bytecode module as assembly.
     Disasm(DisasmConfig),
@@ -68,13 +68,7 @@ struct CompileConfig {
         help = "Output module path (defaults to INPUT with a .slxc extension)"
     )]
     output: Option<PathBuf>,
-    #[arg(
-        short,
-        long,
-        value_enum,
-        default_value_t,
-        help = "Output format"
-    )]
+    #[arg(short, long, value_enum, default_value_t, help = "Output format")]
     format: OutputFormat,
 }
 
@@ -121,13 +115,7 @@ struct AsmConfig {
         help = "Output module path (defaults to INPUT with a .slxc extension)"
     )]
     output: Option<PathBuf>,
-    #[arg(
-        short,
-        long,
-        value_enum,
-        default_value_t,
-        help = "Output format"
-    )]
+    #[arg(short, long, value_enum, default_value_t, help = "Output format")]
     format: OutputFormat,
 }
 
@@ -178,7 +166,10 @@ fn write_module(module: &Module, path: &Path, format: OutputFormat) -> Result<()
 }
 
 fn read_module(path: &Path) -> Result<Module> {
-    if path.extension().is_some_and(|extension| extension == "json") {
+    if path
+        .extension()
+        .is_some_and(|extension| extension == "json")
+    {
         let source = read_file(path)?;
         return serde_json::from_str(&source)
             .with_context(|| format!("failed to parse JSON bytecode module {}", path.display()));
@@ -213,6 +204,17 @@ fn compile_source(source: &str) -> Result<(Module, Environment<()>)> {
         .context("failed to compile Silex source")?;
 
     Ok((module, environment.build()))
+}
+
+fn load_runnable_module(path: &Path) -> Result<(Module, Environment<()>)> {
+    if path.extension().is_some_and(|extension| extension == "slx") {
+        let source = read_file(path)?;
+        return compile_source(&source);
+    }
+
+    let module = read_module(path)?;
+    let environment = EnvironmentBuilder::<()>::default().build();
+    Ok((module, environment))
 }
 
 fn parse_argument(argument: &str) -> Result<ValueCell> {
@@ -267,11 +269,10 @@ fn main() -> Result<()> {
                 .with_context(|| format!("failed to write {}", output.display()))?;
         }
         SubCommands::Run(config) => {
-            let source = read_file(&config.input)?;
-            let (module, environment) = compile_source(&source)?;
+            let (module, environment) = load_runnable_module(&config.input)?;
             ModuleValidator::new(&module, &environment)
                 .verify()
-                .context("compiled module failed validation")?;
+                .context("module failed validation")?;
 
             let entry = config
                 .entry
