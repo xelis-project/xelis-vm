@@ -26,7 +26,25 @@ JSON bytecode output is still available with `--format json` when a human-readab
 
 ## CLI
 
-The `silex` CLI stores bytecode modules as binary `.slxc` files by default. `compile` compiles `.slx` Silex source, `asm` compiles textual bytecode, and both default their output to the input filename with a `.slxc` extension. Use `--format json` to write a JSON representation instead. `disasm` prints a `.slxc` module, or an explicitly JSON-formatted module, as assembly. `abi` generates a JSON ABI from `.slx` source. `run` executes either a `.slx` Silex source file or a compiled bytecode module and invokes its first entry chunk by default; use `--entry ID` to choose another one.
+The `silex` CLI is the main entry point for working with Silex programs.
+
+It can:
+
+- compile `.slx` source files into bytecode modules;
+- run either source files or compiled modules;
+- disassemble bytecode modules into readable assembly;
+- assemble textual bytecode back into modules;
+- generate JSON ABIs from Silex source.
+
+Compiled modules are written as binary `.slxc` files by default, next to the input path. For inspection or tooling, pass `--format json` to write a human-readable bytecode representation instead.
+
+| Command | Description |
+| --- | --- |
+| `compile` | Compile a `.slx` source file into a bytecode module. |
+| `run` | Execute a `.slx` source file or compiled module. Uses the first entry chunk by default; pass `--entry ID` to choose another one. |
+| `disasm` | Print a binary `.slxc` module, or a JSON bytecode module, as assembly. |
+| `asm` | Assemble textual bytecode into a module. |
+| `abi` | Generate a JSON ABI from `.slx` source. |
 
 ```sh
 # Install the CLI
