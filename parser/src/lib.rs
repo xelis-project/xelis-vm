@@ -295,6 +295,9 @@ impl<'a, M> Function<'a,M> {
 // Character to use to ignore a variable
 // its content will be dropped directly by VM
 const IGNORE_VARIABLE: &str = "_";
+// Includes the outer expression reader and the leaf reader around a value.
+// Keep this below the VM value-depth limit because read_expr has a large stack frame.
+const MAX_EXPRESSION_DEPTH: usize = 8;
 
 pub struct Parser<'a, M> {
     // Tokens to process
@@ -324,7 +327,7 @@ pub struct Parser<'a, M> {
     // Used for errors, we track the line and column
     line: usize,
     column_start: usize,
-    column_end: usize
+    column_end: usize,
 }
 
 #[derive(Debug)]
@@ -2299,6 +2302,31 @@ impl<'a, M> Parser<'a, M> {
     // Read an expression with the possibility to accept operators
     // number_type is used to force the type of a number
     fn read_expr(
+        &mut self,
+        delimiter: Option<&Token>,
+        on_type: Option<&Type>,
+        allow_ternary: bool,
+        accept_operator: bool,
+        expected_type: Option<&Type>,
+        context: &mut Context<'a>
+    ) -> Result<Expression, ParserError<'a>> {
+        if !context.enter_expression(MAX_EXPRESSION_DEPTH) {
+            return Err(err!(self, ParserErrorKind::MaximumExpressionDepth))
+        }
+
+        let result = self.read_expr_internal(
+            delimiter,
+            on_type,
+            allow_ternary,
+            accept_operator,
+            expected_type,
+            context,
+        );
+        context.leave_expression();
+        result
+    }
+
+    fn read_expr_internal(
         &mut self,
         delimiter: Option<&Token>, 
         on_type: Option<&Type>, 
@@ -4332,6 +4360,23 @@ mod tests {
 
         // Compare the parsed AST to the expected AST
         assert_eq!(statements[0], expected_ast);
+    }
+
+    #[test]
+    fn test_expression_depth_limit() {
+        let depth = MAX_EXPRESSION_DEPTH + 1;
+        let mut tokens = Vec::with_capacity(depth * 2 + 1);
+        tokens.extend(std::iter::repeat(Token::BracketOpen).take(depth));
+        tokens.push(Token::Value(Literal::U64(42)));
+        tokens.extend(std::iter::repeat(Token::BracketClose).take(depth));
+
+        let env = EnvironmentBuilder::<()>::new();
+        let mut parser = Parser::new(tokens, &env);
+        let mut context = Context::new();
+        context.begin_scope();
+        let error = parser.read_statements(&mut context, None).unwrap_err();
+
+        assert!(matches!(error.kind, ParserErrorKind::MaximumExpressionDepth));
     }
 
     #[test]

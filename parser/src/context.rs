@@ -13,6 +13,8 @@ pub struct Context<'a> {
     max_variables_count: usize,
     // is_in_loop is used to allow the use of the break and continue keywords
     is_in_loop: bool,
+    // Number of expression readers currently active on the call stack
+    expression_depth: usize,
 }
 
 impl<'a> Context<'a> {
@@ -24,6 +26,7 @@ impl<'a> Context<'a> {
             checkpoints: Vec::new(),
             max_variables_count: 0,
             is_in_loop: false,
+            expression_depth: 0,
         }
     }
 
@@ -117,6 +120,18 @@ impl<'a> Context<'a> {
     // set if the Context is in a loop
     pub fn set_in_a_loop(&mut self, is_in_loop: bool) {
         self.is_in_loop = is_in_loop;
+    }
+
+    pub fn enter_expression(&mut self, max_depth: usize) -> bool {
+        if self.expression_depth >= max_depth {
+            return false;
+        }
+        self.expression_depth += 1;
+        true
+    }
+
+    pub fn leave_expression(&mut self) {
+        self.expression_depth -= 1;
     }
 }
 
