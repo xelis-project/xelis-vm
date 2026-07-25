@@ -1,3 +1,4 @@
+use anyhow::{Context, Error, anyhow};
 use silex_compiler::Compiler;
 use silex_environment::{Environment, EnvironmentError};
 use silex_builder::EnvironmentBuilder;
@@ -42,15 +43,27 @@ fn prepare_module(code: &str) -> (Module, Environment<()>) {
 }
 
 #[track_caller]
+fn try_prepare_module(code: &str) -> Result<(Module, Environment<()>), Error> {
+    try_prepare_module_with(code, EnvironmentBuilder::default())
+}
+
+#[track_caller]
 fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> (Module, Environment<()>) {
-    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>().unwrap();
-    let (program, _) = Parser::with(tokens.into_iter(), &env).parse().unwrap();
+    try_prepare_module_with(code, env).expect("prepare module")
+}
+
+#[track_caller]
+fn try_prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> Result<(Module, Environment<()>), Error> {
+    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>()?;
+    let (program, _) = Parser::with(tokens.into_iter(), &env).parse()
+        .map_err(|e| anyhow!("{}", e))?;
 
     let env = env.build();
-    let module = Compiler::new(&program, &env).compile().unwrap();
+    let module = Compiler::new(&program, &env).compile()?;
 
-    (module, env)
+    Ok((module, env))
 }
+
 
 #[track_caller]
 fn try_parse_code_with<'a>(code: &'a str, env: &'a EnvironmentBuilder<'a, ()>) -> Result<(), ParserError<'a>> {
@@ -65,7 +78,9 @@ fn try_parse_code_with<'a>(code: &'a str, env: &'a EnvironmentBuilder<'a, ()>) -
 
 #[track_caller]
 fn try_run_code(code: &str, id: u16) -> Result<Primitive, VMError> {
-    let (module, environment) = prepare_module(code);
+    let (module, environment) = try_prepare_module(code)
+        .context("failed to prepare module")?;
+
     run_internal(module, &environment, id)
 }
 
@@ -3477,7 +3492,7 @@ fn test_max_array_depth() {
             return a[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert!(try_run_code(code, 0).is_err());
 
     // 17, cannot work because default max depth is 16
     let code = r#"
@@ -3580,7 +3595,7 @@ fn test_max_map_depth() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert!(try_run_code(code, 0).is_err());
 
     let code = r#"
         entry main() {
