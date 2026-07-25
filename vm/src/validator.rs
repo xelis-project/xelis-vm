@@ -305,7 +305,7 @@ impl<'a, M> ModuleValidator<'a, M> {
             }
         }
 
-        if hook_ids.len() != self.module.hook_chunk_ids().len() {
+        if hook_ids.len() != self.module.hook_chunk_ids().len() || hook_ids.len() != self.environment.hooks() as usize {
             return Err(ValidatorError::InvalidHooks)
         }
 
