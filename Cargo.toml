@@ -13,7 +13,6 @@ members = [
     "environment",
     "builder",
     "compiler",
-    "silex-cli",
 ]
 
 [workspace.package]
@@ -35,7 +34,6 @@ silex-lexer = { path = "lexer", version = "0.1.0" }
 silex-parser = { path = "parser", version = "0.1.0" }
 silex-types = { path = "types", version = "0.1.0" }
 xelis-vm = { path = "vm", version = "0.1.0" }
-xelis_common = { git = "https://github.com/xelis-project/xelis-blockchain", tag = "v1.23.0" }
 
 anyhow = "1.0.95"
 better_any = "0.2.0"

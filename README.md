@@ -24,45 +24,6 @@ Compiled Silex bytecode modules use the `.slxc` extension. This is the default b
 
 JSON bytecode output is still available with `--format json` when a human-readable or tooling-friendly representation is needed, but `.slxc` is the normal compiled-module extension.
 
-## CLI
-
-The `silex` CLI is the main entry point for working with Silex programs.
-
-It can:
-
-- compile `.slx` source files into bytecode modules;
-- run either source files or compiled modules;
-- disassemble bytecode modules into readable assembly;
-- assemble textual bytecode back into modules;
-- generate JSON ABIs from Silex source.
-
-Compiled modules are written as binary `.slxc` files by default, next to the input path. For inspection or tooling, pass `--format json` to write a human-readable bytecode representation instead.
-
-| Command | Description |
-| --- | --- |
-| `compile` | Compile a `.slx` source file into a bytecode module. |
-| `run` | Execute a `.slx` source file or compiled module. Uses the first entry chunk by default; pass `--entry ID` to choose another one. |
-| `disasm` | Print a binary `.slxc` module, or a JSON bytecode module, as assembly. |
-| `asm` | Assemble textual bytecode into a module. |
-| `abi` | Generate a JSON ABI from `.slx` source. |
-
-```sh
-# Install the CLI
-cargo install --path silex-cli
-
-# Available commands
-silex compile examples/factorial.slx -o factorial.slxc
-silex run examples/factorial.slx 5
-silex run factorial.slxc 5
-silex disasm factorial.slxc
-silex asm program.asm -o program.slxc
-silex abi examples/factorial.slx
-```
-
-For compiled bytecode, prefer `.slxc`. If JSON bytecode is needed for inspection or external tooling, pass `--format json` and choose an explicit JSON output path. ABI files are JSON documents and default to `.abi.json`.
-
-`run` accepts `null`, booleans, unsigned integers, and strings as positional arguments. Pass the JSON representation of a `ValueCell` for other values or an explicit numeric type.
-
 ## Crates
 
 - `silex-abi` (`abi`): Generates a JSON ABI from Silex source or from a parsed program. It reports entry functions, parameters, outputs, and referenced internal structs/enums.
@@ -74,7 +35,6 @@ For compiled bytecode, prefer `.slxc`. If JSON bytecode is needed for inspection
 - `silex-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
 - `silex-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
 - `silex-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.
-- `silex-cli` (`silex`): Command-line interface for compiling and running `.slx` Silex programs, assembling `.slxc` bytecode modules, generating ABIs, and disassembling compiled modules.
 - `silex-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
 - `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 
