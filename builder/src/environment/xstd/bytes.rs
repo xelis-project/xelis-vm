@@ -134,7 +134,7 @@ fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     Ok(SysCallResult::None)
 }
 
-fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let size = parameters.remove(0).as_u32()? as usize;
 
     let mut zelf = zelf?;
@@ -143,6 +143,7 @@ fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
         return Err(EnvironmentError::OutOfBounds(size, vec.len()))
     }
 
+    context.increase_gas_usage((vec.len() - size) as u64)?;
     vec.truncate(size);
 
     Ok(SysCallResult::None)

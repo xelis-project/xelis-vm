@@ -124,7 +124,7 @@ fn shift_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadat
     }))
 }
 
-fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     // We make it owned in case the key contains our only reference to itself
     let key = parameters.remove(0)
         .into_owned();
@@ -132,6 +132,7 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
+    context.increase_gas_usage(key.calculate_memory_usage(context.memory_left())? as u64)?;
 
     let value = zelf?.as_mut()
         .as_mut_map()?
@@ -143,10 +144,11 @@ fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     }))
 }
 
-fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-    zelf?.as_mut()
-        .as_mut_map()?
-        .clear();
+fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let mut zelf = zelf?;
+    let map = zelf.as_mut().as_mut_map()?;
+    context.increase_gas_usage(map.len() as u64)?;
+    map.clear();
 
     Ok(SysCallResult::None)
 }
