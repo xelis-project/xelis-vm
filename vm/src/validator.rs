@@ -232,6 +232,10 @@ impl<'a, M> ModuleValidator<'a, M> {
                         .map_or(false, |id| *id == i) {
                         return Err(ValidatorError::InvalidHookId(*id, i));
                     }
+
+                    if self.environment.hooks() <= *id {
+                        return Err(ValidatorError::InvalidHookId(*id, i));
+                    }
                 },
                 _ => {}
             }
@@ -305,7 +309,7 @@ impl<'a, M> ModuleValidator<'a, M> {
             }
         }
 
-        if hook_ids.len() != self.module.hook_chunk_ids().len() || hook_ids.len() != self.environment.hooks() as usize {
+        if hook_ids.len() != self.module.hook_chunk_ids().len() || hook_ids.len() > self.environment.hooks() as usize {
             return Err(ValidatorError::InvalidHooks)
         }
 
