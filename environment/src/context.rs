@@ -148,6 +148,21 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
         self.max_memory_usage.saturating_sub(self.current_memory)
     }
 
+    // Check an allocation before performing it. This is useful for native
+    // functions whose result must be allocated before it can be returned to
+    // the VM and accounted for normally.
+    #[inline(always)]
+    pub fn ensure_memory_available(&self, memory: usize) -> Result<(), EnvironmentError> {
+        let new_memory = self.current_memory.checked_add(memory)
+            .ok_or(EnvironmentError::OutOfMemory)?;
+
+        if new_memory > self.max_memory_usage {
+            return Err(EnvironmentError::OutOfMemory);
+        }
+
+        Ok(())
+    }
+
     // Get the peak memory usage
     #[inline(always)]
     pub fn peak_memory_usage(&self) -> usize {
@@ -168,21 +183,19 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     // Ethereum-style: Only pay gas when growing beyond peak memory
     #[inline]
     pub fn increase_memory_usage(&mut self, memory: usize) -> Result<(), EnvironmentError> {
-        self.current_memory = self.current_memory.checked_add(memory)
-            .ok_or(EnvironmentError::OutOfMemory)?;
-
-        if self.current_memory > self.max_memory_usage {
-            return Err(EnvironmentError::OutOfMemory);
-        }
+        self.ensure_memory_available(memory)?;
+        self.current_memory += memory;
 
         self.handle_peak_memory()
     }
 
     // Increase the memory usage by a specific amount
-    // The memory added is unchecked but we still check for the gas price of the memory
+    // Retained for callers that already performed the allocation, but it still
+    // enforces the VM memory ceiling and protects the counter from overflow.
     // Ethereum-style: Only pay gas when growing beyond peak memory
     #[inline]
     pub fn increase_memory_usage_unchecked(&mut self, memory: usize) -> Result<(), EnvironmentError> {
+        self.ensure_memory_available(memory)?;
         self.current_memory += memory;
         self.handle_peak_memory()
     }

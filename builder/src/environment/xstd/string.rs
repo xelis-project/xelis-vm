@@ -1,4 +1,4 @@
-use silex_environment::{VMContext, FunctionHandler};
+use silex_environment::{VMContext, EnvironmentError, FunctionHandler};
 use silex_types::{Type, Primitive, ValueCell};
 use super::{
     FnInstance,
@@ -163,6 +163,37 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_,
     let handle2 = param2.as_ref();
     let old = handle1.as_string()?;
     let new = handle2.as_string()?;
+
+    // Bound the result before allocating it. `str::replace` can amplify a
+    // small input dramatically when the replacement is large (and replacing
+    // an empty string inserts between every character).
+    let result_len = if old.is_empty() {
+        // Byte boundaries are a conservative upper bound for the character
+        // boundaries used by Rust's empty-pattern replacement. This avoids a
+        // second scan just to count characters.
+        let boundaries = s.len()
+            .checked_add(1)
+            .ok_or(EnvironmentError::OutOfMemory)?;
+        let tmp = boundaries
+            .checked_mul(new.len())
+            .ok_or(EnvironmentError::OutOfMemory)?;
+        s.len()
+            .checked_add(tmp)
+            .ok_or(EnvironmentError::OutOfMemory)?
+    } else {
+        // Non-overlapping matches are at most this many. The bound is
+        // conservative and avoids scanning the input twice before replace().
+        let max_replacements = s.len() / old.len();
+        let tmp = max_replacements
+            .checked_mul(new.len())
+            .ok_or(EnvironmentError::OutOfMemory)?;
+        s.len()
+            .checked_add(tmp)
+            .ok_or(EnvironmentError::OutOfMemory)?
+    };
+
+    // Include the string's value bytes and its small container overhead.
+    context.ensure_memory_available(result_len.saturating_add(32))?;
     context.increase_gas_usage((s.len() + old.len() + new.len()) as u64)?;
     let s = s.replace(old, new);
     Ok(SysCallResult::Return(Primitive::String(s).into()))
