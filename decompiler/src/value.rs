@@ -1,11 +1,52 @@
 use silex_builder::EnvironmentBuilder;
 use silex_types::{NumberType, Primitive, Type, TypePacked, ValueCell};
+use std::collections::BTreeMap;
+
+#[derive(Default)]
+pub(crate) struct Generics(BTreeMap<Option<u8>, Type>);
+
+impl Generics {
+    pub fn infer(&mut self, template: &Type, actual: &Type) {
+        match (template, actual) {
+            (Type::T(id), actual) => {
+                let current = self.0.entry(*id).or_insert(Type::Any);
+                *current = refine(current, actual);
+            }
+            (Type::Array(a), Type::Array(b))
+            | (Type::Optional(a), Type::Optional(b))
+            | (Type::Range(a), Type::Range(b)) => self.infer(a, b),
+            (Type::Map(ak, av), Type::Map(bk, bv)) => {
+                self.infer(ak, bk);
+                self.infer(av, bv);
+            }
+            (Type::Tuples(a), Type::Tuples(b)) if a.len() == b.len() => {
+                for (a, b) in a.iter().zip(b) {
+                    self.infer(a, b);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn resolve(&self, template: &Type) -> Type {
+        match template {
+            Type::T(id) => self.0.get(id).cloned().unwrap_or(Type::Any),
+            Type::Array(t) => Type::Array(Box::new(self.resolve(t))),
+            Type::Optional(t) => Type::Optional(Box::new(self.resolve(t))),
+            Type::Range(t) => Type::Range(Box::new(self.resolve(t))),
+            Type::Map(k, v) => Type::Map(Box::new(self.resolve(k)), Box::new(self.resolve(v))),
+            Type::Tuples(types) => Type::Tuples(types.iter().map(|t| self.resolve(t)).collect()),
+            _ => template.clone(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Expr {
     pub text: String,
     pub ty: Type,
     pub parameter: Option<usize>,
+    pub binding: Option<String>,
     pub object: Option<Vec<Expr>>,
     pub pending: bool,
 }
@@ -16,6 +57,7 @@ impl Expr {
             text: text.into(),
             ty,
             parameter: None,
+            binding: None,
             object: None,
             pending: false,
         }
@@ -24,6 +66,12 @@ impl Expr {
     pub fn pending(mut self) -> Self {
         self.pending = true;
         self
+    }
+
+    pub fn named(name: String, ty: Type) -> Self {
+        let mut value = Self::new(name.clone(), ty);
+        value.binding = Some(name);
+        value
     }
 
     pub fn object(values: Vec<Self>) -> Self {

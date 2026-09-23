@@ -19,7 +19,7 @@ use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_types::Type;
 use std::collections::BTreeMap;
-use value::{joined, literal, map, refine, unpack, Expr};
+use value::{joined, literal, map, refine, unpack, Expr, Generics};
 
 /// Optional source metadata for a chunk. Instance arguments are explicit parameters.
 #[derive(Debug, Clone, PartialEq)]
@@ -153,8 +153,10 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
 
         // Propagate parameter/return types across calls, including recursive calls.
         // Bound iterations so adversarial modules cannot cause unbounded inference.
+        let mut binding_types = BTreeMap::new();
         for _ in 0..(instructions.len() * 2 + 4).min(128) {
             let previous = signatures.clone();
+            let previous_bindings = binding_types.clone();
             let mut sources = Vec::new();
             let mut first_error = None;
             for (id, code) in instructions.iter().enumerate() {
@@ -164,6 +166,7 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
                     code,
                     id,
                     signatures: &mut signatures,
+                    binding_types: &mut binding_types,
                     returned: None,
                 };
                 let mut state = State::default();
@@ -218,7 +221,7 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
             for (id, signature) in &self.signatures {
                 signatures[*id] = signature.clone();
             }
-            if signatures == previous {
+            if signatures == previous && binding_types == previous_bindings {
                 if let Some(e) = first_error {
                     return Err(e);
                 }
@@ -323,6 +326,7 @@ struct Engine<'a, 'env, 's, M> {
     code: &'a [Instruction],
     id: usize,
     signatures: &'s mut [FunctionSignature],
+    binding_types: &'s mut BTreeMap<(usize, String), Type>,
     returned: Option<Option<Type>>,
 }
 
@@ -369,10 +373,22 @@ impl<M> Engine<'_, '_, '_, M> {
         };
         value.as_type(&target);
         value.ty = target;
+        if let Some(name) = &value.binding {
+            let key = (self.id, name.clone());
+            let current = self.binding_types.entry(key).or_insert(Type::Any);
+            *current = refine(current, &value.ty);
+            value.ty = current.clone();
+        }
+    }
+
+    fn binding(&mut self, name: String, ty: Type) -> Expr {
+        let current = self.binding_types.entry((self.id, name.clone())).or_insert(Type::Any);
+        *current = refine(current, &ty);
+        Expr::named(name, current.clone())
     }
 
     fn call_result(
-        &self,
+        &mut self,
         state: &mut State,
         lines: &mut Vec<Line>,
         offset: usize,
@@ -383,8 +399,9 @@ impl<M> Engine<'_, '_, '_, M> {
             // Evaluate calls where they occur, so later mutations and void calls
             // cannot reorder effects or cause a duplicated evaluation.
             let name = format!("value{offset}");
-            line(lines, offset, format!("let {name} = {text}"));
-            state.stack.push(Expr::new(name, ty));
+            let value = self.binding(name.clone(), ty);
+            line(lines, offset, format!("let {name}: {} = {text}", value.ty));
+            state.stack.push(value);
         } else {
             line(lines, offset, text);
         }
@@ -451,14 +468,16 @@ impl<M> Engine<'_, '_, '_, M> {
                     state.stack.push(value);
                 }
                 OpCode::MemorySet => {
-                    let value = self.pop(state, offset)?;
+                    let mut value = self.pop(state, offset)?;
                     let name = format!("local{offset}");
+                    let local = self.binding(name.clone(), value.ty.clone());
+                    self.constrain(&mut value, &local.ty);
                     line(
                         &mut lines,
                         offset,
                         format!("let {name}: {} = {}", value.ty, value.text),
                     );
-                    state.registers.insert(arg, Expr::new(name, value.ty));
+                    state.registers.insert(arg, local);
                 }
                 OpCode::MemoryToOwned => {
                     if !state.registers.contains_key(&arg) {
@@ -593,12 +612,25 @@ impl<M> Engine<'_, '_, '_, M> {
                     } else {
                         None
                     };
+                    let mut generics = Generics::default();
+                    if let (Some(value), Some(ty)) = (&instance, &f.on_type) {
+                        generics.infer(ty, &value.ty);
+                    }
+                    for (value, (_, ty)) in args.iter().zip(&f.parameters) {
+                        generics.infer(ty, &value.ty);
+                    }
+                    if let (Some(ty), Some(expected)) = (
+                        &f.return_type,
+                        self.binding_types.get(&(self.id, format!("value{offset}"))),
+                    ) {
+                        generics.infer(ty, expected);
+                    }
                     if let (Some(value), Some(ty)) = (&mut instance, &f.on_type) {
-                        self.constrain(value, ty);
+                        self.constrain(value, &generics.resolve(ty));
                     }
                     let on_type = instance.as_ref().map(|v| &v.ty).or(f.on_type.as_ref());
                     for (value, (_, ty)) in args.iter_mut().zip(&f.parameters) {
-                        self.constrain(value, &ty.map_generic_type(on_type));
+                        self.constrain(value, &refine(&ty.map_generic_type(on_type), &generics.resolve(ty)));
                     }
                     let name = if let Some(instance) = &instance {
                         format!("({}).{}", instance.text, f.name)
@@ -607,7 +639,7 @@ impl<M> Engine<'_, '_, '_, M> {
                     } else {
                         f.name.into()
                     };
-                    let ty = f.return_type.as_ref().map(|t| t.map_generic_type(on_type));
+                    let ty = f.return_type.as_ref().map(|t| refine(&t.map_generic_type(on_type), &generics.resolve(t)));
                     if ty.as_ref().is_some_and(|t| matches!(t, Type::Voidable(_))) {
                         return Err(
                             self.error(offset, "voidable syscall needs runtime stack information")
@@ -684,7 +716,8 @@ impl<M> Engine<'_, '_, '_, M> {
                     break;
                 }
                 OpCode::Copy => {
-                    // Short-circuit compiler pattern: COPY [NEG] JUMP_IF_FALSE ... AND/OR.
+                    // COPY [NEG] JUMP_IF_FALSE ... AND/OR. Boolean operands
+                    // can also be combined with the equivalent bitwise opcode.
                     let neg = self
                         .code
                         .get(i + 1)
@@ -703,7 +736,11 @@ impl<M> Engine<'_, '_, '_, M> {
                     let target = self.target(jump.arg);
                     if target <= jump_i + 1
                         || target > end
-                        || !matches!(self.code[target - 1].op, OpCode::And | OpCode::Or)
+                        || !matches!(
+                            (neg, self.code[target - 1].op),
+                            (false, OpCode::And | OpCode::BitwiseAnd)
+                                | (true, OpCode::Or | OpCode::BitwiseOr)
+                        )
                     {
                         return Err(self.error(offset, "unrecognized short-circuit expression"));
                     }
@@ -719,7 +756,11 @@ impl<M> Engine<'_, '_, '_, M> {
                     let mut branch = state.clone();
                     let mut body =
                         self.block(jump_i + 1, target - 1, &mut branch, loop_targets, depth + 1)?;
-                    let right = self.pop(&mut branch, offset)?;
+                    let mut right = self.pop(&mut branch, offset)?;
+                    self.constrain(&mut right, &Type::Bool);
+                    if left.ty != Type::Bool || right.ty != Type::Bool {
+                        return Err(self.error(offset, "short-circuit operands must be boolean"));
+                    }
                     if branch.stack != state.stack {
                         return Err(self.error(offset, "unbalanced short-circuit stack"));
                     }
