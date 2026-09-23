@@ -221,14 +221,13 @@ impl OpCode {
             32 => OpCode::Mod,
             33 => OpCode::Pow,
 
-            34 => OpCode::BitwiseAnd,
-            35 => OpCode::BitwiseOr,
-            36 => OpCode::BitwiseXor,
-            37 => OpCode::BitwiseShl,
-            38 => OpCode::BitwiseShr,
-
-            39 => OpCode::And,
-            40 => OpCode::Or,
+            34 => OpCode::And,
+            35 => OpCode::Or,
+            36 => OpCode::BitwiseAnd,
+            37 => OpCode::BitwiseOr,
+            38 => OpCode::BitwiseXor,
+            39 => OpCode::BitwiseShl,
+            40 => OpCode::BitwiseShr,
             41 => OpCode::Eq,
             42 => OpCode::Neg,
             43 => OpCode::Gt,
@@ -310,5 +309,18 @@ impl OpCode {
 
             _ => 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OpCode;
+
+    #[test]
+    fn opcode_bytes_roundtrip() {
+        for byte in 0..=OpCode::CaptureContext.as_byte() {
+            assert_eq!(OpCode::from_byte(byte).unwrap().as_byte(), byte);
+        }
+        assert!(OpCode::from_byte(OpCode::CaptureContext.as_byte() + 1).is_none());
     }
 }
