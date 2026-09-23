@@ -745,6 +745,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "silex-decompiler"
+version = "0.1.0"
+dependencies = [
+ "silex-ast",
+ "silex-builder",
+ "silex-bytecode",
+ "silex-compiler",
+ "silex-environment",
+ "silex-lexer",
+ "silex-parser",
+ "silex-types",
+ "thiserror",
+ "xelis-vm",
+]
+
+[[package]]
 name = "silex-environment"
 version = "0.1.0"
 dependencies = [

@@ -32,6 +32,7 @@ JSON bytecode output is still available with `--format json` when a human-readab
 - `silex-builder` (`builder`): Builds an `Environment` by registering native functions, const functions, hooks, structs, enums, opaque types, and the default `xstd` library.
 - `silex-bytecode` (`bytecode`): Defines the bytecode format: opcodes, chunks, module metadata, constants, access levels, hook chunk mappings, and serialization schemas.
 - `silex-compiler` (`compiler`): Compiles a parsed AST `Program` into a bytecode `Module`, including stack/register management, control-flow jumps, calls, hooks, and constant handling.
+- `silex-decompiler` (`decompiler`): Attempts to reconstruct Silex source from a compiled `Module`, resolving native functions and hooks against the environment and checking the result with the lexer/parser.
 - `silex-environment` (`environment`): Stores the runtime environment exposed to the parser and VM: native functions, registered opaque types, hooks, VM context, callbacks, gas/memory accounting, and environment errors.
 - `silex-lexer` (`lexer`): Converts Silex source code into positioned tokens, including identifiers, literals, comments, operators, keywords, type names, strings, and bytes.
 - `silex-parser` (`parser`): Converts tokens into an AST `Program`, resolves types and function signatures against an `EnvironmentBuilder`, validates language rules, and builds global mappings for functions, structs, and enums.

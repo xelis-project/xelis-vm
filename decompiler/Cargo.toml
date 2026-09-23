@@ -1,0 +1,21 @@
+[package]
+name = "silex-decompiler"
+version.workspace = true
+edition.workspace = true
+description = "Best-effort reconstruction of Silex source from Xelis VM bytecode"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+silex-ast.workspace = true
+silex-builder.workspace = true
+silex-bytecode.workspace = true
+silex-types.workspace = true
+silex-lexer.workspace = true
+silex-parser.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+silex-compiler.workspace = true
+silex-environment.workspace = true
+xelis-vm.workspace = true
