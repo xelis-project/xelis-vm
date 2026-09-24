@@ -35,7 +35,7 @@ fn malformed_and_unsupported_bytecode_has_locations() {
             vec![OpCode::Jump.as_byte(), 0, 0, 0, 0],
             "unstructured jump",
         ),
-        (vec![OpCode::DynamicCall.as_byte(), 0], "unsupported opcode"),
+        (vec![OpCode::DynamicCall.as_byte(), 0], "stack underflow"),
         (vec![OpCode::Cast.as_byte(), 255], "invalid parameter cast"),
     ] {
         let module = module(&bytes);

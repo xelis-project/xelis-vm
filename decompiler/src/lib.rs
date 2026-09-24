@@ -382,7 +382,10 @@ impl<M> Engine<'_, '_, '_, M> {
     }
 
     fn binding(&mut self, name: String, ty: Type) -> Expr {
-        let current = self.binding_types.entry((self.id, name.clone())).or_insert(Type::Any);
+        let current = self
+            .binding_types
+            .entry((self.id, name.clone()))
+            .or_insert(Type::Any);
         *current = refine(current, &ty);
         Expr::named(name, current.clone())
     }
@@ -396,32 +399,23 @@ impl<M> Engine<'_, '_, '_, M> {
         ty: Option<Type>,
     ) {
         if let Some(ty) = ty {
-            // Evaluate calls where they occur, so later mutations and void calls
-            // cannot reorder effects or cause a duplicated evaluation.
-            let name = format!("value{offset}");
-            let value = self.binding(name.clone(), ty);
-            line(lines, offset, format!("let {name}: {} = {text}", value.ty));
-            state.stack.push(value);
+            // Calls are expressions in Silex. Keep them on the reconstructed
+            // expression stack instead of inventing a source local for them.
+            state.stack.push(Expr::new(text, ty).pending());
         } else {
             line(lines, offset, text);
         }
     }
 
-    fn spill(&self, state: &mut State, lines: &mut Vec<Line>, offset: usize) {
-        // A computed value or selected array element must be evaluated before
-        // a later call/branch can mutate its inputs. Simple register references
-        // remain references, matching MEMORY_LOAD's behavior in the VM.
-        for (index, value) in state.stack.iter_mut().enumerate() {
-            if value.pending {
-                let name = format!("saved{offset}x{index}");
-                line(
-                    lines,
-                    offset,
-                    format!("let {name}: {} = {}", value.ty, value.text),
-                );
-                *value = Expr::new(name, value.ty.clone());
-            }
-        }
+    fn voidable_result_is_used(&self, instruction: usize) -> bool {
+        self.code.get(instruction + 1).is_some_and(|next| {
+            matches!(next.op, OpCode::MemorySet | OpCode::Return | OpCode::Cast)
+                || operator(next.op).is_some()
+                || matches!(
+                    next.op,
+                    OpCode::ArrayCall | OpCode::SubLoad | OpCode::Flatten
+                )
+        })
     }
 
     fn block(
@@ -531,13 +525,17 @@ impl<M> Engine<'_, '_, '_, M> {
                     let fields: Vec<_> = types
                         .into_iter()
                         .enumerate()
-                        .map(|(index, ty)| Expr::new(format!("field{offset}x{index}"), ty))
+                        .map(|(index, ty)| {
+                            value
+                                .object
+                                .as_ref()
+                                .and_then(|values| values.get(index))
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    Expr::new(format!("({}).{index}", value.text), ty)
+                                })
+                        })
                         .collect();
-                    line(
-                        &mut lines,
-                        offset,
-                        format!("let ({}) = {}", joined(&fields), value.text),
-                    );
                     state.stack.extend(fields);
                 }
                 OpCode::NewRange => {
@@ -630,7 +628,10 @@ impl<M> Engine<'_, '_, '_, M> {
                     }
                     let on_type = instance.as_ref().map(|v| &v.ty).or(f.on_type.as_ref());
                     for (value, (_, ty)) in args.iter_mut().zip(&f.parameters) {
-                        self.constrain(value, &refine(&ty.map_generic_type(on_type), &generics.resolve(ty)));
+                        self.constrain(
+                            value,
+                            &refine(&ty.map_generic_type(on_type), &generics.resolve(ty)),
+                        );
                     }
                     let name = if let Some(instance) = &instance {
                         format!("({}).{}", instance.text, f.name)
@@ -639,13 +640,26 @@ impl<M> Engine<'_, '_, '_, M> {
                     } else {
                         f.name.into()
                     };
-                    let ty = f.return_type.as_ref().map(|t| refine(&t.map_generic_type(on_type), &generics.resolve(t)));
-                    if ty.as_ref().is_some_and(|t| matches!(t, Type::Voidable(_))) {
-                        return Err(
-                            self.error(offset, "voidable syscall needs runtime stack information")
-                        );
+                    let ty = f
+                        .return_type
+                        .as_ref()
+                        .map(|t| refine(&t.map_generic_type(on_type), &generics.resolve(t)));
+                    // The compiler deliberately omits a standalone voidable
+                    // call from its expression stack. The opcode has no
+                    // standalone bit, so use the following consumer: an
+                    // immediate statement boundary means the result is
+                    // discarded; otherwise it participates in an expression.
+                    let voidable = ty.as_ref().is_some_and(|t| matches!(t, Type::Voidable(_)));
+                    let used = self.voidable_result_is_used(i);
+                    if voidable && !used {
+                        line(&mut lines, offset, format!("{name}({})", joined(&args)));
+                        i += 1;
+                        continue;
                     }
-                    self.spill(state, &mut lines, offset);
+                    let ty = ty.map(|ty| match ty {
+                        Type::Voidable(inner) => *inner,
+                        other => other,
+                    });
                     self.call_result(
                         state,
                         &mut lines,
@@ -671,13 +685,30 @@ impl<M> Engine<'_, '_, '_, M> {
                         self.constrain(value, ty);
                         self.signatures[arg].parameters[p] = refine(ty, &value.ty);
                     }
-                    self.spill(state, &mut lines, offset);
+                    if signature
+                        .return_type
+                        .as_ref()
+                        .is_some_and(|t| matches!(t, Type::Voidable(_)))
+                        && !self.voidable_result_is_used(i)
+                    {
+                        line(
+                            &mut lines,
+                            offset,
+                            format!("{}({})", signature.name, joined(&args)),
+                        );
+                        i += 1;
+                        continue;
+                    }
+                    let return_type = signature.return_type.map(|ty| match ty {
+                        Type::Voidable(inner) => *inner,
+                        other => other,
+                    });
                     self.call_result(
                         state,
                         &mut lines,
                         offset,
                         format!("{}({})", signature.name, joined(&args)),
-                        signature.return_type,
+                        return_type,
                     );
                 }
                 OpCode::Return => {
@@ -746,7 +777,6 @@ impl<M> Engine<'_, '_, '_, M> {
                     }
                     let mut left = self.pop(state, offset)?;
                     self.constrain(&mut left, &Type::Bool);
-                    self.spill(state, &mut lines, offset);
                     let name = format!("logic{offset}");
                     line(
                         &mut lines,
@@ -781,7 +811,6 @@ impl<M> Engine<'_, '_, '_, M> {
                 OpCode::JumpIfFalse => {
                     let mut condition = self.pop(state, offset)?;
                     self.constrain(&mut condition, &Type::Bool);
-                    self.spill(state, &mut lines, offset);
                     let target = self.target(arg);
                     if target <= i || target > end {
                         return Err(self.error(offset, "unstructured conditional jump"));
