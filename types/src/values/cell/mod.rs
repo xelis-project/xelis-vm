@@ -980,12 +980,25 @@ impl ValueCell {
         }
     }
 
+    /// Detach nested references, moving uniquely owned data instead of cloning it.
     pub fn references_free(self) -> Self {
         match self {
-            Self::Bytes(_) | Self::Primitive(_) => return self,
-            _ => {}
-        };
+            Self::Bytes(_) | Self::Primitive(_) => self,
+            _ => Self::detach(ValueCellRef::Owned(self)),
+        }
+    }
 
+    /// Clone the value and detach all nested references without consuming it.
+    pub fn deep_clone(&self) -> Self {
+        match self {
+            Self::Bytes(v) => Self::Bytes(v.clone()),
+            Self::Primitive(v) => Self::Primitive(v.clone()),
+            _ => Self::detach(ValueCellRef::Ref(self)),
+        }
+    }
+
+    // Iteratively rebuild the value, reusing owned payloads and cloning borrowed ones.
+    fn detach(value: ValueCellRef<'_>) -> Self {
         #[derive(Debug)]
         enum QueueItem {
             Primitive(Primitive),
@@ -998,11 +1011,15 @@ impl ValueCell {
             Bytes(Vec<u8>)
         }
 
-        let mut stack = vec![ValueCellRef::Owned(self)];
+        let mut stack = vec![value];
         let mut queue = Vec::new();
 
         // Disassemble
         while let Some(value) = stack.pop() {
+            let value = match value {
+                ValueCellRef::Pointer(pointer) => ValueCellRef::Owned(pointer.unwrap()),
+                value => value,
+            };
             match value {
                 ValueCellRef::Owned(owned) => match owned {
                     Self::Primitive(v) => queue.push(QueueItem::Primitive(v)),
@@ -1019,94 +1036,20 @@ impl ValueCell {
                         stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
                     }
                 },
-                ValueCellRef::Pointer(pointer) => match pointer.unwrap() {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v)),
+                ValueCellRef::Ref(value) => match value {
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
-                        stack.extend(values.into_iter().map(ValueCellRef::Pointer));
+                        stack.extend(values.iter().map(|v| ValueCellRef::Ref(v.as_ref())));
                     },
-                    Self::Bytes(bytes) => {
-                        queue.push(QueueItem::Bytes(bytes));
-                    }
+                    Self::Bytes(bytes) => queue.push(QueueItem::Bytes(bytes.clone())),
                     Self::Map(map) => {
                         queue.push(QueueItem::Map { len: map.len() });
                         stack.reserve(map.len() * 2);
-                        stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
+                        stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Ref(k), ValueCellRef::Ref(v.as_ref())]));
                     }
                 },
-                _ => {}
-            }
-        };
-
-        let mut stack = Vec::with_capacity(queue.len());
-        // Assemble back
-        while let Some(item) = queue.pop() {
-            match item {
-                QueueItem::Primitive(v) => {
-                    stack.push(ValueCell::Primitive(v));
-                },
-                QueueItem::Array { len } => {
-                    let values = stack.split_off(stack.len() - len);
-                    stack.push(ValueCell::Object(values.into_iter().map(Into::into).collect()));
-                },
-                QueueItem::Bytes(bytes) => {
-                    stack.push(ValueCell::Bytes(bytes));
-                }
-                QueueItem::Map { len } => {
-                    let map = stack.split_off(stack.len() - len * 2)
-                        .into_iter()
-                        .tuples()
-                        .map(|(k, v)| (k, v.into()))
-                        .collect();
-
-                    stack.push(ValueCell::Map(Box::new(map)));
-                }
-            }
-        }
-
-        debug_assert!(stack.len() == 1);
-        stack.remove(0)
-    }
-
-    // Create a clone in a iterative way
-    pub fn deep_clone(&self) -> Self {
-        match self {
-            Self::Bytes(v) => return Self::Bytes(v.clone()),
-            Self::Primitive(v) => return Self::Primitive(v.clone()),
-            _ => {}
-        };
-
-        #[derive(Debug)]
-        enum QueueItem {
-            Primitive(Primitive),
-            Array {
-                len: usize,
-            },
-            Map {
-                len: usize,
-            },
-            Bytes(Vec<u8>)
-        }
-
-        let mut stack = vec![ValueCellRef::Ref(self)];
-        let mut queue = Vec::new();
-
-        // Disassemble
-        while let Some(value) = stack.pop() {
-            match value.value() {
-                Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
-                Self::Object(values) => {
-                    queue.push(QueueItem::Array { len: values.len() });
-                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
-                },
-                Self::Bytes(bytes) => {
-                    queue.push(QueueItem::Bytes(bytes.clone()));
-                }
-                Self::Map(map) => {
-                    queue.push(QueueItem::Map { len: map.len() });
-                    stack.reserve(map.len() * 2);
-                    stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())]));
-                }
+                ValueCellRef::Pointer(_) => unreachable!(),
             }
         };
 
@@ -1244,6 +1187,49 @@ mod tests {
     const MAX_ITERS: usize = 100_000;
     #[cfg(not(feature = "infinite-cell-depth"))]
     const MAX_ITERS: usize = 1000;
+
+    #[test]
+    fn test_detach_shared_nested_values() {
+        for consume in [false, true] {
+            let shared = ValuePointer::new(ValueCell::Bytes(vec![1, 2, 3]));
+            let mut map = IndexMap::new();
+            map.insert(Primitive::U8(7).into(), shared.clone());
+            let original = ValueCell::Object(vec![
+                shared.clone(),
+                ValueCell::Map(Box::new(map)).into(),
+            ]);
+            let expected = serde_json::to_value(&original).unwrap();
+            let detached = if consume {
+                original.references_free()
+            } else {
+                let detached = original.deep_clone();
+                assert_eq!(serde_json::to_value(&original).unwrap(), expected);
+                detached
+            };
+            assert_eq!(serde_json::to_value(&detached).unwrap(), expected);
+
+            let ValueCell::Object(mut values) = detached else { panic!("Failed to extract object") };
+            let ValueCell::Map(map) = values[1].as_ref() else { panic!("Failed to extract map") };
+            let nested = map.values().next().unwrap();
+            assert!(!values[0].ptr_eq(&shared));
+            assert!(!nested.ptr_eq(&shared));
+            assert!(!values[0].ptr_eq(nested));
+            unsafe { *values[0].as_mut() = ValueCell::Bytes(vec![9]); }
+            assert_eq!(shared.as_ref(), &ValueCell::Bytes(vec![1, 2, 3]));
+            let ValueCell::Map(map) = values[1].as_ref() else { panic!("Failed to extract map") };
+            assert_eq!(map.values().next().unwrap().as_ref(), shared.as_ref());
+        }
+    }
+
+    #[test]
+    fn test_references_free_reuses_unique_byte_buffer() {
+        let bytes = vec![1, 2, 3];
+        let buffer = bytes.as_ptr();
+        let value = ValueCell::Object(vec![ValueCell::Bytes(bytes).into()]);
+        let ValueCell::Object(values) = value.references_free() else { panic!("Failed to free references") };
+        let ValueCell::Bytes(bytes) = values[0].as_ref() else { panic!("Expected bytes") };
+        assert_eq!(bytes.as_ptr(), buffer);
+    }
 
     #[test]
     fn test_drop_and_clone() {
