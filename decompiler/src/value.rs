@@ -48,7 +48,9 @@ pub(crate) struct Expr {
     pub parameter: Option<usize>,
     pub binding: Option<String>,
     pub object: Option<Vec<Expr>>,
-    pub pending: bool,
+    // A standalone voidable call is not counted on the compiler's stack.
+    // Keep an explicit value context when its result must be popped.
+    pub voidable_call: bool,
     pub function_pointer: Option<(String, Type)>,
     pub origin_chunk: Option<usize>,
 }
@@ -61,15 +63,10 @@ impl Expr {
             parameter: None,
             binding: None,
             object: None,
-            pending: false,
+            voidable_call: false,
             function_pointer: None,
             origin_chunk: None,
         }
-    }
-
-    pub fn pending(mut self) -> Self {
-        self.pending = true;
-        self
     }
 
     pub fn named(name: String, ty: Type) -> Self {
@@ -92,7 +89,7 @@ impl Expr {
         let mut result = Self::new("", ty.clone());
         result.object = Some(values);
         result.as_type(&ty);
-        result.pending()
+        result
     }
 
     pub fn as_type(&mut self, ty: &Type) {
@@ -226,7 +223,6 @@ pub(crate) fn map(entries: Vec<(Expr, Expr)>) -> Expr {
         format!("{{{text}}}"),
         Type::Map(Box::new(key), Box::new(value)),
     )
-    .pending()
 }
 
 pub(crate) fn unpack<M>(

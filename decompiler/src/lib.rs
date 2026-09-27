@@ -6,6 +6,7 @@
 //! [`Decompiler::with_function_signature`]. Unsupported instructions and
 //! unrecoverable patterns return errors. See the crate README for limits.
 
+mod analysis;
 mod error;
 mod instruction;
 mod value;
@@ -154,6 +155,7 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
         // Function types are packed as u16 in bytecode. A dynamic call gives
         // us its arity, so reconstruct an erased parameter type from the call
         // site itself; later inference refines its argument and return types.
+        let mut inferred_dynamic_parameters = BTreeSet::new();
         for (chunk, code) in instructions.iter().enumerate() {
             for (index, instruction) in code.iter().enumerate() {
                 if !matches!(instruction.op, OpCode::DynamicCall) || index == 0 {
@@ -175,6 +177,7 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
                     vec![Type::Any; instruction.arg],
                     Some(Type::Any),
                 ));
+                inferred_dynamic_parameters.insert((chunk, pointer.arg));
             }
         }
 
@@ -195,6 +198,7 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
                     signatures: &mut signatures,
                     binding_types: &mut binding_types,
                     returned: None,
+                    inferred_dynamic_parameters: &inferred_dynamic_parameters,
                 };
                 let mut state = State::default();
                 for (i, ty) in engine.signatures[id].parameters.iter().enumerate() {
@@ -316,6 +320,17 @@ fn line(lines: &mut Vec<Line>, offset: usize, text: impl Into<String>) {
         text: text.into(),
     });
 }
+
+fn expression_statement(lines: &mut Vec<Line>, offset: usize, text: String) {
+    // A leading map literal is otherwise parsed as a scope. The semicolon
+    // prevents the next expression from becoming a call/index on this one.
+    let text = if text.starts_with('{') {
+        format!("({text});")
+    } else {
+        format!("{text};")
+    };
+    line(lines, offset, text);
+}
 fn indent(lines: &[Line]) -> String {
     let mut output = String::new();
     let mut quoted = false;
@@ -355,6 +370,7 @@ struct Engine<'a, 'env, 's, M> {
     signatures: &'s mut [FunctionSignature],
     binding_types: &'s mut BTreeMap<(usize, String), Type>,
     returned: Option<Option<Type>>,
+    inferred_dynamic_parameters: &'s BTreeSet<(usize, usize)>,
 }
 
 impl<M> Engine<'_, '_, '_, M> {
@@ -448,211 +464,30 @@ impl<M> Engine<'_, '_, '_, M> {
         &mut self,
         state: &mut State,
         lines: &mut Vec<Line>,
-        offset: usize,
+        instruction: usize,
         text: String,
         ty: Option<Type>,
         origin_chunk: Option<usize>,
-    ) {
+    ) -> Result<(), DecompilerError> {
+        let offset = self.code[instruction].offset;
+        let voidable_call = matches!(ty, Some(Type::Voidable(_)));
+        let ty = match ty {
+            Some(Type::Voidable(inner)) => {
+                self.result_is_used(instruction, state)?.then_some(*inner)
+            }
+            other => other,
+        };
         if let Some(ty) = ty {
             // Calls are expressions in Silex. Keep them on the reconstructed
             // expression stack instead of inventing a source local for them.
-            let mut value = Expr::new(text, ty).pending();
+            let mut value = Expr::new(text, ty);
+            value.voidable_call = voidable_call;
             value.origin_chunk = origin_chunk;
             state.stack.push(value);
         } else {
-            line(lines, offset, text);
+            expression_statement(lines, offset, text);
         }
-    }
-
-    fn voidable_result_is_used(&self, instruction: usize) -> bool {
-        // Track the produced value through pushes until an opcode consumes it.
-        // This covers nested arguments, where the immediate next instruction
-        // commonly pushes another argument before the outer call consumes both.
-        let mut pending = vec![(instruction + 1, vec![0usize])];
-        let mut seen = BTreeSet::new();
-        let mut steps = 0usize;
-        while let Some((mut pc, mut markers)) = pending.pop() {
-            while pc < self.code.len() && steps < 4096 {
-                steps += 1;
-                if !seen.insert((pc, markers.clone())) {
-                    break;
-                }
-                let ins = self.code[pc].clone();
-                let mut consume = |n: usize, outputs: usize| -> bool {
-                    if markers.iter().any(|depth| *depth < n) {
-                        return true;
-                    }
-                    for depth in &mut markers {
-                        *depth = *depth - n + outputs;
-                    }
-                    false
-                };
-                match ins.op {
-                    OpCode::Constant
-                    | OpCode::MemoryLoad
-                    | OpCode::MemoryPop
-                    | OpCode::MemoryLen => {
-                        for depth in &mut markers {
-                            *depth += 1;
-                        }
-                    }
-                    OpCode::MemorySet | OpCode::Pop => {
-                        if consume(1, 0) {
-                            return true;
-                        }
-                    }
-                    OpCode::PopN => {
-                        if consume(ins.arg, 0) {
-                            return true;
-                        }
-                    }
-                    OpCode::Cast | OpCode::Neg | OpCode::Inc | OpCode::Dec => {
-                        if consume(1, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::Copy => {
-                        let duplicate = markers.contains(&0);
-                        for depth in &mut markers {
-                            *depth += 1;
-                        }
-                        if duplicate {
-                            markers.push(0);
-                        }
-                    }
-                    OpCode::CopyN => {
-                        let duplicate = markers.contains(&ins.arg);
-                        for depth in &mut markers {
-                            *depth += 1;
-                        }
-                        if duplicate {
-                            markers.push(0);
-                        }
-                    }
-                    OpCode::ToOwned => {}
-                    OpCode::Swap => {
-                        for depth in &mut markers {
-                            if *depth == 0 {
-                                *depth = ins.arg;
-                            } else if *depth == ins.arg {
-                                *depth = 0;
-                            }
-                        }
-                    }
-                    OpCode::Swap2 => {
-                        for depth in &mut markers {
-                            if *depth == ins.arg {
-                                *depth = ins.extra;
-                            } else if *depth == ins.extra {
-                                *depth = ins.arg;
-                            }
-                        }
-                    }
-                    OpCode::JumpIfFalse => {
-                        if consume(1, 0) {
-                            return true;
-                        }
-                        let target = self.target(ins.arg);
-                        if target < self.code.len() {
-                            pending.push((target, markers.clone()));
-                        }
-                    }
-                    OpCode::Jump => {
-                        pc = self.target(ins.arg);
-                        continue;
-                    }
-                    OpCode::SysCall => {
-                        let Some(f) = self
-                            .environment
-                            .get_functions_mapper()
-                            .get_function(&(ins.arg as u16))
-                        else {
-                            break;
-                        };
-                        let inputs = f.parameters.len() + usize::from(f.require_instance);
-                        if consume(inputs, usize::from(f.return_type.is_some())) {
-                            return true;
-                        }
-                    }
-                    OpCode::InvokeChunk => {
-                        let returns = self
-                            .signatures
-                            .get(ins.arg)
-                            .is_some_and(|s| s.return_type.is_some());
-                        if consume(ins.extra, usize::from(returns)) {
-                            return true;
-                        }
-                    }
-                    OpCode::DynamicCall => {
-                        if consume(ins.arg + 1, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::NewObject => {
-                        if consume(ins.arg, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::NewMap => {
-                        if consume(ins.arg * 2, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::NewRange => {
-                        if consume(2, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::ArrayCall => {
-                        if consume(2, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::IterableLength => {
-                        if consume(1, 1) {
-                            return true;
-                        }
-                    }
-                    OpCode::IteratorBegin => {
-                        if consume(1, 0) {
-                            return true;
-                        }
-                    }
-                    OpCode::IteratorNext => {
-                        for depth in &mut markers {
-                            *depth += 1;
-                        }
-                    }
-                    OpCode::Match => {
-                        if markers.contains(&0) {
-                            return true;
-                        }
-                        let target = self.target(ins.arg);
-                        if target < self.code.len() {
-                            pending.push((target, markers.clone()));
-                        }
-                    }
-                    OpCode::SubLoad | OpCode::Flatten => {
-                        if consume(1, 1) {
-                            return true;
-                        }
-                    }
-                    op if operator(op).is_some() => {
-                        let (_, assign, _) = operator(op).unwrap();
-                        if consume(2, usize::from(!assign)) {
-                            return true;
-                        }
-                    }
-                    OpCode::Return => return markers.contains(&0),
-                    _ => break,
-                }
-                pc += 1;
-            }
-            if steps >= 4096 {
-                break;
-            }
-        }
-        false
+        Ok(())
     }
 
     fn tuple_pattern(
@@ -789,8 +624,7 @@ impl<M> Engine<'_, '_, '_, M> {
                             value.ty = function_type.clone();
                         }
                     }
-                    let local = self.binding(name.clone(), value.ty.clone());
-                    let mut local = local;
+                    let mut local = self.binding(name.clone(), value.ty.clone());
                     local.function_pointer = value.function_pointer.clone();
                     self.constrain(&mut value, &local.ty);
                     line(
@@ -807,9 +641,16 @@ impl<M> Engine<'_, '_, '_, M> {
                     // The compiler inserts this automatically on parameter assignment.
                 }
                 OpCode::Pop | OpCode::PopN => {
-                    for _ in 0..if matches!(op, OpCode::Pop) { 1 } else { arg } {
-                        let value = self.pop(state, offset)?;
-                        line(&mut lines, offset, value.text);
+                    let count = if matches!(op, OpCode::Pop) { 1 } else { arg };
+                    // PopN drops the whole suffix. Emit deferred expressions
+                    // in their original evaluation order, not reverse pop order.
+                    for value in self.args(state, count, offset)? {
+                        let text = if value.voidable_call {
+                            format!("({})", value.text)
+                        } else {
+                            value.text
+                        };
+                        expression_statement(&mut lines, offset, text);
                     }
                 }
                 OpCode::Cast => {
@@ -818,14 +659,14 @@ impl<M> Engine<'_, '_, '_, M> {
                         .ok_or_else(|| self.error(offset, "invalid cast type"))?;
                     state
                         .stack
-                        .push(Expr::new(format!("({} as {ty})", value.text), ty).pending());
+                        .push(Expr::new(format!("({} as {ty})", value.text), ty));
                 }
                 OpCode::Neg => {
                     let mut value = self.pop(state, offset)?;
                     self.constrain(&mut value, &Type::Bool);
                     state
                         .stack
-                        .push(Expr::new(format!("(!{})", value.text), Type::Bool).pending());
+                        .push(Expr::new(format!("(!{})", value.text), Type::Bool));
                 }
                 OpCode::NewObject => {
                     let values = self.args(state, arg, offset)?;
@@ -878,13 +719,10 @@ impl<M> Engine<'_, '_, '_, M> {
                 OpCode::NewRange => {
                     let right = self.pop(state, offset)?;
                     let left = self.pop(state, offset)?;
-                    state.stack.push(
-                        Expr::new(
-                            format!("({}..{})", left.text, right.text),
-                            Type::Range(Box::new(left.ty)),
-                        )
-                        .pending(),
-                    );
+                    state.stack.push(Expr::new(
+                        format!("({}..{})", left.text, right.text),
+                        Type::Range(Box::new(left.ty)),
+                    ));
                 }
                 OpCode::NewMap => {
                     let values = self.args(state, arg * 2, offset)?;
@@ -933,7 +771,7 @@ impl<M> Engine<'_, '_, '_, M> {
                             ))
                         }
                     };
-                    state.stack.push(Expr::new(text, ty).pending());
+                    state.stack.push(Expr::new(text, ty));
                 }
                 OpCode::SysCall => {
                     let f = self
@@ -953,12 +791,6 @@ impl<M> Engine<'_, '_, '_, M> {
                     }
                     for (value, (_, ty)) in args.iter().zip(&f.parameters) {
                         generics.infer(ty, &value.ty);
-                    }
-                    if let (Some(ty), Some(expected)) = (
-                        &f.return_type,
-                        self.binding_types.get(&(self.id, format!("value{offset}"))),
-                    ) {
-                        generics.infer(ty, expected);
                     }
                     if let (Some(value), Some(ty)) = (&mut instance, &f.on_type) {
                         self.constrain(value, &generics.resolve(ty));
@@ -981,36 +813,23 @@ impl<M> Engine<'_, '_, '_, M> {
                         .return_type
                         .as_ref()
                         .map(|t| refine(&t.map_generic_type(on_type), &generics.resolve(t)));
-                    // The compiler deliberately omits a standalone voidable
-                    // call from its expression stack. The opcode has no
-                    // standalone bit, so use the following consumer: an
-                    // immediate statement boundary means the result is
-                    // discarded; otherwise it participates in an expression.
-                    let voidable = ty.as_ref().is_some_and(|t| matches!(t, Type::Voidable(_)));
-                    let used = self.voidable_result_is_used(i);
-                    if voidable && !used {
-                        line(&mut lines, offset, format!("{name}({})", joined(&args)));
-                        i += 1;
-                        continue;
-                    }
-                    let ty = ty.map(|ty| match ty {
-                        Type::Voidable(inner) => *inner,
-                        other => other,
-                    });
                     self.call_result(
                         state,
                         &mut lines,
-                        offset,
+                        i,
                         format!("{name}({})", joined(&args)),
                         ty,
                         None,
-                    );
+                    )?;
                 }
                 OpCode::DynamicCall => {
                     let mut function = self.pop(state, offset)?;
                     let args = self.args(state, arg, offset)?;
-                    if let Some(parameter) = function.parameter {
-                        let returns_value = self.voidable_result_is_used(i);
+                    if let Some(parameter) = function
+                        .parameter
+                        .filter(|p| self.inferred_dynamic_parameters.contains(&(self.id, *p)))
+                    {
+                        let returns_value = self.result_is_used(i, state)?;
                         let return_type = returns_value.then_some(Type::Any);
                         let function_type = Type::Function(FnType::new(
                             None,
@@ -1031,31 +850,14 @@ impl<M> Engine<'_, '_, '_, M> {
                             ));
                         }
                     };
-                    if return_type
-                        .as_ref()
-                        .is_some_and(|t| matches!(t, Type::Voidable(_)))
-                        && !self.voidable_result_is_used(i)
-                    {
-                        line(
-                            &mut lines,
-                            offset,
-                            format!("{}({})", function.text, joined(&args)),
-                        );
-                        i += 1;
-                        continue;
-                    }
-                    let return_type = return_type.map(|ty| match ty {
-                        Type::Voidable(inner) => *inner,
-                        other => other,
-                    });
                     self.call_result(
                         state,
                         &mut lines,
-                        offset,
+                        i,
                         format!("{}({})", function.text, joined(&args)),
                         return_type,
                         None,
-                    );
+                    )?;
                 }
                 OpCode::InvokeChunk => {
                     let signature = self
@@ -1074,32 +876,15 @@ impl<M> Engine<'_, '_, '_, M> {
                         self.constrain(value, ty);
                         self.signatures[arg].parameters[p] = refine(ty, &value.ty);
                     }
-                    if signature
-                        .return_type
-                        .as_ref()
-                        .is_some_and(|t| matches!(t, Type::Voidable(_)))
-                        && !self.voidable_result_is_used(i)
-                    {
-                        line(
-                            &mut lines,
-                            offset,
-                            format!("{}({})", signature.name, joined(&args)),
-                        );
-                        i += 1;
-                        continue;
-                    }
-                    let return_type = signature.return_type.map(|ty| match ty {
-                        Type::Voidable(inner) => *inner,
-                        other => other,
-                    });
+                    let return_type = signature.return_type;
                     self.call_result(
                         state,
                         &mut lines,
-                        offset,
+                        i,
                         format!("{}({})", signature.name, joined(&args)),
                         return_type,
                         Some(arg),
-                    );
+                    )?;
                 }
                 OpCode::Return => {
                     let mut value = if state.stack.is_empty() {
@@ -1179,18 +964,15 @@ impl<M> Engine<'_, '_, '_, M> {
                         return Err(self.error(offset, "unbalanced short-circuit stack"));
                     }
                     if body.is_empty() {
-                        state.stack.push(
-                            Expr::new(
-                                format!(
-                                    "({} {} {})",
-                                    left.text,
-                                    if neg { "||" } else { "&&" },
-                                    right.text
-                                ),
-                                Type::Bool,
-                            )
-                            .pending(),
-                        );
+                        state.stack.push(Expr::new(
+                            format!(
+                                "({} {} {})",
+                                left.text,
+                                if neg { "||" } else { "&&" },
+                                right.text
+                            ),
+                            Type::Bool,
+                        ));
                         i = target;
                         continue;
                     }
@@ -1310,13 +1092,10 @@ impl<M> Engine<'_, '_, '_, M> {
                     {
                         let yes = self.pop(&mut yes, offset)?;
                         let no = self.pop(&mut no, offset)?;
-                        state.stack.push(
-                            Expr::new(
-                                format!("({} ? {} : {})", condition.text, yes.text, no.text),
-                                yes.ty,
-                            )
-                            .pending(),
-                        );
+                        state.stack.push(Expr::new(
+                            format!("({} ? {} : {})", condition.text, yes.text, no.text),
+                            yes.ty,
+                        ));
                     } else {
                         if yes.stack != state.stack || no.stack != state.stack {
                             return Err(
@@ -1401,6 +1180,35 @@ impl<M> Engine<'_, '_, '_, M> {
                     i = target + 1;
                     continue;
                 }
+                OpCode::And | OpCode::Or => {
+                    // Bare AND/OR are eager VM operations. Only the COPY/jump
+                    // pattern above represents source-level short circuiting.
+                    let mut right = self.pop(state, offset)?;
+                    let mut left = self.pop(state, offset)?;
+                    self.constrain(&mut left, &Type::Bool);
+                    self.constrain(&mut right, &Type::Bool);
+                    let left_name = format!("left{offset}");
+                    let right_name = format!("right{offset}");
+                    line(
+                        &mut lines,
+                        offset,
+                        format!("let {left_name}: bool = {}", left.text),
+                    );
+                    line(
+                        &mut lines,
+                        offset,
+                        format!("let {right_name}: bool = {}", right.text),
+                    );
+                    let symbol = if matches!(op, OpCode::And) {
+                        "&&"
+                    } else {
+                        "||"
+                    };
+                    state.stack.push(Expr::new(
+                        format!("({left_name} {symbol} {right_name})"),
+                        Type::Bool,
+                    ));
+                }
                 _ => {
                     if let Some((symbol, assign, boolean)) = operator(op) {
                         let mut right = self.pop(state, offset)?;
@@ -1415,10 +1223,10 @@ impl<M> Engine<'_, '_, '_, M> {
                             );
                         } else {
                             let ty = if boolean { Type::Bool } else { left.ty };
-                            state.stack.push(
-                                Expr::new(format!("({} {symbol} {})", left.text, right.text), ty)
-                                    .pending(),
-                            );
+                            state.stack.push(Expr::new(
+                                format!("({} {symbol} {})", left.text, right.text),
+                                ty,
+                            ));
                         }
                     } else {
                         return Err(self.error(offset, format!("unsupported opcode {op:?}")));
@@ -1445,8 +1253,6 @@ fn operator(op: OpCode) -> Option<(&'static str, bool, bool)> {
         BitwiseXor => ("^", false, false),
         BitwiseShl => ("<<", false, false),
         BitwiseShr => (">>", false, false),
-        And => ("&&", false, true),
-        Or => ("||", false, true),
         Eq => ("==", false, true),
         Gt => (">", false, true),
         Gte => (">=", false, true),

@@ -210,8 +210,99 @@ fn calls_do_not_create_synthetic_locals() {
 
 #[test]
 fn discarded_values_do_not_create_bindings() {
-    let recovered = roundtrip("fn value() -> u64 { return 2 } entry main() { value(); value(); return 7 }");
+    let recovered =
+        roundtrip("fn value() -> u64 { return 2 } entry main() { value(); value(); return 7 }");
     assert!(!recovered.contains("let"), "{recovered}");
+    for source in [
+        "entry main() { let a: u64[] = [2, 9] a.remove(0); a.pop(); return a.len() as u64 }",
+        "entry main() { let x: u64 = 2 let _ = x + 1 let _ = x let _ = 7 return x }",
+        "entry main() { let _ = [1, 2] let _ = {1: 2} let _ = (1, true) return 7 }",
+    ] {
+        let recovered = roundtrip(source);
+        assert!(!recovered.contains("let _ ="), "{recovered}");
+    }
+}
+
+#[test]
+fn pop_n_preserves_expression_evaluation_order() {
+    use silex_bytecode::{Chunk, OpCode};
+
+    let env = EnvironmentBuilder::default();
+    let mut module = compile(
+        "entry main() { let a: u64[] = [1, 2, 3] a.remove(0); a.remove(1); return a[0] }",
+        &env,
+        false,
+        false,
+    );
+    // Batch the two standalone results into one PopN without changing the
+    // order of their producing instructions. There are no jumps to relocate.
+    let bytes = module.chunks()[0].chunk.get_instructions();
+    let mut chunk = Chunk::new();
+    let mut pc = 0;
+    let mut pops = 0;
+    while pc < bytes.len() {
+        let op = OpCode::from_byte(bytes[pc]).unwrap();
+        let end = pc + 1 + op.arguments_bytes();
+        if matches!(op, OpCode::Pop) {
+            pops += 1;
+            if pops == 2 {
+                chunk.emit_opcode(OpCode::PopN);
+                chunk.write_u8(2);
+            }
+        } else {
+            for byte in &bytes[pc..end] {
+                chunk.write_u8(*byte);
+            }
+        }
+        pc = end;
+    }
+    assert_eq!(pops, 2);
+    module.get_chunk_at_mut(0).unwrap().chunk = chunk;
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+    assert!(!recovered.contains("let _"), "{recovered}");
+    let rebuilt = compile(&recovered, &env, false, false);
+    assert_eq!(execute(&module, &env, 0), Primitive::U64(2));
+    assert_eq!(execute(&rebuilt, &env, 0), Primitive::U64(2));
+}
+
+#[test]
+fn eager_boolean_opcodes_evaluate_both_operands() {
+    use silex_bytecode::{Chunk, OpCode};
+
+    let env = EnvironmentBuilder::default();
+    for (left, op) in [(false, OpCode::And), (true, OpCode::Or)] {
+        let mut module = compile(
+            &format!("entry main() {{ let a: u64[] = [1, 2] let _ = {left} == (a.remove(0) == 1) return a.len() as u64 }}"),
+            &env,
+            false,
+            false,
+        );
+        let bytes = module.chunks()[0].chunk.get_instructions();
+        let mut chunk = Chunk::new();
+        let mut pc = 0;
+        let mut comparisons = 0;
+        while pc < bytes.len() {
+            let instruction = OpCode::from_byte(bytes[pc]).unwrap();
+            let end = pc + 1 + instruction.arguments_bytes();
+            if matches!(instruction, OpCode::Eq) {
+                comparisons += 1;
+            }
+            if matches!(instruction, OpCode::Eq) && comparisons == 2 {
+                chunk.emit_opcode(op);
+            } else {
+                for byte in &bytes[pc..end] {
+                    chunk.write_u8(*byte);
+                }
+            }
+            pc = end;
+        }
+        assert_eq!(comparisons, 2);
+        module.get_chunk_at_mut(0).unwrap().chunk = chunk;
+        let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+        let rebuilt = compile(&recovered, &env, false, false);
+        assert_eq!(execute(&module, &env, 0), Primitive::U64(1));
+        assert_eq!(execute(&rebuilt, &env, 0), Primitive::U64(1));
+    }
 }
 
 #[test]
@@ -277,6 +368,14 @@ fn voidable_syscalls_follow_standalone_and_value_contexts() {
         0,
         Some(Type::Voidable(Box::new(Type::U64))),
     );
+    env.register_native_function(
+        "maybe_none",
+        None,
+        vec![],
+        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+        0,
+        Some(Type::Voidable(Box::new(Type::U64))),
+    );
 
     let standalone = compile(
         "entry main() { maybe_value() return 3 }",
@@ -311,6 +410,40 @@ fn voidable_syscalls_follow_standalone_and_value_contexts() {
         "{recovered}"
     );
     compile(&recovered, &env, false, false);
+
+    // Standalone voidable calls deliberately have no Pop. An explicitly
+    // discarded result does have one, and must keep it after recompilation.
+    for source in [
+        "entry main() { maybe_value(); return 3 }",
+        "entry main() { let _ = maybe_value() return 3 }",
+    ] {
+        let module = compile(source, &env, false, false);
+        let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+        let rebuilt = compile(&recovered, &env, false, false);
+        assert_eq!(
+            module.chunks()[0].chunk.get_instructions(),
+            rebuilt.chunks()[0].chunk.get_instructions(),
+            "{recovered}",
+        );
+    }
+
+    for source in [
+        "entry main() { return maybe_value() + maybe_value() }",
+        "fn combine(a: u64, b: u64) -> u64 { return a * 10 + b } entry main() { return combine(maybe_value(), 3) }",
+        "fn combine(a: u64, b: u64) -> u64 { return a * 10 + b } entry main() { return combine(maybe_value(), maybe_value()) }",
+        "entry main() { return maybe_value() + (true ? 1 : 2) }",
+        "entry main() { return (true ? maybe_value() : maybe_value()) + 1 }",
+        "entry main() { maybe_none(); let n: u64 = 0 while n < 2 { n += 1 } return n }",
+        "entry main() { let n: u64 = 0 while n < 2 { maybe_none(); n += 1 } return n }",
+        "entry main() { let n: u64 = 0 while n < 2 { maybe_none(); maybe_none(); n += 1 } return n }",
+        "entry main() { maybe_none(); let n: u64 = 0 while n < 2 { maybe_none(); n += 1 } return n }",
+    ] {
+        let module = compile(source, &env, false, false);
+        let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+        let rebuilt = compile(&recovered, &env, false, false);
+        let entry = module.chunks().len() - 1;
+        assert_eq!(execute(&module, &env, entry), execute(&rebuilt, &env, entry), "{recovered}");
+    }
 }
 
 #[test]
@@ -358,6 +491,35 @@ fn dynamic_calls_infer_erased_function_types_from_opcodes() {
         execute(&pointer_rebuilt, &env, 1),
         "{pointer_recovered}"
     );
+}
+
+#[test]
+fn dynamic_calls_preserve_supplied_signatures() {
+    use silex_decompiler::FunctionSignature;
+    use silex_types::{FnType, Type};
+
+    let env = EnvironmentBuilder::default();
+    for (source, result) in [
+        ("pub fn apply(f: fn(u64), value: u64) { f(value) }", None),
+        ("pub fn apply(f: fn(u64) -> u64, value: u64) -> u64 { let result = f(value) return result }", Some(Type::U64)),
+    ] {
+        let module = compile(source, &env, false, false);
+        let signature = FunctionSignature {
+            name: "apply".into(),
+            parameters: vec![
+                Type::Function(FnType::new(None, false, vec![Type::U64], result.clone())),
+                Type::U64,
+            ],
+            return_type: result,
+        };
+        let recovered = Decompiler::new(&module, &env)
+            .with_function_signature(0, signature)
+            .decompile()
+            .unwrap();
+        assert!(!recovered.contains("any"), "{recovered}");
+        let rebuilt = compile(&recovered, &env, false, false);
+        assert_eq!(module.chunks()[0].chunk.get_instructions(), rebuilt.chunks()[0].chunk.get_instructions(), "{recovered}");
+    }
 }
 
 #[test]

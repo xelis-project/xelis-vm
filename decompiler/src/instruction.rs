@@ -9,6 +9,46 @@ pub(crate) struct Instruction {
     pub extra: usize,
 }
 
+/// Ordinary stack operations consume inputs and leave their outputs on top.
+/// Control flow and instructions with type-dependent arity are handled separately.
+#[derive(Clone, Copy)]
+pub(crate) struct StackEffect {
+    pub inputs: usize,
+    pub outputs: usize,
+}
+
+impl StackEffect {
+    pub fn new(inputs: usize, outputs: usize) -> Self {
+        Self { inputs, outputs }
+    }
+}
+
+impl Instruction {
+    pub fn stack_effect(&self) -> Option<StackEffect> {
+        use OpCode::*;
+        let (inputs, outputs) = match self.op {
+            Constant | MemoryLoad | MemoryPop | MemoryLen => (0, 1),
+            MemorySet | Pop | IteratorBegin => (1, 0),
+            PopN => (self.arg, 0),
+            MemoryToOwned | IteratorEnd | CaptureContext => (0, 0),
+            SubLoad | Cast | Neg | IterableLength => (1, 1),
+            // These read/modify the top value in place, without changing height.
+            ToOwned | Inc | Dec => (1, 1),
+            NewObject => (self.arg, 1),
+            NewMap => (self.arg * 2, 1),
+            NewRange | ArrayCall => (2, 1),
+            Add | Sub | Mul | Div | Mod | Pow | And | Or | BitwiseAnd | BitwiseOr | BitwiseXor
+            | BitwiseShl | BitwiseShr | Eq | Gt | Lt | Gte | Lte => (2, 1),
+            Assign | AssignAdd | AssignSub | AssignMul | AssignDiv | AssignMod | AssignPow
+            | AssignBitwiseAnd | AssignBitwiseOr | AssignBitwiseXor | AssignBitwiseShl
+            | AssignBitwiseShr => (2, 0),
+            Copy | CopyN | Swap | Swap2 | Jump | JumpIfFalse | IteratorNext | Return
+            | InvokeChunk | SysCall | DynamicCall | Flatten | Match => return None,
+        };
+        Some(StackEffect::new(inputs, outputs))
+    }
+}
+
 pub(crate) fn decode(chunk: &Chunk, id: usize) -> Result<Vec<Instruction>, DecompilerError> {
     let bytes = chunk.get_instructions();
     let mut result = Vec::new();
