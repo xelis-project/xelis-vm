@@ -184,6 +184,128 @@ fn custom_environment_resolves_ids_without_default_std() {
 }
 
 #[test]
+fn calls_do_not_create_synthetic_locals() {
+    let env = EnvironmentBuilder::default();
+    let source = "fn value() -> u64 { return 2 } entry main() { return value() + 1 }";
+    let module = compile(source, &env, false, false);
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+
+    assert!(recovered.contains("function0()"), "{recovered}");
+    assert!(recovered.contains("1u64"), "{recovered}");
+    assert!(!recovered.contains("let"));
+
+    let tuple_source = "fn tuple() -> (u64, (u64, u64)) { return (1, (2, 3)) } entry main() { let (a, (b, c)) = tuple() return a + b + c }";
+    let env = EnvironmentBuilder::default();
+    let tuple_module = compile(tuple_source, &env, false, false);
+    let tuple_recovered = Decompiler::new(&tuple_module, &env).decompile().unwrap();
+    assert_eq!(tuple_recovered.matches("function0()").count(), 2);
+    assert!(!tuple_recovered.contains("field"), "{tuple_recovered}");
+    let tuple_rebuilt = compile(&tuple_recovered, &env, false, false);
+    assert_eq!(
+        execute(&tuple_module, &env, 1),
+        execute(&tuple_rebuilt, &env, 1),
+        "{tuple_recovered}"
+    );
+}
+
+#[test]
+fn voidable_syscalls_follow_standalone_and_value_contexts() {
+    use silex_environment::{FunctionHandler, SysCallResult};
+    use silex_types::Type;
+
+    let mut env = EnvironmentBuilder::default();
+    env.register_native_function(
+        "maybe_value",
+        None,
+        vec![],
+        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(7).into()))),
+        0,
+        Some(Type::Voidable(Box::new(Type::U64))),
+    );
+
+    let standalone = compile(
+        "entry main() { maybe_value() return 3 }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&standalone, &env).decompile().unwrap();
+    assert!(recovered.contains("maybe_value()"));
+    assert!(!recovered.contains("let value"));
+
+    let used = compile(
+        "entry main() { let value: u64 = maybe_value() return value }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&used, &env).decompile().unwrap();
+    assert!(recovered.contains("maybe_value()"));
+    assert!(!recovered.contains("let value"));
+    compile(&recovered, &env, false, false);
+
+    let nested = compile(
+        "fn consume(value: u64) -> u64 { return value } entry main() { return consume(maybe_value()) }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&nested, &env).decompile().unwrap();
+    assert!(
+        recovered.contains("function0(maybe_value())"),
+        "{recovered}"
+    );
+    compile(&recovered, &env, false, false);
+}
+
+#[test]
+fn short_circuit_expression_does_not_create_a_local() {
+    let env = EnvironmentBuilder::default();
+    let module = compile(
+        "fn truth() -> bool { return true } fn check() -> bool { return false && truth() } entry main() { if check() { return 1 } return 0 }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+    assert!(recovered.contains("&&"), "{recovered}");
+    assert!(!recovered.contains("logic"), "{recovered}");
+    compile(&recovered, &env, false, false);
+}
+
+#[test]
+fn dynamic_calls_infer_erased_function_types_from_opcodes() {
+    let env = EnvironmentBuilder::default();
+    let module = compile(
+        "fn apply(f: fn(u64) -> u64, value: u64) -> u64 { return f(value) } entry main() { return 0 }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+    assert!(recovered.contains("arg0(arg1)"), "{recovered}");
+    compile(&recovered, &env, false, false);
+
+    let pointer_module = compile(
+        "fn add(value: u64) -> u64 { return value + 1 } entry main() { let f: fn(u64) -> u64 = add return f(2) }",
+        &env,
+        false,
+        false,
+    );
+    let pointer_recovered = Decompiler::new(&pointer_module, &env).decompile().unwrap();
+    assert!(
+        pointer_recovered.contains("fn(u64) -> u64"),
+        "{pointer_recovered}"
+    );
+    let pointer_rebuilt = compile(&pointer_recovered, &env, false, false);
+    assert_eq!(
+        execute(&pointer_module, &env, 1),
+        execute(&pointer_rebuilt, &env, 1),
+        "{pointer_recovered}"
+    );
+}
+
+#[test]
 fn environment_struct_fields_from_signature() {
     use silex_decompiler::FunctionSignature;
     use silex_types::Type;

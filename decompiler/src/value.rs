@@ -49,6 +49,8 @@ pub(crate) struct Expr {
     pub binding: Option<String>,
     pub object: Option<Vec<Expr>>,
     pub pending: bool,
+    pub function_pointer: Option<(String, Type)>,
+    pub origin_chunk: Option<usize>,
 }
 
 impl Expr {
@@ -60,6 +62,8 @@ impl Expr {
             binding: None,
             object: None,
             pending: false,
+            function_pointer: None,
+            origin_chunk: None,
         }
     }
 

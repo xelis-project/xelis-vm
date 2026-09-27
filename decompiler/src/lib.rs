@@ -17,8 +17,8 @@ use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Access, Module, OpCode};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::Type;
-use std::collections::BTreeMap;
+use silex_types::{FnType, Primitive, Type, ValueCell};
+use std::collections::{BTreeMap, BTreeSet};
 use value::{joined, literal, map, refine, unpack, Expr, Generics};
 
 /// Optional source metadata for a chunk. Instance arguments are explicit parameters.
@@ -149,6 +149,33 @@ impl<'a, 'env, M> Decompiler<'a, 'env, M> {
                 0,
                 "signature references an unknown chunk",
             ));
+        }
+
+        // Function types are packed as u16 in bytecode. A dynamic call gives
+        // us its arity, so reconstruct an erased parameter type from the call
+        // site itself; later inference refines its argument and return types.
+        for (chunk, code) in instructions.iter().enumerate() {
+            for (index, instruction) in code.iter().enumerate() {
+                if !matches!(instruction.op, OpCode::DynamicCall) || index == 0 {
+                    continue;
+                }
+                let pointer = &code[index - 1];
+                if !matches!(pointer.op, OpCode::MemoryLoad)
+                    || pointer.arg >= signatures[chunk].parameters.len()
+                    || matches!(
+                        signatures[chunk].parameters[pointer.arg],
+                        Type::Function(_) | Type::Closure(_)
+                    )
+                {
+                    continue;
+                }
+                signatures[chunk].parameters[pointer.arg] = Type::Function(FnType::new(
+                    None,
+                    false,
+                    vec![Type::Any; instruction.arg],
+                    Some(Type::Any),
+                ));
+            }
         }
 
         // Propagate parameter/return types across calls, including recursive calls.
@@ -390,6 +417,33 @@ impl<M> Engine<'_, '_, '_, M> {
         Expr::named(name, current.clone())
     }
 
+    fn dynamic_register(&self, register: usize) -> bool {
+        self.code.windows(2).any(|window| {
+            matches!(window[0].op, OpCode::MemoryLoad)
+                && window[0].arg == register
+                && matches!(window[1].op, OpCode::DynamicCall)
+        })
+    }
+
+    fn function_pointer(&self, id: u16) -> Option<(String, Type)> {
+        // A non-closure function pointer is encoded as the module chunk ID.
+        // The compiler has already removed the environment-function offset.
+        let chunk = id as usize;
+        if !self.module.is_callable_chunk(chunk) {
+            return None;
+        }
+        let signature = self.signatures.get(chunk)?;
+        Some((
+            signature.name.clone(),
+            Type::Function(FnType::new(
+                None,
+                false,
+                signature.parameters.clone(),
+                signature.return_type.clone(),
+            )),
+        ))
+    }
+
     fn call_result(
         &mut self,
         state: &mut State,
@@ -397,25 +451,288 @@ impl<M> Engine<'_, '_, '_, M> {
         offset: usize,
         text: String,
         ty: Option<Type>,
+        origin_chunk: Option<usize>,
     ) {
         if let Some(ty) = ty {
             // Calls are expressions in Silex. Keep them on the reconstructed
             // expression stack instead of inventing a source local for them.
-            state.stack.push(Expr::new(text, ty).pending());
+            let mut value = Expr::new(text, ty).pending();
+            value.origin_chunk = origin_chunk;
+            state.stack.push(value);
         } else {
             line(lines, offset, text);
         }
     }
 
     fn voidable_result_is_used(&self, instruction: usize) -> bool {
-        self.code.get(instruction + 1).is_some_and(|next| {
-            matches!(next.op, OpCode::MemorySet | OpCode::Return | OpCode::Cast)
-                || operator(next.op).is_some()
-                || matches!(
-                    next.op,
-                    OpCode::ArrayCall | OpCode::SubLoad | OpCode::Flatten
-                )
-        })
+        // Track the produced value through pushes until an opcode consumes it.
+        // This covers nested arguments, where the immediate next instruction
+        // commonly pushes another argument before the outer call consumes both.
+        let mut pending = vec![(instruction + 1, vec![0usize])];
+        let mut seen = BTreeSet::new();
+        let mut steps = 0usize;
+        while let Some((mut pc, mut markers)) = pending.pop() {
+            while pc < self.code.len() && steps < 4096 {
+                steps += 1;
+                if !seen.insert((pc, markers.clone())) {
+                    break;
+                }
+                let ins = self.code[pc].clone();
+                let mut consume = |n: usize, outputs: usize| -> bool {
+                    if markers.iter().any(|depth| *depth < n) {
+                        return true;
+                    }
+                    for depth in &mut markers {
+                        *depth = *depth - n + outputs;
+                    }
+                    false
+                };
+                match ins.op {
+                    OpCode::Constant
+                    | OpCode::MemoryLoad
+                    | OpCode::MemoryPop
+                    | OpCode::MemoryLen => {
+                        for depth in &mut markers {
+                            *depth += 1;
+                        }
+                    }
+                    OpCode::MemorySet | OpCode::Pop => {
+                        if consume(1, 0) {
+                            return true;
+                        }
+                    }
+                    OpCode::PopN => {
+                        if consume(ins.arg, 0) {
+                            return true;
+                        }
+                    }
+                    OpCode::Cast | OpCode::Neg | OpCode::Inc | OpCode::Dec => {
+                        if consume(1, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::Copy => {
+                        let duplicate = markers.contains(&0);
+                        for depth in &mut markers {
+                            *depth += 1;
+                        }
+                        if duplicate {
+                            markers.push(0);
+                        }
+                    }
+                    OpCode::CopyN => {
+                        let duplicate = markers.contains(&ins.arg);
+                        for depth in &mut markers {
+                            *depth += 1;
+                        }
+                        if duplicate {
+                            markers.push(0);
+                        }
+                    }
+                    OpCode::ToOwned => {}
+                    OpCode::Swap => {
+                        for depth in &mut markers {
+                            if *depth == 0 {
+                                *depth = ins.arg;
+                            } else if *depth == ins.arg {
+                                *depth = 0;
+                            }
+                        }
+                    }
+                    OpCode::Swap2 => {
+                        for depth in &mut markers {
+                            if *depth == ins.arg {
+                                *depth = ins.extra;
+                            } else if *depth == ins.extra {
+                                *depth = ins.arg;
+                            }
+                        }
+                    }
+                    OpCode::JumpIfFalse => {
+                        if consume(1, 0) {
+                            return true;
+                        }
+                        let target = self.target(ins.arg);
+                        if target < self.code.len() {
+                            pending.push((target, markers.clone()));
+                        }
+                    }
+                    OpCode::Jump => {
+                        pc = self.target(ins.arg);
+                        continue;
+                    }
+                    OpCode::SysCall => {
+                        let Some(f) = self
+                            .environment
+                            .get_functions_mapper()
+                            .get_function(&(ins.arg as u16))
+                        else {
+                            break;
+                        };
+                        let inputs = f.parameters.len() + usize::from(f.require_instance);
+                        if consume(inputs, usize::from(f.return_type.is_some())) {
+                            return true;
+                        }
+                    }
+                    OpCode::InvokeChunk => {
+                        let returns = self
+                            .signatures
+                            .get(ins.arg)
+                            .is_some_and(|s| s.return_type.is_some());
+                        if consume(ins.extra, usize::from(returns)) {
+                            return true;
+                        }
+                    }
+                    OpCode::DynamicCall => {
+                        if consume(ins.arg + 1, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::NewObject => {
+                        if consume(ins.arg, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::NewMap => {
+                        if consume(ins.arg * 2, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::NewRange => {
+                        if consume(2, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::ArrayCall => {
+                        if consume(2, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::IterableLength => {
+                        if consume(1, 1) {
+                            return true;
+                        }
+                    }
+                    OpCode::IteratorBegin => {
+                        if consume(1, 0) {
+                            return true;
+                        }
+                    }
+                    OpCode::IteratorNext => {
+                        for depth in &mut markers {
+                            *depth += 1;
+                        }
+                    }
+                    OpCode::Match => {
+                        if markers.contains(&0) {
+                            return true;
+                        }
+                        let target = self.target(ins.arg);
+                        if target < self.code.len() {
+                            pending.push((target, markers.clone()));
+                        }
+                    }
+                    OpCode::SubLoad | OpCode::Flatten => {
+                        if consume(1, 1) {
+                            return true;
+                        }
+                    }
+                    op if operator(op).is_some() => {
+                        let (_, assign, _) = operator(op).unwrap();
+                        if consume(2, usize::from(!assign)) {
+                            return true;
+                        }
+                    }
+                    OpCode::Return => return markers.contains(&0),
+                    _ => break,
+                }
+                pc += 1;
+            }
+            if steps >= 4096 {
+                break;
+            }
+        }
+        false
+    }
+
+    fn tuple_pattern(
+        &mut self,
+        value: Expr,
+        ty: &Type,
+        pc: &mut usize,
+        reserved: usize,
+        state: &mut State,
+    ) -> Result<(String, Type), DecompilerError> {
+        let mut types = match ty {
+            Type::Tuples(types) => types.clone(),
+            Type::Array(inner) => {
+                // Packed type metadata cannot distinguish a homogeneous tuple
+                // from an array. A nested Flatten marks tuple destructuring;
+                // count its stores and leave the parent's pending fields for
+                // the caller.
+                let actions = self
+                    .code
+                    .get(*pc..)
+                    .unwrap_or(&[])
+                    .iter()
+                    .take_while(|instruction| {
+                        matches!(instruction.op, OpCode::MemorySet | OpCode::Pop)
+                    })
+                    .count();
+                let arity = actions.saturating_sub(reserved);
+                if arity < 2 {
+                    return Err(self.error(0, "cannot infer nested tuple arity from opcodes"));
+                }
+                vec![*inner.clone(); arity]
+            }
+            _ => return Err(self.error(0, format!("cannot recover tuple pattern type from {ty}"))),
+        };
+        let mut pattern = vec![String::new(); types.len()];
+        for index in (0..types.len()).rev() {
+            let mut field = value
+                .object
+                .as_ref()
+                .and_then(|values| values.get(index))
+                .cloned()
+                .unwrap_or_else(|| {
+                    Expr::new(format!("({}).{index}", value.text), types[index].clone())
+                });
+            self.constrain(&mut field, &types[index]);
+            let instruction = self
+                .code
+                .get(*pc)
+                .ok_or_else(|| self.error(0, "incomplete tuple destructuring opcodes"))?;
+            let (field_pattern, nested_type) = match instruction.op {
+                OpCode::MemorySet => {
+                    let name = format!("local{}", instruction.offset);
+                    let local = self.binding(name.clone(), field.ty.clone());
+                    self.constrain(&mut field, &local.ty);
+                    state.registers.insert(instruction.arg, local);
+                    *pc += 1;
+                    (name, None)
+                }
+                OpCode::Pop => {
+                    *pc += 1;
+                    ("_".into(), None)
+                }
+                OpCode::Flatten => {
+                    *pc += 1;
+                    let (pattern, inferred_type) =
+                        self.tuple_pattern(field, &types[index], pc, reserved + index, state)?;
+                    (pattern, Some(inferred_type))
+                }
+                _ => {
+                    return Err(
+                        self.error(instruction.offset, "unexpected tuple destructuring opcode")
+                    )
+                }
+            };
+            pattern[index] = field_pattern;
+            if let Some(nested_type) = nested_type {
+                types[index] = nested_type;
+            }
+        }
+        Ok((format!("({})", pattern.join(", ")), Type::Tuples(types)))
     }
 
     fn block(
@@ -446,9 +763,11 @@ impl<M> Engine<'_, '_, '_, M> {
                         .constants()
                         .get_index(arg)
                         .ok_or_else(|| self.error(offset, "unknown constant ID"))?;
-                    state
-                        .stack
-                        .push(literal(value, 0).map_err(|m| self.error(offset, m))?);
+                    let mut expr = literal(value, 0).map_err(|m| self.error(offset, m))?;
+                    if let ValueCell::Primitive(Primitive::U16(id)) = value {
+                        expr.function_pointer = self.function_pointer(*id);
+                    }
+                    state.stack.push(expr);
                 }
                 OpCode::MemoryLoad => {
                     let mut value = state
@@ -464,7 +783,15 @@ impl<M> Engine<'_, '_, '_, M> {
                 OpCode::MemorySet => {
                     let mut value = self.pop(state, offset)?;
                     let name = format!("local{offset}");
+                    if self.dynamic_register(arg) {
+                        if let Some((function_name, function_type)) = &value.function_pointer {
+                            value.text = function_name.clone();
+                            value.ty = function_type.clone();
+                        }
+                    }
                     let local = self.binding(name.clone(), value.ty.clone());
+                    let mut local = local;
+                    local.function_pointer = value.function_pointer.clone();
                     self.constrain(&mut value, &local.ty);
                     line(
                         &mut lines,
@@ -510,6 +837,18 @@ impl<M> Engine<'_, '_, '_, M> {
                     let types = match (&value.ty, &value.object) {
                         (Type::Tuples(types), _) => types.clone(),
                         (_, Some(values)) => values.iter().map(|v| v.ty.clone()).collect(),
+                        (Type::Array(inner), None) => {
+                            let arity = self
+                                .code
+                                .get(i + 1..)
+                                .unwrap_or(&[])
+                                .iter()
+                                .take_while(|next| {
+                                    matches!(next.op, OpCode::MemorySet | OpCode::Pop)
+                                })
+                                .count();
+                            vec![*inner.clone(); arity]
+                        }
                         _ => {
                             return Err(
                                 self.error(offset, "cannot recover destructured tuple types")
@@ -522,21 +861,20 @@ impl<M> Engine<'_, '_, '_, M> {
                         );
                     }
                     value.as_type(&Type::Tuples(types.clone()));
-                    let fields: Vec<_> = types
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, ty)| {
-                            value
-                                .object
-                                .as_ref()
-                                .and_then(|values| values.get(index))
-                                .cloned()
-                                .unwrap_or_else(|| {
-                                    Expr::new(format!("({}).{index}", value.text), ty)
-                                })
-                        })
-                        .collect();
-                    state.stack.extend(fields);
+                    let mut pc = i + 1;
+                    let pattern_type = Type::Tuples(types);
+                    let (pattern, inferred_type) =
+                        self.tuple_pattern(value.clone(), &pattern_type, &mut pc, 0, state)?;
+                    if let Some(chunk) = value.origin_chunk {
+                        self.signatures[chunk].return_type = Some(inferred_type);
+                    }
+                    line(
+                        &mut lines,
+                        offset,
+                        format!("let {pattern} = {}", value.text),
+                    );
+                    i = pc;
+                    continue;
                 }
                 OpCode::NewRange => {
                     let right = self.pop(state, offset)?;
@@ -666,6 +1004,58 @@ impl<M> Engine<'_, '_, '_, M> {
                         offset,
                         format!("{name}({})", joined(&args)),
                         ty,
+                        None,
+                    );
+                }
+                OpCode::DynamicCall => {
+                    let mut function = self.pop(state, offset)?;
+                    let args = self.args(state, arg, offset)?;
+                    if let Some(parameter) = function.parameter {
+                        let returns_value = self.voidable_result_is_used(i);
+                        let return_type = returns_value.then_some(Type::Any);
+                        let function_type = Type::Function(FnType::new(
+                            None,
+                            false,
+                            args.iter().map(|value| value.ty.clone()).collect(),
+                            return_type.clone(),
+                        ));
+                        self.signatures[self.id].parameters[parameter] = function_type.clone();
+                        function.ty = function_type;
+                    }
+                    let return_type = match &function.ty {
+                        Type::Function(ty) => ty.return_type().cloned(),
+                        Type::Closure(ty) => ty.return_type().cloned(),
+                        _ => {
+                            return Err(self.error(
+                                offset,
+                                "dynamic call signature is erased; supply a function signature",
+                            ));
+                        }
+                    };
+                    if return_type
+                        .as_ref()
+                        .is_some_and(|t| matches!(t, Type::Voidable(_)))
+                        && !self.voidable_result_is_used(i)
+                    {
+                        line(
+                            &mut lines,
+                            offset,
+                            format!("{}({})", function.text, joined(&args)),
+                        );
+                        i += 1;
+                        continue;
+                    }
+                    let return_type = return_type.map(|ty| match ty {
+                        Type::Voidable(inner) => *inner,
+                        other => other,
+                    });
+                    self.call_result(
+                        state,
+                        &mut lines,
+                        offset,
+                        format!("{}({})", function.text, joined(&args)),
+                        return_type,
+                        None,
                     );
                 }
                 OpCode::InvokeChunk => {
@@ -709,6 +1099,7 @@ impl<M> Engine<'_, '_, '_, M> {
                         offset,
                         format!("{}({})", signature.name, joined(&args)),
                         return_type,
+                        Some(arg),
                     );
                 }
                 OpCode::Return => {
@@ -777,12 +1168,6 @@ impl<M> Engine<'_, '_, '_, M> {
                     }
                     let mut left = self.pop(state, offset)?;
                     self.constrain(&mut left, &Type::Bool);
-                    let name = format!("logic{offset}");
-                    line(
-                        &mut lines,
-                        offset,
-                        format!("let {name}: bool = {}", left.text),
-                    );
                     let mut branch = state.clone();
                     let mut body =
                         self.block(jump_i + 1, target - 1, &mut branch, loop_targets, depth + 1)?;
@@ -794,6 +1179,28 @@ impl<M> Engine<'_, '_, '_, M> {
                     if branch.stack != state.stack {
                         return Err(self.error(offset, "unbalanced short-circuit stack"));
                     }
+                    if body.is_empty() {
+                        state.stack.push(
+                            Expr::new(
+                                format!(
+                                    "({} {} {})",
+                                    left.text,
+                                    if neg { "||" } else { "&&" },
+                                    right.text
+                                ),
+                                Type::Bool,
+                            )
+                            .pending(),
+                        );
+                        i = target;
+                        continue;
+                    }
+                    let name = format!("logic{offset}");
+                    line(
+                        &mut lines,
+                        offset,
+                        format!("let {name}: bool = {}", left.text),
+                    );
                     line(&mut body, offset, format!("{name} = {}", right.text));
                     line(
                         &mut lines,
