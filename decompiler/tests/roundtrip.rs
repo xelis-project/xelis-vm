@@ -209,6 +209,61 @@ fn calls_do_not_create_synthetic_locals() {
 }
 
 #[test]
+fn discarded_values_do_not_create_bindings() {
+    let recovered = roundtrip("fn value() -> u64 { return 2 } entry main() { value(); value(); return 7 }");
+    assert!(!recovered.contains("let"), "{recovered}");
+}
+
+#[test]
+fn pop_n_does_not_create_bindings() {
+    use silex_bytecode::{Chunk, OpCode};
+
+    let env = EnvironmentBuilder::default();
+    let mut module = Module::new();
+    let constant = module.add_constant(Primitive::U64(7)) as u16;
+    let mut chunk = Chunk::new();
+    for _ in 0..3 {
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(constant);
+    }
+    chunk.emit_opcode(OpCode::PopN);
+    chunk.write_u8(2);
+    chunk.emit_opcode(OpCode::Return);
+    module.add_entry_chunk(chunk, None);
+
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+    assert!(!recovered.contains("let"), "{recovered}");
+    let rebuilt = compile(&recovered, &env, false, false);
+    assert_eq!(execute(&module, &env, 0), execute(&rebuilt, &env, 0));
+}
+
+#[test]
+fn discarded_expressions_still_trap() {
+    let env = EnvironmentBuilder::default();
+    let module = compile(
+        "entry main() { let zero: u64 = 0 let _ = 1 / zero return 7 }",
+        &env,
+        false,
+        false,
+    );
+    let recovered = Decompiler::new(&module, &env).decompile().unwrap();
+    assert!(!recovered.contains("let _ ="), "{recovered}");
+    let rebuilt = compile(&recovered, &env, false, false);
+    for module in [&module, &rebuilt] {
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: module.into(),
+            environment: env.environment().into(),
+            metadata: (&()).into(),
+        })
+        .unwrap();
+        vm.context_mut().set_gas_limit(1_000_000);
+        vm.invoke_chunk_id_unchecked(0).unwrap();
+        assert!(vm.run_blocking().is_err(), "{recovered}");
+    }
+}
+
+#[test]
 fn voidable_syscalls_follow_standalone_and_value_contexts() {
     use silex_environment::{FunctionHandler, SysCallResult};
     use silex_types::Type;

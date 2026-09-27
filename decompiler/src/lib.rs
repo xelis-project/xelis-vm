@@ -809,8 +809,7 @@ impl<M> Engine<'_, '_, '_, M> {
                 OpCode::Pop | OpCode::PopN => {
                     for _ in 0..if matches!(op, OpCode::Pop) { 1 } else { arg } {
                         let value = self.pop(state, offset)?;
-                        // Preserve evaluation of discarded expressions (including traps).
-                        line(&mut lines, offset, format!("let _ = {}", value.text));
+                        line(&mut lines, offset, value.text);
                     }
                 }
                 OpCode::Cast => {
