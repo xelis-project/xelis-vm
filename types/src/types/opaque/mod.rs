@@ -207,6 +207,25 @@ impl<'a> Deserialize<'a> for OpaqueType {
     }
 }
 
+/// A directly contained VM value or opaque object, borrowed without a wrapper.
+#[derive(Debug, Clone, Copy)]
+pub enum OpaqueChild<'a> {
+    Value(&'a crate::ValueCell),
+    Opaque(&'a dyn Opaque),
+}
+
+impl<'a> From<&'a crate::ValueCell> for OpaqueChild<'a> {
+    fn from(value: &'a crate::ValueCell) -> Self {
+        Self::Value(value)
+    }
+}
+
+impl<'a> From<&'a dyn Opaque> for OpaqueChild<'a> {
+    fn from(value: &'a dyn Opaque) -> Self {
+        Self::Opaque(value)
+    }
+}
+
 pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
 
@@ -232,6 +251,11 @@ pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     fn validate(&self) -> Result<(), ValueError> {
         Ok(())
     }
+
+    /// Expose directly contained VM values and opaque objects to bounded checks.
+    /// Containers must expose every contained value; scalar opaque types leave
+    /// this empty. Visit direct children only; walkers handle their descendants.
+    fn visit_children<'a>(&'a self, _: &mut dyn FnMut(OpaqueChild<'a>)) {}
 }
 
 impl Hash for dyn Opaque {

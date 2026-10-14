@@ -17,6 +17,7 @@ pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     }
 
     let value = ValueCell::Object(array.into());
+    value.calculate_depth(context.max_value_depth())?;
     let memory_usage = value.calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 
@@ -62,6 +63,7 @@ pub fn new_map<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     }
 
     let map = ValueCell::Map(Box::new(map));
+    map.calculate_depth(context.max_value_depth())?;
     let memory_usage = map.calculate_memory_usage(context.memory_left())?;
     context.increase_memory_usage_unchecked(memory_usage)?;
 

@@ -43,7 +43,9 @@ pub(super) fn iter_unfold<M: 'static>(
     _: &mut VMContext,
 ) -> FnReturnType<M> {
     let closure = p.remove(1);
-    let seed = p.remove(0);
+    // The iterator owns its state: later writes to the caller's seed must not
+    // invalidate the depth invariant established when the iterator is created.
+    let seed = p.remove(0).into_owned().into();
     Ok(SysCallResult::Return(wrap_iter(XIterator {
         source: BaseSource::Unfold { closure, state: Some(seed) },
         pipe: VecDeque::new(),
@@ -190,16 +192,20 @@ pub(super) fn iter_next<M: 'static>(
     zelf: FnInstance,
     _: FnParams,
     _: &ModuleMetadata<'_, M>,
-    _: &mut VMContext,
+    context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
+    let budget = context
+        .max_value_depth()
+        .checked_sub(sv.depth())
+        .ok_or(silex_types::ValueError::MaxDepthReached)?;
 
     // Fast path: pure-sync pipeline — mutate the iterator in place through
     // the pointer (if `sv` is a Pointer the change is immediately visible
     // to the caller) and return the item.
     if !sv.as_opaque_type::<XIterator>()?.needs_callback() {
         let it = sv.as_opaque_type_mut::<XIterator>()?;
-        return Ok(SysCallResult::Return(match it.next_sync()? {
+        return Ok(SysCallResult::Return(match it.next_sync(budget)? {
             Some(ptr) => ptr.to_owned().into(),
             None => Primitive::Null.into(),
         }));
@@ -214,38 +220,38 @@ pub(super) fn iter_next<M: 'static>(
     let it = sv.as_opaque_type_mut::<XIterator>()?;
     let iter = std::mem::replace(it, XIterator::empty());
 
-    lazy_next(iter, write_back)
+    lazy_next(iter, write_back, budget)
 }
 
 pub(super) fn iter_collect<M: 'static>(
-    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Collect)
+    lazy_collect(it, VecDeque::new(), TerminalOp::Collect, context.max_value_depth())
 }
 
 pub(super) fn iter_count<M: 'static>(
-    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Count)
+    lazy_collect(it, VecDeque::new(), TerminalOp::Count, context.max_value_depth())
 }
 
 pub(super) fn iter_sum<M: 'static>(
-    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Sum)
+    lazy_collect(it, VecDeque::new(), TerminalOp::Sum, context.max_value_depth())
 }
 
 pub(super) fn iter_for_each<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let f = p.remove(0)
@@ -253,44 +259,44 @@ pub(super) fn iter_for_each<M: 'static>(
 
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::ForEach(f.into()))
+    lazy_collect(it, VecDeque::new(), TerminalOp::ForEach(f.into()), context.max_value_depth())
 }
 
 pub(super) fn iter_find<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let pred = p.remove(0)
         .into_owned();
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Find(pred.into()))
+    lazy_collect(it, VecDeque::new(), TerminalOp::Find(pred.into()), context.max_value_depth())
 }
 
 pub(super) fn iter_any<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let pred = p.remove(0)
         .into_owned();
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Any(pred.into()))
+    lazy_collect(it, VecDeque::new(), TerminalOp::Any(pred.into()), context.max_value_depth())
 }
 
 pub(super) fn iter_all<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let pred = p.remove(0)
         .into_owned();
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::All(pred.into()))
+    lazy_collect(it, VecDeque::new(), TerminalOp::All(pred.into()), context.max_value_depth())
 }
 
 pub(super) fn iter_position<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let pred = p.remove(0)
@@ -298,11 +304,11 @@ pub(super) fn iter_position<M: 'static>(
 
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Position(pred.into()))
+    lazy_collect(it, VecDeque::new(), TerminalOp::Position(pred.into()), context.max_value_depth())
 }
 
 pub(super) fn iter_fold<M: 'static>(
-    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext,
+    zelf: FnInstance, mut p: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext,
 ) -> FnReturnType<M> {
     let mut sv = zelf?;
     let init = p.remove(0)
@@ -313,5 +319,5 @@ pub(super) fn iter_fold<M: 'static>(
         .into();
     let it = sv.as_opaque_type_mut::<XIterator>()?;
 
-    lazy_collect(it, VecDeque::new(), TerminalOp::Fold { init, closure })
+    lazy_collect(it, VecDeque::new(), TerminalOp::Fold { init, closure }, context.max_value_depth())
 }

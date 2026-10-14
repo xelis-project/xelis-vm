@@ -18,6 +18,7 @@ use crate::{
     opaque::OpaqueWrapper,
     DefinedType,
     Opaque,
+    OpaqueChild,
     Type,
     U256
 };
@@ -383,11 +384,11 @@ impl ValueCell {
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
-        if matches!(self, Self::Primitive(_)) {
+        if matches!(self, Self::Primitive(v) if !matches!(v, Primitive::Opaque(_))) {
             return Ok(0);
         }
 
-        let mut stack = vec![(ValueCellRef::Ref(self), 0)];
+        let mut stack = vec![(OpaqueChild::Value(self), 0)];
         let mut biggest_depth = 0;
 
         while let Some((next, depth)) = stack.pop() {
@@ -399,18 +400,31 @@ impl ValueCell {
                 biggest_depth = depth;
             }
 
-            match next.value() {
+            let value = match next {
+                OpaqueChild::Value(value) => value,
+                OpaqueChild::Opaque(opaque) => {
+                    opaque.visit_children(&mut |child| stack.push((child, depth + 1)));
+                    continue;
+                }
+            };
+            match value {
+                ValueCell::Primitive(Primitive::Opaque(opaque)) => {
+                    stack.push((OpaqueChild::Opaque(opaque.inner()), depth));
+                },
                 ValueCell::Primitive(_) => {},
                 ValueCell::Bytes(_) => {},
                 ValueCell::Object(values) => {
                     let depth = depth + 1;
-                    stack.extend(values.iter().cloned().map(|v| (ValueCellRef::Pointer(v), depth)));
+                    stack.extend(values.iter().map(|v| (OpaqueChild::Value(v.as_ref()), depth)));
                 },
                 ValueCell::Map(map) => {
                     let depth = depth + 1;
                     stack.extend(
                         map.iter()
-                            .flat_map(|(k, v)| [(ValueCellRef::Owned(k.clone_ref()), depth), (ValueCellRef::Pointer(v.clone()), depth)])
+                            .flat_map(|(k, v)| [
+                                (OpaqueChild::Value(k), depth),
+                                (OpaqueChild::Value(v.as_ref()), depth),
+                            ])
                     )
                 }
             };

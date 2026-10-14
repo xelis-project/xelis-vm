@@ -914,3 +914,435 @@ fn test_compiler_entry_enforce_enum_mixed_variants() {
         Err(ValidatorError::InvalidChunkParam(0))
     ));
 }
+
+fn nested_objects(depth: usize) -> ValueCell {
+    let mut value = ValueCell::Primitive(Primitive::U64(42));
+    for _ in 0..depth {
+        value = ValueCell::Object(vec![value.into()]);
+    }
+    value
+}
+
+#[test]
+fn test_value_depth_boundary_for_constants_and_invocations() {
+    let env = create_environment();
+    for params in [
+        None,
+        Some(vec![TypePacked::Any]),
+        Some(vec![TypePacked::Array(Box::new(TypePacked::Any))]),
+    ] {
+        for public in [false, true] {
+            let module = if public {
+                create_module_with_public_chunk(params.clone())
+            } else {
+                create_module_with_entry_chunk(params.clone())
+            };
+            let validator = ModuleValidator::new(&module, &env);
+            let allowed = nested_objects(16);
+            assert!(validator.verify_constant(&allowed).is_ok());
+            assert!(validator
+                .verify_invoke_chunk(0, std::iter::once(&allowed))
+                .is_ok());
+            for depth in [17, 100] {
+                let value = nested_objects(depth);
+                assert!(matches!(
+                    validator.verify_constant(&value),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+                assert!(matches!(
+                    validator.verify_invoke_chunk(0, std::iter::once(&value)),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_map_key_and_value_depth_boundaries() {
+    let env = create_environment();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    for key_is_nested in [false, true] {
+        for depth in [15, 16] {
+            let mut map = IndexMap::new();
+            let (key, value) = if key_is_nested {
+                (nested_objects(depth), Primitive::U64(1).into())
+            } else {
+                (Primitive::U64(1).into(), nested_objects(depth))
+            };
+            map.insert(key, value.into());
+            let value = ValueCell::Map(Box::new(map));
+            if depth == 15 {
+                assert!(validator.verify_constant(&value).is_ok());
+                assert!(validator
+                    .verify_invoke_chunk(0, std::iter::once(&value))
+                    .is_ok());
+            } else {
+                assert!(matches!(
+                    validator.verify_constant(&value),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+                assert!(matches!(
+                    validator.verify_invoke_chunk(0, std::iter::once(&value)),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_cyclic_values_and_map_keys_reject_without_unbounded_walks() {
+    let env = create_environment();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    for as_key in [false, true] {
+        let mut pointer = ValuePointer::new(Primitive::U64(1).into());
+        let mut map = IndexMap::new();
+        // Insert while acyclic: map insertion itself hashes the key.
+        if as_key {
+            map.insert(
+                ValueCell::Object(vec![pointer.clone()]),
+                Primitive::U64(1).into(),
+            );
+        }
+        // SAFETY: no references to the payload are live during either mutation.
+        unsafe {
+            *pointer.as_mut() = ValueCell::Object(vec![pointer.clone()]);
+        }
+        let value = if as_key {
+            ValueCell::Map(Box::new(map))
+        } else {
+            ValueCell::Object(vec![pointer.clone()])
+        };
+        let constant_result = validator.verify_constant(&value);
+        let invoke_result = validator.verify_invoke_chunk(0, std::iter::once(&value));
+        // Break the cycle before assertions and dropping the test fixture.
+        unsafe {
+            *pointer.as_mut() = Primitive::U64(1).into();
+        }
+        assert!(matches!(
+            constant_result,
+            Err(ValidatorError::ConstantTooDeep)
+        ));
+        assert!(matches!(
+            invoke_result,
+            Err(ValidatorError::ConstantTooDeep)
+        ));
+    }
+}
+
+#[test]
+fn test_map_key_nested_map_remains_invalid() {
+    let env = create_environment();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    let key = ValueCell::Object(vec![ValueCell::Map(Box::new(IndexMap::new())).into()]);
+    let mut map = IndexMap::new();
+    map.insert(key, Primitive::U64(1).into());
+    let value = ValueCell::Map(Box::new(map));
+    assert!(matches!(
+        validator.verify_constant(&value),
+        Err(ValidatorError::InvalidMapKeyType)
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&value)),
+        Err(ValidatorError::InvalidChunkParam(0))
+    ));
+}
+
+#[derive(Debug, Clone, silex_types::Opaque)]
+#[opaque(children = &self.values)]
+struct OpaqueContainer {
+    values: Vec<ValueCell>,
+}
+
+#[derive(Debug, Clone, silex_types::Opaque)]
+#[opaque(children = [
+    silex_types::OpaqueChild::Value(&self.value),
+    silex_types::OpaqueChild::Opaque(&self.child),
+])]
+struct MixedOpaqueContainer {
+    value: ValueCell,
+    child: OpaqueContainer,
+}
+
+#[test]
+fn test_mixed_opaque_children_share_depth_and_validation_checks() {
+    let mut builder = EnvironmentBuilder::<()>::default();
+    builder.register_opaque::<MixedOpaqueContainer>("MixedOpaqueContainer", true);
+    builder.register_opaque::<OpaqueContainer>("OpaqueContainer", true);
+    let env = builder.build();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    for opaque_branch in [false, true] {
+        for too_deep in [false, true] {
+            let value: ValueCell = Primitive::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+                value: nested_objects(if opaque_branch {
+                    0
+                } else {
+                    15 + usize::from(too_deep)
+                }),
+                child: OpaqueContainer {
+                    values: vec![nested_objects(if opaque_branch {
+                        14 + usize::from(too_deep)
+                    } else {
+                        0
+                    })],
+                },
+            }))
+            .into();
+            if too_deep {
+                assert!(matches!(
+                    value.calculate_depth(16),
+                    Err(silex_types::ValueError::MaxDepthReached)
+                ));
+                assert!(matches!(
+                    validator.verify_constant(&value),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+                assert!(matches!(
+                    validator.verify_invoke_chunk(0, std::iter::once(&value)),
+                    Err(ValidatorError::ConstantTooDeep)
+                ));
+            } else {
+                assert_eq!(value.calculate_depth(16).unwrap(), 16);
+                assert!(validator.verify_constant(&value).is_ok());
+                assert!(validator
+                    .verify_invoke_chunk(0, std::iter::once(&value))
+                    .is_ok());
+            }
+        }
+    }
+    let value = Primitive::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+        value: Primitive::U64(0).into(),
+        child: OpaqueContainer {
+            values: vec![Primitive::Range(Box::new((
+                Primitive::U64(1),
+                Primitive::String("invalid".into()),
+            )))
+            .into()],
+        },
+    }))
+    .into();
+    assert!(matches!(
+        validator.verify_constant(&value),
+        Err(ValidatorError::InvalidRange)
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&value)),
+        Err(ValidatorError::InvalidChunkParam(0))
+    ));
+}
+
+#[test]
+fn test_direct_opaque_children_require_external_input_registration() {
+    for registered in [false, true] {
+        let mut builder = EnvironmentBuilder::<()>::default();
+        builder.register_opaque::<MixedOpaqueContainer>("MixedOpaqueContainer", true);
+        if registered {
+            builder.register_opaque::<OpaqueContainer>("OpaqueContainer", false);
+        }
+        let env = builder.build();
+        let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+        let validator = ModuleValidator::new(&module, &env);
+        let value = Primitive::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+            value: Primitive::U64(0).into(),
+            child: OpaqueContainer { values: vec![] },
+        }))
+        .into();
+        assert!(matches!(
+            validator.verify_constant(&value),
+            Err(ValidatorError::InvalidOpaque)
+        ));
+        assert!(matches!(
+            validator.verify_invoke_chunk(0, std::iter::once(&value)),
+            Err(ValidatorError::InvalidChunkParam(0))
+        ));
+    }
+}
+
+#[test]
+fn test_opaque_children_participate_in_depth_and_value_validation() {
+    let mut builder = EnvironmentBuilder::<()>::default();
+    builder.register_opaque::<OpaqueContainer>("OpaqueContainer", true);
+    let env = builder.build();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    for depth in [15, 16] {
+        let value = Primitive::Opaque(OpaqueWrapper::new(OpaqueContainer {
+            values: vec![nested_objects(depth)],
+        }))
+        .into();
+        if depth == 15 {
+            assert!(validator.verify_constant(&value).is_ok());
+            assert!(validator
+                .verify_invoke_chunk(0, std::iter::once(&value))
+                .is_ok());
+            assert_eq!(value.calculate_depth(16).unwrap(), 16);
+        } else {
+            assert!(matches!(
+                validator.verify_constant(&value),
+                Err(ValidatorError::ConstantTooDeep)
+            ));
+            assert!(matches!(
+                validator.verify_invoke_chunk(0, std::iter::once(&value)),
+                Err(ValidatorError::ConstantTooDeep)
+            ));
+            assert!(matches!(
+                value.calculate_depth(16),
+                Err(silex_types::ValueError::MaxDepthReached)
+            ));
+        }
+    }
+    let invalid_range = Primitive::Range(Box::new((
+        Primitive::U64(1),
+        Primitive::String("invalid".into()),
+    )))
+    .into();
+    let value = Primitive::Opaque(OpaqueWrapper::new(OpaqueContainer {
+        values: vec![invalid_range],
+    }))
+    .into();
+    assert!(matches!(
+        validator.verify_constant(&value),
+        Err(ValidatorError::InvalidRange)
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&value)),
+        Err(ValidatorError::InvalidChunkParam(0))
+    ));
+}
+
+#[test]
+fn test_any_parameters_cannot_hide_unregistered_or_internal_opaques() {
+    for register in [false, true] {
+        let mut builder = EnvironmentBuilder::<()>::default();
+        if register {
+            builder.register_opaque::<OpaqueContainer>("OpaqueContainer", false);
+        }
+        let env = builder.build();
+        let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+        let validator = ModuleValidator::new(&module, &env);
+        let value =
+            Primitive::Opaque(OpaqueWrapper::new(OpaqueContainer { values: vec![] })).into();
+        assert!(matches!(
+            validator.verify_invoke_chunk(0, std::iter::once(&value)),
+            Err(ValidatorError::InvalidChunkParam(0))
+        ));
+    }
+}
+
+#[test]
+fn test_shared_values_are_checked_at_each_path_depth() {
+    let env = create_environment();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    let shared = ValuePointer::new(nested_objects(2));
+    let mut deeper = ValueCell::Object(vec![shared.clone()]);
+    for _ in 0..14 {
+        deeper = ValueCell::Object(vec![deeper.into()]);
+    }
+    // One branch reaches the shared payload shallowly; the other exceeds 16.
+    let value = ValueCell::Object(vec![shared, deeper.into()]);
+    assert!(matches!(
+        validator.verify_constant(&value),
+        Err(ValidatorError::ConstantTooDeep)
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&value)),
+        Err(ValidatorError::ConstantTooDeep)
+    ));
+}
+
+#[test]
+fn test_depth_boundary_with_empty_containers_and_bytes() {
+    let env = create_environment();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    for leaf in [
+        ValueCell::Object(vec![]),
+        ValueCell::Map(Box::new(IndexMap::new())),
+        ValueCell::Bytes(vec![1]),
+    ] {
+        let mut value = leaf;
+        for _ in 0..16 {
+            value = ValueCell::Object(vec![value.into()]);
+        }
+        assert!(validator.verify_constant(&value).is_ok());
+        assert!(validator
+            .verify_invoke_chunk(0, std::iter::once(&value))
+            .is_ok());
+        let value = ValueCell::Object(vec![value.into()]);
+        assert!(matches!(
+            validator.verify_constant(&value),
+            Err(ValidatorError::ConstantTooDeep)
+        ));
+        assert!(matches!(
+            validator.verify_invoke_chunk(0, std::iter::once(&value)),
+            Err(ValidatorError::ConstantTooDeep)
+        ));
+    }
+}
+
+#[test]
+fn test_opaque_validation_runs_after_bounded_child_checks() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    #[derive(Debug, Clone, silex_types::DynType)]
+    struct ValidatedContainer {
+        value: ValueCell,
+        calls: Arc<AtomicUsize>,
+    }
+    impl JSONHelper for ValidatedContainer {}
+    impl Opaque for ValidatedContainer {
+        fn clone_box(&self) -> Box<dyn Opaque> {
+            Box::new(self.clone())
+        }
+        fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(silex_types::OpaqueChild<'a>)) {
+            visitor((&self.value).into());
+        }
+        fn validate(&self) -> Result<(), silex_types::ValueError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Err(silex_types::ValueError::UnknownType)
+        }
+    }
+    let mut builder = EnvironmentBuilder::<()>::default();
+    builder.register_opaque::<ValidatedContainer>("ValidatedContainer", true);
+    let env = builder.build();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &env);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let too_deep =
+        ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(ValidatedContainer {
+            value: nested_objects(16),
+            calls: calls.clone(),
+        })));
+    assert!(matches!(
+        validator.verify_constant(&too_deep),
+        Err(ValidatorError::ConstantTooDeep)
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&too_deep)),
+        Err(ValidatorError::ConstantTooDeep)
+    ));
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    let shallow = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(ValidatedContainer {
+        value: nested_objects(0),
+        calls: calls.clone(),
+    })));
+    assert!(matches!(
+        validator.verify_constant(&shallow),
+        Err(ValidatorError::ValueError(
+            silex_types::ValueError::UnknownType
+        ))
+    ));
+    assert!(matches!(
+        validator.verify_invoke_chunk(0, std::iter::once(&shallow)),
+        Err(ValidatorError::InvalidChunkParam(0))
+    ));
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+}

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 use silex_environment::Environment;
-use silex_types::{Primitive, ValueCell, ValueCellRef, ValueError};
+use silex_types::{OpaqueChild, Primitive, ValueCell, ValueError};
 use silex_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
@@ -75,76 +75,89 @@ impl<'a, M> ModuleValidator<'a, M> {
         Self { module, environment, constant_max_depth: 16, constant_max_memory: 1024 * 1024 }
     }
 
-    // Verify a constant and return the memory usage
+    // Walk values and opaque children before type matching or custom validation.
     pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError> {
-        let mut stack = vec![(ValueCellRef::Ref(constant), 0)];
-
-        while let Some((value, depth)) = stack.pop() {
+        let mut stack = vec![(OpaqueChild::Value(constant), 0, false)];
+        let mut opaques = Vec::new();
+        while let Some((node, depth, is_key)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
             }
-
-            match value.value() {
-                ValueCell::Object(elements) => {
-                    if elements.len() > u32::MAX as usize {
+            let value = match node {
+                OpaqueChild::Value(value) => value,
+                OpaqueChild::Opaque(opaque) => {
+                    if !self
+                        .environment
+                        .get_opaques()
+                        .get(&opaque.get_type())
+                        .copied()
+                        .unwrap_or(false)
+                    {
+                        return Err(ValidatorError::InvalidOpaque);
+                    }
+                    opaques.push(opaque);
+                    opaque.visit_children(&mut |child| {
+                        stack.push((child, depth + 1, false))
+                    });
+                    continue;
+                }
+            };
+            match value {
+                ValueCell::Object(values) => {
+                    if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
-
-                    let depth = depth + 1;
-                    stack.extend(elements.iter().map(|v| (ValueCellRef::Pointer(v.clone()), depth)));
-                },
+                    stack.extend(
+                        values
+                            .iter()
+                            .map(|v| (OpaqueChild::Value(v.as_ref()), depth + 1, is_key)),
+                    );
+                }
                 ValueCell::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
                 }
                 ValueCell::Map(map) => {
+                    if is_key {
+                        return Err(ValidatorError::InvalidMapKeyType);
+                    }
                     if map.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
-
-
-                    let depth = depth + 1;
-                    for (k, v) in map.iter() {
-                        if !k.is_hashable() {
-                            return Err(ValidatorError::InvalidMapKeyType);
-                        }
-
-                        stack.push((ValueCellRef::Owned(k.clone_ref()), depth));
-                        stack.push((ValueCellRef::Pointer(v.clone()), depth));
+                    for (key, value) in map.iter() {
+                        stack.push((OpaqueChild::Value(key), depth + 1, true));
+                        stack.push((OpaqueChild::Value(value.as_ref()), depth + 1, false));
                     }
-                },
-                ValueCell::Primitive(v) => match v {
-                    Primitive::Range(range) => {
-                        if !range.0.is_number() || !range.1.is_number() {
-                            return Err(ValidatorError::InvalidRange);
+                }
+                ValueCell::Primitive(value) => {
+                    match value {
+                        Primitive::Range(range) => {
+                            if !range.0.is_number()
+                                || !range.1.is_number()
+                                || range.0.get_type()? != range.1.get_type()?
+                            {
+                                return Err(ValidatorError::InvalidRange);
+                            }
                         }
-    
-                        let left_type = range.0.get_type()?;
-                        if left_type != range.1.get_type()? {
-                            return Err(ValidatorError::InvalidRange);
+                        Primitive::String(value) if value.len() > u32::MAX as usize => {
+                            return Err(ValidatorError::StringTooBig)
                         }
-                    },
-                    Primitive::String(str) => {
-                        if str.len() > u32::MAX as usize {
-                            return Err(ValidatorError::StringTooBig);
+                        Primitive::Opaque(opaque) => {
+                            stack.push((OpaqueChild::Opaque(opaque.inner()), depth, is_key))
                         }
-                    },
-                    Primitive::Opaque(opaque) => {
-                        if !self.environment.get_opaques()
-                            .get(&opaque.get_type_id())
-                            .copied()
-                            .unwrap_or(false) {
-                            return Err(ValidatorError::InvalidOpaque);
-                        }
-
-                        opaque.validate()?;
-                    },
-                    _ => {}
+                        _ => {}
+                    }
+                    if is_key && !value.is_hashable() {
+                        return Err(ValidatorError::InvalidMapKeyType);
+                    }
                 }
             }
         }
-
+        // Exposed payloads must be bounded before custom validation can run.
+        for opaque in opaques {
+            opaque.validate()?;
+        }
         Ok(())
     }
 
@@ -176,10 +189,15 @@ impl<'a, M> ModuleValidator<'a, M> {
                         return Err(ValidatorError::InvalidChunkParamsSize(expected_params.len(), params.len()));
                     }
 
-                    for (i, (expected, provided)) in expected_params.iter().zip(params).enumerate() {
-                        if !expected.check_with_fn(provided, |opaque, ty| {
-                            self.environment.get_opaques()
-                                .get_index(ty as usize)
+                }
+                for (i, provided) in params.enumerate() {
+                    self.verify_constant(provided).map_err(|error| match error {
+                        ValidatorError::ConstantTooDeep => error,
+                        _ => ValidatorError::InvalidChunkParam(i),
+                    })?;
+                    if let Some(expected_params) = parameters {
+                        if !expected_params[i].check_with_fn(provided, |opaque, ty| {
+                            self.environment.get_opaques().get_index(ty as usize)
                                 .is_some_and(|(v, external)| *v == opaque.get_type_id() && *external)
                         }) {
                             return Err(ValidatorError::InvalidChunkParam(i));

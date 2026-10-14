@@ -2898,3 +2898,192 @@ fn test_iter_flatten_lazy_with_filter() {
     "#;
     assert_eq!(run_code(code), Primitive::U64(2));
 }
+
+#[test]
+fn test_iterator_depth_native_return_boundary() {
+    for nesting in [16, 17] {
+        let mut declarations = "let value0 = 0u64;".to_owned();
+        for level in 1..=nesting {
+            declarations.push_str(&format!(
+                "let value{level} = Iterator::once(value{});",
+                level - 1
+            ));
+        }
+        let code = format!("entry main() {{ {declarations} return 0u64 }}");
+        if nesting == 16 {
+            assert_eq!(run_code(&code), Primitive::U64(0));
+        } else {
+            assert!(matches!(
+                run_code_result(&code),
+                Err(VMError::ValueError(
+                    silex_types::ValueError::MaxDepthReached
+                ))
+            ));
+        }
+    }
+}
+
+#[test]
+fn test_iterator_depth_chain_and_zip_runtime_boundary() {
+    for adapter in ["chain", "zip"] {
+        for nesting in [15, 16] {
+            let mut declarations = "let value0 = [1u64].iter();".to_owned();
+            for level in 1..=nesting {
+                declarations.push_str(&format!(
+                    "let value{level} = [1u64].iter().{adapter}(value{});",
+                    level - 1
+                ));
+            }
+            let code =
+                format!("entry main() {{ {declarations} return value{nesting}.count() as u64 }}");
+            if nesting == 15 {
+                assert_eq!(
+                    run_code(&code),
+                    Primitive::U64(if adapter == "chain" { 16 } else { 1 })
+                );
+            } else {
+                assert!(matches!(
+                    run_code_result(&code),
+                    Err(VMError::ValueError(
+                        silex_types::ValueError::MaxDepthReached
+                    ))
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn test_iterator_depth_unfold_writeback_respects_destination_depth() {
+    for nesting in [14, 15] {
+        let code = format!(
+            r#"
+            entry main() {{
+                let seed: any = 0u64;
+                let it: Iterator<u64> = Iterator::unfold(seed, |s: any| {{
+                    let state: any = s;
+                    for i: u64 = 0; i < {nesting}; i += 1 {{ state = [state]; }}
+                    return (1u64, state)
+                }});
+                let holder = [it];
+                return holder[0].next().unwrap()
+            }}
+        "#
+        );
+        if nesting == 14 {
+            assert_eq!(run_code(&code), Primitive::U64(1));
+        } else {
+            assert!(matches!(
+                run_code_result(&code),
+                Err(VMError::EnvironmentError(
+                    silex_environment::EnvironmentError::ValueError(
+                        silex_types::ValueError::MaxDepthReached
+                    )
+                ))
+            ));
+        }
+    }
+}
+
+#[test]
+fn test_iterator_depth_uses_the_configured_limit() {
+    for nesting in [4, 5] {
+        let mut declarations = "let value0 = 0u64;".to_owned();
+        for level in 1..=nesting {
+            declarations.push_str(&format!(
+                "let value{level} = Iterator::once(value{});",
+                level - 1
+            ));
+        }
+        let code = format!("entry main() {{ {declarations} return 0u64 }}");
+        let (module, environment) = prepare_module(&code);
+        let mut vm = VM::default();
+        vm.context_mut().set_max_value_depth(4);
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        })
+        .unwrap();
+        vm.invoke_chunk_id_unchecked(0).unwrap();
+        let result = vm.run_blocking();
+        if nesting == 4 {
+            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::U64(0));
+        } else {
+            assert!(matches!(
+                result,
+                Err(VMError::ValueError(
+                    silex_types::ValueError::MaxDepthReached
+                ))
+            ));
+        }
+    }
+}
+
+#[test]
+fn test_iterator_next_unfold_owns_its_initial_seed() {
+    let mut declarations = "let value0 = 0u64;".to_owned();
+    for level in 1..=16 {
+        declarations.push_str(&format!("let value{level} = [value{}];", level - 1));
+    }
+    let code = format!(
+        r#"
+        entry main() {{
+            let seed: any = 0u64;
+            let it: Iterator<u64> = Iterator::unfold(seed, |s: any| {{
+                return (s as u64, null)
+            }});
+            {declarations}
+            seed = value16;
+            return it.next().unwrap()
+        }}
+    "#
+    );
+    assert_eq!(run_code(&code), Primitive::U64(0));
+}
+
+#[test]
+fn test_iterator_eager_flatten_count_uses_configured_depth_budget() {
+    for nesting in [4, 5] {
+        let mut declarations = "let value0 = [1u64].iter();".to_owned();
+        for level in 1..=nesting {
+            declarations.push_str(&format!(
+                "let value{level} = value{}.enumerate();",
+                level - 1
+            ));
+        }
+        let code = format!(
+            r#"
+            entry main() {{
+                {declarations}
+                let erased: any = value{nesting};
+                let inner = (erased as Iterator<u64[]>).flatten();
+                return Iterator::once(inner).flatten().count() as u64
+            }}
+        "#
+        );
+        let (module, environment) = prepare_module(&code);
+        let mut vm = VM::default();
+        vm.context_mut().set_max_value_depth(4);
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&environment).into(),
+            metadata: (&()).into(),
+        })
+        .unwrap();
+        vm.invoke_chunk_id_unchecked(0).unwrap();
+        let result = vm.run_blocking();
+        if nesting == 4 {
+            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::U64(2));
+        } else {
+            assert!(matches!(
+                result,
+                Err(VMError::EnvironmentError(
+                    silex_environment::EnvironmentError::ValueError(
+                        silex_types::ValueError::MaxDepthReached
+                    )
+                ))
+            ));
+        }
+    }
+}

@@ -13,6 +13,7 @@ use silex_types::{
     StackValue,
     ValueCell,
     ValuePointer,
+    OpaqueWrapper,
 };
 
 use super::iter::{BaseSource, PipeStep, XIterator};
@@ -77,7 +78,7 @@ pub(crate) enum TerminalOp {
     /// After popping the head, reconstructs a Dequeue
     /// iterator from the remaining items and writes it back to `write_back`.
     /// Used as fallback when Rev / Flatten / Zip force full collection.
-    Next(Box<StackValue>),
+    Next(Box<IteratorWriteBack>),
     /// A flat pipeline of transformation steps followed by a simple terminal.
     /// All `Then*` logic from the old design lives here; processing is iterative.
     Aggregated {
@@ -142,7 +143,7 @@ impl TerminalOp {
     }
 
     /// Consume the fully-collected `items` and produce the syscall result.
-    pub(crate) fn finish<M: 'static>(self, mut items: VecDeque<ValuePointer>) -> FnReturnType<M> {
+    pub(crate) fn finish<M: 'static>(self, mut items: VecDeque<ValuePointer>, max_depth: usize) -> FnReturnType<M> {
         match self {
             TerminalOp::Collect => Ok(SysCallResult::Return(ValueCell::Object(items.into()).into())),
             TerminalOp::Count => Ok(SysCallResult::Return(Primitive::U32(items.len() as u32).into())),
@@ -163,7 +164,7 @@ impl TerminalOp {
                 }))
             }
             TerminalOp::Aggregated { steps, then } => {
-                finish_aggregated(items, steps, *then)
+                finish_aggregated(items, steps, *then, max_depth)
             }
         }
     }
@@ -179,6 +180,7 @@ fn finish_aggregated<M: 'static>(
     mut items: VecDeque<ValuePointer>,
     mut steps: VecDeque<AggStep>,
     then: TerminalOp,
+    max_depth: usize,
 ) -> FnReturnType<M> {
     while let Some(step) = steps.pop_front() {
         match step {
@@ -212,11 +214,11 @@ fn finish_aggregated<M: 'static>(
             AggStep::Map(closure) => {
                 // Need per-item VM callbacks; package remaining steps + then as continuation.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return apply_items_map(items, closure, VecDeque::new(), cont);
+                return apply_items_map(items, closure, VecDeque::new(), cont, max_depth);
             }
             AggStep::Filter(closure) => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return apply_items_filter(items, closure, VecDeque::new(), cont);
+                return apply_items_filter(items, closure, VecDeque::new(), cont, max_depth);
             }
             AggStep::Chain(mut remaining) => {
                 // Collect `remaining` into a *fresh* accumulator so that any pipe
@@ -225,21 +227,21 @@ fn finish_aggregated<M: 'static>(
                 // `AggStep::Prepend` splices the first-part items back at the front.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) }
                     .push_step(AggStep::Prepend(items));
-                return lazy_collect(&mut remaining, VecDeque::new(), cont);
+                return lazy_collect(&mut remaining, VecDeque::new(), cont, max_depth);
             }
             AggStep::Zip(mut right) => {
                 // `items` is the left side; collect the right side then merge.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) }
                     .push_step(AggStep::ZipMerge(items));
-                return lazy_collect(&mut right, VecDeque::new(), cont);
+                return lazy_collect(&mut right, VecDeque::new(), cont, max_depth);
             }
             AggStep::Flatten => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return flatten_finish(items, VecDeque::new(), cont);
+                return flatten_finish(items, VecDeque::new(), cont, max_depth);
             }
             AggStep::FlattenContinue(containers) => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return flatten_finish(containers, items, cont);
+                return flatten_finish(containers, items, cont, max_depth);
             }
             AggStep::Rev => {
                 // Reverse the accumulated items in-place.
@@ -250,7 +252,7 @@ fn finish_aggregated<M: 'static>(
             }
         }
     }
-    then.finish(items)
+    then.finish(items, max_depth)
 }
 
 /// Expand `containers` (each an array or Iterator) into `flat`, then run `then`.
@@ -260,6 +262,7 @@ fn flatten_finish<M: 'static>(
     mut containers: VecDeque<ValuePointer>,
     mut flat: VecDeque<ValuePointer>,
     then: TerminalOp,
+    max_depth: usize,
 ) -> FnReturnType<M> {
     while let Some(ptr) = containers.pop_front() {
         match ptr.into_owned() {
@@ -270,17 +273,17 @@ fn flatten_finish<M: 'static>(
                 if inner.needs_callback() {
                     // Collect this sub-iterator via callbacks; resume the remaining containers
                     // afterwards through AggStep::FlattenContinue.
-                    return lazy_collect(&mut inner, flat, then.push_step(AggStep::FlattenContinue(containers)));
+                    return lazy_collect(&mut inner, flat, then.push_step(AggStep::FlattenContinue(containers)), max_depth);
                 }
                 let mut it = inner;
-                while let Some(item) = it.next_sync()? {
+                while let Some(item) = it.next_sync(max_depth)? {
                     flat.push_back(item);
                 }
             }
             _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
         }
     }
-    then.finish(flat)
+    then.finish(flat, max_depth)
 }
 
 /// Collect all items from `iter` into `acc`, then run `op` on the result.
@@ -293,10 +296,13 @@ fn flatten_finish<M: 'static>(
 /// - Sync leaf (Dequeue, Once, Empty): drained in a tight inner loop, O(1) stack.
 /// - Unfold: one `ExecuteAndCallback` per generated item; O(1) Rust stack per item.
 /// - Map / Filter pipe steps invoke `apply_items_*` via `AggStep`.
+/// The depth budget is retained across callbacks and passed to synchronous
+/// descendants; collection never supplies an unlimited fallback.
 pub(crate) fn lazy_collect<M: 'static>(
     iter: &mut XIterator,
     mut acc: VecDeque<ValuePointer>,
     mut op: TerminalOp,
+    max_depth: usize,
 ) -> FnReturnType<M> {
     // Convert each PipeStep into an AggStep. `push_step` prepends, so we
     // iterate the pipe back-to-front: the first pipe step ends up first
@@ -320,19 +326,19 @@ pub(crate) fn lazy_collect<M: 'static>(
     match &mut iter.source {
         BaseSource::Dequeue(d) => {
             acc.extend(d.drain(..));
-            op.finish(acc)
+            op.finish(acc, max_depth)
         }
         BaseSource::Once(slot) => {
             if let Some(ptr) = slot.take() {
                 acc.push_back(ptr);
             }
-            op.finish(acc)
+            op.finish(acc, max_depth)
         }
-        BaseSource::Empty => op.finish(acc),
+        BaseSource::Empty => op.finish(acc, max_depth),
         BaseSource::Unfold { closure, state } => {
             let seed = match state {
                 Some(s) => s,
-                None => return op.finish(acc),
+                None => return op.finish(acc, max_depth),
             };
 
             let take_limit = op.take_limit();
@@ -342,6 +348,7 @@ pub(crate) fn lazy_collect<M: 'static>(
                 acc: VecDeque<ValuePointer>,
                 op: TerminalOp,
                 take_limit: Option<usize>,
+                max_depth: usize,
             }
 
             fn callback<M: 'static>(
@@ -356,14 +363,14 @@ pub(crate) fn lazy_collect<M: 'static>(
                     .ok_or(EnvironmentError::InvalidCallbackParameters)?.into_owned();
 
                 match value {
-                    ValueCell::Primitive(Primitive::Null) => s.op.finish(s.acc),
+                    ValueCell::Primitive(Primitive::Null) => s.op.finish(s.acc, s.max_depth),
                     ValueCell::Object(tuple) => {
                         if tuple.len() != 2 {
                             return Err(EnvironmentError::Static("unfold: expected (item, next_state)"));
                         }
                         s.acc.push_back(tuple[0].clone());
                         if s.take_limit.map_or(false, |lim| s.acc.len() >= lim) {
-                            return s.op.finish(s.acc);
+                            return s.op.finish(s.acc, s.max_depth);
                         }
                         let next_seed: StackValue = tuple[1].to_owned().into();
                         Ok(SysCallResult::ExecuteAndCallback {
@@ -380,7 +387,7 @@ pub(crate) fn lazy_collect<M: 'static>(
             Ok(SysCallResult::ExecuteAndCallback {
                 ptr: closure.clone(),
                 params: vec![seed.reference()].into(),
-                state: Box::new(LocalState { closure: closure.reference(), acc, op, take_limit }),
+                state: Box::new(LocalState { closure: closure.reference(), acc, op, take_limit, max_depth }),
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             })
@@ -395,16 +402,18 @@ pub(crate) fn apply_items_map<M: 'static>(
     closure: StackValue,
     mapped: VecDeque<ValuePointer>,
     then: TerminalOp,
+    max_depth: usize,
 ) -> FnReturnType<M> {
     let Some(item) = items.pop_front() else {
-        return then.finish(mapped);
+        return then.finish(mapped, max_depth);
     };
 
     struct LocalState {
         items: VecDeque<ValuePointer>,
         closure: StackValue,
         mapped: VecDeque<ValuePointer>,
-        then: TerminalOp
+        then: TerminalOp,
+        max_depth: usize,
     }
 
     fn callback<M: 'static>(
@@ -425,12 +434,12 @@ pub(crate) fn apply_items_map<M: 'static>(
             });
         }
 
-        s.then.finish(s.mapped)
+        s.then.finish(s.mapped, s.max_depth)
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure.clone(),
         params: vec![item.to_owned().into()].into(),
-        state: Box::new(LocalState { items, closure, mapped, then }),
+        state: Box::new(LocalState { items, closure, mapped, then, max_depth }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
     })
@@ -443,9 +452,10 @@ pub(crate) fn apply_items_filter<M: 'static>(
     closure: StackValue,
     kept: VecDeque<ValuePointer>,
     then: TerminalOp,
+    max_depth: usize,
 ) -> FnReturnType<M> {
     let Some(current) = items.pop_front() else {
-        return then.finish(kept);
+        return then.finish(kept, max_depth);
     };
 
     struct LocalState {
@@ -454,6 +464,7 @@ pub(crate) fn apply_items_filter<M: 'static>(
         closure: StackValue,
         kept: VecDeque<ValuePointer>,
         then: TerminalOp,
+        max_depth: usize,
     }
 
     fn callback<M: 'static>(
@@ -481,12 +492,12 @@ pub(crate) fn apply_items_filter<M: 'static>(
             });
         }
 
-        s.then.finish(s.kept)
+        s.then.finish(s.kept, s.max_depth)
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure.clone(),
         params: vec![current.to_owned().into()].into(),
-        state: Box::new(LocalState { items, current, closure, kept, then }),
+        state: Box::new(LocalState { items, current, closure, kept, then, max_depth }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
     })
@@ -775,13 +786,21 @@ pub(crate) fn sum_items(items: VecDeque<ValuePointer>) -> Result<StackValue, Env
     Ok(acc.unwrap_or(Primitive::U64(0)).into())
 }
 
-// =============================================================================
-// Truly lazy `next()` — per-item pipeline execution
-// =============================================================================
+/// Retain the remaining depth budget across callback continuations.
+#[derive(Debug, Clone)]
+pub(crate) struct IteratorWriteBack {
+    slot: StackValue,
+    max_depth: usize,
+}
 
-/// Write `new_iter` back to the stack slot referenced by `write_back`.
-fn write_back_iter(mut write_back: StackValue, new_iter: XIterator) -> Result<(), EnvironmentError> {
-    *write_back.as_opaque_type_mut::<XIterator>()? = new_iter;
+/// Check callback-generated state before restoring the iterator to its VM slot.
+fn write_back_iter(
+    mut write_back: IteratorWriteBack,
+    new_iter: XIterator,
+) -> Result<(), EnvironmentError> {
+    let value = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(new_iter)));
+    value.calculate_depth(write_back.max_depth)?;
+    *write_back.slot.as_opaque_type_mut::<XIterator>()? = value.into_opaque_type::<XIterator>()?;
     Ok(())
 }
 
@@ -817,7 +836,15 @@ fn promote_chain_to_source(iter: &mut XIterator) -> bool {
 /// Push `item` back to the front of `iter`'s source so it is seen again on
 /// the next pull.  Used to "undo" a pull before falling back to full
 /// collection.
-fn prepend_item_to_source(iter: &mut XIterator, item: ValuePointer) {
+fn prepend_item_to_source(
+    iter: &mut XIterator,
+    item: ValuePointer,
+    max_depth: usize,
+) -> Result<(), EnvironmentError> {
+    let budget = max_depth
+        .checked_sub(1)
+        .ok_or(silex_types::ValueError::MaxDepthReached)?;
+    item.as_ref().calculate_depth(budget)?;
     match &mut iter.source {
         BaseSource::Dequeue(d) => d.push_front(item),
         BaseSource::Once(slot) if slot.is_none() => *slot = Some(item),
@@ -834,13 +861,14 @@ fn prepend_item_to_source(iter: &mut XIterator, item: ValuePointer) {
             iter.source = BaseSource::Dequeue(d);
         }
     }
+    Ok(())
 }
 
 /// Pull one raw item from the source, handling Chain promotion on exhaustion,
 /// then hand off to [`lazy_next_pipe`].
 fn lazy_next_pull<M: 'static>(
     mut iter: XIterator,
-    write_back: StackValue,
+    write_back: IteratorWriteBack,
 ) -> FnReturnType<M> {
     loop {
         let raw = match &mut iter.source {
@@ -897,7 +925,7 @@ fn lazy_next_pipe<M: 'static>(
     mut iter: XIterator,
     mut current: ValuePointer,
     start_idx: usize,
-    write_back: StackValue,
+    write_back: IteratorWriteBack,
 ) -> FnReturnType<M> {
     let mut idx = start_idx;
 
@@ -918,7 +946,7 @@ fn lazy_next_pipe<M: 'static>(
                 None
             };
         if let Some(inner_item) = pending_front {
-            prepend_item_to_source(&mut iter, current);
+            prepend_item_to_source(&mut iter, current, write_back.max_depth)?;
             current = inner_item;
             idx += 1;
             continue;
@@ -926,11 +954,13 @@ fn lazy_next_pipe<M: 'static>(
 
         // Lazy Zip: if the right side requires no callbacks, advance one item from each
         // side without collecting the full sequence on either side.
-        // (The borrow of right_box ends after `next_sync()`: NLL lets us reborrow `iter`
+        // (The borrow of right_box ends after `next_sync(budget)`: NLL lets us reborrow `iter`
         //  in the main match below when this early-return path is not taken.)
         if let PipeStep::Zip(right_box) = &mut iter.pipe[idx] {
             if !right_box.needs_callback() {
-                let r = right_box.next_sync()?;
+                let budget = write_back.max_depth.checked_sub(1)
+                    .ok_or(silex_types::ValueError::MaxDepthReached)?;
+                let r = right_box.next_sync(budget)?;
                 // right_box borrow ends here (NLL: last use above)
                 match r {
                     None => {
@@ -1000,7 +1030,7 @@ fn lazy_next_pipe<M: 'static>(
                 struct LocalState {
                     iter: XIterator,
                     pipe_idx: usize,
-                    write_back: StackValue,
+                    write_back: IteratorWriteBack,
                 }
                 fn callback<M: 'static>(
                     state: CallbackState,
@@ -1030,7 +1060,7 @@ fn lazy_next_pipe<M: 'static>(
                     iter: XIterator,
                     current: ValuePointer,
                     pipe_idx: usize,
-                    write_back: StackValue,
+                    write_back: IteratorWriteBack,
                 }
                 fn callback<M: 'static>(
                     state: CallbackState,
@@ -1062,11 +1092,13 @@ fn lazy_next_pipe<M: 'static>(
             // in-place and never pushes PipeStep::Rev).
             // Zip with an async right side (needs_callback() == true) also falls back here.
             PipeStep::Rev | PipeStep::Zip(_) => {
-                prepend_item_to_source(&mut iter, current);
+                prepend_item_to_source(&mut iter, current, write_back.max_depth)?;
+                let budget = write_back.max_depth;
                 return lazy_collect(
                     &mut iter,
                     VecDeque::new(),
                     TerminalOp::Next(Box::new(write_back)),
+                    budget,
                 );
             }
             // Flatten is fully lazy: `pending` holds remaining inner elements from the
@@ -1110,7 +1142,7 @@ fn lazy_next_pipe<M: 'static>(
                         }
                         let mut it = inner;
                         let mut d = VecDeque::new();
-                        while let Some(item) = it.next_sync()? {
+                        while let Some(item) = it.next_sync(write_back.max_depth)? {
                             d.push_back(item);
                         }
                         let first = d.pop_front();
@@ -1145,7 +1177,7 @@ fn lazy_next_pipe<M: 'static>(
 /// feeds the item into [`lazy_next_pipe`].
 fn lazy_next_unfold<M: 'static>(
     mut iter: XIterator,
-    write_back: StackValue,
+    write_back: IteratorWriteBack,
 ) -> FnReturnType<M> {
     let (closure, seed) = match &mut iter.source {
         BaseSource::Unfold { closure, state: Some(s) } => {
@@ -1164,7 +1196,7 @@ fn lazy_next_unfold<M: 'static>(
 
     struct LocalState {
         iter: XIterator,
-        write_back: StackValue,
+        write_back: IteratorWriteBack,
     }
     fn callback<M: 'static>(
         state: CallbackState,
@@ -1191,6 +1223,9 @@ fn lazy_next_unfold<M: 'static>(
             ValueCell::Object(tuple) if tuple.len() == 2 => {
                 let item_ptr = tuple[0].clone();
                 let next_state: StackValue = tuple[1].to_owned().into();
+                let budget = s.write_back.max_depth.checked_sub(1)
+                    .ok_or(silex_types::ValueError::MaxDepthReached)?;
+                next_state.as_ref().calculate_depth(budget)?;
                 if let BaseSource::Unfold { state, .. } = &mut s.iter.source {
                     *state = Some(next_state);
                 }
@@ -1218,6 +1253,114 @@ fn lazy_next_unfold<M: 'static>(
 pub(crate) fn lazy_next<M: 'static>(
     iter: XIterator,
     write_back: StackValue,
+    max_depth: usize,
 ) -> FnReturnType<M> {
-    lazy_next_pull(iter, write_back)
+    lazy_next_pull(iter, IteratorWriteBack { slot: write_back, max_depth })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use silex_types::ValueError;
+
+    // Stored data is shallow, but enumeration creates progressively deeper
+    // tuples before flattening retains the remaining nested tuple.
+    fn inner_iter(nesting: usize) -> XIterator {
+        let mut iter = XIterator::once(Primitive::U64(1).into());
+        for _ in 0..nesting {
+            iter.push_step(PipeStep::Enumerate(0)).unwrap();
+        }
+        iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
+        iter
+    }
+
+    fn inner_value(nesting: usize) -> ValueCell {
+        Primitive::Opaque(OpaqueWrapper::new(inner_iter(nesting))).into()
+    }
+
+    fn resume(result: SysCallResult<()>, value: ValueCell) -> FnReturnType<()> {
+        let SysCallResult::ExecuteAndCallback {
+            state,
+            callback: CallbackType::Sync(callback),
+            ..
+        } = result
+        else {
+            panic!("expected a synchronous callback continuation");
+        };
+        callback(state, vec![value.into()])
+    }
+
+    #[test]
+    fn eager_flatten_obeys_the_explicit_depth_budget() {
+        for (nesting, limit, allowed) in
+            [(3, 3, true), (4, 3, false), (4, 4, true), (17, 16, false)]
+        {
+            let result = flatten_finish::<()>(
+                VecDeque::from([inner_value(nesting).into()]),
+                VecDeque::new(),
+                TerminalOp::Count,
+                limit,
+            );
+            if allowed {
+                let SysCallResult::Return(count) = result.unwrap() else {
+                    panic!("expected count");
+                };
+                assert_eq!(count.as_u32().unwrap(), 2);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn map_callback_preserves_the_collection_budget() {
+        let result = apply_items_map::<()>(
+            VecDeque::from([Primitive::U64(1).into()]),
+            Primitive::Null.into(),
+            VecDeque::new(),
+            TerminalOp::Count.push_step(AggStep::Flatten),
+            3,
+        )
+        .unwrap();
+        assert!(matches!(
+            resume(result, inner_value(4)),
+            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
+        ));
+    }
+
+    #[test]
+    fn filter_callback_preserves_the_collection_budget() {
+        let result = apply_items_filter::<()>(
+            VecDeque::from([inner_value(4).into()]),
+            Primitive::Null.into(),
+            VecDeque::new(),
+            TerminalOp::Count.push_step(AggStep::Flatten),
+            3,
+        )
+        .unwrap();
+        assert!(matches!(
+            resume(result, Primitive::Boolean(true).into()),
+            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
+        ));
+    }
+
+    #[test]
+    fn unfold_callback_preserves_the_collection_budget() {
+        let mut iter = XIterator::empty();
+        iter.source = BaseSource::Unfold {
+            closure: Primitive::Null.into(),
+            state: Some(Primitive::U64(1).into()),
+        };
+        iter.push_step(PipeStep::Take(1)).unwrap();
+        iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
+        let result = lazy_collect::<()>(&mut iter, VecDeque::new(), TerminalOp::Count, 3).unwrap();
+        let tuple = ValueCell::Object(vec![inner_value(4).into(), Primitive::U64(2).into()]);
+        assert!(matches!(
+            resume(result, tuple),
+            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
+        ));
+    }
 }

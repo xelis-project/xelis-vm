@@ -6,6 +6,22 @@ use silex_types::{
 #[derive(Debug, Clone, Opaque)]
 struct Plain;
 
+#[derive(Debug, Clone, Opaque)]
+#[opaque(children = std::iter::once(&self.0 as &dyn Opaque))]
+struct OpaqueParent(Plain);
+
+#[test]
+fn direct_opaque_children_use_the_same_derive_option() {
+    let value = silex_types::ValueCell::Primitive(silex_types::Primitive::Opaque(
+        OpaqueWrapper::new(OpaqueParent(Plain)),
+    ));
+    assert_eq!(value.calculate_depth(1).unwrap(), 1);
+    assert!(matches!(
+        value.calculate_depth(0),
+        Err(silex_types::ValueError::MaxDepthReached)
+    ));
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, Opaque)]
 #[opaque(name = "Record", display, json, hash, eq, size = 4)]
 struct Record<T>(T)

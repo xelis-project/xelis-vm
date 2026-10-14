@@ -15,6 +15,7 @@ struct Options {
     eq: bool,
     skip_json: bool,
     size: Option<Expr>,
+    children: Option<Expr>,
 }
 
 fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
@@ -45,6 +46,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
                 "eq" if !type_only => options.eq = true,
                 "skip_json" if !type_only => options.skip_json = true,
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
+                "children" if !type_only => options.children = Some(meta.value()?.parse()?),
                 _ => return Err(meta.error("unsupported opaque option")),
             }
             Ok(())
@@ -194,6 +196,13 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
             fn get_size(&self) -> usize { #size }
         }
     });
+    let children = options.children.map(|children| {
+        quote! {
+            fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(#path::OpaqueChild<'a>)) {
+                for child in #children { visitor(::core::convert::Into::into(child)); }
+            }
+        }
+    });
     Ok(quote! {
         #type_impl
         #json_impl
@@ -206,6 +215,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
             #hash
             #eq
             #size
+            #children
         }
     })
 }
@@ -222,6 +232,9 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// - `eq`: expose equality through `PartialEq` or a custom `DynEq` implementation.
 ///   Map keys require both `hash` and `eq`.
 /// - `size = expression`: override the size used for value accounting.
+/// - `children = expression`: an iterable of direct children convertible to
+///   `OpaqueChild` for bounded validation and depth checking. Use `&ValueCell`
+///   (for example, `&self.values`), `&dyn Opaque`, or `OpaqueChild` to mix both.
 /// - `skip_json`: keep an existing custom `JSONHelper` implementation.
 /// - `crate = "path"`: override the automatically resolved `silex-types` path.
 ///

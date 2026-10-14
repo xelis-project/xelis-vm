@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use silex_environment::{CallbackType, CallbackState, VMContext, ModuleMetadata, SysCallResult};
-use silex_types::StackValue;
+use silex_types::{StackValue, ValueError};
 
 use crate::{stack::Stack, Backend, InstructionResult, VMError};
 
@@ -34,6 +34,12 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
             params,
         })),
         SysCallResult::Return(v) => {
+            let budget = context.max_value_depth()
+                .checked_sub(v.depth())
+                .ok_or(ValueError::MaxDepthReached)?;
+
+            v.as_ref().calculate_depth(budget)?;
+
             let memory_usage = v.estimate_memory_usage(context.memory_left())?;
             context.increase_memory_usage_unchecked(memory_usage)?;
             stack.push_stack(v)?;
