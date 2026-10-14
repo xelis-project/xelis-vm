@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Chunk, Module};
-use silex_types::{impl_opaque, traits::{DynHash, DynType, JSONHelper, Serializable}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
+use silex_types::{traits::{DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_compiler::Compiler;
@@ -21,18 +21,10 @@ impl DynType for NonHashableOpaque {
     }
 }
 
-impl DynHash for NonHashableOpaque {
-    fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
-
-    fn is_hashable(&self) -> bool {
-        false
-    }
-}
-
 impl JSONHelper for NonHashableOpaque {}
-impl Serializable for NonHashableOpaque {}
 
 impl Opaque for NonHashableOpaque {
+    fn as_eq(&self) -> Option<&dyn silex_types::traits::DynEq> { Some(self) }
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
@@ -805,21 +797,9 @@ fn test_verify_invoke_chunk_range_param() {
 
 #[test]
 fn test_verify_invoke_chunk_opaque_param_correct() {
-    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    #[derive(Debug, PartialEq, Eq, Hash, Clone, silex_types::Opaque)]
+    #[opaque(eq, hash, size = 0)]
     struct TestOpaque;
-
-    impl JSONHelper for TestOpaque {
-        fn is_json_supported(&self) -> bool { false }
-        fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> { todo!() }
-    }
-
-    impl Serializable for TestOpaque {
-        fn get_size(&self) -> usize { 0 }
-        fn is_serializable(&self) -> bool { false }
-        fn serialize(&self, _: &mut Vec<u8>) -> usize { 0 }
-    }
-
-    impl_opaque!("TestOpaque", TestOpaque);
 
     let mut env_builder = EnvironmentBuilder::<()>::default();
     let opaque_type = env_builder.register_opaque::<TestOpaque>("TestOpaque", true);

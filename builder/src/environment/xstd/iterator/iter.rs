@@ -1,8 +1,4 @@
-use std::{
-    any::TypeId,
-    collections::VecDeque,
-    hash::{Hash, Hasher}
-};
+use std::collections::VecDeque;
 
 use silex_environment::{EnvironmentError, VMContext};
 use silex_types::{
@@ -11,10 +7,6 @@ use silex_types::{
     StackValue,
     ValueCell,
     ValuePointer,
-    opaque::{
-        Opaque,
-        traits::{DynType, JSONHelper, Serializable},
-    },
 };
 
 /// Leaf generator: produces items without consuming another `XIterator`.
@@ -76,7 +68,8 @@ pub const MAX_PIPE_DEPTH: usize = 128;
 /// Because no `XIterator` owns another `XIterator` (only `PipeStep::Chain` and
 /// `PipeStep::Zip` box a secondary iterator, and those are typically shallow),
 /// the default `Clone` and `Drop` are sufficient — no custom recursive unwinding.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, silex_types::Opaque)]
+#[opaque(name = "Iterator", display)]
 pub struct XIterator {
     pub(crate) source: BaseSource,
     pub(crate) pipe: VecDeque<PipeStep>,
@@ -85,27 +78,8 @@ pub struct XIterator {
     pub(crate) depth: usize,
 }
 
-impl PartialEq for XIterator {
-    fn eq(&self, _: &Self) -> bool { false }
-}
-impl Eq for XIterator {}
-impl Hash for XIterator {
-    fn hash<H: Hasher>(&self, _: &mut H) {}
-}
-
-impl DynType for XIterator {
-    fn get_type_name(&self) -> &'static str { "Iterator" }
-    fn get_type(&self) -> TypeId { TypeId::of::<XIterator>() }
-}
-impl JSONHelper for XIterator {}
-impl Serializable for XIterator {}
-
-impl Opaque for XIterator {
-    fn clone_box(&self) -> Box<dyn Opaque> {
-        Box::new(self.clone())
-    }
-
-    fn display(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for XIterator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Iterator")
     }
 }

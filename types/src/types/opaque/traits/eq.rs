@@ -2,8 +2,6 @@ use super::AsAny;
 
 pub trait DynEq: AsAny {
     fn is_equal(&self, other: &dyn DynEq) -> bool;
-
-    fn as_eq(&self) -> &dyn DynEq;
 }
 
 impl<T: PartialEq + AsAny> DynEq for T {
@@ -13,9 +11,5 @@ impl<T: PartialEq + AsAny> DynEq for T {
         } else {
             false
         }
-    }
-
-    fn as_eq(&self) -> &dyn DynEq {
-        self
     }
 }

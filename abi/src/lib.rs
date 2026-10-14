@@ -215,7 +215,7 @@ mod tests {
 
     use silex_builder::{EnvironmentBuilder};
     use silex_types::{Opaque, traits::{
-      DynType, DynEq, DynHash, JSONHelper, Serializable
+      DynType, JSONHelper
     }};
 
     macro_rules! impl_dummy_opaque {
@@ -232,23 +232,6 @@ mod tests {
                 }
             }
 
-            impl DynEq for $name {
-                fn as_eq(&self) -> &(dyn DynEq + 'static) {
-                    self
-                }
-                fn is_equal(&self, _other: &(dyn DynEq + 'static)) -> bool {
-                    false
-                }
-            }
-
-            impl DynHash for $name {
-                fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
-
-                fn is_hashable(&self) -> bool {
-                    false
-                }
-            }
-
             impl JSONHelper for $name {
                 fn serialize_json(&self) -> anyhow::Result<serde_json::Value> {
                     Ok(json!("dummy"))
@@ -259,19 +242,6 @@ mod tests {
                 }
             }
 
-            impl Serializable for $name {
-                fn get_size(&self) -> usize {
-                    8
-                }
-
-                fn serialize(&self, _: &mut Vec<u8>) -> usize {
-                    0
-                }
-
-                fn is_serializable(&self) -> bool {
-                    false
-                }
-            }
 
             impl Opaque for $name {
                 fn clone_box(&self) -> Box<dyn Opaque> {

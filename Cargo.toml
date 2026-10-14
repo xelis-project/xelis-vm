@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "abi",
     "types",
+    "types-macros",
     "bytecode",
     "vm",
     "assembler",
@@ -34,9 +35,12 @@ silex-decompiler = { path = "decompiler", version = "0.1.0" }
 silex-environment = { path = "environment", version = "0.1.0" }
 silex-lexer = { path = "lexer", version = "0.1.0" }
 silex-parser = { path = "parser", version = "0.1.0" }
+silex-types-macros = { path = "types-macros", version = "0.1.0" }
 silex-types = { path = "types", version = "0.1.0" }
 xelis-vm = { path = "vm", version = "0.1.0" }
 
+octet = "0.2.2"
+matriochka = "0.1.1"
 anyhow = "1.0.95"
 better_any = "0.2.0"
 criterion = "0.5.1"
@@ -54,3 +58,8 @@ serde = "1.0.215"
 serde_json = "1.0.133"
 thiserror = "2.0.3"
 clap = { version = "4.5.48", features = ["derive"] }
+
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+proc-macro-crate = "3"

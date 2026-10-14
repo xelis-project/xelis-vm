@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+silex-types-macros.workspace = true
+octet.workspace = true
+matriochka.workspace = true
 anyhow.workspace = true
 hex = { workspace = true, features = ["serde"] }
 indexmap = { workspace = true, features = ["serde"] }

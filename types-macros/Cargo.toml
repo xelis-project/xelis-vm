@@ -1,0 +1,16 @@
+[package]
+name = "silex-types-macros"
+version.workspace = true
+edition.workspace = true
+description = "Derive macros for Silex opaque types"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+proc-macro-crate.workspace = true

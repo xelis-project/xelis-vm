@@ -1,19 +1,22 @@
-pub trait Serializable {
-    // Expected size of the type when serialized
-    // Even if is_serializable returns false, this function should return the size of the type
+/// Object-safe serialization capability for opaque values.
+/// Implemented automatically for types implementing Octet's `Serializable`.
+pub trait DynSerializable {
+    fn get_size(&self) -> usize;
+    /// Append the encoded value and return the number of bytes written.
+    /// On failure the buffer may contain a partially encoded value.
+    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error>;
+}
+
+impl<T: octet::Serializable> DynSerializable for T {
     fn get_size(&self) -> usize {
-        8
+        self.size()
     }
 
-    // Serialize the type to a buffer
-    // The buffer may be pre-allocated and the function should return the number of bytes written
-    fn serialize(&self, _: &mut Vec<u8>) -> usize {
-        0
-    }
+    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error> {
+        let start = buffer.len();
+        let mut writer = octet::Writer::new(&mut *buffer);
+        self.write(&mut writer)?;
 
-    // Check if the type is supported by the serialization
-    // By default, return false
-    fn is_serializable(&self) -> bool {
-        false
+        Ok(buffer.len() - start)
     }
 }

@@ -4,7 +4,7 @@ use silex_environment::{Environment, EnvironmentError};
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::{Parser, ParserError};
-use silex_types::{traits::{DynHash, DynType, JSONHelper, Serializable}, Opaque, Primitive};
+use silex_types::{traits::{DynType, JSONHelper}, Opaque, Primitive};
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,18 +20,10 @@ impl DynType for NonHashableOpaque {
     }
 }
 
-impl DynHash for NonHashableOpaque {
-    fn dyn_hash(&self, _: &mut dyn std::hash::Hasher) {}
-
-    fn is_hashable(&self) -> bool {
-        false
-    }
-}
-
 impl JSONHelper for NonHashableOpaque {}
-impl Serializable for NonHashableOpaque {}
 
 impl Opaque for NonHashableOpaque {
+    fn as_eq(&self) -> Option<&dyn silex_types::traits::DynEq> { Some(self) }
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
@@ -1630,12 +1622,9 @@ fn test_optional_expect() {
 
 #[test]
 fn test_opaque_fn_call() {
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, silex_types::Opaque)]
+    #[opaque(eq, hash)]
     struct Foo;
-    impl Serializable for Foo {}
-    impl JSONHelper for Foo {}
-
-    impl_opaque!("Foo", Foo);
 
     let mut env = EnvironmentBuilder::default();
     let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
@@ -1791,34 +1780,9 @@ fn test_fn_params_immutable() {
 
 #[test]
 fn test_types_compatibility() {
-    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    #[derive(Debug, PartialEq, Eq, Hash, Clone, silex_types::Opaque)]
+    #[opaque(name = "Dummy", eq, hash, size = 0)]
     struct DummyOpaque;
-
-    impl JSONHelper for DummyOpaque {
-        fn is_json_supported(&self) -> bool {
-            false
-        }
-
-        fn serialize_json(&self) -> Result<serde_json::Value, anyhow::Error> {
-            todo!()
-        }
-    }
-
-    impl Serializable for DummyOpaque {
-        fn get_size(&self) -> usize {
-            0
-        }
-
-        fn is_serializable(&self) -> bool {
-            false
-        }
-
-        fn serialize(&self, _: &mut Vec<u8>) -> usize {
-            0
-        }
-    }
-
-    impl_opaque!("Dummy", DummyOpaque);
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));

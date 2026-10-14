@@ -4205,7 +4205,6 @@ impl<'a, M> Parser<'a, M> {
 #[cfg(test)]
 mod tests {
     use silex_environment::{FunctionHandler, SysCallResult};
-    use silex_types::traits::{JSONHelper, Serializable};
 
     use super::*;
 
@@ -4563,13 +4562,9 @@ mod tests {
             Token::Identifier("MAX"),
         ];
 
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, silex_types::Opaque)]
+        #[opaque(eq, hash)]
         struct Foo;
-        impl_opaque!("Foo", Foo);
-
-        impl Serializable for Foo {}
-
-        impl JSONHelper for Foo {}
 
         let mut env = EnvironmentBuilder::new();
         let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", false));
@@ -4729,7 +4724,6 @@ mod tests {
             )
         );
     }
-
 
     #[test]
     fn test_map_as_map_key() {
@@ -4972,7 +4966,6 @@ mod tests {
         let program = test_parser(tokens);
         assert_eq!(program.functions().len(), 1);
     }
-
 
     #[test]
     fn test_hook_function() {
@@ -5248,7 +5241,6 @@ mod tests {
 
         // add a value after the return
         tokens.insert(tokens.len() - 1, Token::Value(Literal::U64(0)));
-
 
         let statements = test_parser_statement_with_return_type(tokens, vec![("i", Type::U64)], Type::U64);
         assert_eq!(statements, vec![

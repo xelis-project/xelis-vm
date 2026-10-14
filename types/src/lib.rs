@@ -1,3 +1,7 @@
+extern crate self as silex_types;
+
+pub use silex_types_macros::{DynType, Opaque};
+
 mod types;
 mod values;
 mod u256;
@@ -44,3 +48,11 @@ impl Hasher for NoOpHasher {
 }
 
 pub type NoHashMap<V> = HashMap<IdentifierType, V, BuildHasherDefault<NoOpHasher>>;
+
+// Paths used by generated code; consumers need not depend directly on JSON crates.
+#[doc(hidden)]
+pub mod __private {
+    pub use anyhow;
+    pub use serde;
+    pub use serde_json;
+}

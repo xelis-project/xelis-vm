@@ -3,7 +3,6 @@ pub mod traits;
 use std::{
     any::TypeId,
     borrow::Cow,
-    collections::HashSet,
     fmt,
     hash::{Hash, Hasher}
 };
@@ -16,14 +15,56 @@ use super::Type;
 
 /// Type-level markers that can be declared on an [`OpaqueType`] descriptor.
 /// These drive static type-checking behaviour (method-dispatch compatibility,
-/// etc.) and are **not** related to the runtime `dyn Opaque` value traits.
+/// etc.). Runtime capabilities are exposed separately by `dyn Opaque`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[repr(u8)]
 pub enum OpaqueTypeTrait {
     /// The type is an iterable container (e.g. `Iterator<T>`).  Any
     /// `Array<T>`, `Range<T>`, or other `Iterable` opaque with a compatible
     /// element type may substitute for it during method-dispatch matching.
-    Iterable,
+    Iterable = 1,
+}
+
+/// Compact capability flags. Serde retains the existing list-of-markers format.
+#[derive(Debug, Default, Clone, Copy)]
+struct OpaqueTypeTraits(u8);
+
+impl OpaqueTypeTraits {
+    fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    fn insert(&mut self, marker: OpaqueTypeTrait) {
+        self.0 |= marker as u8;
+    }
+
+    fn contains(&self, marker: OpaqueTypeTrait) -> bool {
+        self.0 & marker as u8 != 0
+    }
+}
+
+impl Serialize for OpaqueTypeTraits {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let markers: Vec<_> = [OpaqueTypeTrait::Iterable]
+            .into_iter()
+            .filter(|marker| self.contains(*marker))
+            .collect();
+
+        markers.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for OpaqueTypeTraits {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut flags = Self::default();
+
+        for marker in Vec::<OpaqueTypeTrait>::deserialize(deserializer)? {
+            flags.insert(marker);
+        }
+
+        Ok(flags)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,8 +79,8 @@ struct OpaqueTypeInner {
     #[serde(default)]
     generics: Vec<Type>,
     /// Type-level trait markers declared on this opaque type descriptor.
-    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
-    traits: HashSet<OpaqueTypeTrait>,
+    #[serde(default, skip_serializing_if = "OpaqueTypeTraits::is_empty")]
+    traits: OpaqueTypeTraits,
 }
 
 impl PartialEq for OpaqueTypeInner {
@@ -71,7 +112,7 @@ impl OpaqueType {
             allow_external_input,
             generics_count: 0,
             generics: Vec::new(),
-            traits: HashSet::new(),
+            traits: OpaqueTypeTraits::default(),
         })
     }
 
@@ -83,7 +124,7 @@ impl OpaqueType {
             allow_external_input,
             generics_count,
             generics: Vec::new(),
-            traits: HashSet::new(),
+            traits: OpaqueTypeTraits::default(),
         })
     }
 
@@ -95,7 +136,7 @@ impl OpaqueType {
             allow_external_input: self.0.allow_external_input,
             generics_count: self.0.generics_count,
             generics,
-            traits: self.0.traits.clone(),
+            traits: self.0.traits,
         })
     }
 
@@ -108,10 +149,10 @@ impl OpaqueType {
 
     /// Check whether this opaque type has the given type-level trait marker.
     pub fn has_trait(&self, t: OpaqueTypeTrait) -> bool {
-        self.0.traits.contains(&t)
+        self.0.traits.contains(t)
     }
 
-    /// Convenience: whether this type carries the [`OpaqueTypeTrait::Iterable`] marker.
+    /// Whether this type carries the [`OpaqueTypeTrait::Iterable`] marker.
     pub fn is_iterable(&self) -> bool {
         self.has_trait(OpaqueTypeTrait::Iterable)
     }
@@ -166,11 +207,26 @@ impl<'a> Deserialize<'a> for OpaqueType {
     }
 }
 
-pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + fmt::Debug + Sync + Send {
+pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
 
+    /// Return the binary serialization capability when supported.
+    fn as_serializable(&self) -> Option<&dyn DynSerializable> { None }
+
+    /// Return the hashing capability when supported.
+    fn as_hashable(&self) -> Option<&dyn DynHash> { None }
+
+    /// Return the value equality capability when supported.
+    /// Without it, wrappers compare equal only when they are the same wrapper.
+    fn as_eq(&self) -> Option<&dyn DynEq> { None }
+
+    /// Size used for value accounting, including non-serializable values.
+    fn get_size(&self) -> usize {
+        self.as_serializable().map_or(8, |v| v.get_size())
+    }
+
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Opaque")
+        write!(f, "Opaque<{0}>", self.get_type_name())
     }
 
     fn validate(&self) -> Result<(), ValueError> {
@@ -180,7 +236,10 @@ pub trait Opaque: DynType + DynHash + DynEq + JSONHelper + Serializable + fmt::D
 
 impl Hash for dyn Opaque {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.dyn_hash(state);
+        self.get_type().hash(state);
+        if let Some(hashable) = self.as_hashable() {
+            hashable.dyn_hash(state);
+        }
     }
 }
 
@@ -194,9 +253,19 @@ pub struct OpaqueWrapper {
 
 impl PartialEq for OpaqueWrapper {
     fn eq(&self, other: &Self) -> bool {
-        let other = other.inner.as_eq();
-        self.inner.as_ref()
-            .is_equal(other)
+        // Identity keeps equality reflexive even when no value equality is exposed.
+        if std::ptr::eq(self, other) {
+            return true;
+        }
+
+        if self.get_type_id() != other.get_type_id() {
+            return false;
+        }
+
+        match (self.inner.as_eq(), other.inner.as_eq()) {
+            (Some(value), Some(other)) => value.is_equal(other),
+            _ => false,
+        }
     }
 }
 
@@ -241,8 +310,13 @@ impl OpaqueWrapper {
     }
 
     #[inline]
+    pub fn as_serializable(&self) -> Option<&dyn DynSerializable> {
+        self.inner.as_serializable()
+    }
+
+    #[inline]
     pub fn is_serializable(&self) -> bool {
-        self.inner.is_serializable()
+        self.as_serializable().is_some()
     }
 
     #[inline]
@@ -250,9 +324,20 @@ impl OpaqueWrapper {
         self.inner.is_json_supported()
     }
 
+    /// Whether the value can be used as a map key (hashing and equality required).
     #[inline]
     pub fn is_hashable(&self) -> bool {
-        self.inner.as_ref().is_hashable()
+        self.as_hashable().is_some() && self.as_eq().is_some()
+    }
+
+    #[inline]
+    pub fn as_hashable(&self) -> Option<&dyn DynHash> {
+        self.inner.as_hashable()
+    }
+
+    #[inline]
+    pub fn as_eq(&self) -> Option<&dyn DynEq> {
+        self.inner.as_eq()
     }
 
     #[inline]
@@ -338,7 +423,6 @@ mod tests {
     use indexmap::IndexMap;
 
     use crate::{
-        impl_opaque,
         register_opaque_json,
         Primitive,
         Type,
@@ -346,17 +430,11 @@ mod tests {
     };
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, crate::Opaque)]
+    #[opaque(display, json, hash, eq, size = 4)]
     struct CustomOpaque {
         value: i32,
     }
-
-    impl_opaque!(
-        "CustomOpaque",
-        CustomOpaque,
-        display,
-        json
-    );
 
     impl fmt::Display for CustomOpaque {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -364,10 +442,43 @@ mod tests {
         }
     }
 
-    impl Serializable for CustomOpaque {
-        fn get_size(&self) -> usize {
-            4
+    #[test]
+    fn test_serialization_capability() {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, crate::DynType)]
+        struct BinaryOpaque(u32);
+
+        impl JSONHelper for BinaryOpaque {}
+        impl Opaque for BinaryOpaque {
+            fn clone_box(&self) -> Box<dyn Opaque> { Box::new(self.clone()) }
+            fn as_serializable(&self) -> Option<&dyn DynSerializable> { Some(&self.0) }
         }
+
+        let opaque = OpaqueWrapper::new(BinaryOpaque(42));
+        assert!(opaque.is_serializable());
+        assert_eq!(opaque.get_size(), 4);
+        let mut bytes = vec![99];
+        assert_eq!(opaque.as_serializable().unwrap().serialize(&mut bytes).unwrap(), 4);
+        assert_eq!(&bytes[1..], octet::Serializable::to_bytes(&42u32).unwrap().as_ref());
+        assert_eq!(bytes[0], 99);
+
+        let unsupported = OpaqueWrapper::new(CustomOpaque { value: 42 });
+        assert!(!unsupported.is_serializable());
+        assert!(unsupported.as_serializable().is_none());
+    }
+
+    #[test]
+    fn test_opaque_trait_flags() {
+        let template = OpaqueType::with_generics_count(42, "Container", false, 1)
+            .with_trait(OpaqueTypeTrait::Iterable)
+            .with_trait(OpaqueTypeTrait::Iterable);
+        assert_eq!(template.0.traits.0, 1);
+        let instance = template.with_generics(vec![Type::U32]);
+        assert!(instance.is_iterable());
+        let json = serde_json::to_value(&instance).unwrap();
+        assert_eq!(json["traits"], serde_json::json!(["iterable"]));
+        let decoded: OpaqueType = serde_json::from_value(json).unwrap();
+        assert!(decoded.is_iterable());
+        assert!(!OpaqueType::new(43, "Plain").is_iterable());
     }
 
     #[test]
