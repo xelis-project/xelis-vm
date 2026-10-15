@@ -192,6 +192,23 @@ impl Primitive {
 }
 
 impl Primitive {
+    /// Copy VM payloads through opaque ownership boundaries as well.
+    pub fn deep_clone(&self) -> Self {
+        match self {
+            Self::Opaque(value) => Self::Opaque(value.deep_clone()),
+            Self::Range(value) => Self::Range(Box::new((value.0.deep_clone(), value.1.deep_clone()))),
+            _ => self.clone(),
+        }
+    }
+
+    pub fn references_free(self) -> Self {
+        match self {
+            Self::Opaque(value) => Self::Opaque(value.deep_clone()),
+            Self::Range(value) => Self::Range(Box::new((value.0.references_free(), value.1.references_free()))),
+            value => value,
+        }
+    }
+
     pub fn get_memory_usage(&self) -> usize {
         match self {
             Primitive::Null => 1,

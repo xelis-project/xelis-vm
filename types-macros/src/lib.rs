@@ -16,6 +16,7 @@ struct Options {
     skip_json: bool,
     size: Option<Expr>,
     children: Option<Expr>,
+    deep_clone: Option<Expr>,
 }
 
 fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
@@ -47,6 +48,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
                 "skip_json" if !type_only => options.skip_json = true,
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
                 "children" if !type_only => options.children = Some(meta.value()?.parse()?),
+                "deep_clone" if !type_only => options.deep_clone = Some(meta.value()?.parse()?),
                 _ => return Err(meta.error("unsupported opaque option")),
             }
             Ok(())
@@ -196,6 +198,9 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
             fn get_size(&self) -> usize { #size }
         }
     });
+    let deep_clone = options
+        .deep_clone
+        .unwrap_or_else(|| parse_quote!(::std::clone::Clone::clone(self)));
     let children = options.children.map(|children| {
         quote! {
             fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(#path::OpaqueChild<'a>)) {
@@ -209,6 +214,9 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
         impl #impl_generics #path::Opaque for #ident #type_generics #where_clause {
             fn clone_box(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
                 ::std::boxed::Box::new(::std::clone::Clone::clone(self))
+            }
+            fn deep_clone(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
+                ::std::boxed::Box::new(#deep_clone)
             }
             #display
             #serializable
@@ -232,6 +240,9 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// - `eq`: expose equality through `PartialEq` or a custom `DynEq` implementation.
 ///   Map keys require both `hash` and `eq`.
 /// - `size = expression`: override the size used for value accounting.
+/// - `deep_clone = expression`: produce an independent `Self` with retained VM
+///   values deeply cloned. Defaults to `Clone`; containers retaining VM pointers
+///   must override this to detach their payloads.
 /// - `children = expression`: an iterable of direct children convertible to
 ///   `OpaqueChild` for bounded validation and depth checking. Use `&ValueCell`
 ///   (for example, `&self.values`), `&dyn Opaque`, or `OpaqueChild` to mix both.

@@ -997,7 +997,8 @@ impl ValueCell {
     /// Detach nested references, moving uniquely owned data instead of cloning it.
     pub fn references_free(self) -> Self {
         match self {
-            Self::Bytes(_) | Self::Primitive(_) => self,
+            Self::Bytes(_) => self,
+            Self::Primitive(value) => Self::Primitive(value.references_free()),
             _ => Self::detach(ValueCellRef::Owned(self)),
         }
     }
@@ -1006,7 +1007,7 @@ impl ValueCell {
     pub fn deep_clone(&self) -> Self {
         match self {
             Self::Bytes(v) => Self::Bytes(v.clone()),
-            Self::Primitive(v) => Self::Primitive(v.clone()),
+            Self::Primitive(v) => Self::Primitive(v.deep_clone()),
             _ => Self::detach(ValueCellRef::Ref(self)),
         }
     }
@@ -1036,7 +1037,7 @@ impl ValueCell {
             };
             match value {
                 ValueCellRef::Owned(owned) => match owned {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v)),
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.references_free())),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
                         stack.extend(values.into_iter().map(ValueCellRef::Pointer));
@@ -1051,7 +1052,7 @@ impl ValueCell {
                     }
                 },
                 ValueCellRef::Ref(value) => match value {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.clone())),
+                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.deep_clone())),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
                         stack.extend(values.iter().map(|v| ValueCellRef::Ref(v.as_ref())));

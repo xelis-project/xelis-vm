@@ -229,6 +229,14 @@ impl<'a> From<&'a dyn Opaque> for OpaqueChild<'a> {
 pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     fn clone_box(&self) -> Box<dyn Opaque>;
 
+    /// Clone with every retained VM value detached from its original slots.
+    /// Container implementations must deeply clone their payloads, including
+    /// nested opaque objects. Scalar implementations may use `clone_box`.
+    fn deep_clone(&self) -> Box<dyn Opaque> {
+        // By default, fallback on clone_box
+        self.clone_box()
+    }
+
     /// Return the binary serialization capability when supported.
     fn as_serializable(&self) -> Option<&dyn DynSerializable> { None }
 
@@ -426,6 +434,12 @@ impl Clone for OpaqueWrapper {
         Self {
             inner: self.inner.clone_box(),
         }
+    }
+}
+
+impl OpaqueWrapper {
+    pub fn deep_clone(&self) -> Self {
+        Self { inner: self.inner.deep_clone() }
     }
 }
 

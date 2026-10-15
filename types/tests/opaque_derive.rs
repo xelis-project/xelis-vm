@@ -7,6 +7,49 @@ use silex_types::{
 struct Plain;
 
 #[derive(Debug, Clone, Opaque)]
+#[opaque(
+    children = std::iter::once(self.0.as_ref()),
+    deep_clone = Self(silex_types::ValuePointer::new(self.0.as_ref().deep_clone()))
+)]
+struct RetainedValue(silex_types::ValuePointer);
+
+#[test]
+fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
+    use silex_types::{Primitive, StackValue, ValueCell, ValuePointer};
+    for nested in [false, true] {
+        for mode in 0..4 {
+            let mut original = ValuePointer::new(Primitive::U64(1).into());
+            let mut value = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(
+                RetainedValue(original.clone()),
+            )));
+            if nested {
+                value = ValueCell::Object(vec![value.into()]);
+            }
+            let snapshot = match mode {
+                0 => value.deep_clone(),
+                1 => value.references_free(),
+                2 => StackValue::Owned(value).into_owned(),
+                3 => StackValue::from(ValuePointer::new(value)).into_owned(),
+                _ => unreachable!(),
+            };
+            let retained = if nested {
+                snapshot.as_vec().unwrap()[0].as_ref()
+            } else {
+                &snapshot
+            }
+            .as_opaque_type::<RetainedValue>()
+            .unwrap();
+            assert!(!retained.0.ptr_eq(&original));
+            // No payload references are live during this mutation.
+            unsafe {
+                *original.as_mut() = Primitive::U64(2).into();
+            }
+            assert_eq!(retained.0.as_ref().as_u64().unwrap(), 1);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Opaque)]
 #[opaque(children = std::iter::once(&self.0 as &dyn Opaque))]
 struct OpaqueParent(Plain);
 

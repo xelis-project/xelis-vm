@@ -39,6 +39,131 @@ fn run_code_result(code: &str) -> Result<Primitive, VMError> {
     run_code_result_id(code, 0)
 }
 
+#[test]
+fn test_iterator_owned_writes_detach_references_instead_of_creating_cycles() {
+    for body in [
+        "let arr: any[] = [0u64]; let it = arr.iter(); arr[0] = it;",
+        "let arr: any[] = [0u64]; let it = arr.iter(); arr[0] = [it];",
+        "let holder: any[][] = [[]]; let it = holder.iter(); holder[0].push(it);",
+        "let inner: any[] = [0u64]; let holder = [inner]; let it = holder.iter(); holder[0].insert(0u32, it);",
+        "let holder: any[][] = [[]]; let it = holder.iter(); holder[0].extend([it]);",
+        "let inner: map<u64, any> = {}; let holder = [inner]; let it = holder.iter(); holder[0].insert(0u64, it);",
+        "let inner: Iterator<any> = Iterator::empty(); let holder = [inner]; let it = holder.iter(); holder[0].chain(it);",
+        "let inner: Iterator<any> = Iterator::empty(); let holder = [inner]; let it = holder.iter(); holder[0].zip(it);",
+    ] {
+        let code = format!("entry main() {{ {body} return 0u64 }}");
+        assert_eq!(run_code(&code), Primitive::U64(0), "owned write failed: {body}");
+    }
+}
+
+#[test]
+fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
+    use std::{collections::HashSet, sync::Mutex};
+    type Probes = Mutex<Vec<StackValue>>;
+
+    // Check the original graph before ownership conversion can copy it. Shared
+    // descendants are allowed; a node revisited on its active path is a cycle.
+    fn check_graph(value: &ValueCell) -> Result<(), EnvironmentError> {
+        let mut pending = vec![(OpaqueChild::Value(value), false)];
+        let mut active = HashSet::new();
+        let mut complete = HashSet::new();
+        while let Some((node, leaving)) = pending.pop() {
+            let id = match node {
+                OpaqueChild::Value(value) => (false, value as *const ValueCell as usize),
+                OpaqueChild::Opaque(value) => {
+                    (true, value as *const dyn Opaque as *const () as usize)
+                }
+            };
+            if leaving {
+                active.remove(&id);
+                complete.insert(id);
+                continue;
+            }
+            if complete.contains(&id) {
+                continue;
+            }
+            if !active.insert(id) {
+                return Err(EnvironmentError::Static("circular VM value reference"));
+            }
+            pending.push((node, true));
+            match node {
+                OpaqueChild::Opaque(value) => {
+                    value.visit_children(&mut |child| pending.push((child, false)))
+                }
+                OpaqueChild::Value(value) => match value {
+                    ValueCell::Object(values) => pending.extend(
+                        values
+                            .iter()
+                            .map(|value| (OpaqueChild::Value(value.as_ref()), false)),
+                    ),
+                    ValueCell::Map(values) => {
+                        pending.extend(values.iter().flat_map(|(key, value)| {
+                            [
+                                (OpaqueChild::Value(key), false),
+                                (OpaqueChild::Value(value.as_ref()), false),
+                            ]
+                        }))
+                    }
+                    ValueCell::Primitive(Primitive::Opaque(value)) => {
+                        pending.push((OpaqueChild::Opaque(value.inner()), false))
+                    }
+                    _ => {}
+                },
+            }
+        }
+        Ok(())
+    }
+
+    fn probe(
+        _: FnInstance,
+        params: FnParams,
+        metadata: &ModuleMetadata<'_, Probes>,
+        _: &mut VMContext,
+    ) -> FnReturnType<Probes> {
+        let value = params.into_iter().next().unwrap();
+        check_graph(value.as_ref())?;
+        assert!(!value.is_owned(), "probe must retain the original VM slot");
+        metadata.metadata.lock().unwrap().push(value);
+        Ok(SysCallResult::None)
+    }
+
+    for body in [
+        "let a: any[] = [0u64]; let it = a.iter(); probe(a); probe(it); a[0] = it; probe(a);",
+        "let inner: any[] = [0u64]; let a = [inner]; let it = a.iter(); probe(a); probe(it); a[0].push(it); probe(a);",
+        "let inner: any[] = [0u64, 1u64]; let a = [inner]; let view = a[0].slice(0u32..1u32); let it = view.iter(); probe(a); probe(view); probe(it); a[0][0] = it; probe(a);",
+        "let a: any[][] = [[], []]; probe(a); foreach item in a { item.push(a.iter()); } probe(a);",
+        "let inner: any[] = [0u64]; let a = [inner]; let view = a.concat(); let it = a.iter(); probe(a); probe(view); probe(it); view[0] = it; probe(a); probe(view);",
+        "let m: map<u64, any> = {1u64: 0u64}; let values = m.values(); let it = values.iter(); probe(m); probe(values); probe(it); m.insert(1u64, it); probe(m);",
+        "let m: map<u64, any> = {1u64: 0u64}; let entries = m.entries(); let it = entries.iter(); probe(m); probe(entries); probe(it); m.insert(1u64, it); probe(m);",
+        "let inner: any[] = [0u64]; let a = [inner]; let view = a.first().unwrap(); let it = a.iter(); probe(a); probe(view); probe(it); view[0] = it; probe(a);",
+        "let a: any[] = [0u64, 1u64]; let it = a.iter().map(|x: any| { a[0] = a.iter(); return x }); probe(a); probe(it); it.next(); probe(a); probe(it);",
+        "let a: any[] = [0u64, 1u64]; let it = a.iter().filter(|x: any| { a[0] = a.iter(); return true }); probe(a); probe(it); it.next(); probe(a); probe(it);",
+        "let a: any[] = [0u64]; let seed: any = 0u64; let it: Iterator<any> = Iterator::unfold(seed, |s: any| { let nested = a.iter(); a[0] = nested; let next: any = a.iter(); return (nested, next) }); probe(a); probe(it); it.next(); probe(a); probe(it);",
+        "let a: any[] = [0u64, 1u64]; let left = a.iter().map(|x: any| { a[0] = a.iter(); return x }); let right = a.iter().map(|x: any| { return x }); let it = left.zip(right); probe(a); probe(it); it.next(); probe(a); probe(it);",
+        "let first: any[] = [0u64]; let second: any[] = [1u64]; let a = [first, second]; let it = a.iter().map(|x: any[]| { a[0][0] = a.iter(); return x }).flatten(); probe(a); probe(it); it.next(); probe(a); probe(it);",
+        "let a: any[] = [0u64, 1u64]; let it = a.iter(); let initial: any[] = [0u64]; probe(a); probe(it); probe(initial); let result = it.fold(initial, |acc: any[], x: any| { acc.push(a.iter()); a[0] = acc; return acc }); probe(a); probe(it); probe(result);",
+    ] {
+        let code = format!("entry main() {{ {body} return 0u64 }}");
+        let mut builder = EnvironmentBuilder::<Probes>::default();
+        builder.register_native_function("probe", None, vec![("value", Type::Any)], FunctionHandler::Sync(probe), 0, None);
+        let tokens = Lexer::new(&code).into_iter().collect::<Result<Vec<_>, _>>().unwrap();
+        let (program, _) = Parser::with(tokens.into_iter(), &builder).parse().unwrap_or_else(|error| panic!("{body}: {error:?}"));
+        let environment = builder.build();
+        let module = Compiler::new(&program, &environment).compile().unwrap();
+        ModuleValidator::new(&module, &environment).verify().unwrap();
+        let probes = Probes::default();
+        let mut vm = VM::default();
+        vm.context_mut().set_gas_limit(100_000_000);
+        vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&probes).into() }).unwrap();
+        vm.invoke_entry_chunk(0).unwrap();
+        let result = vm.run_blocking().unwrap_or_else(|error| panic!("{body}: {error:?}"));
+        assert_eq!(result.as_u64().unwrap(), 0, "{body}");
+        drop(result);
+        drop(vm);
+        for value in probes.into_inner().unwrap() { check_graph(value.as_ref()).unwrap(); }
+    }
+}
+
 // ============================================================================
 // ARRAY TESTS
 // ============================================================================

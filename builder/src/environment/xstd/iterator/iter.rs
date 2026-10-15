@@ -66,11 +66,11 @@ pub const MAX_PIPE_DEPTH: usize = 128;
 /// All adapter functions (map, filter, skip, take, …) simply push a `PipeStep`
 /// onto `pipe` — O(1), no allocation of `Box<XIterator>`.
 ///
-/// Because no `XIterator` owns another `XIterator` (only `PipeStep::Chain` and
-/// `PipeStep::Zip` box a secondary iterator, and those are typically shallow),
-/// the default `Clone` and `Drop` are sufficient — no custom recursive unwinding.
+/// Ordinary `Clone` preserves shared payload pointers. Opaque ownership
+/// conversion uses `detached_clone` to copy those payloads independently.
+/// Chain/Zip nesting is bounded by the VM, and Drop drains it iteratively.
 #[derive(Debug, Clone, silex_types::Opaque)]
-#[opaque(name = "Iterator", display, children = self.children())]
+#[opaque(name = "Iterator", display, children = self.children(), deep_clone = self.detached_clone())]
 pub struct XIterator {
     pub(crate) source: BaseSource,
     pub(crate) pipe: VecDeque<PipeStep>,
@@ -86,6 +86,46 @@ impl std::fmt::Display for XIterator {
 }
 
 impl XIterator {
+    /// Detach every VM payload while preserving the source and pipeline state.
+    fn detached_clone(&self) -> Self {
+        fn clone_values(values: &VecDeque<ValuePointer>) -> VecDeque<ValuePointer> {
+            values
+                .iter()
+                .map(|value| ValuePointer::new(value.as_ref().deep_clone()))
+                .collect()
+        }
+        let source = match &self.source {
+            BaseSource::Dequeue(values) => BaseSource::Dequeue(clone_values(values)),
+            BaseSource::Once(value) => BaseSource::Once(
+                value
+                    .as_ref()
+                    .map(|value| ValuePointer::new(value.as_ref().deep_clone())),
+            ),
+            BaseSource::Empty => BaseSource::Empty,
+            BaseSource::Unfold { closure, state } => BaseSource::Unfold {
+                closure: closure.to_owned(),
+                state: state.as_ref().map(StackValue::to_owned),
+            },
+        };
+        let pipe = self
+            .pipe
+            .iter()
+            .map(|step| match step {
+                PipeStep::Map(closure) => PipeStep::Map(closure.to_owned()),
+                PipeStep::Filter(closure) => PipeStep::Filter(closure.to_owned()),
+                PipeStep::Chain(child) => PipeStep::Chain(Box::new(child.detached_clone())),
+                PipeStep::Zip(child) => PipeStep::Zip(Box::new(child.detached_clone())),
+                PipeStep::Flatten(values) => PipeStep::Flatten(clone_values(values)),
+                step => step.clone(),
+            })
+            .collect();
+        Self {
+            source,
+            pipe,
+            depth: self.depth,
+        }
+    }
+
     // Expose direct payloads without advancing the iterator or running closures.
     fn children(&self) -> impl Iterator<Item = OpaqueChild<'_>> {
         let dequeue = match &self.source {
@@ -480,6 +520,76 @@ impl Drop for XIterator {
 mod depth_tests {
     use super::*;
     use silex_types::ValueError;
+
+    #[test]
+    fn owned_iterators_detach_their_source_slots() {
+        let mut slot = ValuePointer::new(Primitive::U64(1).into());
+        let iter = XIterator::from_dequeue(VecDeque::from([slot.clone()]));
+        let value = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(iter)));
+        let detached = value.deep_clone();
+        // No payload references are live while replacing the original slot.
+        unsafe {
+            *slot.as_mut() = detached;
+        }
+        assert_eq!(slot.as_ref().calculate_depth(16).unwrap(), 1);
+        assert_eq!(value.calculate_depth(16).unwrap(), 2);
+        drop(value);
+        assert_eq!(slot.strong_count(), 1);
+    }
+
+    #[test]
+    fn deep_clone_detaches_every_retained_payload_and_nested_iterator() {
+        for position in 0..10 {
+            let original = ValuePointer::new(Primitive::U64(1).into());
+            let payload = ValueCell::Object(vec![original.clone()]);
+            let mut iter = XIterator::empty();
+            match position {
+                0 => iter.source = BaseSource::Dequeue(VecDeque::from([payload.into()])),
+                1 => iter.source = BaseSource::Once(Some(payload.into())),
+                2 => {
+                    iter.source = BaseSource::Unfold {
+                        closure: payload.into(),
+                        state: None,
+                    }
+                }
+                3 => {
+                    iter.source = BaseSource::Unfold {
+                        closure: Primitive::Null.into(),
+                        state: Some(payload.into()),
+                    }
+                }
+                4 => iter.pipe.push_back(PipeStep::Map(payload.into())),
+                5 => iter.pipe.push_back(PipeStep::Filter(payload.into())),
+                6 => iter
+                    .pipe
+                    .push_back(PipeStep::Flatten(VecDeque::from([payload.into()]))),
+                7 | 8 => {
+                    let child = Box::new(XIterator::once(payload));
+                    iter.depth = 1;
+                    iter.pipe.push_back(if position == 7 {
+                        PipeStep::Chain(child)
+                    } else {
+                        PipeStep::Zip(child)
+                    });
+                }
+                9 => {
+                    iter = XIterator::once(ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(
+                        XIterator::once(payload),
+                    ))))
+                }
+                _ => unreachable!(),
+            }
+            let source = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(iter)));
+            let snapshot = source.deep_clone();
+            drop(source);
+            assert_eq!(
+                original.strong_count(),
+                1,
+                "retained source slot at position {position}"
+            );
+            snapshot.calculate_depth(16).unwrap();
+        }
+    }
 
     fn payload(depth: usize) -> ValueCell {
         let mut value = ValueCell::Primitive(Primitive::U64(42));
