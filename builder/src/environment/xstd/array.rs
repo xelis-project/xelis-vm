@@ -1,4 +1,4 @@
-use silex_types::{ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
+use silex_types::{PrimitiveInteger, ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
 use silex_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use crate::ConstFunctionError;
 
@@ -10,7 +10,7 @@ macro_rules! array_number_with_size {
         paste! {
             fn [<with_size_ $op>](params: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
                 let count = params[0].as_u32()? as usize;
-                let values = vec![Constant::Primitive(Primitive::$t(Default::default())); count];
+                let values = vec![Constant::Primitive(Primitive::Integer(PrimitiveInteger::$t(Default::default()))); count];
                 Ok(Constant::Array(values))
             }
 
@@ -120,7 +120,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 // native functions
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_vec()?.len();
-    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
@@ -221,7 +221,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
 
     for (i, v) in vec.iter().enumerate() {
         if *v.as_ref() == *handle {
-            return Ok(SysCallResult::Return(Primitive::U32(i as u32).into()))
+            return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(i as u32)).into()))
         }
     }
 
@@ -241,10 +241,9 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMCo
 fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let range = param.as_ref();
-    let (start, end) = range.as_range()?;
-
-    let start = start.as_u32()?;
-    let end = end.as_u32()?;
+    let range = range.as_range()?;
+    let start = Primitive::Integer(range.start()).as_u32()?;
+    let end = Primitive::Integer(range.end()).as_u32()?;
 
     let mut zelf = zelf?;
     let vec = zelf.as_mut().as_mut_vec()?;
@@ -564,12 +563,12 @@ impl OrdKey {
 
     fn from_value(p: ValueCell) -> Result<Self, EnvironmentError> {
         match p {
-            ValueCell::Primitive(Primitive::U8(v)) => Ok(OrdKey::U8(v)),
-            ValueCell::Primitive(Primitive::U16(v)) => Ok(OrdKey::U16(v)),
-            ValueCell::Primitive(Primitive::U32(v)) => Ok(OrdKey::U32(v)),
-            ValueCell::Primitive(Primitive::U64(v)) => Ok(OrdKey::U64(v)),
-            ValueCell::Primitive(Primitive::U128(v)) => Ok(OrdKey::U128(v)),
-            ValueCell::Primitive(Primitive::U256(v)) => Ok(OrdKey::U256(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(v))) => Ok(OrdKey::U8(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U16(v))) => Ok(OrdKey::U16(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(v))) => Ok(OrdKey::U32(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(v))) => Ok(OrdKey::U64(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U128(v))) => Ok(OrdKey::U128(v)),
+            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U256(v))) => Ok(OrdKey::U256(v)),
             ValueCell::Bytes(v) => Ok(OrdKey::Bytes(v)),
             _ => Err(EnvironmentError::Static("only supports primitive types that implement Ord")),
         }

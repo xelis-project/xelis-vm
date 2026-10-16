@@ -7,14 +7,13 @@ use std::{
 
 use indexmap::IndexMap;
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{Constant, DefinedType, U256, ValueError, values::Primitive};
+use crate::{OpaqueWrapper, PrimitiveInteger, Constant, DefinedType, U256, ValueError, values::Primitive};
 
 use super::{CellArray, CellMap, ValueCell, ValuePointer};
 
-fn serialize_map<S>(map: &IndexMap<ConstantValueCell, ConstantValueCell>, serializer: S) -> Result<S::Ok, S::Error>
+pub(crate) fn serialize_map<S>(map: &IndexMap<ConstantValueCell, ConstantValueCell>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -26,7 +25,7 @@ where
     seq.end()
 }
 
-fn deserialize_map<'de, D>(
+pub(crate) fn deserialize_map<'de, D>(
     deserializer: D,
 ) -> Result<IndexMap<ConstantValueCell, ConstantValueCell>, D::Error>
 where
@@ -55,17 +54,12 @@ where
 /// Nested values are also `ConstantValueCell` (no `ValuePointer` / `UnsafeCell`).
 /// `Clone`, `Drop`, `PartialEq`, and `Hash` are all iterative to prevent stack
 /// overflow for deeply nested structures.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "type", content = "value")]
+#[derive(Debug)]
 pub enum ConstantValueCell {
     Primitive(Primitive),
-    #[serde(with = "hex::serde")]
+    Opaque(OpaqueWrapper),
     Bytes(Vec<u8>),
     Object(Vec<ConstantValueCell>),
-    #[serde(
-        serialize_with = "serialize_map",
-        deserialize_with = "deserialize_map"
-    )]
     Map(IndexMap<ConstantValueCell, ConstantValueCell>),
 }
 
@@ -82,6 +76,11 @@ impl PartialEq for ConstantValueCell {
         while let Some((l, r)) = stack.pop() {
             match (l, r) {
                 (Self::Primitive(a), Self::Primitive(b)) => {
+                    if a != b {
+                        return false;
+                    }
+                }
+                (Self::Opaque(a), Self::Opaque(b)) => {
                     if a != b {
                         return false;
                     }
@@ -122,6 +121,10 @@ impl Hash for ConstantValueCell {
         while let Some(cell) = stack.pop() {
             match cell {
                 Self::Primitive(v) => v.hash(state),
+                Self::Opaque(v) => {
+                    10u8.hash(state);
+                    v.hash(state);
+                },
                 Self::Bytes(bytes) => {
                     12u8.hash(state);
                     bytes.hash(state);
@@ -144,6 +147,7 @@ impl ConstantValueCell {
     pub fn to_value_cell(&self) -> ValueCell {
         match self {
             Self::Primitive(p) => return ValueCell::Primitive(p.clone()),
+            Self::Opaque(p) => return ValueCell::Opaque(p.deep_clone()),
             Self::Bytes(b) => return ValueCell::Bytes(b.clone()),
             _ => {}
         }
@@ -177,6 +181,7 @@ impl ConstantValueCell {
                 }
                 Work::Visit(cell) => match cell {
                     Self::Primitive(p) => results.push(ValueCell::Primitive(p.clone())),
+                    Self::Opaque(p) => results.push(ValueCell::Opaque(p.deep_clone())),
                     Self::Bytes(b) => results.push(ValueCell::Bytes(b.clone())),
                     Self::Object(values) => {
                         work.push(Work::BuildArray(values.len()));
@@ -200,6 +205,11 @@ impl ConstantValueCell {
             return Ok(p.get_memory_usage());
         }
 
+        // Opaque values retain the original primitive accounting: 8 at the root,
+        // and 1 + 8 when nested in a container.
+        if matches!(self, Self::Opaque(_)) {
+            return Ok(8);
+        }
         let mut stack: Vec<&ConstantValueCell> = vec![self];
         let mut memory = 0usize;
 
@@ -209,6 +219,7 @@ impl ConstantValueCell {
             }
 
             match cell {
+                Self::Opaque(_) => memory += 9,
                 Self::Primitive(p) => {
                     memory += 1;
                     memory += p.get_memory_usage();
@@ -255,7 +266,7 @@ fn drain_children(cell: &mut ConstantValueCell, stack: &mut Vec<ConstantValueCel
 impl Drop for ConstantValueCell {
     fn drop(&mut self) {
         match self {
-            Self::Primitive(_) | Self::Bytes(_) => return, // no nested heap data to drop
+            Self::Primitive(_) | Self::Opaque(_) | Self::Bytes(_) => return, // no nested heap data to drop
             Self::Object(_) | Self::Map(_) => {}
         }
 
@@ -272,6 +283,7 @@ impl Clone for ConstantValueCell {
     fn clone(&self) -> Self {
         match self {
             Self::Primitive(p) => return Self::Primitive(p.clone()),
+            Self::Opaque(p) => return Self::Opaque(p.deep_clone()),
             Self::Bytes(b) => return Self::Bytes(b.clone()),
             _ => {}
         }
@@ -289,6 +301,7 @@ impl Clone for ConstantValueCell {
             match item {
                 Work::Visit(cell) => match cell {
                     Self::Primitive(p) => results.push(Self::Primitive(p.clone())),
+                    Self::Opaque(p) => results.push(Self::Opaque(p.deep_clone())),
                     Self::Bytes(b) => results.push(Self::Bytes(b.clone())),
                     Self::Object(values) => {
                         work.push(Work::BuildArray(values.len()));
@@ -356,6 +369,7 @@ impl From<Constant> for ConstantValueCell {
             match item {
                 Work::Visit(c) => match c {
                     Constant::Primitive(p) => results.push(Self::Primitive(p)),
+                    Constant::Opaque(p) => results.push(Self::Opaque(p)),
                     Constant::Bytes(b) => results.push(Self::Bytes(b)),
                     Constant::Array(values) => {
                         let len = values.len();
@@ -397,7 +411,7 @@ impl From<Constant> for ConstantValueCell {
                     let start = results.len() - (len - if matches!(ty, DefinedType::Enum(_)) { 1 } else { 0 });
                     let mut values: Vec<ConstantValueCell> = results.drain(start..).collect();
                     if let DefinedType::Enum(ref e) = ty {
-                        values.insert(0, Self::Primitive(Primitive::U8(e.variant_id())));
+                        values.insert(0, Self::Primitive(Primitive::Integer(PrimitiveInteger::U8(e.variant_id()))));
                     }
                     results.push(Self::Object(values));
                 }
@@ -440,6 +454,7 @@ impl fmt::Display for ConstantValueCell {
                 }
                 Item::Cell(cell) => match cell {
                     Self::Primitive(v) => write!(&mut output, "{}", v).map_err(|_| fmt::Error)?,
+                    Self::Opaque(v) => write!(&mut output, "{}", v).map_err(|_| fmt::Error)?,
                     Self::Bytes(b) => write!(&mut output, "bytes{:?}", b).map_err(|_| fmt::Error)?,
                     Self::Object(values) => {
                         if values.is_empty() {
@@ -482,7 +497,7 @@ impl JsonSchema for ConstantValueCell {
     }
 
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let primitive_schema = gen.subschema_for::<Primitive>();
+        let primitive_schema = gen.subschema_for::<super::super::wire::LegacyPrimitiveWire>();
         let self_schema = gen.subschema_for::<ConstantValueCell>();
 
         let primitive_variant = json!({
@@ -543,7 +558,7 @@ macro_rules! impl_from_primitive_type {
     ($($t:ty => $variant:ident),*) => {
         $(impl From<$t> for ConstantValueCell {
             fn from(v: $t) -> Self {
-                Self::Primitive(Primitive::$variant(v))
+                Self::Primitive(Primitive::Integer(PrimitiveInteger::$variant(v)))
             }
         })*
     }
@@ -554,13 +569,12 @@ impl_from_primitive_type!(
     u16 => U16,
     u32 => U32,
     u64 => U64,
-    u128 => U128,
-    bool => Boolean
+    u128 => U128
 );
 
 impl From<U256> for ConstantValueCell {
     fn from(v: U256) -> Self {
-        Self::Primitive(Primitive::U256(v))
+        Self::Primitive(Primitive::Integer(PrimitiveInteger::U256(v)))
     }
 }
 
@@ -568,6 +582,14 @@ impl From<String> for ConstantValueCell {
     fn from(s: String) -> Self {
         Self::Primitive(Primitive::String(s))
     }
+}
+
+impl From<PrimitiveInteger> for ConstantValueCell {
+    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
+}
+
+impl From<bool> for ConstantValueCell {
+    fn from(value: bool) -> Self { Self::Primitive(Primitive::Boolean(value)) }
 }
 
 #[cfg(test)]

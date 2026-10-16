@@ -8,7 +8,7 @@ use silex_environment::{
     SysCallResult,
     ModuleMetadata,
 };
-use silex_types::{Type, Primitive, ValueCell, ValuePointer};
+use silex_types::{PrimitiveInteger, Type, Primitive, ValueCell, ValuePointer};
 
 use crate::EnvironmentBuilder;
 
@@ -30,7 +30,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_map()?.len();
-    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
 fn contains_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {

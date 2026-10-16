@@ -1,6 +1,7 @@
 use silex_types::{
+    PrimitiveInteger,
     traits::{DynType, JSONHelper},
-    Opaque, OpaqueWrapper,
+    Constant, ConstantValueCell, Opaque, OpaqueWrapper, Primitive, StackValue, ValueCell, ValueError, ValuePointer,
 };
 
 #[derive(Debug, Clone, Opaque)]
@@ -9,19 +10,18 @@ struct Plain;
 #[derive(Debug, Clone, Opaque)]
 #[opaque(
     children = std::iter::once(self.0.as_ref()),
-    deep_clone = Self(silex_types::ValuePointer::new(self.0.as_ref().deep_clone()))
+    deep_clone = Self(ValuePointer::new(self.0.as_ref().deep_clone()))
 )]
-struct RetainedValue(silex_types::ValuePointer);
+struct RetainedValue(ValuePointer);
 
 #[test]
 fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
-    use silex_types::{Primitive, StackValue, ValueCell, ValuePointer};
     for nested in [false, true] {
         for mode in 0..4 {
-            let mut original = ValuePointer::new(Primitive::U64(1).into());
-            let mut value = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(
+            let mut original = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+            let mut value = ValueCell::Opaque(OpaqueWrapper::new(
                 RetainedValue(original.clone()),
-            )));
+            ));
             if nested {
                 value = ValueCell::Object(vec![value.into()]);
             }
@@ -42,7 +42,7 @@ fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
             assert!(!retained.0.ptr_eq(&original));
             // No payload references are live during this mutation.
             unsafe {
-                *original.as_mut() = Primitive::U64(2).into();
+                *original.as_mut() = Primitive::Integer(PrimitiveInteger::U64(2)).into();
             }
             assert_eq!(retained.0.as_ref().as_u64().unwrap(), 1);
         }
@@ -55,13 +55,11 @@ struct OpaqueParent(Plain);
 
 #[test]
 fn direct_opaque_children_use_the_same_derive_option() {
-    let value = silex_types::ValueCell::Primitive(silex_types::Primitive::Opaque(
-        OpaqueWrapper::new(OpaqueParent(Plain)),
-    ));
+    let value = ValueCell::Opaque(OpaqueWrapper::new(OpaqueParent(Plain)));
     assert_eq!(value.calculate_depth(1).unwrap(), 1);
     assert!(matches!(
         value.calculate_depth(0),
-        Err(silex_types::ValueError::MaxDepthReached)
+        Err(ValueError::MaxDepthReached)
     ));
 }
 
@@ -223,4 +221,22 @@ fn custom_implementations_are_preserved() {
     assert_eq!(opaque.inner().get_type_name(), "Manual");
     assert_eq!(opaque.get_size(), 123);
     assert_eq!(Manual.get_type(), std::any::TypeId::of::<Manual>());
+}
+
+#[test]
+fn constant_opaque_conversion_detaches_retained_values() {
+    for nested in [false, true] {
+        for clone_first in [false, true] {
+            let original = ValuePointer::new(PrimitiveInteger::U64(1).into());
+            let value = Constant::Opaque(OpaqueWrapper::new(RetainedValue(original.clone())));
+            let constant = ConstantValueCell::from(if nested { Constant::Array(vec![value]) } else { value });
+            let snapshot = if clone_first { constant.clone().to_value_cell() } else { constant.to_value_cell() };
+            let retained = if nested { snapshot.as_vec().unwrap()[0].as_ref() } else { &snapshot }
+                .as_opaque_type::<RetainedValue>().unwrap();
+            assert!(!retained.0.ptr_eq(&original));
+            drop(snapshot);
+            drop(constant);
+            assert_eq!(original.strong_count(), 1);
+        }
+    }
 }

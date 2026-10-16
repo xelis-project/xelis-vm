@@ -8,7 +8,7 @@ use silex_environment::{
     SysCallResult,
     ModuleMetadata
 };
-use silex_types::{Type, Primitive, ValueCell};
+use silex_types::{PrimitiveInteger, PrimitiveRange, Type, Primitive, ValueCell};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -38,7 +38,7 @@ macro_rules! collect {
 
                     $context.increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (*$start..*$end).map(|i| Primitive::$t(i).into()).collect();
+                    let vec = (*$start..*$end).map(|i| Primitive::Integer(PrimitiveInteger::$t(i)).into()).collect();
                     ValueCell::Object(vec)
                 }.into()
             }
@@ -51,7 +51,7 @@ macro_rules! count {
         paste! {
             {
                 let count = $end.checked_sub(*$start).unwrap_or(Default::default());
-                Primitive::$t(count).into()
+                Primitive::Integer(PrimitiveInteger::$t(count)).into()
             }
         }
     };
@@ -69,30 +69,63 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let zelf = zelf?;
-    let (start, end) = zelf.as_range()?;
+    let range = zelf.as_range()?;
 
     let value = value.as_ref();
-    Ok(SysCallResult::Return(match (start, end) {
-        (Primitive::U8(start), Primitive::U8(end)) => contains!(u8, start, end, value),
-        (Primitive::U16(start), Primitive::U16(end)) => contains!(u16, start, end, value),
-        (Primitive::U32(start), Primitive::U32(end)) => contains!(u32, start, end, value),
-        (Primitive::U64(start), Primitive::U64(end)) => contains!(u64, start, end, value),
-        (Primitive::U128(start), Primitive::U128(end)) => contains!(u128, start, end, value),
-        (Primitive::U256(start), Primitive::U256(end)) => contains!(u256, start, end, value),
-        _ => return Err(EnvironmentError::InvalidType)
+    Ok(SysCallResult::Return(match range {
+        PrimitiveRange::U8(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u8, start, end, value)
+        },
+        PrimitiveRange::U16(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u16, start, end, value)
+        },
+        PrimitiveRange::U32(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u32, start, end, value)
+        },
+        PrimitiveRange::U64(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u64, start, end, value)
+        },
+        PrimitiveRange::U128(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u128, start, end, value)
+        },
+        PrimitiveRange::U256(range) => {
+            let (start, end) = (&range.start, &range.end);
+            contains!(u256, start, end, value)
+        },
     }))
 }
 
 fn collect<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let (start, end) = zelf.as_range()?;
-    Ok(SysCallResult::Return(match (start, end) {
-        (Primitive::U8(start), Primitive::U8(end)) => collect!(U8, start, end, u8, context),
-        (Primitive::U16(start), Primitive::U16(end)) => collect!(U16, start, end, u16, context),
-        (Primitive::U32(start), Primitive::U32(end)) => collect!(U32, start, end, u32, context),
-        (Primitive::U64(start), Primitive::U64(end)) => collect!(U64, start, end, u64, context),
-        (Primitive::U128(start), Primitive::U128(end)) => collect!(U128, start, end, u128, context),
-        (Primitive::U256(start), Primitive::U256(end)) => {
+    let range = zelf.as_range()?;
+    Ok(SysCallResult::Return(match range {
+        PrimitiveRange::U8(range) => {
+            let (start, end) = (&range.start, &range.end);
+            collect!(U8, start, end, u8, context)
+        },
+        PrimitiveRange::U16(range) => {
+            let (start, end) = (&range.start, &range.end);
+            collect!(U16, start, end, u16, context)
+        },
+        PrimitiveRange::U32(range) => {
+            let (start, end) = (&range.start, &range.end);
+            collect!(U32, start, end, u32, context)
+        },
+        PrimitiveRange::U64(range) => {
+            let (start, end) = (&range.start, &range.end);
+            collect!(U64, start, end, u64, context)
+        },
+        PrimitiveRange::U128(range) => {
+            let (start, end) = (&range.start, &range.end);
+            collect!(U128, start, end, u128, context)
+        },
+        PrimitiveRange::U256(range) => {
+            let (start, end) = (&range.start, &range.end);
             let (diff, overflow) = end.overflowing_sub(*start);
 
             let mut vec = Vec::new();
@@ -105,39 +138,55 @@ fn collect<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context:
                 context.increase_gas_usage(diff as u64 * 8)?;
 
                 for i in 0..diff {
-                    vec.push(Primitive::U256(i.into()).into());
+                    vec.push(Primitive::Integer(PrimitiveInteger::U256(i.into())).into());
                 }
             }
 
             ValueCell::Object(vec).into()
         }
-        _ => return Err(EnvironmentError::InvalidType)
     }))
 }
 
 fn max<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let (_, end) = zelf.as_range()?;
-    Ok(SysCallResult::Return(end.clone().into()))
+    let end = zelf.as_range()?.end();
+    Ok(SysCallResult::Return(end.into()))
 }
 
 fn min<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let (start, _) = zelf.as_range()?;
-    Ok(SysCallResult::Return(start.clone().into()))
+    let start = zelf.as_range()?.start();
+    Ok(SysCallResult::Return(start.into()))
 }
 
 fn count<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let (start, end) = zelf.as_range()?;
+    let range = zelf.as_range()?;
 
-    Ok(SysCallResult::Return(match (start, end) {
-        (Primitive::U8(start), Primitive::U8(end)) => count!(U8, start, end, u8),
-        (Primitive::U16(start), Primitive::U16(end)) => count!(U16, start, end, u16),
-        (Primitive::U32(start), Primitive::U32(end)) => count!(U32, start, end, u32),
-        (Primitive::U64(start), Primitive::U64(end)) => count!(U64, start, end, u64),
-        (Primitive::U128(start), Primitive::U128(end)) => count!(U128, start, end, u128),
-        (Primitive::U256(start), Primitive::U256(end)) => count!(U256, start, end, u256),
-        _ => return Err(EnvironmentError::InvalidType)
+    Ok(SysCallResult::Return(match range {
+        PrimitiveRange::U8(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U8, start, end, u8)
+        },
+        PrimitiveRange::U16(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U16, start, end, u16)
+        },
+        PrimitiveRange::U32(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U32, start, end, u32)
+        },
+        PrimitiveRange::U64(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U64, start, end, u64)
+        },
+        PrimitiveRange::U128(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U128, start, end, u128)
+        },
+        PrimitiveRange::U256(range) => {
+            let (start, end) = (&range.start, &range.end);
+            count!(U256, start, end, u256)
+        },
     }))
 }

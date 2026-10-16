@@ -1,5 +1,5 @@
 use silex_environment::VMContext;
-use silex_types::Primitive;
+use silex_types::{Primitive, PrimitiveInteger};
 use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, VMError};
 use super::InstructionResult;
 
@@ -46,7 +46,7 @@ pub fn memory_pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
 pub fn memory_len<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("memory len");
 
-    let len = Primitive::U32(manager.registers_len() as u32);
+    let len = Primitive::Integer(PrimitiveInteger::U32(manager.registers_len() as u32));
     let memory_usage = len.get_memory_usage();
     context.increase_memory_usage(memory_usage)?;
 

@@ -1,5 +1,5 @@
 use silex_environment::{VMContext, EnvironmentError, FunctionHandler};
-use silex_types::{Type, Primitive, ValueCell};
+use silex_types::{PrimitiveInteger, Type, Primitive, ValueCell};
 use super::{
     FnInstance,
     FnParams,
@@ -55,7 +55,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_string()?.len();
-    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
 fn trim<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
@@ -128,7 +128,7 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     let value = handle.as_string()?;
     context.increase_gas_usage((s.len() + value.len()) as u64)?;
     if let Some(index) = s.find(value) {
-        let inner = Primitive::U32(index as u32).into();
+        let inner = Primitive::Integer(PrimitiveInteger::U32(index as u32)).into();
         Ok(SysCallResult::Return(inner))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
@@ -145,7 +145,7 @@ fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetada
     let value = handle.as_string()?;
     context.increase_gas_usage((s.len() + value.len()) as u64)?;
     if let Some(index) = s.rfind(value) {
-        let inner = Primitive::U32(index as u32).into();
+        let inner = Primitive::Integer(PrimitiveInteger::U32(index as u32)).into();
         Ok(SysCallResult::Return(inner))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))

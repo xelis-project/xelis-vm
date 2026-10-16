@@ -5,7 +5,7 @@ use silex_decompiler::Decompiler;
 use silex_environment::ModuleMetadata;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::Primitive;
+use silex_types::{Primitive, PrimitiveInteger};
 use xelis_vm::{ModuleValidator, VM};
 
 fn compile(source: &str, env: &EnvironmentBuilder<()>, packed: bool, fold: bool) -> Module {
@@ -148,7 +148,7 @@ fn custom_environment_resolves_ids_without_default_std() {
         "host_value",
         None,
         vec![],
-        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(42).into()))),
+        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(42)).into()))),
         1,
         Some(Type::U64),
     );
@@ -158,7 +158,7 @@ fn custom_environment_resolves_ids_without_default_std() {
         vec![("scale", Type::U64)],
         FunctionHandler::Sync(|v, args, _, _| {
             Ok(SysCallResult::Return(
-                Primitive::U64(v?.as_u64()? * args[0].as_u64()?).into(),
+                Primitive::Integer(PrimitiveInteger::U64(v?.as_u64()? * args[0].as_u64()?)).into(),
             ))
         }),
         1,
@@ -167,7 +167,7 @@ fn custom_environment_resolves_ids_without_default_std() {
     env.register_constant(
         Type::U64,
         "ANSWER",
-        Constant::Primitive(Primitive::U64(42)),
+        Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
         Type::U64,
     );
     let module = compile(
@@ -261,8 +261,8 @@ fn pop_n_preserves_expression_evaluation_order() {
     let recovered = Decompiler::new(&module, &env).decompile().unwrap();
     assert!(!recovered.contains("let _"), "{recovered}");
     let rebuilt = compile(&recovered, &env, false, false);
-    assert_eq!(execute(&module, &env, 0), Primitive::U64(2));
-    assert_eq!(execute(&rebuilt, &env, 0), Primitive::U64(2));
+    assert_eq!(execute(&module, &env, 0), Primitive::Integer(PrimitiveInteger::U64(2)));
+    assert_eq!(execute(&rebuilt, &env, 0), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -300,8 +300,8 @@ fn eager_boolean_opcodes_evaluate_both_operands() {
         module.get_chunk_at_mut(0).unwrap().chunk = chunk;
         let recovered = Decompiler::new(&module, &env).decompile().unwrap();
         let rebuilt = compile(&recovered, &env, false, false);
-        assert_eq!(execute(&module, &env, 0), Primitive::U64(1));
-        assert_eq!(execute(&rebuilt, &env, 0), Primitive::U64(1));
+        assert_eq!(execute(&module, &env, 0), Primitive::Integer(PrimitiveInteger::U64(1)));
+        assert_eq!(execute(&rebuilt, &env, 0), Primitive::Integer(PrimitiveInteger::U64(1)));
     }
 }
 
@@ -311,7 +311,7 @@ fn pop_n_does_not_create_bindings() {
 
     let env = EnvironmentBuilder::default();
     let mut module = Module::new();
-    let constant = module.add_constant(Primitive::U64(7)) as u16;
+    let constant = module.add_constant(Primitive::Integer(PrimitiveInteger::U64(7))) as u16;
     let mut chunk = Chunk::new();
     for _ in 0..3 {
         chunk.emit_opcode(OpCode::Constant);
@@ -364,7 +364,7 @@ fn voidable_syscalls_follow_standalone_and_value_contexts() {
         "maybe_value",
         None,
         vec![],
-        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(7).into()))),
+        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(7)).into()))),
         0,
         Some(Type::Voidable(Box::new(Type::U64))),
     );

@@ -2,18 +2,17 @@ use std::{fmt, hash::{Hash, Hasher}};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{DefinedType, Opaque, OpaqueWrapper, Type, U256};
+use crate::{PrimitiveInteger, PrimitiveRange, DefinedType, Opaque, OpaqueWrapper, Type, U256};
 use super::{Primitive, ValueError};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "type", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constant {
     Primitive(Primitive),
+    Opaque(OpaqueWrapper),
     Array(Vec<Constant>),
     // Bytes represents a Vec<u8>
     Bytes(Vec<u8>),
 
-    // Use box directly because the range are primitive only
     // Map cannot be used as a key in another map
     Map(IndexMap<Constant, Constant>),
     Typed(Vec<Constant>, DefinedType),
@@ -26,14 +25,14 @@ pub struct ConstantWrapper(pub Constant);
 
 impl Drop for ConstantWrapper {
     fn drop(&mut self) {
-        if matches!(self.0, Constant::Primitive(_)) {
+        if matches!(self.0, Constant::Primitive(_) | Constant::Opaque(_)) {
             return
         }
 
         let mut stack = vec![std::mem::take(&mut self.0)];
         while let Some(value) = stack.pop() {
             match value {
-                Constant::Primitive(_) => {},
+                Constant::Primitive(_) | Constant::Opaque(_) => {},
                 Constant::Array(values) => stack.extend(values),
                 Constant::Bytes(_) => {},
                 Constant::Map(map) => stack.extend(map.into_iter().flat_map(|(k, v)| [k, v])),
@@ -51,10 +50,20 @@ impl Hash for Constant {
             return;
         }
 
+        if let Self::Opaque(value) = self {
+            10u8.hash(state);
+            value.hash(state);
+            return;
+        }
+
         let mut stack = vec![self];
         while let Some(value) = stack.pop() {
             match value {
                 Self::Primitive(v) => v.hash(state),
+                Self::Opaque(v) => {
+                    10u8.hash(state);
+                    v.hash(state);
+                },
                 Self::Array(values) => {
                     12u8.hash(state);
                     stack.extend(values);
@@ -117,7 +126,7 @@ impl Constant {
     #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Primitive(Primitive::U8(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U8(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U8))
         }
     }
@@ -125,7 +134,7 @@ impl Constant {
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Primitive(Primitive::U16(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U16))
         }
     }
@@ -133,7 +142,7 @@ impl Constant {
     #[inline]
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Primitive(Primitive::U32(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U32(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U32))
         }
     }
@@ -141,7 +150,7 @@ impl Constant {
     #[inline]
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Primitive(Primitive::U64(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U64(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U64))
         }
     }
@@ -149,7 +158,7 @@ impl Constant {
     #[inline]
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Primitive(Primitive::U128(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U128(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U128))
         }
     }
@@ -157,7 +166,7 @@ impl Constant {
     #[inline]
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Primitive(Primitive::U256(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U256(n))) => Ok(*n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U256))
         }
     }
@@ -221,7 +230,7 @@ impl Constant {
     #[inline]
     pub fn is_serializable(&self) -> bool {
         match self {
-            Self::Primitive(Primitive::Opaque(op)) => op.is_serializable(),
+            Self::Opaque(op) => op.is_serializable(),
             _ => true
         }
     }
@@ -229,7 +238,7 @@ impl Constant {
     #[inline]
     pub fn to_u8(self) -> Result<u8, ValueError> {
         match self {
-            Self::Primitive(Primitive::U8(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U8(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U8))
         }
     }
@@ -237,7 +246,7 @@ impl Constant {
     #[inline]
     pub fn to_u16(self) -> Result<u16, ValueError> {
         match self {
-            Self::Primitive(Primitive::U16(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U16))
         }
     }
@@ -245,7 +254,7 @@ impl Constant {
     #[inline]
     pub fn to_u32(self) -> Result<u32, ValueError> {
         match self {
-            Self::Primitive(Primitive::U32(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U32(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U32))
         }
     }
@@ -253,7 +262,7 @@ impl Constant {
     #[inline]
     pub fn to_u64(self) -> Result<u64, ValueError> {
         match self {
-            Self::Primitive(Primitive::U64(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U64(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U64))
         }
     }
@@ -261,7 +270,7 @@ impl Constant {
     #[inline]
     pub fn to_u128(self) -> Result<u128, ValueError> {
         match self {
-            Self::Primitive(Primitive::U128(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U128(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U128))
         }
     }
@@ -269,7 +278,7 @@ impl Constant {
     #[inline]
     pub fn to_u256(self) -> Result<U256, ValueError> {
         match self {
-            Self::Primitive(Primitive::U256(n)) => Ok(n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U256(n))) => Ok(n),
             v => Err(ValueError::InvalidValueType(v.clone(), Type::U256))
         }
     }
@@ -300,12 +309,12 @@ impl Constant {
     }
 
     #[inline]
-    pub fn as_range(&self) -> Result<(&Primitive, &Primitive), ValueError> {
+    pub fn as_range(&self) -> Result<&PrimitiveRange, ValueError> {
         self.as_value().and_then(Primitive::as_range)
     }
 
     #[inline]
-    pub fn to_range(self) -> Result<(Primitive, Primitive), ValueError> {
+    pub fn to_range(self) -> Result<PrimitiveRange, ValueError> {
         self.into_value().and_then(Primitive::to_range)
     }
 
@@ -355,12 +364,12 @@ impl Constant {
     #[inline]
     pub fn checked_cast_to_primitive_type(self, expected: &Type) -> Result<Self, ValueError> {
         match expected {
-            Type::U8 => self.checked_cast_to_u8().map(Primitive::U8),
-            Type::U16 => self.checked_cast_to_u16().map(Primitive::U16),
-            Type::U32 => self.checked_cast_to_u32().map(Primitive::U32),
-            Type::U64 => self.checked_cast_to_u64().map(Primitive::U64),
-            Type::U128 => self.checked_cast_to_u128().map(Primitive::U128),
-            Type::U256 => self.checked_cast_to_u256().map(Primitive::U256),
+            Type::U8 => self.checked_cast_to_u8().map(|value| Primitive::Integer(PrimitiveInteger::U8(value))),
+            Type::U16 => self.checked_cast_to_u16().map(|value| Primitive::Integer(PrimitiveInteger::U16(value))),
+            Type::U32 => self.checked_cast_to_u32().map(|value| Primitive::Integer(PrimitiveInteger::U32(value))),
+            Type::U64 => self.checked_cast_to_u64().map(|value| Primitive::Integer(PrimitiveInteger::U64(value))),
+            Type::U128 => self.checked_cast_to_u128().map(|value| Primitive::Integer(PrimitiveInteger::U128(value))),
+            Type::U256 => self.checked_cast_to_u256().map(|value| Primitive::Integer(PrimitiveInteger::U256(value))),
             Type::String => self.cast_to_string().map(Primitive::String),
             Type::Bool => self.cast_to_bool().map(Primitive::Boolean),
             Type::Optional(inner) => {
@@ -371,10 +380,8 @@ impl Constant {
                 }
             },
             Type::Range(inner) => {
-                let (start, end) = self.to_range()?;
-                let start = start.checked_cast_to_primitive_type(inner)?;
-                let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Primitive::Range(Box::new((start, end))))
+                self.to_range()?.checked_cast_to_primitive_type(inner)
+                    .map(|range| Primitive::Range(Box::new(range)))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }.map(Self::Primitive)
@@ -504,6 +511,7 @@ impl fmt::Display for Constant {
                         Self::Primitive(v) => {
                             write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
                         }
+                        Self::Opaque(v) => write!(&mut output, "{}", v).map_err(|_| fmt::Error)?,
                         Self::Bytes(bytes) => {
                             write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
                         }
@@ -589,14 +597,18 @@ impl fmt::Display for Constant {
 
 impl<T: Opaque> From<T> for Constant {
     fn from(value: T) -> Self {
-        Self::Primitive(Primitive::Opaque(value.into()))
+        Self::Opaque(value.into())
     }
 }
 
 impl From<OpaqueWrapper> for Constant {
     fn from(value: OpaqueWrapper) -> Self {
-        Self::Primitive(Primitive::Opaque(value))
+        Self::Opaque(value)
     }
+}
+
+impl From<PrimitiveInteger> for Constant {
+    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
 }
 
 #[cfg(test)]
@@ -609,7 +621,7 @@ mod tests {
         let mut map = Constant::Map(Default::default());
         for _ in 0..100000 {
             let mut m = IndexMap::new();
-            m.insert(Constant::Primitive(Primitive::U8(0)), map);
+            m.insert(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))), map);
 
             map = Constant::Map(m);
         }
@@ -627,7 +639,7 @@ mod tests {
         let mut map = Constant::Map(Default::default());
         for _ in 0..5000 {
             let mut m = IndexMap::new();
-            m.insert(map, Constant::Primitive(Primitive::U8(0)));
+            m.insert(map, Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))));
             map = Constant::Map(m);
         }
 
@@ -645,7 +657,7 @@ mod tests {
         let mut map = Constant::Map(Default::default());
         for _ in 0..1000 {
             let mut m = IndexMap::new();
-            m.insert(Constant::Primitive(Primitive::U8(0)), map);
+            m.insert(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))), map);
             map = Constant::Map(m);
         }
 
@@ -654,7 +666,7 @@ mod tests {
         assert!(display.ends_with("}"));
 
         // Test with deeply nested arrays
-        let mut array = Constant::Array(vec![Constant::Primitive(Primitive::U64(42))]);
+        let mut array = Constant::Array(vec![Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)))]);
         for _ in 0..1000 {
             array = Constant::Array(vec![array]);
         }

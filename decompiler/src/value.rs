@@ -1,5 +1,5 @@
 use silex_builder::EnvironmentBuilder;
-use silex_types::{NumberType, Primitive, Type, TypePacked, ValueCell};
+use silex_types::{PrimitiveInteger, NumberType, Primitive, Type, TypePacked, ValueCell};
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -162,22 +162,21 @@ pub(crate) fn primitive(value: &Primitive) -> Result<Expr, String> {
     let (text, ty) = match value {
         Primitive::Null => ("null".into(), Type::Optional(Box::new(Type::Any))),
         Primitive::Boolean(v) => (v.to_string(), Type::Bool),
-        Primitive::U8(v) => (format!("{v}u8"), Type::U8),
-        Primitive::U16(v) => (format!("{v}u16"), Type::U16),
-        Primitive::U32(v) => (format!("{v}u32"), Type::U32),
-        Primitive::U64(v) => (format!("{v}u64"), Type::U64),
-        Primitive::U128(v) => (format!("{v}u128"), Type::U128),
-        Primitive::U256(v) => (format!("{v}u256"), Type::U256),
+        Primitive::Integer(PrimitiveInteger::U8(v)) => (format!("{v}u8"), Type::U8),
+        Primitive::Integer(PrimitiveInteger::U16(v)) => (format!("{v}u16"), Type::U16),
+        Primitive::Integer(PrimitiveInteger::U32(v)) => (format!("{v}u32"), Type::U32),
+        Primitive::Integer(PrimitiveInteger::U64(v)) => (format!("{v}u64"), Type::U64),
+        Primitive::Integer(PrimitiveInteger::U128(v)) => (format!("{v}u128"), Type::U128),
+        Primitive::Integer(PrimitiveInteger::U256(v)) => (format!("{v}u256"), Type::U256),
         Primitive::String(v) => (quoted(v), Type::String),
         Primitive::Range(v) => {
-            let start = primitive(&v.0)?;
-            let end = primitive(&v.1)?;
+            let start = primitive(&v.start().into())?;
+            let end = primitive(&v.end().into())?;
             (
                 format!("({}..{})", start.text, end.text),
                 Type::Range(Box::new(start.ty)),
             )
         }
-        Primitive::Opaque(_) => return Err("opaque constant has no source literal".into()),
     };
     Ok(Expr::new(text, ty))
 }
@@ -188,6 +187,7 @@ pub(crate) fn literal(value: &ValueCell, depth: usize) -> Result<Expr, String> {
     }
     Ok(match value {
         ValueCell::Primitive(v) => primitive(v)?,
+        ValueCell::Opaque(_) => return Err("opaque constant has no source literal".into()),
         ValueCell::Bytes(v) => {
             let text = std::str::from_utf8(v)
                 .map_err(|_| "non-UTF-8 bytes have no byte-string literal")?;

@@ -8,7 +8,7 @@ use crate::{
     VMContext,
     VMError
 };
-use silex_types::Primitive;
+use silex_types::{Primitive, PrimitiveInteger};
 
 use super::InstructionResult;
 
@@ -16,7 +16,7 @@ pub fn iterable_length<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stac
     debug!("iterable length");
 
     let value = stack.pop_stack()?;
-    let len = Primitive::U32(value.as_ref().as_vec()?.len() as u32);
+    let len = Primitive::Integer(PrimitiveInteger::U32(value.as_ref().as_vec()?.len() as u32));
 
     let memory_usage = len.get_memory_usage();
     context.increase_memory_usage(memory_usage)?;

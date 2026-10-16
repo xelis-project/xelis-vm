@@ -9,9 +9,11 @@ use silex_environment::{
     SysCallResult,
 };
 use silex_types::{
+    PrimitiveInteger,
     Primitive,
     StackValue,
     ValueCell,
+    ValueError,
     ValuePointer,
     OpaqueWrapper,
 };
@@ -146,7 +148,7 @@ impl TerminalOp {
     pub(crate) fn finish<M: 'static>(self, mut items: VecDeque<ValuePointer>, max_depth: usize) -> FnReturnType<M> {
         match self {
             TerminalOp::Collect => Ok(SysCallResult::Return(ValueCell::Object(items.into()).into())),
-            TerminalOp::Count => Ok(SysCallResult::Return(Primitive::U32(items.len() as u32).into())),
+            TerminalOp::Count => Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(items.len() as u32)).into())),
             TerminalOp::Sum => Ok(SysCallResult::Return(sum_items(items)?)),
             TerminalOp::ForEach(f) => apply_items_none(items, f, 0),
             TerminalOp::Find(pred) => apply_items_find(items, pred, 0),
@@ -193,7 +195,7 @@ fn finish_aggregated<M: 'static>(
             AggStep::Enumerate(counter) => {
                 let enumerated: VecDeque<ValuePointer> = items.into_iter().enumerate().map(|(i, item)| {
                     let pair = ValueCell::Object(vec![
-                        ValuePointer::new(Primitive::U32(counter + i as u32).into()),
+                        ValuePointer::new(Primitive::Integer(PrimitiveInteger::U32(counter + i as u32)).into()),
                         item,
                     ]);
                     ValuePointer::new(pair)
@@ -267,7 +269,7 @@ fn flatten_finish<M: 'static>(
     while let Some(ptr) = containers.pop_front() {
         match ptr.into_owned() {
             ValueCell::Object(v) => flat.extend(v),
-            ValueCell::Primitive(Primitive::Opaque(w)) => {
+            ValueCell::Opaque(w) => {
                 let mut inner = w.into_inner::<XIterator>()
                     .map_err(|_| EnvironmentError::Static("flatten: expected Iterator or array"))?;
                 if inner.needs_callback() {
@@ -684,7 +686,7 @@ pub(crate) fn apply_items_position<M: 'static>(items: VecDeque<ValuePointer>, pr
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool()?;
         if matched {
-            return Ok(SysCallResult::Return(Primitive::U32(s.index as u32).into()));
+            return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(s.index as u32)).into()));
         }
 
         s.index += 1;
@@ -783,7 +785,7 @@ pub(crate) fn sum_items(items: VecDeque<ValuePointer>) -> Result<StackValue, Env
         }
     }
 
-    Ok(acc.unwrap_or(Primitive::U64(0)).into())
+    Ok(acc.unwrap_or(Primitive::Integer(PrimitiveInteger::U64(0))).into())
 }
 
 /// Retain the remaining depth budget across callback continuations.
@@ -798,7 +800,7 @@ fn write_back_iter(
     mut write_back: IteratorWriteBack,
     new_iter: XIterator,
 ) -> Result<(), EnvironmentError> {
-    let value = ValueCell::Primitive(Primitive::Opaque(OpaqueWrapper::new(new_iter)));
+    let value = ValueCell::Opaque(OpaqueWrapper::new(new_iter));
     value.calculate_depth(write_back.max_depth)?;
     *write_back.slot.as_opaque_type_mut::<XIterator>()? = value.into_opaque_type::<XIterator>()?;
     Ok(())
@@ -843,7 +845,7 @@ fn prepend_item_to_source(
 ) -> Result<(), EnvironmentError> {
     let budget = max_depth
         .checked_sub(1)
-        .ok_or(silex_types::ValueError::MaxDepthReached)?;
+        .ok_or(ValueError::MaxDepthReached)?;
     item.as_ref().calculate_depth(budget)?;
     match &mut iter.source {
         BaseSource::Dequeue(d) => d.push_front(item),
@@ -959,7 +961,7 @@ fn lazy_next_pipe<M: 'static>(
         if let PipeStep::Zip(right_box) = &mut iter.pipe[idx] {
             if !right_box.needs_callback() {
                 let budget = write_back.max_depth.checked_sub(1)
-                    .ok_or(silex_types::ValueError::MaxDepthReached)?;
+                    .ok_or(ValueError::MaxDepthReached)?;
                 let r = right_box.next_sync(budget)?;
                 // right_box borrow ends here (NLL: last use above)
                 match r {
@@ -1014,7 +1016,7 @@ fn lazy_next_pipe<M: 'static>(
                 let c = *counter;
                 *counter += 1;
                 current = ValuePointer::new(ValueCell::Object(vec![
-                    ValuePointer::new(Primitive::U32(c).into()),
+                    ValuePointer::new(Primitive::Integer(PrimitiveInteger::U32(c)).into()),
                     current,
                 ]));
                 idx += 1;
@@ -1132,7 +1134,7 @@ fn lazy_next_pipe<M: 'static>(
                             }
                         }
                     }
-                    ValueCell::Primitive(Primitive::Opaque(w)) => {
+                    ValueCell::Opaque(w) => {
                         let inner = w.into_inner::<XIterator>()
                             .map_err(|_| EnvironmentError::Static("flatten: expected array or Iterator"))?;
                         if inner.needs_callback() {
@@ -1224,7 +1226,7 @@ fn lazy_next_unfold<M: 'static>(
                 let item_ptr = tuple[0].clone();
                 let next_state: StackValue = tuple[1].to_owned().into();
                 let budget = s.write_back.max_depth.checked_sub(1)
-                    .ok_or(silex_types::ValueError::MaxDepthReached)?;
+                    .ok_or(ValueError::MaxDepthReached)?;
                 next_state.as_ref().calculate_depth(budget)?;
                 if let BaseSource::Unfold { state, .. } = &mut s.iter.source {
                     *state = Some(next_state);
@@ -1261,12 +1263,11 @@ pub(crate) fn lazy_next<M: 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use silex_types::ValueError;
 
     // Stored data is shallow, but enumeration creates progressively deeper
     // tuples before flattening retains the remaining nested tuple.
     fn inner_iter(nesting: usize) -> XIterator {
-        let mut iter = XIterator::once(Primitive::U64(1).into());
+        let mut iter = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into());
         for _ in 0..nesting {
             iter.push_step(PipeStep::Enumerate(0)).unwrap();
         }
@@ -1275,7 +1276,7 @@ mod tests {
     }
 
     fn inner_value(nesting: usize) -> ValueCell {
-        Primitive::Opaque(OpaqueWrapper::new(inner_iter(nesting))).into()
+        ValueCell::Opaque(OpaqueWrapper::new(inner_iter(nesting))).into()
     }
 
     fn resume(result: SysCallResult<()>, value: ValueCell) -> FnReturnType<()> {
@@ -1318,7 +1319,7 @@ mod tests {
     #[test]
     fn map_callback_preserves_the_collection_budget() {
         let result = apply_items_map::<()>(
-            VecDeque::from([Primitive::U64(1).into()]),
+            VecDeque::from([Primitive::Integer(PrimitiveInteger::U64(1)).into()]),
             Primitive::Null.into(),
             VecDeque::new(),
             TerminalOp::Count.push_step(AggStep::Flatten),
@@ -1352,12 +1353,12 @@ mod tests {
         let mut iter = XIterator::empty();
         iter.source = BaseSource::Unfold {
             closure: Primitive::Null.into(),
-            state: Some(Primitive::U64(1).into()),
+            state: Some(Primitive::Integer(PrimitiveInteger::U64(1)).into()),
         };
         iter.push_step(PipeStep::Take(1)).unwrap();
         iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
         let result = lazy_collect::<()>(&mut iter, VecDeque::new(), TerminalOp::Count, 3).unwrap();
-        let tuple = ValueCell::Object(vec![inner_value(4).into(), Primitive::U64(2).into()]);
+        let tuple = ValueCell::Object(vec![inner_value(4).into(), Primitive::Integer(PrimitiveInteger::U64(2)).into()]);
         assert!(matches!(
             resume(result, tuple),
             Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))

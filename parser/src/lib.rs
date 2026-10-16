@@ -65,12 +65,12 @@ macro_rules! apply_checked_op {
     ($self: expr, $a: expr, $b: expr, $op_name: ident, $error: expr) => {{
         paste::paste! {
             let result = match ($a, $b) {
-                (Primitive::U8(a), Primitive::U8(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U8),
-                (Primitive::U16(a), Primitive::U16(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U16),
-                (Primitive::U32(a), Primitive::U32(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U32),
-                (Primitive::U64(a), Primitive::U64(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U64),
-                (Primitive::U128(a), Primitive::U128(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U128),
-                (Primitive::U256(a), Primitive::U256(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U256),
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U8(value))),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U16(value))),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U32(value))),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U64(value))),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U128(value))),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U256(value))),
                 (a, b) => operation_error!($self, a, b)
             };
             checked_result!($self, result, $error)
@@ -83,14 +83,14 @@ macro_rules! apply_shift_op {
     ($self: expr, $a: expr, $b: expr, $op_name: ident) => {{
         paste::paste! {
             let result = match ($a, $b) {
-                (Primitive::U8(a), Primitive::U8(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U8),
-                (Primitive::U16(a), Primitive::U16(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U16),
-                (Primitive::U32(a), Primitive::U32(b)) => a.[<checked_ $op_name>](*b).map(Primitive::U32),
-                (Primitive::U64(a), Primitive::U64(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U64),
-                (Primitive::U128(a), Primitive::U128(b)) => a.[<checked_ $op_name>](*b as u32).map(Primitive::U128),
-                (Primitive::U256(a), Primitive::U256(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => a.[<checked_ $op_name>](*b as u32).map(|value| Primitive::Integer(PrimitiveInteger::U8(value))),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => a.[<checked_ $op_name>](*b as u32).map(|value| Primitive::Integer(PrimitiveInteger::U16(value))),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => a.[<checked_ $op_name>](*b).map(|value| Primitive::Integer(PrimitiveInteger::U32(value))),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => a.[<checked_ $op_name>](*b as u32).map(|value| Primitive::Integer(PrimitiveInteger::U64(value))),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => a.[<checked_ $op_name>](*b as u32).map(|value| Primitive::Integer(PrimitiveInteger::U128(value))),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => {
                     let shift = checked_result!($self, b.as_u64(), ParserErrorKind::Overflow) as u32;
-                    a.[<checked_ $op_name>](shift).map(Primitive::U256)
+                    a.[<checked_ $op_name>](shift).map(|value| Primitive::Integer(PrimitiveInteger::U256(value)))
                 },
                 (a, b) => operation_error!($self, a, b)
             };
@@ -120,12 +120,12 @@ macro_rules! op {
     };
     ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
-            (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
-            (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
-            (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
-            (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-            (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+            (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Integer(PrimitiveInteger::U64(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Integer(PrimitiveInteger::U128(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Integer(PrimitiveInteger::U256(*a $op *b)),
             (a, b) => operation_error!($self, a, b)
         }
     }};
@@ -138,22 +138,22 @@ macro_rules! op_div {
                 return Err(err!($self, ParserErrorKind::DivisionByZero))
             }
     
-            Primitive::$t($a / $b)
+            Primitive::Integer(PrimitiveInteger::$t($a / $b))
         }
     };
     ($self: expr, $a: expr, $b: expr) => {
         match ($a, $b) {
-            (Primitive::U8(a), Primitive::U8(b)) => op_div!($self, U8, a, b),
-            (Primitive::U16(a), Primitive::U16(b)) => op_div!($self, U16, a, b),
-            (Primitive::U32(a), Primitive::U32(b)) => op_div!($self, U32, a, b),
-            (Primitive::U64(a), Primitive::U64(b)) => op_div!($self, U64, a, b),
-            (Primitive::U128(a), Primitive::U128(b)) => op_div!($self, U128, a, b),
-            (Primitive::U256(a), Primitive::U256(b)) => {
+            (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => op_div!($self, U8, a, b),
+            (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => op_div!($self, U16, a, b),
+            (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => op_div!($self, U32, a, b),
+            (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => op_div!($self, U64, a, b),
+            (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => op_div!($self, U128, a, b),
+            (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => {
                 if *b == 0 {
                     return Err(err!($self, ParserErrorKind::DivisionByZero))
                 }
         
-                Primitive::U256(*a / *b)
+                Primitive::Integer(PrimitiveInteger::U256(*a / *b))
             }
             (a, b) => operation_error!($self, a, b)
         }
@@ -164,12 +164,12 @@ macro_rules! op_bool {
     ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U16(a), Primitive::U16(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U32(a), Primitive::U32(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U64(a), Primitive::U64(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U256(a), Primitive::U256(b)) => Primitive::Boolean(*a $op *b),
+            (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Boolean(a $op b),
+            (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Boolean(a $op b),
+            (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Boolean(a $op b),
+            (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Boolean(a $op b),
+            (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Boolean(a $op b),
+            (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Boolean(*a $op *b),
             (a, b) => operation_error!($self, a, b)
         }
     }};
@@ -179,12 +179,12 @@ macro_rules! op_num_with_bool {
     ($self: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
-            (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
-            (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
-            (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
-            (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
-            (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-            (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+            (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Integer(PrimitiveInteger::U64(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Integer(PrimitiveInteger::U128(a $op b)),
+            (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Integer(PrimitiveInteger::U256(*a $op *b)),
             (a, b) => operation_error!($self, a, b)
         }
     }};
@@ -988,7 +988,7 @@ impl<'a, M> Parser<'a, M> {
             Expression::Constant(ref val) => match Type::from_value_type(val) {
                 Some(v) => Cow::Owned(v),
                 None => return match val {
-                    Constant::Primitive(Primitive::Opaque(wrapper)) => {
+                    Constant::Opaque(wrapper) => {
                         if let Some(ty) = self.environment.get_opaque_manager().get_by_type_id(&wrapper.get_type_id()) {
                             Ok(Some(Cow::Owned(Type::Opaque(ty.clone()))))
                         } else {
@@ -1972,12 +1972,12 @@ impl<'a, M> Parser<'a, M> {
                 let pow_n = right.as_u32()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
                 match left {
-                    Primitive::U8(v) => Primitive::U8(v.pow(pow_n)),
-                    Primitive::U16(v) => Primitive::U16(v.pow(pow_n)),
-                    Primitive::U32(v) => Primitive::U32(v.pow(pow_n)),
-                    Primitive::U64(v) => Primitive::U64(v.pow(pow_n)),
-                    Primitive::U128(v) => Primitive::U128(v.pow(pow_n)),
-                    Primitive::U256(v) => Primitive::U256(v.pow(pow_n)),
+                    Primitive::Integer(PrimitiveInteger::U8(v)) => Primitive::Integer(PrimitiveInteger::U8(v.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U16(v)) => Primitive::Integer(PrimitiveInteger::U16(v.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U32(v)) => Primitive::Integer(PrimitiveInteger::U32(v.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U64(v)) => Primitive::Integer(PrimitiveInteger::U64(v.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U128(v)) => Primitive::Integer(PrimitiveInteger::U128(v.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U256(v)) => Primitive::Integer(PrimitiveInteger::U256(v.pow(pow_n))),
                     _ => return Err(err!(self, ParserErrorKind::InvalidOperation)),
                 }
             },
@@ -2081,7 +2081,8 @@ impl<'a, M> Parser<'a, M> {
                 let max = ok_none!(max_value).into_value()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
 
-                Constant::Primitive(Primitive::Range(Box::new((min, max))))
+                Constant::Primitive(Primitive::new_range(min, max)
+                    .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?)
             },
             Expression::StructConstructor(fields, struct_type) => {
                 let len = fields.len();
@@ -2522,21 +2523,21 @@ impl<'a, M> Parser<'a, M> {
                         }
                     },
                     (_, value) => match value {
-                        Literal::U8(n) => Expression::ForceType(Box::new(Primitive::U8(n).into()), Type::U8),
-                        Literal::U16(n) => Expression::ForceType(Box::new(Primitive::U16(n).into()), Type::U16),
-                        Literal::U32(n) => Expression::ForceType(Box::new(Primitive::U32(n).into()), Type::U32),
-                        Literal::U64(n) => Expression::ForceType(Box::new(Primitive::U64(n).into()), Type::U64),
-                        Literal::U128(n) => Expression::ForceType(Box::new(Primitive::U128(n).into()), Type::U128),
-                        Literal::U256(n) => Expression::ForceType(Box::new(Primitive::U256(n).into()), Type::U256),
+                        Literal::U8(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U8(n)).into()), Type::U8),
+                        Literal::U16(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U16(n)).into()), Type::U16),
+                        Literal::U32(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U32(n)).into()), Type::U32),
+                        Literal::U64(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U64(n)).into()), Type::U64),
+                        Literal::U128(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U128(n)).into()), Type::U128),
+                        Literal::U256(n) => Expression::ForceType(Box::new(Primitive::Integer(PrimitiveInteger::U256(n)).into()), Type::U256),
                         // Number is used when the type is not forced/known
                         Literal::Number(n) => match expected_type.map(Type::get_inner_type) {
-                            Some(Type::U8) => Primitive::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?),
-                            Some(Type::U16) => Primitive::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?),
-                            Some(Type::U32) => Primitive::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?),
-                            Some(Type::U64) => Primitive::U64(n),
-                            Some(Type::U128) => Primitive::U128(n as u128),
-                            Some(Type::U256) => Primitive::U256(U256::from(n)),
-                            _ => Primitive::U64(n)
+                            Some(Type::U8) => Primitive::Integer(PrimitiveInteger::U8(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U8)))?)),
+                            Some(Type::U16) => Primitive::Integer(PrimitiveInteger::U16(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U16)))?)),
+                            Some(Type::U32) => Primitive::Integer(PrimitiveInteger::U32(n.try_into().map_err(|_| err!(self, ParserErrorKind::NumberTooBigForType(Type::U32)))?)),
+                            Some(Type::U64) => Primitive::Integer(PrimitiveInteger::U64(n)),
+                            Some(Type::U128) => Primitive::Integer(PrimitiveInteger::U128(n as u128)),
+                            Some(Type::U256) => Primitive::Integer(PrimitiveInteger::U256(U256::from(n))),
+                            _ => Primitive::Integer(PrimitiveInteger::U64(n))
                         }.into(),
                         Literal::String(s) => Primitive::String(s.into_owned()).into(),
                         Literal::Bytes(b) => Expression::Constant(Constant::Bytes(b.into_owned())),
@@ -4269,7 +4270,7 @@ mod tests {
         };
         assert_eq!(
             *value,
-            Expression::Constant(Constant::Array(vec![Primitive::U64(1).into(), Primitive::U64(2).into()]))
+            Expression::Constant(Constant::Array(vec![Primitive::Integer(PrimitiveInteger::U64(1)).into(), Primitive::Integer(PrimitiveInteger::U64(2)).into()]))
         )
     }
 
@@ -4319,7 +4320,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(silex_types::Primitive::U64(25)))
+            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25))))
         );
 
         // Compare the parsed AST to the expected AST
@@ -4354,7 +4355,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(Primitive::U64(25 - 8)))
+            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25 - 8))))
         );
 
         // Compare the parsed AST to the expected AST
@@ -4403,14 +4404,14 @@ mod tests {
         ];
     
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U8, "MAX", Primitive::U8(u8::MAX).into(), Type::U8);
+        env.register_constant(Type::U8, "MAX", Primitive::Integer(PrimitiveInteger::U8(u8::MAX)).into(), Type::U8);
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(silex_types::Primitive::U64(25+255)))
+            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25+255))))
         );
 
         // Compare the parsed AST to the expected AST
@@ -4544,7 +4545,7 @@ mod tests {
         let constant = constants.iter().next().unwrap();
 
         assert_eq!(constant.value_type, Type::U64);
-        assert_eq!(constant.value, Primitive::U64(10).into());
+        assert_eq!(constant.value, Primitive::Integer(PrimitiveInteger::U64(10)).into());
     }
 
     #[test]
@@ -4569,7 +4570,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", false));
 
-        env.register_constant(ty.clone(), "MAX", Primitive::Opaque(Foo.into()).into(), ty.clone());
+        env.register_constant(ty.clone(), "MAX", Constant::Opaque(Foo.into()).into(), ty.clone());
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
@@ -4581,7 +4582,7 @@ mod tests {
                     id: Some(0),
                     value_type: ty.clone(),
                     value: Expression::ForceType(
-                        Box::new(Expression::Constant(Primitive::Opaque(Foo.into()).into())),
+                        Box::new(Expression::Constant(Constant::Opaque(Foo.into()).into())),
                         ty.clone()
                     )
                 }
@@ -4616,9 +4617,7 @@ mod tests {
                     id: Some(0),
                     value_type: Type::Range(Box::new(Type::U64)),
                     value: Expression::Constant(
-                        Primitive::Range(
-                            Box::new((Primitive::U64(0), Primitive::U64(10)))
-                        ).into()
+                        Primitive::new_range(Primitive::Integer(PrimitiveInteger::U64(0)), Primitive::Integer(PrimitiveInteger::U64(10))).unwrap().into()
                     )
                 }
             )
@@ -4711,7 +4710,7 @@ mod tests {
         let statements = test_parser_statement(tokens, Vec::new());
 
         let mut map = IndexMap::new();
-        map.insert(Primitive::U64(0).into(), Primitive::String("hello".to_owned()).into());
+        map.insert(Primitive::Integer(PrimitiveInteger::U64(0)).into(), Primitive::String("hello".to_owned()).into());
 
         assert_eq!(
             statements[0],
@@ -4847,9 +4846,7 @@ mod tests {
             Statement::ForEach(
                 vec![TupleStatement::Deconstruct(TupleDeconstruction { id: Some(0), value_type: Type::U64 })],
                 Expression::Constant(
-                    Primitive::Range(
-                        Box::new((Primitive::U64(0), Primitive::U64(10)))
-                    ).into()
+                    Primitive::new_range(Primitive::Integer(PrimitiveInteger::U64(0)), Primitive::Integer(PrimitiveInteger::U64(10))).unwrap().into()
                 ),
                 Vec::new()
             )
@@ -4922,9 +4919,9 @@ mod tests {
                     value: Expression::Constant(
                         Constant::Array(
                             vec![
-                                Primitive::U64(1).into(),
-                                Primitive::U64(2).into(),
-                                Primitive::U64(3).into()
+                                Primitive::Integer(PrimitiveInteger::U64(1)).into(),
+                                Primitive::Integer(PrimitiveInteger::U64(2)).into(),
+                                Primitive::Integer(PrimitiveInteger::U64(3)).into()
                             ]
                         )
                     )
@@ -4932,7 +4929,7 @@ mod tests {
             ),
             Statement::Return(Some(Expression::Operator(
                 Operator::Gt,
-                Box::new(Expression::Constant(Primitive::U32(0).into())),
+                Box::new(Expression::Constant(Primitive::Integer(PrimitiveInteger::U32(0)).into())),
                 Box::new(Expression::FunctionCall(
                     Some(Box::new(Expression::Variable(0))),
                     0,
@@ -5230,7 +5227,7 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Primitive::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(10)).into()))
                     ),
                     Vec::new(),
                     None
@@ -5249,12 +5246,12 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Primitive::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(10)).into()))
                     ),
                     Vec::new(),
                     None
                 ),
-                Statement::Return(Some(Expression::Constant(Primitive::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(0)).into())))
             ])
         ]);
     }
@@ -5292,7 +5289,7 @@ mod tests {
                     Expression::Operator(
                         Operator::Lt,
                         Box::new(Expression::Variable(0)),
-                        Box::new(Expression::Constant(Primitive::U64(10).into()))
+                        Box::new(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(10)).into()))
                     ),
                     Vec::new(),
                     Some(vec![
@@ -5300,25 +5297,25 @@ mod tests {
                             Expression::Operator(
                                 Operator::Lt,
                                 Box::new(Expression::Variable(0)),
-                                Box::new(Expression::Constant(Primitive::U64(20).into()))
+                                Box::new(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(20)).into()))
                             ),
                             Vec::new(),
                             Some(Vec::new())
                         )
                     ])
                 ),
-                Statement::Return(Some(Expression::Constant(Primitive::U64(0).into())))
+                Statement::Return(Some(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(0)).into())))
             ])                
         ]);
     }
 
     #[test]
     fn test_ends_with_return() {
-        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Primitive(Primitive::U64(0)))));
+        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(0))))));
         let statements = vec![RETURN];
         assert!(Parser::<()>::ends_with_return(&statements).unwrap());
 
-        let statements = vec![RETURN, Statement::Expression(Expression::Constant(Primitive::U64(0).into()))];
+        let statements = vec![RETURN, Statement::Expression(Expression::Constant(Primitive::Integer(PrimitiveInteger::U64(0)).into()))];
         assert!(!Parser::<()>::ends_with_return(&statements).unwrap());
 
         // if ... return
@@ -5567,7 +5564,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::new();
-        env.register_constant(Type::U64, "MAX", Primitive::U64(u64::MAX).into(), Type::U64);
+        env.register_constant(Type::U64, "MAX", Primitive::Integer(PrimitiveInteger::U64(u64::MAX)).into(), Type::U64);
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
     }
@@ -6176,7 +6173,7 @@ mod tests {
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
 
-        let statement = Statement::Expression(Expression::Constant(Constant::Primitive(Primitive::U8(127))));
+        let statement = Statement::Expression(Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(127)))));
         assert_eq!(statements[0], statement);
 
         // (u8::MAX / 2).to_be_bytes()
@@ -6206,7 +6203,7 @@ mod tests {
             Expression::FunctionCall(
                 Some(Box::new(
                     Expression::SubExpression(Box::new(
-                        Expression::Constant(Constant::Primitive(Primitive::U8(127)))
+                        Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(127))))
                     ))
                 )),
                 id,

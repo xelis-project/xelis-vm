@@ -1,7 +1,7 @@
 mod stack_value;
-mod serde_map;
+pub(crate) mod serde_map;
 mod pointer;
-mod constant_cell;
+pub(crate) mod constant_cell;
 
 use std::{
     borrow::Cow,
@@ -12,7 +12,6 @@ use std::{
 use schemars::*;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::{
     opaque::OpaqueWrapper,
@@ -22,7 +21,7 @@ use crate::{
     Type,
     U256
 };
-use super::{Constant, Primitive, ValueError};
+use super::{Constant, Primitive, PrimitiveInteger, PrimitiveRange, ValueError};
 
 pub use stack_value::*;
 pub use pointer::*;
@@ -38,19 +37,14 @@ pub enum Either<L, R> {
 
 // Give inner mutability for values with inner types.
 // This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "type", content = "value")]
+#[derive(Debug, Eq)]
 pub enum ValueCell {
     Primitive(Primitive),
-    #[serde(with = "hex::serde")]
+    Opaque(OpaqueWrapper),
     Bytes(Vec<u8>),
     Object(CellArray),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    #[serde(
-        serialize_with = "serde_map::serialize",
-        deserialize_with = "serde_map::deserialize"
-    )]
     Map(Box<CellMap>),
 }
 
@@ -72,7 +66,7 @@ impl JsonSchema for ValueCell {
     }
 
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let primitive_schema = gen.subschema_for::<Primitive>();
+        let primitive_schema = gen.subschema_for::<super::wire::LegacyPrimitiveWire>();
         let self_schema = gen.subschema_for::<ValueCell>();
 
         // Build JSON values for each variant. We use serde_json::Value so we can
@@ -214,12 +208,21 @@ impl PartialEq for ValueCell {
             }
         }
 
+        if let Self::Opaque(a) = self {
+            return matches!(other, Self::Opaque(b) if a == b);
+        }
+
         // Use iterative comparison to avoid stack overflow on deep nesting
         let mut stack = vec![(ValueCellRef::Ref(self), ValueCellRef::Ref(other))];
         
         while let Some((left, right)) = stack.pop() {
             match (left.value(), right.value()) {
                 (Self::Primitive(a), Self::Primitive(b)) => {
+                    if a != b {
+                        return false;
+                    }
+                }
+                (Self::Opaque(a), Self::Opaque(b)) => {
                     if a != b {
                         return false;
                     }
@@ -265,10 +268,20 @@ impl Hash for ValueCell {
             return;
         }
 
+        if let Self::Opaque(value) = self {
+            10u8.hash(state);
+            value.hash(state);
+            return;
+        }
+
         let mut stack = vec![ValueCellRef::Ref(self)];
         while let Some(value) = stack.pop() {
             match value.value() {
                 Self::Primitive(v) => v.hash(state),
+                Self::Opaque(v) => {
+                    10u8.hash(state);
+                    v.hash(state);
+                },
                 Self::Object(values) => {
                     11u8.hash(state);
                     stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
@@ -301,10 +314,19 @@ impl From<Primitive> for ValueCell {
     }
 }
 
+impl<T: Opaque> From<T> for ValueCell {
+    fn from(value: T) -> Self { Self::Opaque(value.into()) }
+}
+
+impl From<OpaqueWrapper> for ValueCell {
+    fn from(value: OpaqueWrapper) -> Self { Self::Opaque(value) }
+}
+
 impl From<Constant> for ValueCell {
     fn from(value: Constant) -> Self {
         match value {
             Constant::Primitive(v) => Self::Primitive(v),
+            Constant::Opaque(v) => Self::Opaque(v),
             Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
             Constant::Bytes(values) => ValueCell::Bytes(values),
             Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
@@ -313,7 +335,7 @@ impl From<Constant> for ValueCell {
 
                 // We inject the variant id
                 if let DefinedType::Enum(ty) = ty {
-                    cells.push(Primitive::U8(ty.variant_id()).into());
+                    cells.push(Primitive::Integer(PrimitiveInteger::U8(ty.variant_id())).into());
                 }
 
                 cells.extend(values.into_iter().map(|v| v.into()));
@@ -343,7 +365,7 @@ impl ValueCell {
         while let Some(next) = stack.pop() {
             let v = next.value();
             match v {
-                ValueCell::Primitive(Primitive::Opaque(obj)) if !check_opaque(obj) => return false,
+                ValueCell::Opaque(obj) if !check_opaque(obj) => return false,
                 ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
                 ValueCell::Map(map) => stack.extend(
                     map.iter()
@@ -371,7 +393,7 @@ impl ValueCell {
         let mut stack = vec![ValueCellRef::Ref(self)];
         while let Some(next) = stack.pop() {
             match next.value() {
-                ValueCell::Primitive(value) if !value.is_hashable() => return false,
+                ValueCell::Opaque(value) if !value.is_hashable() => return false,
                 ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
                 ValueCell::Map(_) => return false,
                 _ => {}
@@ -384,7 +406,7 @@ impl ValueCell {
     // Calculate the depth of the value
     pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
         // Prevent allocation if the value is a default value
-        if matches!(self, Self::Primitive(v) if !matches!(v, Primitive::Opaque(_))) {
+        if matches!(self, Self::Primitive(_)) {
             return Ok(0);
         }
 
@@ -408,7 +430,7 @@ impl ValueCell {
                 }
             };
             match value {
-                ValueCell::Primitive(Primitive::Opaque(opaque)) => {
+                ValueCell::Opaque(opaque) => {
                     stack.push((OpaqueChild::Opaque(opaque.inner()), depth));
                 },
                 ValueCell::Primitive(_) => {},
@@ -440,6 +462,11 @@ impl ValueCell {
             return Ok(v.get_memory_usage());
         }
 
+        // Opaque values retain the original primitive accounting: 8 at the root,
+        // and 1 + 8 when nested in a container.
+        if matches!(self, Self::Opaque(_)) {
+            return Ok(8);
+        }
         let mut stack = vec![ValueCellRef::Ref(self)];
         let mut memory = 0;
 
@@ -449,6 +476,7 @@ impl ValueCell {
             }
 
             match next.value() {
+                ValueCell::Opaque(_) => memory += 9,
                 ValueCell::Primitive(v) => {
                     memory += 1;
                     memory += v.get_memory_usage();
@@ -501,7 +529,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Primitive(Primitive::U8(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U8(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
@@ -509,7 +537,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Primitive(Primitive::U16(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
@@ -517,7 +545,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Primitive(Primitive::U32(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U32(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
@@ -525,7 +553,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Primitive(Primitive::U64(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U64(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
@@ -533,7 +561,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Primitive(Primitive::U128(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U128(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
@@ -541,7 +569,7 @@ impl ValueCell {
     #[inline]
     pub fn as_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Primitive(Primitive::U256(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U256(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
@@ -592,7 +620,7 @@ impl ValueCell {
     #[inline]
     pub fn as_fn_ptr<'a>(&'a self) -> Result<Either<u16, &'a CellArray>, ValueError> {
         match self {
-            Self::Primitive(Primitive::U16(id)) => Ok(Either::Left(*id)),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(id))) => Ok(Either::Left(*id)),
             Self::Object(values) if values.len() == 3 => Ok(Either::Right(values)),
             _ => Err(ValueError::ExpectedFnType)
         }
@@ -669,7 +697,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u8(&self) -> Result<u8, ValueError> {
         match self {
-            Self::Primitive(Primitive::U8(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U8(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U8))
         }
     }
@@ -677,7 +705,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u16(&self) -> Result<u16, ValueError> {
         match self {
-            Self::Primitive(Primitive::U16(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U16))
         }
     }
@@ -685,7 +713,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u32(&self) -> Result<u32, ValueError> {
         match self {
-            Self::Primitive(Primitive::U32(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U32(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U32))
         }
     }
@@ -693,7 +721,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u64(&self) -> Result<u64, ValueError> {
         match self {
-            Self::Primitive(Primitive::U64(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U64(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U64))
         }
     }
@@ -701,7 +729,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u128(&self) -> Result<u128, ValueError> {
         match self {
-            Self::Primitive(Primitive::U128(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U128(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U128))
         }
     }
@@ -709,7 +737,7 @@ impl ValueCell {
     #[inline]
     pub fn to_u256(&self) -> Result<U256, ValueError> {
         match self {
-            Self::Primitive(Primitive::U256(n)) => Ok(*n),
+            Self::Primitive(Primitive::Integer(PrimitiveInteger::U256(n))) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::U256))
         }
     }
@@ -733,7 +761,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
         match self {
-            Self::Primitive(Primitive::Opaque(opaque)) => Ok(opaque),
+            Self::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -741,7 +769,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
         match self {
-            Self::Primitive(Primitive::Opaque(opaque)) => Ok(opaque),
+            Self::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -749,7 +777,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
         match self {
-            Self::Primitive(Primitive::Opaque(opaque)) => opaque.as_ref::<T>(),
+            Self::Opaque(opaque) => opaque.as_ref::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -757,7 +785,7 @@ impl ValueCell {
     #[inline]
     pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
         match self {
-            Self::Primitive(Primitive::Opaque(opaque)) => opaque.as_mut::<T>(),
+            Self::Opaque(opaque) => opaque.as_mut::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -765,7 +793,7 @@ impl ValueCell {
     #[inline]
     pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
         match self {
-            Self::Primitive(Primitive::Opaque(opaque)) => opaque.into_inner::<T>(),
+            Self::Opaque(opaque) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
         }
     }
@@ -804,12 +832,12 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_range(&self) -> Result<(&Primitive, &Primitive), ValueError> {
+    pub fn as_range(&self) -> Result<&PrimitiveRange, ValueError> {
         self.as_value().and_then(Primitive::as_range)
     }
 
     #[inline]
-    pub fn to_range(&mut self) -> Result<(Primitive, Primitive), ValueError> {
+    pub fn to_range(&mut self) -> Result<PrimitiveRange, ValueError> {
         self.into_value().and_then(Primitive::to_range)
     }
 
@@ -864,12 +892,12 @@ impl ValueCell {
     #[inline]
     pub fn checked_cast_to_primitive_type(&mut self, expected: &Type) -> Result<Self, ValueError> {
         match expected {
-            Type::U8 => self.checked_cast_to_u8().map(Primitive::U8),
-            Type::U16 => self.checked_cast_to_u16().map(Primitive::U16),
-            Type::U32 => self.checked_cast_to_u32().map(Primitive::U32),
-            Type::U64 => self.checked_cast_to_u64().map(Primitive::U64),
-            Type::U128 => self.checked_cast_to_u128().map(Primitive::U128),
-            Type::U256 => self.checked_cast_to_u256().map(Primitive::U256),
+            Type::U8 => self.checked_cast_to_u8().map(|value| Primitive::Integer(PrimitiveInteger::U8(value))),
+            Type::U16 => self.checked_cast_to_u16().map(|value| Primitive::Integer(PrimitiveInteger::U16(value))),
+            Type::U32 => self.checked_cast_to_u32().map(|value| Primitive::Integer(PrimitiveInteger::U32(value))),
+            Type::U64 => self.checked_cast_to_u64().map(|value| Primitive::Integer(PrimitiveInteger::U64(value))),
+            Type::U128 => self.checked_cast_to_u128().map(|value| Primitive::Integer(PrimitiveInteger::U128(value))),
+            Type::U256 => self.checked_cast_to_u256().map(|value| Primitive::Integer(PrimitiveInteger::U256(value))),
             Type::String => self.cast_to_string().map(Primitive::String),
             Type::Bool => self.cast_to_bool().map(Primitive::Boolean),
             Type::Optional(inner) => {
@@ -880,10 +908,8 @@ impl ValueCell {
                 }
             },
             Type::Range(inner) => {
-                let (start, end) = self.to_range()?;
-                let start = start.checked_cast_to_primitive_type(inner)?;
-                let end = end.checked_cast_to_primitive_type(inner)?;
-                Ok(Primitive::Range(Box::new((start, end))))
+                self.to_range()?.checked_cast_to_primitive_type(inner)
+                    .map(|range| Primitive::Range(Box::new(range)))
             },
             _ => Err(ValueError::InvalidCastType(expected.clone()))
         }.map(Self::Primitive)
@@ -989,6 +1015,7 @@ impl ValueCell {
         match self {
             Self::Bytes(v) => return Self::Bytes(v.clone()),
             Self::Primitive(v) => return Self::Primitive(v.clone()),
+            Self::Opaque(v) => return Self::Opaque(v.clone()),
             Self::Object(values) => return Self::Object(values.clone()),
             Self::Map(map) => return Self::Map(map.clone()),
         }
@@ -998,7 +1025,8 @@ impl ValueCell {
     pub fn references_free(self) -> Self {
         match self {
             Self::Bytes(_) => self,
-            Self::Primitive(value) => Self::Primitive(value.references_free()),
+            Self::Primitive(_) => self,
+            Self::Opaque(value) => Self::Opaque(value.deep_clone()),
             _ => Self::detach(ValueCellRef::Owned(self)),
         }
     }
@@ -1007,7 +1035,8 @@ impl ValueCell {
     pub fn deep_clone(&self) -> Self {
         match self {
             Self::Bytes(v) => Self::Bytes(v.clone()),
-            Self::Primitive(v) => Self::Primitive(v.deep_clone()),
+            Self::Primitive(v) => Self::Primitive(v.clone()),
+            Self::Opaque(v) => Self::Opaque(v.deep_clone()),
             _ => Self::detach(ValueCellRef::Ref(self)),
         }
     }
@@ -1016,7 +1045,7 @@ impl ValueCell {
     fn detach(value: ValueCellRef<'_>) -> Self {
         #[derive(Debug)]
         enum QueueItem {
-            Primitive(Primitive),
+            Leaf(ValueCell),
             Array {
                 len: usize,
             },
@@ -1037,7 +1066,8 @@ impl ValueCell {
             };
             match value {
                 ValueCellRef::Owned(owned) => match owned {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.references_free())),
+                    Self::Primitive(v) => queue.push(QueueItem::Leaf(Self::Primitive(v))),
+                    Self::Opaque(v) => queue.push(QueueItem::Leaf(Self::Opaque(v.deep_clone()))),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
                         stack.extend(values.into_iter().map(ValueCellRef::Pointer));
@@ -1052,7 +1082,8 @@ impl ValueCell {
                     }
                 },
                 ValueCellRef::Ref(value) => match value {
-                    Self::Primitive(v) => queue.push(QueueItem::Primitive(v.deep_clone())),
+                    Self::Primitive(v) => queue.push(QueueItem::Leaf(Self::Primitive(v.clone()))),
+                    Self::Opaque(v) => queue.push(QueueItem::Leaf(Self::Opaque(v.deep_clone()))),
                     Self::Object(values) => {
                         queue.push(QueueItem::Array { len: values.len() });
                         stack.extend(values.iter().map(|v| ValueCellRef::Ref(v.as_ref())));
@@ -1072,9 +1103,7 @@ impl ValueCell {
         // Assemble back
         while let Some(item) = queue.pop() {
             match item {
-                QueueItem::Primitive(v) => {
-                    stack.push(ValueCell::Primitive(v));
-                },
+                QueueItem::Leaf(v) => stack.push(v),
                 QueueItem::Array { len } => {
                     let values = stack.split_off(stack.len() - len);
                     stack.push(ValueCell::Object(values.into_iter().map(Into::into).collect()));
@@ -1123,6 +1152,7 @@ impl fmt::Display for ValueCell {
                         Self::Primitive(v) => {
                             write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
                         }
+                        Self::Opaque(v) => write!(&mut output, "{}", v).map_err(|_| fmt::Error)?,
                         Self::Bytes(bytes) => {
                             write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
                         }
@@ -1190,6 +1220,10 @@ impl Clone for ValueCell {
     }
 }
 
+impl From<PrimitiveInteger> for ValueCell {
+    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
+}
+
 #[cfg(test)]
 mod tests {
     use std::hash::DefaultHasher;
@@ -1208,7 +1242,7 @@ mod tests {
         for consume in [false, true] {
             let shared = ValuePointer::new(ValueCell::Bytes(vec![1, 2, 3]));
             let mut map = IndexMap::new();
-            map.insert(Primitive::U8(7).into(), shared.clone());
+            map.insert(Primitive::Integer(PrimitiveInteger::U8(7)).into(), shared.clone());
             let original = ValueCell::Object(vec![
                 shared.clone(),
                 ValueCell::Map(Box::new(map)).into(),
@@ -1269,7 +1303,7 @@ mod tests {
         let mut v = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..MAX_ITERS {
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), v.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), v.into());
             v = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1282,7 +1316,7 @@ mod tests {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..MAX_ITERS {
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), map.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1296,7 +1330,7 @@ mod tests {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..MAX_ITERS {
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), map.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1314,7 +1348,7 @@ mod tests {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..MAX_ITERS {
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), map.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1324,7 +1358,7 @@ mod tests {
         assert!(display.ends_with("}"));
 
         // Test with deeply nested arrays
-        let mut array = ValueCell::Object(vec![Primitive::U64(42).into()]);
+        let mut array = ValueCell::Object(vec![Primitive::Integer(PrimitiveInteger::U64(42)).into()]);
         for _ in 0..MAX_ITERS {
             array = ValueCell::Object(vec![array.into()]);
         }
@@ -1340,7 +1374,7 @@ mod tests {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..100 {  // Use smaller depth for Debug since it's more verbose
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), map.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1356,7 +1390,7 @@ mod tests {
         let mut map = ValueCell::Map(Box::new(IndexMap::new()));
         for _ in 0..200 {
             let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::U8(10).into(), map.into());
+            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
             map = ValueCell::Map(Box::new(inner_map));
         }
 
@@ -1371,7 +1405,7 @@ mod tests {
         let mut map: IndexMap<ValueCell, ValuePointer> = IndexMap::new();
         for i in 0..MAX_ITERS * 1000 {
             let inner_map = IndexMap::new();
-            map.insert(Primitive::U64(i as u64).into(), ValueCell::Map(Box::new(inner_map)).into());
+            map.insert(Primitive::Integer(PrimitiveInteger::U64(i as u64)).into(), ValueCell::Map(Box::new(inner_map)).into());
         }
 
         let map = ValueCell::Map(Box::new(map));
@@ -1394,7 +1428,7 @@ mod tests {
 
     #[test]
     fn test_hashing_types() {
-        let value = ValuePointer::new(ValueCell::Primitive(Primitive::U8(10)));
+        let value = ValuePointer::new(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(10))));
 
         let single = ValueCell::Object(vec![value.clone(), value.clone()]);
         let twice = ValueCell::Object(vec![value.clone()]);

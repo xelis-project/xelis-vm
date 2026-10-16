@@ -295,15 +295,15 @@ pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), Environmen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use silex_types::{ValuePointer, Primitive};
+    use silex_types::{Primitive, PrimitiveInteger, ValuePointer};
 
     #[test]
     fn test_no_duplicated_params_all_owned() {
         // All parameters are owned - no duplicates possible
         let mut params = vec![
-            StackValue::from(Primitive::U64(100)),
-            StackValue::from(Primitive::U64(200)),
-            StackValue::from(Primitive::U64(300)),
+            StackValue::from(Primitive::Integer(PrimitiveInteger::U64(100))),
+            StackValue::from(Primitive::Integer(PrimitiveInteger::U64(200))),
+            StackValue::from(Primitive::Integer(PrimitiveInteger::U64(300))),
         ];
 
         let result = verify_parameters(&mut params);
@@ -318,9 +318,9 @@ mod tests {
     #[test]
     fn test_no_duplicated_params_different_pointers() {
         // Different pointers - no duplicates
-        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
-        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::U64(200)));
-        let ptr3 = ValuePointer::new(ValueCell::from(Primitive::U64(300)));
+        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(200))));
+        let ptr3 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(300))));
 
         let mut params = vec![
             StackValue::from(ptr1),
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn test_duplicated_params_same_pointer_twice() {
         // Same pointer used twice - should clone one
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_duplicated_params_same_pointer_three_times() {
         // Same pointer used three times - should clone two of them
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -392,12 +392,12 @@ mod tests {
     #[test]
     fn test_mixed_owned_and_duplicated_pointers() {
         // Mix of owned values and duplicated pointers
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
-            StackValue::from(Primitive::U64(999)), // Owned
+            StackValue::from(Primitive::Integer(PrimitiveInteger::U64(999))), // Owned
             StackValue::from(ptr.clone()),          // Pointer
-            StackValue::from(Primitive::U64(888)), // Owned
+            StackValue::from(Primitive::Integer(PrimitiveInteger::U64(888))), // Owned
             StackValue::from(ptr.clone()),          // Same pointer again
         ];
 
@@ -416,8 +416,8 @@ mod tests {
     #[test]
     fn test_multiple_different_duplicated_pointers() {
         // Multiple sets of duplicated pointers
-        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
-        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::U64(200)));
+        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(200))));
         
         let mut params = vec![
             StackValue::from(ptr1.clone()),
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn test_single_param_pointer() {
         // Single pointer parameter - no duplicates possible
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![StackValue::from(ptr)];
 
@@ -464,8 +464,8 @@ mod tests {
     fn test_complex_value_duplication() {
         // Test with complex values (arrays/objects)
         let complex_value = ValueCell::Object(vec![
-            ValuePointer::new(ValueCell::from(Primitive::U64(1))),
-            ValuePointer::new(ValueCell::from(Primitive::U64(2))),
+            ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(1)))),
+            ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(2)))),
         ]);
         let ptr = ValuePointer::new(complex_value);
         
@@ -486,7 +486,7 @@ mod tests {
     fn test_reverse_processing_order() {
         // Verify that processing happens in reverse order
         // (last occurrences keep the pointer, earlier ones are cloned)
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::U64(100)));
+        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()), // Should be cloned (index 0)

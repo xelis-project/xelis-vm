@@ -16,7 +16,7 @@ use silex_environment::Environment;
 use silex_bytecode::{Chunk, Module, OpCode};
 
 pub use error::CompilerError;
-use silex_types::{Constant, Primitive};
+use silex_types::{PrimitiveInteger, Constant, Primitive};
 
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
@@ -234,7 +234,7 @@ impl<'a, M> Compiler<'a, M> {
             },
             Expression::EnumConstructor(exprs, ty) => {
                 // Inject the variant id
-                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Primitive(Primitive::U8(ty.variant_id()))), false)?;
+                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(ty.variant_id())))), false)?;
 
                 for expr in exprs {
                     self.compile_expr(chunk, chunk_id, expr, false)?;
@@ -350,12 +350,12 @@ impl<'a, M> Compiler<'a, M> {
 
                 assert!(!(is_syscall && *closure), "A closure can't be a syscall");
 
-                let id = Primitive::U16(id).into();
+                let id = Primitive::Integer(PrimitiveInteger::U16(id)).into();
                 let value = if *closure {
                     chunk.emit_opcode(OpCode::CaptureContext);
 
                     let syscall = Primitive::Boolean(is_syscall).into();
-                    let from = Primitive::U16(chunk_id).into();
+                    let from = Primitive::Integer(PrimitiveInteger::U16(chunk_id)).into();
                     Constant::Array(vec![id, syscall, from])
                 } else {
                     id.into()
@@ -1146,7 +1146,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::U64(3).into())
+            Some(Primitive::Integer(PrimitiveInteger::U64(3)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1179,7 +1179,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::U64(0).into())
+            Some(Primitive::Integer(PrimitiveInteger::U64(0)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1207,12 +1207,12 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::U64(1).into())
+            Some(Primitive::Integer(PrimitiveInteger::U64(1)).into())
         );
 
         assert_eq!(
             module.get_constant_at(1),
-            Some(Primitive::U64(2).into())
+            Some(Primitive::Integer(PrimitiveInteger::U64(2)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1580,7 +1580,7 @@ mod tests {
         assert_eq!(module.constants().len(), 1);
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::U64(0).into())
+            Some(Primitive::Integer(PrimitiveInteger::U64(0)).into())
         );
     }
 
@@ -1601,8 +1601,8 @@ mod tests {
             module.constants().iter().cloned().collect::<Vec<_>>(),
             vec![
                 Primitive::String("test".into()).into(),
-                Primitive::U8(42).into(),
-                Primitive::U64(0).into()
+                Primitive::Integer(PrimitiveInteger::U8(42)).into(),
+                Primitive::Integer(PrimitiveInteger::U64(0)).into()
             ]
         );
     }

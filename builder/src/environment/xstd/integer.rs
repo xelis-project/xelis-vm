@@ -9,7 +9,7 @@ use silex_environment::{
     VMContext,
     EnvironmentError,
 };
-use silex_types::{Type, Primitive, ValueCell, Constant, U256 as u256};
+use silex_types::{PrimitiveInteger, Type, Primitive, ValueCell, Constant, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -29,7 +29,7 @@ macro_rules! checked_fn {
                 
                 let result = value.checked_div(other);
                 Ok(SysCallResult::Return(
-                    result.map(|v| Primitive::$t(v))
+                    result.map(|v| Primitive::Integer(PrimitiveInteger::$t(v)))
                         .unwrap_or_default()
                         .into()
                 ))
@@ -59,7 +59,7 @@ macro_rules! checked_fn {
                 
                 let result = value.checked_rem(other);
                 Ok(SysCallResult::Return(
-                    result.map(|v| Primitive::$t(v))
+                    result.map(|v| Primitive::Integer(PrimitiveInteger::$t(v)))
                         .unwrap_or_default()
                         .into()
                 ))
@@ -87,7 +87,7 @@ macro_rules! checked_fn {
                 
                 let result = value.[<checked_ $op>](other);
                 Ok(SysCallResult::Return(
-                    result.map(|v| Primitive::$t(v))
+                    result.map(|v| Primitive::Integer(PrimitiveInteger::$t(v)))
                         .unwrap_or_default()
                         .into()
                 ))
@@ -143,7 +143,7 @@ macro_rules! wrapping_fn {
                 }
 
                 let result = value.wrapping_div(other);
-                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -174,7 +174,7 @@ macro_rules! wrapping_fn {
                 }
 
                 let result = value.wrapping_rem(other);
-                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -203,7 +203,7 @@ macro_rules! wrapping_fn {
                 // Perform the operation with `$op`
                 let result = value.[<$op>](other);
 
-                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
             }
 
             // Registering the generated function in the environment
@@ -256,7 +256,7 @@ macro_rules! integer_param_fn {
                 }
 
                 let result = value.saturating_div(other);
-                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -283,7 +283,7 @@ macro_rules! integer_param_fn {
                 let value = zelf?.[<as_ $f>]()?;
 
                 let result = value.[<$op>](other);
-                Ok(SysCallResult::Return(Primitive::$t(result).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -341,7 +341,7 @@ macro_rules! from_endian_bytes {
                 let value = params[0].as_bytes()?;
                 let slice: &[u8] = &value;
                 let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().context("invalid bytes size")?);
-                Ok(SysCallResult::Return(Primitive::$t(v).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(v)).into()))
             }
 
             $env.register_static_function_with_comment(
@@ -362,7 +362,7 @@ macro_rules! integer_no_param_fn {
         paste! {
             fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
-                Ok(SysCallResult::Return(Primitive::U32(value.[<$func>]()).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(value.[<$func>]())).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -399,7 +399,7 @@ macro_rules! register_reverse_bits {
         paste! {
             fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = zelf?.[<as_ $f>]()?;
-                Ok(SysCallResult::Return(Primitive::$t(value.reverse_bits()).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(value.reverse_bits())).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -433,7 +433,7 @@ macro_rules! min {
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
                 let min = value.min(other);
-                Ok(SysCallResult::Return(Primitive::$t(min).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(min)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -457,7 +457,7 @@ macro_rules! max {
                 let other = params[0].as_ref().[<as_ $f>]()?;
 
                 let min = value.max(other);
-                Ok(SysCallResult::Return(Primitive::$t(min).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(min)).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -644,8 +644,8 @@ macro_rules! register_constants_min_max {
         let min = $f::MIN;
         let max = $f::MAX;
 
-        let min_inner = Constant::Primitive(Primitive::$t(min));
-        let max_inner = Constant::Primitive(Primitive::$t(max));
+        let min_inner = Constant::Primitive(Primitive::Integer(PrimitiveInteger::$t(min)));
+        let max_inner = Constant::Primitive(Primitive::Integer(PrimitiveInteger::$t(max)));
 
         $env.register_constant_with_comment(Type::$t, "MIN", min_inner, Type::$t, concat!("Minimum ", stringify!($t), " value."));
         $env.register_constant_with_comment(Type::$t, "MAX", max_inner, Type::$t, concat!("Maximum ", stringify!($t), " value."));

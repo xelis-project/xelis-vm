@@ -16,7 +16,7 @@ use memory::*;
 
 use silex_bytecode::OpCode;
 use silex_environment::{ModuleMetadata, OnCallAsyncFn};
-use silex_types::{Primitive, StackValue, ValueCell};
+use silex_types::{PrimitiveInteger, PrimitiveRange, Primitive, StackValue, ValueCell};
 
 use crate::{ChunkReader, VMContext};
 
@@ -263,7 +263,7 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
             .as_ref();
 
         // Check if the magic byte is the same
-        let same = actual.as_vec()?.get(0) == Some(&Primitive::U8(magic_byte - 1).into());
+        let same = actual.as_vec()?.get(0) == Some(&Primitive::Integer(PrimitiveInteger::U8(magic_byte - 1)).into());
 
         // if its the same, flatten it
         if same {
@@ -280,8 +280,8 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
         if let (ValueCell::Primitive(v), ValueCell::Primitive(Primitive::Range(range))) = (actual, expected_ref) {
             macro_rules! match_range {
                 ($prim:ident, $val:ident) => {
-                    if let (Primitive::$prim(min), Primitive::$prim(max)) = &**range {
-                        *$val >= *min && *$val < *max
+                    if let PrimitiveRange::$prim(bounds) = &**range {
+                        *$val >= bounds.start && *$val < bounds.end
                     } else {
                         false
                     }
@@ -289,11 +289,11 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
             }
 
             match v {
-                Primitive::U8(v) => match_range!(U8, v),
-                Primitive::U16(v) => match_range!(U16, v),
-                Primitive::U32(v) => match_range!(U32, v),
-                Primitive::U64(v) => match_range!(U64, v),
-                Primitive::U128(v) => match_range!(U128, v),
+                Primitive::Integer(PrimitiveInteger::U8(v)) => match_range!(U8, v),
+                Primitive::Integer(PrimitiveInteger::U16(v)) => match_range!(U16, v),
+                Primitive::Integer(PrimitiveInteger::U32(v)) => match_range!(U32, v),
+                Primitive::Integer(PrimitiveInteger::U64(v)) => match_range!(U64, v),
+                Primitive::Integer(PrimitiveInteger::U128(v)) => match_range!(U128, v),
                 _ => actual == expected_ref
             }
         } else {

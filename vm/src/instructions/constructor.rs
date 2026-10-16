@@ -30,16 +30,10 @@ pub fn new_range<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     let mut end = stack.pop_stack()?.into_owned();
     let mut start = stack.pop_stack()?.into_owned();
 
-    if !start.is_number() || !end.is_number() {
-        return Err(VMError::InvalidRangeType);
-    }
-
-    let start_type = start.as_value()?.get_type()?;
-    if start_type != end.as_value()?.get_type()? {
-        return Err(VMError::InvalidRangeType);
-    }
-
-    let value = Primitive::Range(Box::new((start.into_value()?, end.into_value()?)));
+    let value = Primitive::new_range(
+        start.into_value().map_err(|_| VMError::InvalidRangeType)?,
+        end.into_value().map_err(|_| VMError::InvalidRangeType)?,
+    ).map_err(|_| VMError::InvalidRangeType)?;
     let memory_usage = value.get_memory_usage();
     context.increase_memory_usage_unchecked(memory_usage)?;
 

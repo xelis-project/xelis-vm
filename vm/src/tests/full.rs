@@ -4,7 +4,7 @@ use silex_environment::{Environment, EnvironmentError};
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::{Parser, ParserError};
-use silex_types::{traits::{DynType, JSONHelper}, Opaque, Primitive};
+use silex_types::{PrimitiveInteger, traits::{DynType, JSONHelper}, Opaque, Primitive};
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,7 +133,7 @@ fn test_pow() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1024));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1024)));
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn test_pow_assign() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1024));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1024)));
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn test_u256() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(30u32.into()));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30u32.into())));
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn test_ternary_negative() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -337,22 +337,22 @@ fn test_isnot_with_variable_expressions() {
 fn test_isnot_in_conditions() {
     test_code_expect_return(
         "entry main() { let x: bool = false; if !x { return 1; } return 0; }", 
-        Primitive::U64(1)
+        Primitive::Integer(PrimitiveInteger::U64(1))
     );
     
     test_code_expect_return(
         "entry main() { let x: bool = true; if !x { return 1; } return 0; }", 
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
     
     test_code_expect_return(
         "entry main() { let x: bool = false; if !x && false { return 0; } return 1; }", 
-        Primitive::U64(1)
+        Primitive::Integer(PrimitiveInteger::U64(1))
     );
 
     test_code_expect_return(
         "entry main() { let x: bool = false; if !(x && false) { return 0; } return 1; }", 
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -411,7 +411,7 @@ fn test_and() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -430,7 +430,7 @@ fn test_and_positive() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -449,7 +449,7 @@ fn test_or() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(0));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -464,7 +464,7 @@ fn test_or_negative() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -481,7 +481,7 @@ fn test_if_else() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -498,7 +498,7 @@ fn test_if_else_positive() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(20));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
@@ -517,7 +517,7 @@ fn test_if_else_if() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -534,7 +534,7 @@ fn test_struct_access() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -552,7 +552,7 @@ fn test_struct_assign() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(50));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(50)));
 }
 
 #[test]
@@ -567,7 +567,7 @@ fn test_function_call() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(30));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -583,7 +583,7 @@ fn test_array_in_struct() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(60));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(60)));
 }
 
 #[test]
@@ -600,7 +600,7 @@ fn test_nested_loops() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(100));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(100)));
 }
 
 #[test]
@@ -617,7 +617,7 @@ fn test_for_array() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(60));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(60)));
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn test_foreach_range() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(45));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 }
 
 
@@ -649,7 +649,7 @@ fn test_foreach_range_with_var() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(45));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 
     let code = r#"
         entry main() {
@@ -662,7 +662,7 @@ fn test_foreach_range_with_var() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(45));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 
 
     let code = r#"
@@ -677,7 +677,7 @@ fn test_foreach_range_with_var() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(45));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 }
 
 
@@ -690,7 +690,7 @@ fn test_range_contains() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 
@@ -707,7 +707,7 @@ fn test_range() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -719,7 +719,7 @@ fn test_range_contains_u256() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -733,7 +733,7 @@ fn test_range_collect() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -748,7 +748,7 @@ fn test_range_type() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -764,7 +764,7 @@ fn test_range_type() {
 //             return x
 //         }"#;
 
-//     assert_eq!(run_code(code), Primitive::U64(1000000));
+//     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1000000)));
 
 //     let mut code = r#"
 //         entry main() {
@@ -776,7 +776,7 @@ fn test_range_type() {
 //     // TODO FIXME
 //     todo!("Fix stack overflow test");
 
-//     // assert_eq!(run_code(&code), Primitive::U64(10000 * 2 + 1));
+//     // assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(10000 * 2 + 1)));
 // }
 
 #[test]
@@ -792,7 +792,7 @@ fn test_dangling_value_scoped() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -807,7 +807,7 @@ fn test_dangling_value() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -823,7 +823,7 @@ fn test_dangling_value_after_jump() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -840,7 +840,7 @@ fn test_map() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -856,7 +856,7 @@ fn test_map_inline() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -874,7 +874,7 @@ fn test_map_inline_with_vars() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -891,7 +891,7 @@ fn test_self_reference_2d() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -912,7 +912,7 @@ fn test_self_reference_struct() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -937,7 +937,7 @@ fn test_self_reference_map() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -957,7 +957,7 @@ fn test_enum() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -984,7 +984,7 @@ fn test_array_slice() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(90)
+        Primitive::Integer(PrimitiveInteger::U64(90))
     );
 }
 
@@ -1008,7 +1008,7 @@ fn test_recursive_call() {
 
     assert_eq!(
         run_code_id(code, 1),
-        Primitive::U64(55)
+        Primitive::Integer(PrimitiveInteger::U64(55))
     );
 }
 
@@ -1024,7 +1024,7 @@ fn test_const() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -1042,7 +1042,7 @@ fn test_const_add() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(13)
+        Primitive::Integer(PrimitiveInteger::U64(13))
     );
 }
 
@@ -1060,7 +1060,7 @@ fn test_optional_cast() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -1076,7 +1076,7 @@ fn test_optional_unwrap_or() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -1128,7 +1128,7 @@ fn test_path() {
 
     assert_eq!(
         run_code_id(code, 2),
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -1140,41 +1140,41 @@ fn test_path() {
 #[test]
 fn test_self_assign() {
     // For mutability check, we must be sure to be able to use the same variable
-    test_code_expect_return("entry main() { let a: u64 = 10; a = a; return a; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64 = 10; a = a + a; return a; }", Primitive::U64(20));
+    test_code_expect_return("entry main() { let a: u64 = 10; a = a; return a; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a = a + a; return a; }", Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
 fn test_op_assignation() {
-    test_code_expect_return("entry main() { let a: u64 = 10; a += 10; return a; }", Primitive::U64(20));
-    test_code_expect_return("entry main() { let a: u64 = 10; a -= 10; return a; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 10; a *= 10; return a; }", Primitive::U64(100));
-    test_code_expect_return("entry main() { let a: u64 = 10; a /= 10; return a; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: u64 = 10; a %= 10; return a; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: u64 = 10; a += 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(20)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a -= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a *= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(100)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a /= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a %= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 
     // TODO: fix this, not sure why it's an outlier, parsing succeeds but VM fails. Could be bad error handling in the parser too
-    test_code_expect_return("entry main() { let a: u64 = 10; a &= 10; return a; }", Primitive::U64(10));
+    test_code_expect_return("entry main() { let a: u64 = 10; a &= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(10)));
     
-    test_code_expect_return("entry main() { let a: u64 = 10; a |= 10; return a; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64 = 10; a ^= 10; return a; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 10; a <<= 10; return a; }", Primitive::U64(10240));
-    test_code_expect_return("entry main() { let a: u64 = 10; a >>= 10; return a; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: u64 = 10; a |= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a ^= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a <<= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(10240)));
+    test_code_expect_return("entry main() { let a: u64 = 10; a >>= 10; return a; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
 fn test_op_bool_assignation() {
-    test_code_expect_return("entry main() { let a: bool = true; a = a && true; return a as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: bool = true; a = a && false; return a as u64; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: bool = true; a = a || false; return a as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: bool = true; a = a || true; return a as u64; }", Primitive::U64(1));
+    test_code_expect_return("entry main() { let a: bool = true; a = a && true; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: bool = true; a = a && false; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: bool = true; a = a || false; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: bool = true; a = a || true; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
 
     // TODO fix the 4 below, parsing succeeds but VM fails. Could be bad error handling in the parser too
     // |=
-    test_code_expect_return("entry main() { let a: bool = false; a |= true; return a as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: bool = false; a |= false; return a as u64; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: bool = false; a |= true; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: bool = false; a |= false; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
     // &=
-    test_code_expect_return("entry main() { let a: bool = true; a &= true; return a as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: bool = true; a &= false; return a as u64; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: bool = true; a &= true; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: bool = true; a &= false; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1188,10 +1188,10 @@ fn test_op_and() {
             return (false && no_call()) as u64; 
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(0), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(0)), 1);
     // Both should be called
-    test_code_expect_return("entry main() { return (true && true) as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { return (false && false) as u64; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { return (true && true) as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { return (false && false) as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1205,90 +1205,90 @@ fn test_op_or() {
             return (true || no_call()) as u64; 
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(1), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(1)), 1);
     // Both are called
-    test_code_expect_return("entry main() { return (false || true) as u64; }", Primitive::U64(1));
+    test_code_expect_return("entry main() { return (false || true) as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
     // Both are called but none are true
-    test_code_expect_return("entry main() { return (false || false) as u64; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { return (false || false) as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
 fn test_optional() {
-    test_code_expect_return("entry main() { let a: u64[] = []; return a.first().unwrap_or(777); }", Primitive::U64(777));
+    test_code_expect_return("entry main() { let a: u64[] = []; return a.first().unwrap_or(777); }", Primitive::Integer(PrimitiveInteger::U64(777)));
 }
 
 #[test]
 fn test_number_operations() {
-    test_code_expect_return("entry main() { return 10; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { return 10 + 10; }", Primitive::U64(20));
-    test_code_expect_return("entry main() { return 10 - 10; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return 10 * 10; }", Primitive::U64(100));
-    test_code_expect_return("entry main() { return 10 / 10; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { return 10 % 10; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return (10 == 10) as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { return (10 != 10) as u64; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return (10 > 10) as u64; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return (10 >= 10) as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { return (10 < 10) as u64; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return (10 <= 10) as u64; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { return 10 & 10; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { return 10 | 10; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { return 10 ^ 10; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { return 10 << 10; }", Primitive::U64(10240));
-    test_code_expect_return("entry main() { return 10 >> 10; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { return 10; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { return 10 + 10; }", Primitive::Integer(PrimitiveInteger::U64(20)));
+    test_code_expect_return("entry main() { return 10 - 10; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return 10 * 10; }", Primitive::Integer(PrimitiveInteger::U64(100)));
+    test_code_expect_return("entry main() { return 10 / 10; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { return 10 % 10; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return (10 == 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { return (10 != 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return (10 > 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return (10 >= 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { return (10 < 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return (10 <= 10) as u64; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { return 10 & 10; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { return 10 | 10; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { return 10 ^ 10; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { return 10 << 10; }", Primitive::Integer(PrimitiveInteger::U64(10240)));
+    test_code_expect_return("entry main() { return 10 >> 10; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 
-    test_code_expect_return("entry main() { return 10 + 10 * 10; }", Primitive::U64(110));
-    test_code_expect_return("entry main() { return (10 + 10) * 10; }", Primitive::U64(200));
+    test_code_expect_return("entry main() { return 10 + 10 * 10; }", Primitive::Integer(PrimitiveInteger::U64(110)));
+    test_code_expect_return("entry main() { return (10 + 10) * 10; }", Primitive::Integer(PrimitiveInteger::U64(200)));
 }
 
 #[test]
 fn test_u128() {
-    test_code_expect_return("entry main() { let j: u128 = 10; j = 2_u128 + j; return j as u64; }", Primitive::U64(12));
-    test_code_expect_return("entry main() { let j: u128 = 10; j = ((2_u128 + j) * (3_u128 + j) * (4_u128 + j)); return j as u64; }", Primitive::U64(2184));
+    test_code_expect_return("entry main() { let j: u128 = 10; j = 2_u128 + j; return j as u64; }", Primitive::Integer(PrimitiveInteger::U64(12)));
+    test_code_expect_return("entry main() { let j: u128 = 10; j = ((2_u128 + j) * (3_u128 + j) * (4_u128 + j)); return j as u64; }", Primitive::Integer(PrimitiveInteger::U64(2184)));
 }
 
 #[test]
 fn test_array_all() {
-    test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u32 = 0; return a[b]; }", Primitive::U64(1));
-    test_code_id_expect_return("fn test() -> u64[] { return [0, 1, 2]; } entry main() { let b: u32 = 0; return test()[b]; }", Primitive::U64(0), 1);
+    test_code_expect_return("entry main() { let a: u64[] = [1]; let b: u32 = 0; return a[b]; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_id_expect_return("fn test() -> u64[] { return [0, 1, 2]; } entry main() { let b: u32 = 0; return test()[b]; }", Primitive::Integer(PrimitiveInteger::U64(0)), 1);
 
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", Primitive::U64(1));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", Primitive::U64(2));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[2]; }", Primitive::U64(3));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0]; }", Primitive::Integer(PrimitiveInteger::U64(1)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[1]; }", Primitive::Integer(PrimitiveInteger::U64(2)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[2]; }", Primitive::Integer(PrimitiveInteger::U64(3)));
 
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0] + a[1] + a[2]; }", Primitive::U64(6));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0]; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[1]; }", Primitive::U64(2));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[2]; }", Primitive::U64(3));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0] + a[1] + a[2]; }", Primitive::U64(15));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; return a[0] + a[1] + a[2]; }", Primitive::Integer(PrimitiveInteger::U64(6)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0]; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[1]; }", Primitive::Integer(PrimitiveInteger::U64(2)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[2]; }", Primitive::Integer(PrimitiveInteger::U64(3)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a[0] = 10; return a[0] + a[1] + a[2]; }", Primitive::Integer(PrimitiveInteger::U64(15)));
 
     // Push
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.push(10); return a[3]; }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let v: u64 = 10; a.push(v); return a[0] + a[1] + a[2] + a[3]; }", Primitive::U64(16));
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let b: u64[] = []; let v: u64 = 10; b.push(10); a.push(b[0]); return a[0] + a[1] + a[2] + a[3]; }", Primitive::U64(16));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.push(10); return a[3]; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let v: u64 = 10; a.push(v); return a[0] + a[1] + a[2] + a[3]; }", Primitive::Integer(PrimitiveInteger::U64(16)));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let b: u64[] = []; let v: u64 = 10; b.push(10); a.push(b[0]); return a[0] + a[1] + a[2] + a[3]; }", Primitive::Integer(PrimitiveInteger::U64(16)));
 
     // Pop
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.pop(); return a.len() as u64; }", Primitive::U64(2));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; a.pop(); return a.len() as u64; }", Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
 fn test_number_operations_priority() {
-    test_code_expect_return("entry main() { return 10 + 10 * 10; }", Primitive::U64(110));
-    test_code_expect_return("entry main() { return (10 + 10) * 10; }", Primitive::U64(200));
+    test_code_expect_return("entry main() { return 10 + 10 * 10; }", Primitive::Integer(PrimitiveInteger::U64(110)));
+    test_code_expect_return("entry main() { return (10 + 10) * 10; }", Primitive::Integer(PrimitiveInteger::U64(200)));
 
-    test_code_expect_return("entry main() { return 10 + 10 / 5 + 3; }", Primitive::U64(15));
-    test_code_expect_return("entry main() { return 10 + 10 / 5 * 3; }", Primitive::U64(16));
-    test_code_expect_return("entry main() { return 10 + 10 / 5 + 3 * 10; }", Primitive::U64(42));
+    test_code_expect_return("entry main() { return 10 + 10 / 5 + 3; }", Primitive::Integer(PrimitiveInteger::U64(15)));
+    test_code_expect_return("entry main() { return 10 + 10 / 5 * 3; }", Primitive::Integer(PrimitiveInteger::U64(16)));
+    test_code_expect_return("entry main() { return 10 + 10 / 5 + 3 * 10; }", Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
 fn test_basic_function_call() {
-    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, 10); }", Primitive::U64(20), 1);
-    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, add(10, 10)); }", Primitive::U64(30), 1);
+    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, 10); }", Primitive::Integer(PrimitiveInteger::U64(20)), 1);
+    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { return add(10, add(10, 10)); }", Primitive::Integer(PrimitiveInteger::U64(30)), 1);
 
     // With variable
-    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, 10); }", Primitive::U64(20), 1);
-    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, add(10, 10)); }", Primitive::U64(30), 1);
+    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, 10); }", Primitive::Integer(PrimitiveInteger::U64(20)), 1);
+    test_code_id_expect_return("fn add(a: u64, b: u64) -> u64 { return a + b; } entry main() { let a: u64 = 10; return add(a, add(10, 10)); }", Primitive::Integer(PrimitiveInteger::U64(30)), 1);
 }
 
 #[test]
@@ -1303,7 +1303,7 @@ fn test_function_call_on_value() {
             return t.add(10); 
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(20), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(20)), 1);
 
     let code = r#"
         struct Test { a: u64 } 
@@ -1315,7 +1315,7 @@ fn test_function_call_on_value() {
             return t.add(t.add(10)); 
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(30), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(30)), 1);
 
     let code = r#"
         struct Test { a: u64 } 
@@ -1328,25 +1328,25 @@ fn test_function_call_on_value() {
             return t.a 
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(20), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(20)), 1);
 }
 
 #[test]
 fn test_casting() {
 
     // Auto casting
-    test_code_expect_return("fn main() -> u8 { return 10; }", Primitive::U8(10));
-    test_code_expect_return("fn main() -> u16 { return 10; }", Primitive::U16(10));
-    test_code_expect_return("fn main() -> u32 { return 10; }", Primitive::U32(10));
-    test_code_expect_return("fn main() -> u64 { return 10; }", Primitive::U64(10));
-    test_code_expect_return("fn main() -> u128 { return 10; }", Primitive::U128(10));
+    test_code_expect_return("fn main() -> u8 { return 10; }", Primitive::Integer(PrimitiveInteger::U8(10)));
+    test_code_expect_return("fn main() -> u16 { return 10; }", Primitive::Integer(PrimitiveInteger::U16(10)));
+    test_code_expect_return("fn main() -> u32 { return 10; }", Primitive::Integer(PrimitiveInteger::U32(10)));
+    test_code_expect_return("fn main() -> u64 { return 10; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("fn main() -> u128 { return 10; }", Primitive::Integer(PrimitiveInteger::U128(10)));
 
     // Explicit casting
-    test_code_expect_return("fn main() -> u8 { let a: u64 = 10; return a as u8; }", Primitive::U8(10));
-    test_code_expect_return("fn main() -> u16 { let a: u64 = 10; return a as u16; }", Primitive::U16(10));
-    test_code_expect_return("fn main() -> u32 { let a: u64 = 10; return a as u32; }", Primitive::U32(10));
-    test_code_expect_return("fn main() -> u64 { let a: u32 = 10; return a as u64; }", Primitive::U64(10));
-    test_code_expect_return("fn main() -> u128 { let a: u64 = 10; return a as u128; }", Primitive::U128(10));
+    test_code_expect_return("fn main() -> u8 { let a: u64 = 10; return a as u8; }", Primitive::Integer(PrimitiveInteger::U8(10)));
+    test_code_expect_return("fn main() -> u16 { let a: u64 = 10; return a as u16; }", Primitive::Integer(PrimitiveInteger::U16(10)));
+    test_code_expect_return("fn main() -> u32 { let a: u64 = 10; return a as u32; }", Primitive::Integer(PrimitiveInteger::U32(10)));
+    test_code_expect_return("fn main() -> u64 { let a: u32 = 10; return a as u64; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("fn main() -> u128 { let a: u64 = 10; return a as u128; }", Primitive::Integer(PrimitiveInteger::U128(10)));
 
     let code = r#"
         fn add(left: u64, right: u64) -> u64 {
@@ -1359,14 +1359,14 @@ fn test_casting() {
             return add(a as u64, b as u64);
         }
     "#;
-    test_code_id_expect_return(code, Primitive::U64(30), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(30)), 1);
 
     let code = r#"entry main() {
         let a: u8 = 10;
         let b: u8 = 20;
         return a as u64 + b as u64;
     }"#;
-    test_code_expect_return(code, Primitive::U64(30));
+    test_code_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -1390,27 +1390,27 @@ fn test_negative_bool() {
 
 #[test]
 fn test_foreach() {
-    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let sum: u64 = 0; foreach i in a { sum += i; } return sum; }", Primitive::U64(6));
+    test_code_expect_return("entry main() { let a: u64[] = [1, 2, 3]; let sum: u64 = 0; foreach i in a { sum += i; } return sum; }", Primitive::Integer(PrimitiveInteger::U64(6)));
 }
 
 #[test]
 fn test_while() {
-    test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; } return a; }", Primitive::U64(10));
+    test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; } return a; }", Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
 fn test_for() {
-    test_code_expect_return("entry main() { let a: u64 = 1; for i: u64 = 0; i < 10; i += 1 { a *= 2; } return a; }", Primitive::U64(1024));
+    test_code_expect_return("entry main() { let a: u64 = 1; for i: u64 = 0; i < 10; i += 1 { a *= 2; } return a; }", Primitive::Integer(PrimitiveInteger::U64(1024)));
 }
 
 #[test]
 fn test_break() {
-    test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; if a == 5 { break; } } return a; }", Primitive::U64(5));
+    test_code_expect_return("entry main() { let a: u64 = 0; while a < 10 { a += 1; if a == 5 { break; } } return a; }", Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
 fn test_continue() {
-    test_code_expect_return("entry main() { let i: u64 = 0; let a: u64 = 1; while i < 10 { i += 1; if i == 5 { continue; } a *= 2; } return a; }", Primitive::U64(512));
+    test_code_expect_return("entry main() { let i: u64 = 0; let a: u64 = 1; while i < 10 { i += 1; if i == 5 { continue; } a *= 2; } return a; }", Primitive::Integer(PrimitiveInteger::U64(512)));
 }
 
 #[test]
@@ -1421,15 +1421,15 @@ fn test_string_equals() {
 
 #[test]
 fn test_ternary() {
-    test_code_expect_return("entry main() { let a: u64 = 10; return a == 10 ? 0 : 1; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 0; return (a == 10) ? 1 : 0; }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 0; let b: u64 = 0; a = (b == 0) ? 1 : b; return 0; }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: u64 = 10; return a == 10 ? 0 : 1; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 0; return (a == 10) ? 1 : 0; }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 0; let b: u64 = 0; a = (b == 0) ? 1 : b; return 0; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
 fn test_if() {
-    test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 0; } else { return 1; } }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 10; if a == 0 { return 1; } else { return 0; } }", Primitive::U64(0));
+    test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 0; } else { return 1; } }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 10; if a == 0 { return 1; } else { return 0; } }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1443,15 +1443,15 @@ fn test_nested_if() {
             } else {
                 return 0;
             }
-        }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64 = 10; if a != 0 { if a == 10 { return 0; } else { return 11; } } return 999; }", Primitive::U64(0));
+        }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64 = 10; if a != 0 { if a == 10 { return 0; } else { return 11; } } return 999; }", Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
 fn test_else_if() {
-    test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::U64(10));
-    test_code_expect_return("entry main() { let a: u64 = 0; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::U64(0));
-    test_code_expect_return("entry main() { let a: u64 = 1; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::U64(1));
+    test_code_expect_return("entry main() { let a: u64 = 10; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("entry main() { let a: u64 = 0; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::Integer(PrimitiveInteger::U64(0)));
+    test_code_expect_return("entry main() { let a: u64 = 1; if a == 10 { return 10; } else if a == 0 { return 0; } else { return 1; } }", Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 // TODO: figure out how to do this without the interpreter crate
@@ -1464,8 +1464,8 @@ fn test_else_if() {
 
 #[test]
 fn test_struct() {
-    test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; return t.a; }", Primitive::U64(10));
-    test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; t.a = 20; return t.a; }", Primitive::U64(20));
+    test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; return t.a; }", Primitive::Integer(PrimitiveInteger::U64(10)));
+    test_code_expect_return("struct Test { a: u64 } entry main() { let t: Test = Test { a: 10 }; t.a = 20; return t.a; }", Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
@@ -1478,7 +1478,7 @@ fn test_self_reference() {
         }
     "#;
 
-    test_code_expect_return(code, Primitive::U64(200));
+    test_code_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(200)));
 }
 
 #[test]
@@ -1498,7 +1498,7 @@ fn test_self_reference_declared() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(200), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(200)), 1);
 }
 
 #[test]
@@ -1518,7 +1518,7 @@ fn test_self_reference_declared_2() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(200), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(200)), 1);
 }
 
 #[test]
@@ -1542,7 +1542,7 @@ fn test_self_reference_declared_inside() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(400), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(400)), 1);
 }
 
 #[test]
@@ -1564,7 +1564,7 @@ fn test_self_reference_declared_no_instance() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(200), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(200)), 1);
 }
 
 #[test]
@@ -1584,7 +1584,7 @@ fn test_function_nested() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(0), 2);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(0)), 2);
 }
 
 #[test]
@@ -1607,7 +1607,7 @@ fn test_self_reference_owned_with_inner_ref() {
         }
     "#;
 
-    test_code_id_expect_return(code, Primitive::U64(100), 1);
+    test_code_id_expect_return(code, Primitive::Integer(PrimitiveInteger::U64(100)), 1);
 }
 
 #[test]
@@ -1630,11 +1630,11 @@ fn test_opaque_fn_call() {
     let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
 
     env.register_native_function("foo", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
-        Ok(SysCallResult::Return(Primitive::Opaque(Foo.into()).into()))
+        Ok(SysCallResult::Return(ValueCell::Opaque(Foo.into()).into()))
     }), 0, Some(ty.clone()));
 
     env.register_native_function("call", Some(ty), vec![], FunctionHandler::Sync(|_, _, _, _| {
-        Ok(SysCallResult::Return(Primitive::U64(0).into()))
+        Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(0)).into()))
     }), 0, Some(Type::U64));
 
     let code = r#"
@@ -1648,7 +1648,7 @@ fn test_opaque_fn_call() {
 
     assert_eq!(
         run_internal(module, &env, 0).unwrap(),
-        Primitive::U64(0)
+        Primitive::Integer(PrimitiveInteger::U64(0))
     );
 }
 
@@ -1658,7 +1658,7 @@ fn test_map_constructor_rejects_non_hashable_opaque_key() {
     let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
 
     env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
-        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+        Ok(SysCallResult::Return(ValueCell::Opaque(NonHashableOpaque.into()).into()))
     }), 0, Some(ty));
 
     let code = r#"
@@ -1680,7 +1680,7 @@ fn test_map_insert_rejects_non_hashable_opaque_key() {
     let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
 
     env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
-        Ok(SysCallResult::Return(Primitive::Opaque(NonHashableOpaque.into()).into()))
+        Ok(SysCallResult::Return(ValueCell::Opaque(NonHashableOpaque.into()).into()))
     }), 0, Some(ty));
 
     let code = r#"
@@ -1708,7 +1708,7 @@ fn test_shadow_variable() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(20)
+        Primitive::Integer(PrimitiveInteger::U64(20))
     );
 }
 
@@ -1727,7 +1727,7 @@ fn test_null_as_return() {
 
     assert_eq!(
         run_code_id(code, 1),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -1745,7 +1745,7 @@ fn test_fn_call_with_optional_params() {
 
     assert_eq!(
         run_code_id(code, 1),
-        Primitive::U64(5)
+        Primitive::Integer(PrimitiveInteger::U64(5))
     );
 }
 
@@ -1774,7 +1774,7 @@ fn test_fn_params_immutable() {
 
     assert_eq!(
         run_code_id(code, 1),
-        Primitive::U64(1000)
+        Primitive::Integer(PrimitiveInteger::U64(1000))
     );
 }
 
@@ -1786,8 +1786,8 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Opaque(OpaqueWrapper::new(DummyOpaque)).into()))), 0, Some(Type::Any)); 
-    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(0).into()))), 0, Some(Type::Any)); 
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(ValueCell::Opaque(OpaqueWrapper::new(DummyOpaque)).into()))), 0, Some(Type::Any));
+    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(0)).into()))), 0, Some(Type::Any));
     env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
@@ -1829,22 +1829,22 @@ fn test_sqrt() {
 
     // Test u64 cases - more comprehensive as it's the most common type
     let u64_cases = vec![
-        ("0u64.sqrt()", Primitive::U64(0)),
-        ("1u64.sqrt()", Primitive::U64(1)),
-        ("4u64.sqrt()", Primitive::U64(2)),
-        ("9u64.sqrt()", Primitive::U64(3)),
+        ("0u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(0))),
+        ("1u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(1))),
+        ("4u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(2))),
+        ("9u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(3))),
         // Non-perfect squares
-        ("2u64.sqrt()", Primitive::U64(1)),
-        ("3u64.sqrt()", Primitive::U64(1)),
-        ("10u64.sqrt()", Primitive::U64(3)),
-        ("99u64.sqrt()", Primitive::U64(9)),
+        ("2u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(1))),
+        ("3u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(1))),
+        ("10u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(3))),
+        ("99u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(9))),
         // Edge cases around powers of 2
-        ("255u64.sqrt()", Primitive::U64(15)),
-        ("256u64.sqrt()", Primitive::U64(16)),
-        ("257u64.sqrt()", Primitive::U64(16)),
+        ("255u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(15))),
+        ("256u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(16))),
+        ("257u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(16))),
         // Larger numbers
-        ("65535u64.sqrt()", Primitive::U64(255)),
-        ("1000000u64.sqrt()", Primitive::U64(1000)),
+        ("65535u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(255))),
+        ("1000000u64.sqrt()", Primitive::Integer(PrimitiveInteger::U64(1000))),
     ];
 
     for (expr, expected) in u64_cases {
@@ -1853,33 +1853,33 @@ fn test_sqrt() {
 
     // Test with other integer types - fewer cases per type, but check their MAX values
     // u8 tests - always cast to u64 for return
-    check_sqrt("0u8.sqrt() as u64", Primitive::U64(0));
-    check_sqrt("7u8.sqrt() as u64", Primitive::U64(2));
-    check_sqrt("u8::MAX.sqrt() as u64", Primitive::U64(15)); // sqrt(255) = 15.96... -> 15
+    check_sqrt("0u8.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(0)));
+    check_sqrt("7u8.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(2)));
+    check_sqrt("u8::MAX.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(15))); // sqrt(255) = 15.96... -> 15
 
     // u16 tests - always cast to u64 for return
-    check_sqrt("12u16.sqrt() as u64", Primitive::U64(3));
-    check_sqrt("u16::MAX.sqrt() as u64", Primitive::U64(255)); // sqrt(65535) = 255.99... -> 255
+    check_sqrt("12u16.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(3)));
+    check_sqrt("u16::MAX.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(255))); // sqrt(65535) = 255.99... -> 255
 
     // u32 tests - always cast to u64 for return
-    check_sqrt("17u32.sqrt() as u64", Primitive::U64(4));
-    check_sqrt("u32::MAX.sqrt() as u64", Primitive::U64(65535)); // sqrt(2^32-1) = 65535.99... -> 65535
+    check_sqrt("17u32.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(4)));
+    check_sqrt("u32::MAX.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(65535))); // sqrt(2^32-1) = 65535.99... -> 65535
     
     // u128 tests - always cast to u64 for return
-    check_sqrt("31u128.sqrt() as u64", Primitive::U64(5));
-    check_sqrt("(u128::MAX.sqrt() > 0u128) as u64", Primitive::U64(1));
+    check_sqrt("31u128.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(5)));
+    check_sqrt("(u128::MAX.sqrt() > 0u128) as u64", Primitive::Integer(PrimitiveInteger::U64(1)));
 
     // U256 tests - focus on small cases and large values
-    check_sqrt("0u256.sqrt() as u64", Primitive::U64(0));
-    check_sqrt("9u256.sqrt() as u64", Primitive::U64(3));
-    check_sqrt("10000u256.sqrt() as u64", Primitive::U64(100));
-    check_sqrt("(u256::MAX.sqrt() > 0u256) as u64", Primitive::U64(1));
+    check_sqrt("0u256.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(0)));
+    check_sqrt("9u256.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(3)));
+    check_sqrt("10000u256.sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(100)));
+    check_sqrt("(u256::MAX.sqrt() > 0u256) as u64", Primitive::Integer(PrimitiveInteger::U64(1)));
     
     // Test large powers
-    check_sqrt("(2u256 ** 64u32).sqrt() as u64", Primitive::U64(4294967296)); // 2^32
+    check_sqrt("(2u256 ** 64u32).sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(4294967296))); // 2^32
     
     // Test non-perfect squares with U256
-    check_sqrt("(2u256 ** 64u32 - 1u256).sqrt() as u64", Primitive::U64(4294967295)); // 2^32 - 1
+    check_sqrt("(2u256 ** 64u32 - 1u256).sqrt() as u64", Primitive::Integer(PrimitiveInteger::U64(4294967295))); // 2^32 - 1
 }
 
 #[test]
@@ -1898,7 +1898,7 @@ fn test_hook() {
     env.register_hook("constructor", vec![], Some(Type::U64));
 
     let (module, env) = prepare_module_with(code, env);
-    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1919,7 +1919,7 @@ fn test_hook_optional_struct_array() {
     env.register_hook("constructor", vec![], Some(Type::U64));
 
     let (module, env) = prepare_module_with(code, env);
-    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1930,7 +1930,7 @@ fn test_tuples() {
             return 0;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
     let code = r#"
         entry main() {
@@ -1938,7 +1938,7 @@ fn test_tuples() {
             return 0;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
     let code = r#"
         entry main() {
@@ -1946,7 +1946,7 @@ fn test_tuples() {
             return a.0 + a.1;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 
     let code = r#"
         fn tuples() -> (u8, u64, u64) {
@@ -1961,7 +1961,7 @@ fn test_tuples() {
             return a.0 as u64 + a.1 + a.2;
         }
     "#;
-    assert_eq!(run_code_id(code, 1), Primitive::U64(6));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(6)));
 
     let code = r#"
         entry main() {
@@ -1974,7 +1974,7 @@ fn test_tuples() {
             return a + b + c;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(6));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(6)));
 
     let code = r#"
         entry main() {
@@ -1988,7 +1988,7 @@ fn test_tuples() {
             return a + b + c + d;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 
     let code = r#"
         entry main() {
@@ -2000,7 +2000,7 @@ fn test_tuples() {
             return 0;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
     let code = r#"
         entry main() {
@@ -2010,7 +2010,7 @@ fn test_tuples() {
             return 0;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2022,7 +2022,7 @@ fn test_clone() {
             return b;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 
     let code = r#"
         entry main() {
@@ -2035,7 +2035,7 @@ fn test_clone() {
             return b[0][0][0][0];
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2052,7 +2052,7 @@ fn test_optional_assign() {
             return a.unwrap();
         }
     "#;
-    assert_eq!(run_code_id(code, 1), Primitive::U64(1));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2075,7 +2075,7 @@ fn test_map_assign() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0))
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)))
 }
 
 #[test]
@@ -2089,7 +2089,7 @@ fn test_for_array_immutable() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 
     let code = r#"
         entry main() {
@@ -2102,7 +2102,7 @@ fn test_for_array_immutable() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -2119,7 +2119,7 @@ fn test_match() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
     let code = r#"
         entry main() {
@@ -2133,7 +2133,7 @@ fn test_match() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(99));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(99)));
 
     let code = r#"
         enum Foo {
@@ -2151,7 +2151,7 @@ fn test_match() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
 
     let code = r#"
@@ -2173,7 +2173,7 @@ fn test_match() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2195,7 +2195,7 @@ fn test_tuple_enum_variant() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -2216,7 +2216,7 @@ fn test_tuple_enum_variant_none() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(99));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(99)));
 }
 
 #[test]
@@ -2242,7 +2242,7 @@ fn test_tuple_enum_multiple_fields() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -2263,7 +2263,7 @@ fn test_generic_enum() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(100));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(100)));
 }
 
 #[test]
@@ -2284,7 +2284,7 @@ fn test_generic_enum_err() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(999));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(999)));
 }
 
 #[test]
@@ -2304,7 +2304,7 @@ fn test_generic_enum_type_inference() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(55));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(55)));
 }
 
 #[test]
@@ -2354,7 +2354,7 @@ fn test_mixed_enum_variants() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(35)); // 10 + 20 + 5
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(35))); // 10 + 20 + 5
 }
 
 
@@ -2378,7 +2378,7 @@ fn test_match_variant() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(50));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(50)));
 
         let code = r#"
         enum Foo {
@@ -2398,7 +2398,7 @@ fn test_match_variant() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2421,7 +2421,7 @@ fn test_match_exhaustive_enum() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -2443,7 +2443,7 @@ fn test_match_exhaustive_enum_with_default() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(99));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(99)));
 }
 
 #[test]
@@ -2556,7 +2556,7 @@ fn test_match_exhaustive_enum_with_fields() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -2598,7 +2598,7 @@ fn test_match_exhaustive_tuple_enum() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -2658,7 +2658,7 @@ fn test_match_exhaustive_bool() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2690,7 +2690,7 @@ fn test_match_bool_with_default() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2721,7 +2721,7 @@ fn test_match_primitive_with_default() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -2759,7 +2759,7 @@ fn test_match_exhaustive_generic_enum() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(100));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(100)));
 }
 
 #[test]
@@ -2803,7 +2803,7 @@ fn test_match_exhaustive_mixed_enum() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -2843,7 +2843,7 @@ fn test_match_number_exact() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2858,7 +2858,7 @@ fn test_match_number_default_fallthrough() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(7));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(7)));
 }
 
 #[test]
@@ -2872,7 +2872,7 @@ fn test_match_number_range() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2886,7 +2886,7 @@ fn test_match_number_range_no_match() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2902,7 +2902,7 @@ fn test_match_number_multiple_ranges() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -2918,7 +2918,7 @@ fn test_match_number_range_and_exact() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2933,7 +2933,7 @@ fn test_match_number_range_boundary() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2949,7 +2949,7 @@ fn test_match_u8() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2965,7 +2965,7 @@ fn test_match_u128() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -3031,7 +3031,7 @@ fn test_match_string_exact() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -3047,7 +3047,7 @@ fn test_match_string_default() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3062,7 +3062,7 @@ fn test_match_string_empty() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -3080,7 +3080,7 @@ fn test_match_string_multiple() {
             return 99
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -3101,7 +3101,7 @@ fn test_match_string_named_default() {
             return 100
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -3153,7 +3153,7 @@ fn test_foreach_map_mapping_found() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3172,7 +3172,7 @@ fn test_function_pointer() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 2), Primitive::U64(21));
+    assert_eq!(run_code_id(code, 2), Primitive::Integer(PrimitiveInteger::U64(21)));
 
     let code = r#"
         struct Foo {
@@ -3198,7 +3198,7 @@ fn test_function_pointer() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 3), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 3), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -3233,7 +3233,7 @@ fn test_function_pointer_with_local_context() {
     // It should borrow the "abc" function chunk manager
     // until the dynamic call has been executed
     // set to 4 because our closure create a function
-    assert_eq!(run_code_id(code, 4), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 4), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -3269,7 +3269,7 @@ fn test_function_pointer_with_multiple_returns() {
     // It should borrow the "abc" function chunk manager
     // until the dynamic call has been executed
     // set to 4 because our closure create a function
-    assert_eq!(run_code_id(code, 5), Primitive::U64(0));
+    assert_eq!(run_code_id(code, 5), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3286,7 +3286,7 @@ fn test_closure() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(5));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(5)));
 
     let code = r#"
         fn bar(f: closure(u64) -> u64) -> u64 {
@@ -3302,7 +3302,7 @@ fn test_closure() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 2), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 2), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -3320,7 +3320,7 @@ fn test_closure_with_external_context() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(250));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(250)));
 }
 
 #[test]
@@ -3341,7 +3341,7 @@ fn test_function_assign() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 2), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 2), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -3355,7 +3355,7 @@ fn test_callback_from_syscall() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(10));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -3373,7 +3373,7 @@ fn test_tuples_for_each() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 0), Primitive::U64(0));
+    assert_eq!(run_code_id(code, 0), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3394,7 +3394,7 @@ fn test_tuples_flatten() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(30));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -3411,7 +3411,7 @@ fn test_access_removed_value() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3426,7 +3426,7 @@ fn test_array_any() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(11));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(11)));
 }
 
 #[test]
@@ -3445,7 +3445,7 @@ fn test_any_cast_array() {
             return (a as u64[][][])[0][0][0];
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(50));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(50)));
 }
 
 #[test]
@@ -3660,7 +3660,7 @@ fn test_generic_types_foreach() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(35));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(35)));
 }
 
 #[test]
@@ -3682,7 +3682,7 @@ fn test_pop_injection_on_jump() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3707,7 +3707,7 @@ fn test_struct_with_function() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 2), Primitive::U64(42));
+    assert_eq!(run_code_id(code, 2), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -3735,7 +3735,7 @@ fn test_enum_with_function() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(42));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -3753,7 +3753,7 @@ fn test_voidable_type_no_return() {
     env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, Some(Type::Voidable(Box::new(Type::U64))));
 
     let (module, env) = prepare_module_with(code, env);
-    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(0));
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3766,10 +3766,10 @@ fn test_voidable_type() {
     "#;
 
     let mut env = EnvironmentBuilder::default();
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::U64(100).into()))), 0, Some(Type::Voidable(Box::new(Type::U64))));
+    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(100)).into()))), 0, Some(Type::Voidable(Box::new(Type::U64))));
 
     let (module, env) = prepare_module_with(code, env);
-    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::U64(100 * 100));
+    assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(100 * 100)));
 }
 
 #[test]
@@ -3784,7 +3784,7 @@ fn test_optional_value_type() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -3799,7 +3799,7 @@ fn test_raw_value_cast_to_optional() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 
     let code = r#"
@@ -3815,7 +3815,7 @@ fn test_raw_value_cast_to_optional() {
 
     assert_eq!(
         run_code_id(code, 1),
-        Primitive::U64(10)
+        Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
 
@@ -3834,7 +3834,7 @@ fn test_destructive_unwrap() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(20)
+        Primitive::Integer(PrimitiveInteger::U64(20))
     );
 }
 
@@ -3854,7 +3854,7 @@ fn test_destructive_unwrap_struct() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(20)
+        Primitive::Integer(PrimitiveInteger::U64(20))
     );
 }
 
@@ -3872,7 +3872,7 @@ fn test_destructive_expect() {
 
     assert_eq!(
         run_code(code),
-        Primitive::U64(20)
+        Primitive::Integer(PrimitiveInteger::U64(20))
     );
 }
 
@@ -3897,7 +3897,7 @@ fn test_tuples_any() {
         }
     "#;
 
-    assert_eq!(run_code_id(code, 1), Primitive::U64(0));
+    assert_eq!(run_code_id(code, 1), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3913,7 +3913,7 @@ fn test_generics_struct() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1000));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1000)));
 
     let code = r#"
         struct Foo<T> {
@@ -3926,7 +3926,7 @@ fn test_generics_struct() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1001));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1001)));
 
     let code = r#"
         struct Inner<T> {
@@ -3943,7 +3943,7 @@ fn test_generics_struct() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1001));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1001)));
 }
 
 #[test]
@@ -3954,7 +3954,7 @@ fn test_u8_max_to_bytes_len() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -4026,7 +4026,7 @@ fn test_sort() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4041,7 +4041,7 @@ fn test_array_map() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 
@@ -4061,7 +4061,7 @@ fn test_array_map_double_depth() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4084,7 +4084,7 @@ fn test_array_map_double_depth_with_context_var() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4108,7 +4108,7 @@ fn test_array_sort_by_key() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4131,7 +4131,7 @@ fn test_reserved_word_as_var_name() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(58));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(58)));
 }
 
 #[test]
@@ -4142,7 +4142,7 @@ fn test_u64_behind_any() {
             return ((a as u256) + 8u256) as u64;
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(50));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(50)));
 }
 
 #[test]
@@ -4161,7 +4161,7 @@ fn test_multi_condition() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4178,7 +4178,7 @@ fn test_enum_matching() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 
         let code = r#"
         entry main() {
@@ -4193,7 +4193,7 @@ fn test_enum_matching() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -4240,7 +4240,7 @@ fn test_async_callback_with_two_params() {
                     ptr: state.closure_ptr.clone(),
                     params: vec![
                         next_element.into(),
-                        Primitive::U32(state.index as u32).into()
+                        Primitive::Integer(PrimitiveInteger::U32(state.index as u32)).into()
                     ].into(),
                     state: Box::new(*state),
                     callback_params_len: 1,
@@ -4275,7 +4275,7 @@ fn test_async_callback_with_two_params() {
                 ptr: closure_ptr.clone(),
                 params: vec![
                     first.into(),
-                    Primitive::U32(0).into()
+                    Primitive::Integer(PrimitiveInteger::U32(0)).into()
                 ].into(),
                 state: Box::new(AsyncMapState {
                     closure_ptr,
@@ -4374,7 +4374,7 @@ fn test_entry_params_order_single_param() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct type
-    vm.invoke_chunk_with_args(0, [Primitive::U64(42)].into_iter()).expect("valid call");
+    vm.invoke_chunk_with_args(0, [Primitive::Integer(PrimitiveInteger::U64(42))].into_iter()).expect("valid call");
     let result = vm.run_blocking().expect("run failed");
     assert_eq!(result.as_u64().unwrap(), 42);
 }
@@ -4402,8 +4402,8 @@ fn test_entry_params_order_multiple_params() {
     
     // Call with correct types in correct order
     vm.invoke_chunk_with_args(0, [
-        Primitive::U64(100),
-        Primitive::U32(50),
+        Primitive::Integer(PrimitiveInteger::U64(100)),
+        Primitive::Integer(PrimitiveInteger::U32(50)),
         Primitive::Boolean(true),
     ].into_iter()).expect("valid call");
     
@@ -4431,8 +4431,8 @@ fn test_entry_params_wrong_type_first() {
     
     // First param is wrong type (u32 instead of u64)
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U32(100), // Wrong! Should be u64
-        Primitive::U32(50),
+        Primitive::Integer(PrimitiveInteger::U32(100)), // Wrong! Should be u64
+        Primitive::Integer(PrimitiveInteger::U32(50)),
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
@@ -4458,8 +4458,8 @@ fn test_entry_params_wrong_type_second() {
     
     // Second param is wrong type (u64 instead of u32)
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U64(100),
-        Primitive::U64(50), // Wrong! Should be u32
+        Primitive::Integer(PrimitiveInteger::U64(100)),
+        Primitive::Integer(PrimitiveInteger::U64(50)), // Wrong! Should be u32
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParameterType(1))));
@@ -4485,7 +4485,7 @@ fn test_entry_params_wrong_count() {
     
     // Too few params
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U64(100),
+        Primitive::Integer(PrimitiveInteger::U64(100)),
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 2, found: 1 })));
@@ -4511,8 +4511,8 @@ fn test_entry_params_wrong_count_too_many() {
     
     // Too many params
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U64(100),
-        Primitive::U64(50),
+        Primitive::Integer(PrimitiveInteger::U64(100)),
+        Primitive::Integer(PrimitiveInteger::U64(50)),
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParametersCount { expected: 1, found: 2 })));
@@ -4565,7 +4565,7 @@ fn test_entry_params_string_wrong_type() {
     
     // Call with wrong type (u64 instead of string)
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U64(42),
+        Primitive::Integer(PrimitiveInteger::U64(42)),
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
@@ -4623,7 +4623,7 @@ fn test_entry_params_bool_wrong_type() {
     
     // Call with wrong type (u64 instead of bool)
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U64(1),
+        Primitive::Integer(PrimitiveInteger::U64(1)),
     ].into_iter());
     
     assert!(matches!(result, Err(VMError::InvalidEntryParameterType(0))));
@@ -4650,7 +4650,7 @@ fn test_entry_params_optional() {
         vm.context_mut().set_gas_limit(10u64.pow(8u32));
         
         vm.invoke_chunk_with_args(0, [
-            Primitive::U64(42),
+            Primitive::Integer(PrimitiveInteger::U64(42)),
         ].into_iter()).expect("valid call");
         
         let result = vm.run_blocking().expect("run failed");
@@ -4695,11 +4695,11 @@ fn test_entry_params_all_number_types() {
     vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     vm.invoke_chunk_with_args(0, [
-        Primitive::U8(1),
-        Primitive::U16(2),
-        Primitive::U32(3),
-        Primitive::U64(4),
-        Primitive::U128(5),
+        Primitive::Integer(PrimitiveInteger::U8(1)),
+        Primitive::Integer(PrimitiveInteger::U16(2)),
+        Primitive::Integer(PrimitiveInteger::U32(3)),
+        Primitive::Integer(PrimitiveInteger::U64(4)),
+        Primitive::Integer(PrimitiveInteger::U128(5)),
     ].into_iter()).expect("valid call");
     
     let result = vm.run_blocking().expect("run failed");
@@ -4726,9 +4726,9 @@ fn test_entry_params_mixed_wrong_order() {
     
     // Pass params in wrong order (u32, u16, u8 instead of u8, u16, u32)
     let result = vm.invoke_chunk_with_args(0, [
-        Primitive::U32(1), // Wrong! Should be u8
-        Primitive::U16(2),
-        Primitive::U8(3),  // Wrong! Should be u32
+        Primitive::Integer(PrimitiveInteger::U32(1)), // Wrong! Should be u8
+        Primitive::Integer(PrimitiveInteger::U16(2)),
+        Primitive::Integer(PrimitiveInteger::U8(3)),  // Wrong! Should be u32
     ].into_iter());
     
     // Should fail on first parameter (index 0)
@@ -4759,8 +4759,8 @@ fn test_entry_without_enforced_params_accepts_any() {
     // (though it may fail at runtime if types don't match the operations)
     // The point is invoke_public_chunk_with_args doesn't reject it
     vm.invoke_chunk_with_args(0, [
-        Primitive::U64(100),
-        Primitive::U32(50),
+        Primitive::Integer(PrimitiveInteger::U64(100)),
+        Primitive::Integer(PrimitiveInteger::U32(50)),
     ].into_iter()).expect("call should be accepted without param enforcement");
     
     let result = vm.run_blocking().expect("run failed");

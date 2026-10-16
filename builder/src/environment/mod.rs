@@ -353,7 +353,7 @@ impl<'a, M: 'static> Default for EnvironmentBuilder<'a, M> {
 mod tests {
     use super::*;
     use silex_environment::{FunctionHandler, SysCallResult};
-    use silex_types::{Constant, Primitive};
+    use silex_types::{Constant, Primitive, PrimitiveInteger};
 
     #[test]
     pub fn test_add_enum() {
@@ -446,7 +446,7 @@ mod tests {
         builder.register_constant_with_comment(
             Type::U8,
             "ANSWER",
-            Primitive::U8(42).into(),
+            Primitive::Integer(PrimitiveInteger::U8(42)).into(),
             Type::U8,
             "The test answer.",
         );

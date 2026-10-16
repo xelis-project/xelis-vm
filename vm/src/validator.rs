@@ -130,28 +130,16 @@ impl<'a, M> ModuleValidator<'a, M> {
                         stack.push((OpaqueChild::Value(value.as_ref()), depth + 1, false));
                     }
                 }
-                ValueCell::Primitive(value) => {
-                    match value {
-                        Primitive::Range(range) => {
-                            if !range.0.is_number()
-                                || !range.1.is_number()
-                                || range.0.get_type()? != range.1.get_type()?
-                            {
-                                return Err(ValidatorError::InvalidRange);
-                            }
-                        }
-                        Primitive::String(value) if value.len() > u32::MAX as usize => {
-                            return Err(ValidatorError::StringTooBig)
-                        }
-                        Primitive::Opaque(opaque) => {
-                            stack.push((OpaqueChild::Opaque(opaque.inner()), depth, is_key))
-                        }
-                        _ => {}
-                    }
-                    if is_key && !value.is_hashable() {
+                ValueCell::Opaque(opaque) => {
+                    if is_key && !opaque.is_hashable() {
                         return Err(ValidatorError::InvalidMapKeyType);
                     }
+                    stack.push((OpaqueChild::Opaque(opaque.inner()), depth, is_key));
                 }
+                ValueCell::Primitive(Primitive::String(value)) if value.len() > u32::MAX as usize => {
+                    return Err(ValidatorError::StringTooBig);
+                }
+                ValueCell::Primitive(_) => {}
             }
         }
         // Exposed payloads must be bounded before custom validation can run.

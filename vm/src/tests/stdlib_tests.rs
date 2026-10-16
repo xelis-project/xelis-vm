@@ -3,7 +3,7 @@ use silex_compiler::Compiler;
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::Primitive;
+use silex_types::{Primitive, PrimitiveInteger, ValueError};
 use super::*;
 
 #[track_caller]
@@ -52,7 +52,7 @@ fn test_iterator_owned_writes_detach_references_instead_of_creating_cycles() {
         "let inner: Iterator<any> = Iterator::empty(); let holder = [inner]; let it = holder.iter(); holder[0].zip(it);",
     ] {
         let code = format!("entry main() {{ {body} return 0u64 }}");
-        assert_eq!(run_code(&code), Primitive::U64(0), "owned write failed: {body}");
+        assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(0)), "owned write failed: {body}");
     }
 }
 
@@ -104,7 +104,7 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
                             ]
                         }))
                     }
-                    ValueCell::Primitive(Primitive::Opaque(value)) => {
+                    ValueCell::Opaque(value) => {
                         pending.push((OpaqueChild::Opaque(value.inner()), false))
                     }
                     _ => {}
@@ -176,7 +176,7 @@ fn test_array_len() {
             return arr.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn test_array_push() {
             return arr.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -203,7 +203,7 @@ fn test_array_pop() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -218,7 +218,7 @@ fn test_array_first() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn test_array_last() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn test_array_get() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(20));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn test_array_contains() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -274,7 +274,7 @@ fn test_array_remove() {
             return removed
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(20));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn test_array_reverse() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -327,7 +327,7 @@ fn test_array_extended_ops() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -348,7 +348,7 @@ fn test_array_sort_and_map() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 // ============================================================================
@@ -363,7 +363,7 @@ fn test_string_len() {
             return s.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -377,7 +377,7 @@ fn test_string_contains() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn test_string_to_uppercase() {
             return upper.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -401,7 +401,7 @@ fn test_string_to_lowercase() {
             return lower.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -415,7 +415,7 @@ fn test_string_starts_with() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn test_string_ends_with() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -443,7 +443,7 @@ fn test_string_is_empty() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -455,7 +455,7 @@ fn test_string_trim() {
             return trimmed.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 // ============================================================================
@@ -471,7 +471,7 @@ fn test_bytes_len() {
             return b.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -484,7 +484,7 @@ fn test_bytes_push() {
             return b.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -500,7 +500,7 @@ fn test_bytes_pop() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -514,7 +514,7 @@ fn test_bytes_to_hex() {
         }
     "#;
     // "0102" is 4 characters
-    assert_eq!(run_code(code), Primitive::U64(4));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(4)));
 }
 
 #[test]
@@ -555,7 +555,7 @@ fn test_bytes_full_suite() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(24));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(24)));
 }
 
 // ============================================================================
@@ -573,7 +573,7 @@ fn test_optional_is_some() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -587,7 +587,7 @@ fn test_optional_is_none() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -598,7 +598,7 @@ fn test_optional_unwrap_or() {
             return maybe.unwrap_or(99)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(99));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(99)));
 }
 
 #[test]
@@ -609,7 +609,7 @@ fn test_optional_unwrap_or_some() {
             return maybe.unwrap_or(99)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -625,7 +625,7 @@ fn test_optional_unwrap_or_else_none() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(77));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(77)));
 }
 
 #[test]
@@ -641,7 +641,7 @@ fn test_optional_unwrap_or_else_some() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(77));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(77)));
 }
 
 #[test]
@@ -653,7 +653,7 @@ fn test_optional_unwrap() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -673,6 +673,27 @@ fn test_optional_expect_failure() {
 // ============================================================================
 
 #[test]
+fn test_range_operations_for_every_integer_width() {
+    for width in ["u8", "u16", "u32", "u64", "u128", "u256"] {
+        let cast = if width == "u64" { "" } else { " as u64" };
+        let code = format!(r#"
+            entry main() {{
+                let low: {width} = 1;
+                let high: {width} = 4;
+                let range = low..high;
+                if !range.contains(2{width}) {{ return 0u64 }}
+                let sum: u64 = 0;
+                foreach value in range {{ sum += value{cast}; }}
+                let values = range.collect();
+                return sum + range.min(){cast} + range.max(){cast}
+                    + range.count(){cast} + values.len() as u64;
+            }}
+        "#);
+        assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(17)), "{width}");
+    }
+}
+
+#[test]
 fn test_range_contains() {
     let code = r#"
         entry main() {
@@ -683,7 +704,7 @@ fn test_range_contains() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -694,7 +715,7 @@ fn test_range_min() {
             return range.min()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -705,7 +726,7 @@ fn test_range_max() {
             return range.max()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(20));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(20)));
 }
 
 #[test]
@@ -716,7 +737,7 @@ fn test_range_count() {
             return range.count()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -729,7 +750,7 @@ fn test_range_collect() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 // ============================================================================
@@ -744,7 +765,7 @@ fn test_map_len() {
             return mymap.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -760,7 +781,7 @@ fn test_map_insert_and_get() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(100));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(100)));
 }
 
 #[test]
@@ -775,7 +796,7 @@ fn test_map_contains_key() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -788,7 +809,7 @@ fn test_map_clear() {
             return mymap.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -812,7 +833,7 @@ fn test_map_entries_and_removals() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(36));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(36)));
 }
 
 // ============================================================================
@@ -827,7 +848,7 @@ fn test_math_sqrt_u64() {
             return n.sqrt()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(4));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(4)));
 }
 
 #[test]
@@ -838,7 +859,7 @@ fn test_math_sqrt_u32() {
             return n.sqrt()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -850,7 +871,7 @@ fn test_math_sqrt_u16() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(9));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(9)));
 }
 
 // ============================================================================
@@ -869,7 +890,7 @@ fn test_int_checked_add() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(8));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(8)));
 }
 
 #[test]
@@ -884,7 +905,7 @@ fn test_int_checked_sub() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(7));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(7)));
 }
 
 #[test]
@@ -899,7 +920,7 @@ fn test_int_checked_mul() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -914,7 +935,7 @@ fn test_int_checked_div() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -925,7 +946,7 @@ fn test_int_saturating_add() {
             return n.saturating_add(10)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(260));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(260)));
 }
 
 #[test]
@@ -936,7 +957,7 @@ fn test_int_saturating_sub() {
             return n.saturating_sub(10)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -947,7 +968,7 @@ fn test_int_wrapping_add() {
             return n.wrapping_add(1)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -958,7 +979,7 @@ fn test_int_wrapping_sub() {
             return n.wrapping_sub(1)
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(18446744073709551615));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(18446744073709551615)));
 }
 
 #[test]
@@ -1022,7 +1043,7 @@ fn test_int_full_std_suite() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(8337));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(8337)));
 }
 
 // ============================================================================
@@ -1037,7 +1058,7 @@ fn test_assert_true() {
             return 1
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1048,7 +1069,7 @@ fn test_require_true() {
             return 1
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1064,7 +1085,7 @@ fn test_clone() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -1082,7 +1103,7 @@ fn test_core_misc_std() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1115,7 +1136,7 @@ fn test_iter_once() {
             return v.unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -1126,7 +1147,7 @@ fn test_iter_empty_count() {
             return it.count() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1138,7 +1159,7 @@ fn test_array_iter_collect() {
             return collected.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1152,7 +1173,7 @@ fn test_iter_next() {
             return a + b
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(30));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30)));
 }
 
 #[test]
@@ -1164,7 +1185,7 @@ fn test_iter_count() {
             return it.count() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -1176,7 +1197,7 @@ fn test_iter_skip() {
             return it.count() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1188,7 +1209,7 @@ fn test_iter_take() {
             return it.count() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1200,7 +1221,7 @@ fn test_iter_skip_take_collect() {
             return result[0] + result[1] + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(90)); // 20 + 30 + 40
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(90))); // 20 + 30 + 40
 }
 
 #[test]
@@ -1214,7 +1235,7 @@ fn test_iter_chain() {
             return result[0] + result[1] + result[2] + result[3]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -1226,7 +1247,7 @@ fn test_iter_rev() {
             return result[0] * 100 + result[1] * 10 + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(321));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(321)));
 }
 
 #[test]
@@ -1239,7 +1260,7 @@ fn test_iter_enumerate() {
             return idx as u64 + val
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10)); // 0 + 10
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10))); // 0 + 10
 }
 
 #[test]
@@ -1255,7 +1276,7 @@ fn test_iter_zip() {
             return first[0] + first[1] + second[0] + second[1]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(33)); // 1+10 + 2+20
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(33))); // 1+10 + 2+20
 }
 
 #[test]
@@ -1267,7 +1288,7 @@ fn test_iter_map() {
             return doubled[0] + doubled[1] + doubled[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(12)); // 2+4+6
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(12))); // 2+4+6
 }
 
 #[test]
@@ -1279,7 +1300,7 @@ fn test_iter_filter() {
             return evens.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1291,7 +1312,7 @@ fn test_iter_filter_values() {
             return evens[0] + evens[1] + evens[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(12)); // 2+4+6
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(12))); // 2+4+6
 }
 
 #[test]
@@ -1306,7 +1327,7 @@ fn test_iter_map_filter_chain() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3)); // 6, 8, 10 pass the filter
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3))); // 6, 8, 10 pass the filter
 }
 
 #[test]
@@ -1321,7 +1342,7 @@ fn test_iter_for_each() {
             return sum[0]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(6));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(6)));
 }
 
 #[test]
@@ -1333,7 +1354,7 @@ fn test_iter_find() {
             return found.unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(4));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(4)));
 }
 
 #[test]
@@ -1345,7 +1366,7 @@ fn test_iter_find_none() {
             return found.is_none() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1356,7 +1377,7 @@ fn test_iter_any_true() {
             return arr.iter().any(|x: u64| { return x == 2 }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1367,7 +1388,7 @@ fn test_iter_any_false() {
             return arr.iter().any(|x: u64| { return x == 10 }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1378,7 +1399,7 @@ fn test_iter_all_true() {
             return arr.iter().all(|x: u64| { return x % 2 == 0 }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -1389,7 +1410,7 @@ fn test_iter_all_false() {
             return arr.iter().all(|x: u64| { return x % 2 == 0 }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1401,7 +1422,7 @@ fn test_iter_fold() {
             return sum
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -1413,7 +1434,7 @@ fn test_iter_fold_product() {
             return product
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(120));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(120)));
 }
 
 #[test]
@@ -1424,7 +1445,7 @@ fn test_iter_sum() {
             return arr.iter().sum()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -1436,7 +1457,7 @@ fn test_iter_position() {
             return pos.unwrap() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -1448,7 +1469,7 @@ fn test_iter_flatten() {
             return flat.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -1465,7 +1486,7 @@ fn test_iter_complex_pipeline() {
         }
     "#;
     // 4 + 16 + 36 + 64 + 100 = 220
-    assert_eq!(run_code(code), Primitive::U64(220));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(220)));
 }
 
 #[test]
@@ -1479,7 +1500,7 @@ fn test_iter_chain_and_collect() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(7));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(7)));
 }
 
 #[test]
@@ -1492,7 +1513,7 @@ fn test_iter_typed_filter_collect() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1505,7 +1526,7 @@ fn test_iter_typed_skip_take_collect() {
             return result[0] + result[1] + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(90)); // 20 + 30 + 40
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(90))); // 20 + 30 + 40
 }
 
 #[test]
@@ -1518,7 +1539,7 @@ fn test_iter_typed_rev_collect() {
             return result[0] * 100 + result[1] * 10 + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(321));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(321)));
 }
 
 #[test]
@@ -1532,7 +1553,7 @@ fn test_iter_typed_chain_collect() {
             return result[0] + result[1] + result[2] + result[3]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -1553,7 +1574,7 @@ fn test_iter_typed_map_collect() {
             return doubled[0] + doubled[1] + doubled[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(12)); // 2 + 4 + 6
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(12))); // 2 + 4 + 6
 }
 
 #[test]
@@ -1567,7 +1588,7 @@ fn test_iter_typed_next_optional() {
             return v.unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -1580,7 +1601,7 @@ fn test_iter_typed_find_optional() {
             return result.unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1593,7 +1614,7 @@ fn test_iter_typed_fold() {
             return sum
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -1607,7 +1628,7 @@ fn test_iter_typed_enumerate_destructure() {
             return idx as u64 + val
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10)); // 0 + 10
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10))); // 0 + 10
 }
 
 #[test]
@@ -1622,7 +1643,7 @@ fn test_iter_typed_enumerate_collect() {
             return idx0 as u64 + val0 + idx1 as u64 + val1
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(31)); // 0+10 + 1+20
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(31))); // 0+10 + 1+20
 }
 
 #[test]
@@ -1635,7 +1656,7 @@ fn test_iter_typed_flatten_array() {
             return flat.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(5));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(5)));
 }
 
 #[test]
@@ -1650,7 +1671,7 @@ fn test_iter_typed_flatten_iter() {
             return flat[0] + flat[1] + flat[2] + flat[3]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(10));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(10)));
 }
 
 #[test]
@@ -1663,7 +1684,7 @@ fn test_iter_static_once_collect() {
             return v.unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(99));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(99)));
 }
 
 #[test]
@@ -1675,7 +1696,7 @@ fn test_iter_static_empty_collect() {
             return it.count() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1694,7 +1715,7 @@ fn test_iter_static_unfold_collect() {
             return generated[0] + generated[1] + generated[2] + generated[3] + generated[4]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(30)); // 2 + 4 + 6 + 8 + 10
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30))); // 2 + 4 + 6 + 8 + 10
 }
 
 #[test]
@@ -1713,7 +1734,7 @@ fn test_iter_static_unfold_empty() {
             return generated.len() as u64 + generated[0] + generated[1] + generated[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(9)); // len(3) + 1 + 2 + 3
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(9))); // len(3) + 1 + 2 + 3
 }
 
 #[test]
@@ -1731,7 +1752,7 @@ fn test_iter_unfold_count() {
             return count
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3)); // 3 items yielded, then count returns 3
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3))); // 3 items yielded, then count returns 3
 }
 
 #[test]
@@ -1752,7 +1773,7 @@ fn test_iter_unfold_in_another_function() {
             return count
         }
     "#;
-    assert_eq!(run_code_id(code, 2), Primitive::U64(3));
+    assert_eq!(run_code_id(code, 2), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1765,7 +1786,7 @@ fn test_iter_typed_sum() {
             return s
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(15));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(15)));
 }
 
 #[test]
@@ -1778,7 +1799,7 @@ fn test_iter_typed_position() {
             return pos.unwrap() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -1793,7 +1814,7 @@ fn test_iter_typed_zip_collect() {
             return x + y
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(11)); // 1 + 10
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(11))); // 1 + 10
 }
 
 #[test]
@@ -1809,7 +1830,7 @@ fn test_iter_filter_map_collect() {
             return result[0] + result[1]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(60)); // 20 + 40
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(60))); // 20 + 40
 }
 
 #[test]
@@ -1823,7 +1844,7 @@ fn test_iter_static_unfold_zero_items() {
             return generated.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1843,7 +1864,7 @@ fn test_iter_complex_multi() {
         }
     "#;
     // squares are [1, 4, 9, 16, 25, 36]; filter >10 gives [16, 25, 36]; sum is 77
-    assert_eq!(run_code(code), Primitive::U64(77));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(77)));
 }
 
 #[test]
@@ -1861,7 +1882,7 @@ fn test_iter_map_lazy() {
             return 42
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -1877,7 +1898,7 @@ fn test_iter_filter_lazy() {
             return 42
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -1895,7 +1916,7 @@ fn test_iter_map_then_filter() {
         }
     "#;
     // doubled: [2, 4, 6, 8, 10]; > 4: [6, 8, 10] -> len 3
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -1913,7 +1934,7 @@ fn test_iter_take_after_map() {
             return result[0] as u64 + result[1] as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(30)); // 10 + 20
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30))); // 10 + 20
 }
 
 #[test]
@@ -1931,7 +1952,7 @@ fn test_iter_skip_after_map() {
             return result[0] as u64 + result[1] as u64 + result[2] as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(240)); // 60 + 80 + 100
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(240))); // 60 + 80 + 100
 }
 
 #[test]
@@ -1949,7 +1970,7 @@ fn test_iter_take_after_filter() {
             return result[0] as u64 + result[1] as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(6)); // 2 + 4
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(6))); // 2 + 4
 }
 
 #[test]
@@ -1978,7 +1999,7 @@ fn test_iter_infinite_unfold() {
             return it.next().unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -1992,7 +2013,7 @@ fn test_iter_next_on_empty() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2007,7 +2028,7 @@ fn test_iter_next_on_non_empty() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2025,7 +2046,7 @@ fn test_iter_next_multiple() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2042,7 +2063,7 @@ fn test_iter_chain_lazy() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2060,7 +2081,7 @@ fn test_iter_chain_map_local() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2074,7 +2095,7 @@ fn test_iter_map_next() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2099,7 +2120,7 @@ fn test_iter_filter_lazy_once() {
         }
     "#;
 
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 // ============================================================================
@@ -2125,7 +2146,7 @@ fn test_iter_next_map_call_count() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2145,7 +2166,7 @@ fn test_iter_next_filter_rejecting() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2171,7 +2192,7 @@ fn test_iter_next_map_then_filter_lazy() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2192,7 +2213,7 @@ fn test_iter_next_filter_then_map_lazy() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 // ============================================================================
@@ -2210,7 +2231,7 @@ fn test_iter_next_skip_then_next() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2226,7 +2247,7 @@ fn test_iter_next_take_exhausts_early() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2239,7 +2260,7 @@ fn test_iter_next_take_zero() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2258,7 +2279,7 @@ fn test_iter_next_enumerate_state() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 // ============================================================================
@@ -2279,7 +2300,7 @@ fn test_iter_next_chain_transitions() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2297,7 +2318,7 @@ fn test_iter_next_chain_filter_both_sides() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2319,7 +2340,7 @@ fn test_iter_next_chain_map_second_lazy() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2339,7 +2360,7 @@ fn test_iter_next_unfold_map_lazy() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2362,7 +2383,7 @@ fn test_iter_next_unfold_filter_lazy() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 // ============================================================================
@@ -2382,7 +2403,7 @@ fn test_iter_next_rev_correct() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2398,7 +2419,7 @@ fn test_iter_next_flatten_correct() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2418,7 +2439,7 @@ fn test_iter_next_zip_correct() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2438,7 +2459,7 @@ fn test_iter_next_flatten_opaque_iterators() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2457,7 +2478,7 @@ fn test_iter_skip_large_with_map_no_stackoverflow() {
             return it.next().unwrap()
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1990));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1990)));
 }
 
 // ============================================================================
@@ -2475,7 +2496,7 @@ fn test_iter_next_skip_beyond_length() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2490,7 +2511,7 @@ fn test_iter_next_take_beyond_length() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2506,7 +2527,7 @@ fn test_iter_next_after_exhaustion() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2524,7 +2545,7 @@ fn test_iter_next_skip_then_filter() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 // ============================================================================
@@ -2540,7 +2561,7 @@ fn test_iter_empty_filter_collect() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2554,7 +2575,7 @@ fn test_iter_filter_all_rejected() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2565,7 +2586,7 @@ fn test_iter_fold_empty() {
             return Iterator::empty().fold(42u64, |acc: u64, x: u64| { return acc + x })
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(42));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(42)));
 }
 
 #[test]
@@ -2576,7 +2597,7 @@ fn test_iter_any_on_empty() {
             return Iterator::empty().any(|x: u64| { return true }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2587,7 +2608,7 @@ fn test_iter_all_on_empty() {
             return Iterator::empty().all(|x: u64| { return false }) as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2600,7 +2621,7 @@ fn test_iter_position_not_found() {
             return pos.is_none() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(1));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
 
 #[test]
@@ -2616,7 +2637,7 @@ fn test_iter_take_then_map_collect() {
             return result[0] + result[1]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(30)); // 10 + 20
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(30))); // 10 + 20
 }
 
 #[test]
@@ -2633,7 +2654,7 @@ fn test_iter_chain_then_skip_collect() {
             return result[0] + result[1] + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(12)); // 3+4+5
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(12))); // 3+4+5
 }
 
 #[test]
@@ -2653,7 +2674,7 @@ fn test_iter_unfold_skip_take_collect() {
             return result[0] + result[1] + result[2] + result[3]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(18)); // 3+4+5+6
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(18))); // 3+4+5+6
 }
 
 #[test]
@@ -2671,7 +2692,7 @@ fn test_iter_flatten_then_filter_collect() {
             return result[0] + result[1] + result[2]
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(12)); // 2 + 4 + 6
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(12))); // 2 + 4 + 6
 }
 
 #[test]
@@ -2687,7 +2708,7 @@ fn test_iter_zip_different_lengths() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -2708,7 +2729,7 @@ fn test_iter_zip_heterogeneous() {
             return paired.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -2731,7 +2752,7 @@ fn test_iter_complex_lazy_pipeline() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 #[test]
 fn test_debug_unfold_map_minimal() {
@@ -2746,7 +2767,7 @@ fn test_debug_unfold_map_minimal() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2762,7 +2783,7 @@ fn test_debug_unfold_map_nozero() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2778,7 +2799,7 @@ fn test_debug_unfold_filter_minimal() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2793,7 +2814,7 @@ fn test_debug_map_filter_minimal() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2810,7 +2831,7 @@ fn test_debug_filter_then_map_cap() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2828,7 +2849,7 @@ fn test_debug_unfold_map_cap() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2847,7 +2868,7 @@ fn test_debug_unfold_cap_filter() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2867,7 +2888,7 @@ fn test_debug_unfold_map_cap_multi() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2886,7 +2907,7 @@ fn test_debug_unfold_map_cap_2calls() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2903,7 +2924,7 @@ fn test_iter_unfold_filter_collect() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2)); // evens: 0, 2
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2))); // evens: 0, 2
 }
 
 #[test]
@@ -2920,7 +2941,7 @@ fn test_iter_unfold_map_collect() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3)); // [0, 100, 200]
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3))); // [0, 100, 200]
 }
 
 // ============================================================================
@@ -2941,7 +2962,7 @@ fn test_iter_flatten_lazy_next_sequential() {
             return 0
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -2960,7 +2981,7 @@ fn test_iter_flatten_lazy_take_stops_early() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -2978,7 +2999,7 @@ fn test_iter_flatten_empty_sub_arrays() {
             return flat.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(3));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(3)));
 }
 
 #[test]
@@ -3002,7 +3023,7 @@ fn test_iter_flatten_lazy_with_map() {
             return 0u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(0));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3021,7 +3042,7 @@ fn test_iter_flatten_lazy_with_filter() {
             return result.len() as u64
         }
     "#;
-    assert_eq!(run_code(code), Primitive::U64(2));
+    assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(2)));
 }
 
 #[test]
@@ -3036,12 +3057,12 @@ fn test_iterator_depth_native_return_boundary() {
         }
         let code = format!("entry main() {{ {declarations} return 0u64 }}");
         if nesting == 16 {
-            assert_eq!(run_code(&code), Primitive::U64(0));
+            assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(0)));
         } else {
             assert!(matches!(
                 run_code_result(&code),
                 Err(VMError::ValueError(
-                    silex_types::ValueError::MaxDepthReached
+                    ValueError::MaxDepthReached
                 ))
             ));
         }
@@ -3064,13 +3085,13 @@ fn test_iterator_depth_chain_and_zip_runtime_boundary() {
             if nesting == 15 {
                 assert_eq!(
                     run_code(&code),
-                    Primitive::U64(if adapter == "chain" { 16 } else { 1 })
+                    Primitive::Integer(PrimitiveInteger::U64(if adapter == "chain" { 16 } else { 1 }))
                 );
             } else {
                 assert!(matches!(
                     run_code_result(&code),
                     Err(VMError::ValueError(
-                        silex_types::ValueError::MaxDepthReached
+                        ValueError::MaxDepthReached
                     ))
                 ));
             }
@@ -3096,13 +3117,13 @@ fn test_iterator_depth_unfold_writeback_respects_destination_depth() {
         "#
         );
         if nesting == 14 {
-            assert_eq!(run_code(&code), Primitive::U64(1));
+            assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(1)));
         } else {
             assert!(matches!(
                 run_code_result(&code),
                 Err(VMError::EnvironmentError(
                     silex_environment::EnvironmentError::ValueError(
-                        silex_types::ValueError::MaxDepthReached
+                        ValueError::MaxDepthReached
                     )
                 ))
             ));
@@ -3133,12 +3154,12 @@ fn test_iterator_depth_uses_the_configured_limit() {
         vm.invoke_chunk_id_unchecked(0).unwrap();
         let result = vm.run_blocking();
         if nesting == 4 {
-            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::U64(0));
+            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
         } else {
             assert!(matches!(
                 result,
                 Err(VMError::ValueError(
-                    silex_types::ValueError::MaxDepthReached
+                    ValueError::MaxDepthReached
                 ))
             ));
         }
@@ -3164,7 +3185,7 @@ fn test_iterator_next_unfold_owns_its_initial_seed() {
         }}
     "#
     );
-    assert_eq!(run_code(&code), Primitive::U64(0));
+    assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
 #[test]
@@ -3199,13 +3220,13 @@ fn test_iterator_eager_flatten_count_uses_configured_depth_budget() {
         vm.invoke_chunk_id_unchecked(0).unwrap();
         let result = vm.run_blocking();
         if nesting == 4 {
-            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::U64(2));
+            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::Integer(PrimitiveInteger::U64(2)));
         } else {
             assert!(matches!(
                 result,
                 Err(VMError::EnvironmentError(
                     silex_environment::EnvironmentError::ValueError(
-                        silex_types::ValueError::MaxDepthReached
+                        ValueError::MaxDepthReached
                     )
                 ))
             ));

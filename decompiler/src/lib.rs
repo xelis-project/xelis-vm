@@ -18,7 +18,7 @@ use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Access, Module, OpCode};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::{FnType, Primitive, Type, ValueCell};
+use silex_types::{PrimitiveInteger, FnType, Primitive, Type, ValueCell};
 use std::collections::{BTreeMap, BTreeSet};
 use value::{joined, literal, map, refine, unpack, Expr, Generics};
 
@@ -599,7 +599,7 @@ impl<M> Engine<'_, '_, '_, M> {
                         .get_index(arg)
                         .ok_or_else(|| self.error(offset, "unknown constant ID"))?;
                     let mut expr = literal(value, 0).map_err(|m| self.error(offset, m))?;
-                    if let ValueCell::Primitive(Primitive::U16(id)) = value {
+                    if let ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U16(id))) = value {
                         expr.function_pointer = self.function_pointer(*id);
                     }
                     state.stack.push(expr);

@@ -7,7 +7,7 @@ use crate::{
     VMContext,
     VMError
 };
-use silex_types::{Primitive, ValueCell, Type};
+use silex_types::{PrimitiveInteger, Primitive, ValueCell, Type};
 
 use super::InstructionResult;
 
@@ -15,12 +15,12 @@ macro_rules! op {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
-                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
-                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
-                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
-                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
-                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Integer(PrimitiveInteger::U64(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Integer(PrimitiveInteger::U128(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Integer(PrimitiveInteger::U256(*a $op *b)),
                 _ => return Err(VMError::IllegalState)
             }
             _ => return Err(VMError::IllegalState)
@@ -32,12 +32,12 @@ macro_rules! op_bool {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
-                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
-                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
-                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
-                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
-                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Integer(PrimitiveInteger::U64(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Integer(PrimitiveInteger::U128(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Integer(PrimitiveInteger::U256(*a $op *b)),
                 (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
                 _ => return Err(VMError::IllegalState)
             }
@@ -50,12 +50,12 @@ macro_rules! op_string {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
-                (Primitive::U8(a), Primitive::U8(b)) => Primitive::U8(a $op b),
-                (Primitive::U16(a), Primitive::U16(b)) => Primitive::U16(a $op b),
-                (Primitive::U32(a), Primitive::U32(b)) => Primitive::U32(a $op b),
-                (Primitive::U64(a), Primitive::U64(b)) => Primitive::U64(a $op b),
-                (Primitive::U128(a), Primitive::U128(b)) => Primitive::U128(a $op b),
-                (Primitive::U256(a), Primitive::U256(b)) => Primitive::U256(*a $op *b),
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Integer(PrimitiveInteger::U64(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Integer(PrimitiveInteger::U128(a $op b)),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Integer(PrimitiveInteger::U256(*a $op *b)),
                 (Primitive::String(a), Primitive::String(b)) => {
                     // Verify the final len is less than u32::MAX
                     let len = (a.len() as u32).checked_add(b.len() as u32);
@@ -92,12 +92,12 @@ macro_rules! op_bool_res {
         match ($a, $b) {
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
                 (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U8(a), Primitive::U8(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U16(a), Primitive::U16(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U32(a), Primitive::U32(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U64(a), Primitive::U64(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U128(a), Primitive::U128(b)) => Primitive::Boolean(a $op b),
-                (Primitive::U256(a), Primitive::U256(b)) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => Primitive::Boolean(a $op b),
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => Primitive::Boolean(a $op b),
                 (Primitive::String(a), Primitive::String(b)) => Primitive::Boolean(a $op b),
                 _ => return Err(VMError::IllegalState)
             }
@@ -127,41 +127,41 @@ macro_rules! op_div {
     ($a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
-                (Primitive::U8(a), Primitive::U8(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U8(a $op b)
+                    Primitive::Integer(PrimitiveInteger::U8(a $op b))
                 },
-                (Primitive::U16(a), Primitive::U16(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U16(a $op b)
+                    Primitive::Integer(PrimitiveInteger::U16(a $op b))
                 },
-                (Primitive::U32(a), Primitive::U32(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U32(a $op b)
+                    Primitive::Integer(PrimitiveInteger::U32(a $op b))
                 },
-                (Primitive::U64(a), Primitive::U64(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U64(a)), Primitive::Integer(PrimitiveInteger::U64(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U64(a $op b)
+                    Primitive::Integer(PrimitiveInteger::U64(a $op b))
                 },
-                (Primitive::U128(a), Primitive::U128(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U128(a)), Primitive::Integer(PrimitiveInteger::U128(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U128(a $op b)
+                    Primitive::Integer(PrimitiveInteger::U128(a $op b))
                 },
-                (Primitive::U256(a), Primitive::U256(b)) => {
+                (Primitive::Integer(PrimitiveInteger::U256(a)), Primitive::Integer(PrimitiveInteger::U256(b))) => {
                     if b.is_zero() {
                         return Err(VMError::DivisionByZero);
                     }
-                    Primitive::U256(*a $op *b)
+                    Primitive::Integer(PrimitiveInteger::U256(*a $op *b))
                 },
                 _ => return Err(VMError::IllegalState)
             }
@@ -258,12 +258,12 @@ pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
         (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
             let pow_n = b.as_u32()?;
             match a {
-                Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
-                Primitive::U16(a) => Primitive::U16(a.pow(pow_n)),
-                Primitive::U32(a) => Primitive::U32(a.pow(pow_n)),
-                Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
-                Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
-                Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
+                Primitive::Integer(PrimitiveInteger::U8(a)) => Primitive::Integer(PrimitiveInteger::U8(a.pow(pow_n))),
+                Primitive::Integer(PrimitiveInteger::U16(a)) => Primitive::Integer(PrimitiveInteger::U16(a.pow(pow_n))),
+                Primitive::Integer(PrimitiveInteger::U32(a)) => Primitive::Integer(PrimitiveInteger::U32(a.pow(pow_n))),
+                Primitive::Integer(PrimitiveInteger::U64(a)) => Primitive::Integer(PrimitiveInteger::U64(a.pow(pow_n))),
+                Primitive::Integer(PrimitiveInteger::U128(a)) => Primitive::Integer(PrimitiveInteger::U128(a.pow(pow_n))),
+                Primitive::Integer(PrimitiveInteger::U256(a)) => Primitive::Integer(PrimitiveInteger::U256(a.pow(pow_n))),
                 _ => return Err(VMError::IllegalState)
             }
         }
@@ -283,12 +283,12 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
             (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
-                    Primitive::U8(a) => Primitive::U8(a.pow(pow_n)),
-                    Primitive::U16(a) => Primitive::U16(a.pow(pow_n)),
-                    Primitive::U32(a) => Primitive::U32(a.pow(pow_n)),
-                    Primitive::U64(a) => Primitive::U64(a.pow(pow_n)),
-                    Primitive::U128(a) => Primitive::U128(a.pow(pow_n)),
-                    Primitive::U256(a) => Primitive::U256(a.pow(pow_n)),
+                    Primitive::Integer(PrimitiveInteger::U8(a)) => Primitive::Integer(PrimitiveInteger::U8(a.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U16(a)) => Primitive::Integer(PrimitiveInteger::U16(a.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U32(a)) => Primitive::Integer(PrimitiveInteger::U32(a.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U64(a)) => Primitive::Integer(PrimitiveInteger::U64(a.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U128(a)) => Primitive::Integer(PrimitiveInteger::U128(a.pow(pow_n))),
+                    Primitive::Integer(PrimitiveInteger::U256(a)) => Primitive::Integer(PrimitiveInteger::U256(a.pow(pow_n))),
                     _ => return Err(VMError::IllegalState)
                 }
             }
@@ -309,12 +309,12 @@ pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
         .into_owned();
 
     let value = match ty {
-        Type::U8 => Primitive::U8(current.cast_to_u8()?),
-        Type::U16 => Primitive::U16(current.cast_to_u16()?),
-        Type::U32 => Primitive::U32(current.cast_to_u32()?),
-        Type::U64 => Primitive::U64(current.cast_to_u64()?),
-        Type::U128 => Primitive::U128(current.cast_to_u128()?),
-        Type::U256 => Primitive::U256(current.cast_to_u256()?),
+        Type::U8 => Primitive::Integer(PrimitiveInteger::U8(current.cast_to_u8()?)),
+        Type::U16 => Primitive::Integer(PrimitiveInteger::U16(current.cast_to_u16()?)),
+        Type::U32 => Primitive::Integer(PrimitiveInteger::U32(current.cast_to_u32()?)),
+        Type::U64 => Primitive::Integer(PrimitiveInteger::U64(current.cast_to_u64()?)),
+        Type::U128 => Primitive::Integer(PrimitiveInteger::U128(current.cast_to_u128()?)),
+        Type::U256 => Primitive::Integer(PrimitiveInteger::U256(current.cast_to_u256()?)),
         Type::String => Primitive::String(current.cast_to_string()?),
         Type::Bool => Primitive::Boolean(current.cast_to_bool()?),
         _ => return Err(VMError::UnsupportedCastType)

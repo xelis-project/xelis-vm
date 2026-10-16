@@ -9,7 +9,7 @@ use std::{
 use schemars::*;
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
-use crate::{IdentifierType, ValueError};
+use crate::{IdentifierType, ValueCell, ValueError};
 use traits::*;
 use super::Type;
 
@@ -210,12 +210,12 @@ impl<'a> Deserialize<'a> for OpaqueType {
 /// A directly contained VM value or opaque object, borrowed without a wrapper.
 #[derive(Debug, Clone, Copy)]
 pub enum OpaqueChild<'a> {
-    Value(&'a crate::ValueCell),
+    Value(&'a ValueCell),
     Opaque(&'a dyn Opaque),
 }
 
-impl<'a> From<&'a crate::ValueCell> for OpaqueChild<'a> {
-    fn from(value: &'a crate::ValueCell) -> Self {
+impl<'a> From<&'a ValueCell> for OpaqueChild<'a> {
+    fn from(value: &'a ValueCell) -> Self {
         Self::Value(value)
     }
 }
@@ -585,7 +585,7 @@ mod tests {
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let mut map = IndexMap::new();
-        map.insert(ValueCell::Primitive(Primitive::Opaque(opaque)), ValueCell::Primitive(Primitive::String("hello world".to_owned())).into());
+        map.insert(ValueCell::Opaque(opaque), ValueCell::Primitive(Primitive::String("hello world".to_owned())).into());
         map.insert(ValueCell::Primitive(Primitive::String("key test".to_owned())), ValueCell::Primitive(Primitive::String("hello world 2".to_owned())).into());
 
         let map = ValueCell::Map(Box::new(map));

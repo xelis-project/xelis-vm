@@ -193,16 +193,10 @@ impl Type {
     pub fn from_value(value: &Primitive) -> Option<Self> {
         Some(match value {
             Primitive::Null => Type::Optional(Box::new(Type::Any)),
-            Primitive::U8(_) => Type::U8,
-            Primitive::U16(_) => Type::U16,
-            Primitive::U32(_) => Type::U32,
-            Primitive::U64(_) => Type::U64,
-            Primitive::U128(_) => Type::U128,
-            Primitive::U256(_) => Type::U256,
+            Primitive::Integer(value) => value.get_type(),
             Primitive::String(_) => Type::String,
             Primitive::Boolean(_) => Type::Bool,
-            Primitive::Range(range) => Type::Range(Box::new(Self::from_value(&range.0)?)),
-            Primitive::Opaque(_) => return None,
+            Primitive::Range(range) => Type::Range(Box::new(range.start().get_type())),
         })
     }
 
@@ -210,6 +204,7 @@ impl Type {
     pub fn from_value_type(value_type: &Constant) -> Option<Self> {
         Some(match value_type {
             Constant::Primitive(v) => Self::from_value(v)?,
+            Constant::Opaque(_) => return None,
             Constant::Array(values) => Type::Array(Box::new(values.first()
                 .and_then(Type::from_value_type)
                 .unwrap_or(Type::Any)

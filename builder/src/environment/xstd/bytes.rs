@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use silex_environment::{VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
-use silex_types::{Constant, Primitive, Type, ValueCell};
+use silex_types::{PrimitiveInteger, Constant, Primitive, Type, ValueCell};
 
 use crate::EnvironmentBuilder;
 
@@ -37,7 +37,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 // native functions
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let len = zelf?.as_bytes()?.len();
-    Ok(SysCallResult::Return(Primitive::U32(len as u32).into()))
+    Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
@@ -67,14 +67,14 @@ fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, 
     // moving all elements after the index to the left is costly
     context.increase_gas_usage((array.len() - index) as u64 * 2)?;
 
-    Ok(SysCallResult::Return(Primitive::U8(array.remove(index)).into()))
+    Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U8(array.remove(index))).into()))
 }
 
 fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
     let array = zelf.as_mut().as_bytes_mut()?;
     if let Some(value) = array.pop() {
-        Ok(SysCallResult::Return(Primitive::U8(value).into()))
+        Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U8(value)).into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -83,10 +83,9 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMCo
 fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
     let range = param.as_ref();
-    let (start, end) = range.as_range()?;
-
-    let start = start.as_u32()?;
-    let end = end.as_u32()?;
+    let range = range.as_range()?;
+    let start = Primitive::Integer(range.start()).as_u32()?;
+    let end = Primitive::Integer(range.end()).as_u32()?;
 
     let mut zelf = zelf?;
     let vec = zelf.as_mut().as_bytes_mut()?;
@@ -166,7 +165,7 @@ fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
     if let Some(value) = vec.get(index).copied() {
-        Ok(SysCallResult::Return(Primitive::U8(value).into()))
+        Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U8(value)).into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -176,7 +175,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VM
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
     if let Some(value) = vec.first().copied() {
-        Ok(SysCallResult::Return(Primitive::U8(value).into()))
+        Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U8(value)).into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -186,7 +185,7 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMC
     let zelf = zelf?;
     let vec = zelf.as_bytes()?;
     if let Some(value) = vec.last().copied() {
-        Ok(SysCallResult::Return(Primitive::U8(value).into()))
+        Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U8(value)).into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
@@ -199,7 +198,7 @@ fn to_array<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
     context.increase_gas_usage((vec.len() as u64) * 2)?;
 
     let values = vec.iter()
-        .map(|v| Primitive::U8(*v).into())
+        .map(|v| Primitive::Integer(PrimitiveInteger::U8(*v)).into())
         .collect();
 
     Ok(SysCallResult::Return(ValueCell::Object(values).into()))

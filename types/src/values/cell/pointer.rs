@@ -2,7 +2,7 @@ use core::fmt;
 use std::{cell::UnsafeCell, sync::Arc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use crate::{Constant, Primitive, ValueCell, ValueError};
+use crate::{Constant, Primitive, PrimitiveInteger, ValueCell, ValueError};
 
 // ValuePointer is a simple wrapper around the raw mut pointer
 #[derive(Clone, JsonSchema)]
@@ -152,4 +152,7 @@ impl fmt::Debug for ValuePointer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ValuePointer({:?})", self.0.get())
     }
+}
+impl From<PrimitiveInteger> for ValuePointer {
+    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
 }

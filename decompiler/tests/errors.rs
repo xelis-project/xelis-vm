@@ -1,7 +1,7 @@
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Chunk, Module, OpCode};
 use silex_decompiler::{Decompiler, FunctionSignature};
-use silex_types::Type;
+use silex_types::{Primitive, PrimitiveInteger, Type};
 
 fn module(bytes: &[u8]) -> Module {
     let mut chunk = Chunk::new();
@@ -113,7 +113,7 @@ fn arbitrary_single_opcodes_do_not_panic() {
 fn deeply_nested_expressions_are_bounded_before_parsing() {
     let env = EnvironmentBuilder::<()>::new();
     let mut module = Module::new();
-    module.add_constant(silex_types::Primitive::U64(1));
+    module.add_constant(Primitive::Integer(PrimitiveInteger::U64(1)));
     let mut chunk = Chunk::new();
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(0);

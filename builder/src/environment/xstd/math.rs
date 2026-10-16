@@ -7,7 +7,7 @@ use silex_environment::{
     FunctionHandler,
     ModuleMetadata
 };
-use silex_types::{Type, Primitive, U256 as u256};
+use silex_types::{PrimitiveInteger, Type, Primitive, U256 as u256};
 use paste::paste;
 use crate::EnvironmentBuilder;
 
@@ -39,7 +39,7 @@ macro_rules! sqrt_fn {
                             } else {
                                 // If mid + 1 would overflow, mid must be the maximum possible value
                                 // which means it's our answer
-                                return Ok(SysCallResult::Return(Primitive::$t(mid).into()));
+                                return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(mid)).into()));
                             }
                         }
                     } else {
@@ -49,7 +49,7 @@ macro_rules! sqrt_fn {
                 }
                 
                 // When the loop terminates, right is the floor(sqrt(n))
-                Ok(SysCallResult::Return(Primitive::$t(right).into()))
+                Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(right)).into()))
             }
 
             // Register the sqrt function for this type

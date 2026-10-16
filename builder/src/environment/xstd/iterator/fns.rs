@@ -7,7 +7,7 @@ use silex_environment::{
     SysCallResult,
     VMContext,
 };
-use silex_types::Primitive;
+use silex_types::{Primitive, ValueError};
 
 use std::collections::VecDeque;
 use super::{
@@ -198,7 +198,7 @@ pub(super) fn iter_next<M: 'static>(
     let budget = context
         .max_value_depth()
         .checked_sub(sv.depth())
-        .ok_or(silex_types::ValueError::MaxDepthReached)?;
+        .ok_or(ValueError::MaxDepthReached)?;
 
     // Fast path: pure-sync pipeline — mutate the iterator in place through
     // the pointer (if `sv` is a Pointer the change is immediately visible

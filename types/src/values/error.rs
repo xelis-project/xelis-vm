@@ -6,6 +6,8 @@ use super::{constant::Constant, Primitive};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
+    #[error("range endpoints must have the same integer type")]
+    InvalidRange,
     #[error("expected enum with variant id")]
     ExpectedEnumWithVariantId,
     #[error("expected function type or id")]
