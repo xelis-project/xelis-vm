@@ -1,3 +1,4 @@
+use matriochka::{Error, OptionExt, ResultExt};
 use serde_json::json;
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
@@ -12,13 +13,17 @@ use silex_builder::Builder;
 
 const ABI_VERSION: &str = "1.1.1";
 
-pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> anyhow::Result<String> {
+pub fn abi_from_silex<M>(code: &str, env: EnvironmentBuilder<'_, M>) -> Result<String, Error> {
     let tokens = Lexer::new(code)
         .into_iter()
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .context("tokenizing Silex source for ABI generation")?;
 
     let parser = Parser::with(tokens.into_iter(), &env);
-    let (program, mapper) = parser.parse().map_err(|err| anyhow::anyhow!("{:#}", err))?;
+    let (program, mapper) = parser.parse()
+        // Parser errors borrow the source and cannot be stored in an owned error.
+        .map_err(|err| Error::new(std::io::Error::other(err.to_string())))
+        .context("parsing Silex source for ABI generation")?;
 
     abi_from_parse(&program, &mapper, &env)
 }
@@ -28,7 +33,7 @@ fn register_type(
     mapper: &GlobalMapper,
     internal_types: &mut Vec<serde_json::Value>,
     seen_types: &mut std::collections::HashSet<String>
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     match _type {
         // Recursively handle containers first
         Type::Array(inner) => {
@@ -53,16 +58,19 @@ fn register_type(
         // Then handle struct/enum (existing code)
         Type::Struct(struct_type) => {
             let builder = mapper.structs();
-            let name_info = builder.get_name_by_ref(&struct_type)?;
+            let name_info = builder.get_name_by_ref(&struct_type)
+                .with_context(|| format!("resolving ABI struct {struct_type}"))?;
 
             if seen_types.insert(name_info.to_string()) {
                 // Recursively register nested types in fields
-                for (_field_name, field_type) in struct_type.fields() {
-                    register_type(field_type, mapper, internal_types, seen_types)?;
+                for (field_name, field_type) in struct_type.fields() {
+                    register_type(field_type, mapper, internal_types, seen_types)
+                        .with_context(|| format!("registering ABI field {name_info}.{field_name}"))?;
                 }
 
                 let struct_field_names: Vec<&str> = builder
-                    .get_by_ref(&struct_type)?
+                    .get_by_ref(&struct_type)
+                    .with_context(|| format!("resolving ABI fields for struct {name_info}"))?
                     .names()
                     .collect();
 
@@ -87,13 +95,15 @@ fn register_type(
         },
         Type::Enum(enum_type) => {
             let builder = mapper.enums();
-            let name_info = builder.get_name_by_ref(&enum_type)?;
+            let name_info = builder.get_name_by_ref(&enum_type)
+                .with_context(|| format!("resolving ABI enum {enum_type}"))?;
 
             if seen_types.insert(name_info.to_string()) {
                 // Recursively register nested types in variant fields
-                for (_variant_name, variant_fields) in enum_type.variants() {
-                    for (_field_name, field_type) in variant_fields.fields() {
-                        register_type(field_type, mapper, internal_types, seen_types)?;
+                for (variant_name, variant_fields) in enum_type.variants() {
+                    for (field_name, field_type) in variant_fields.fields() {
+                        register_type(field_type, mapper, internal_types, seen_types)
+                            .with_context(|| format!("registering ABI field {name_info}::{variant_name}.{field_name}"))?;
                     }
                 }
 
@@ -134,7 +144,7 @@ fn register_type(
     Ok(())
 }
 
-pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: &EnvironmentBuilder<M>) -> anyhow::Result<String> {
+pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: &EnvironmentBuilder<M>) -> Result<String, Error> {
     let mut abi_functions: Vec<serde_json::Value> = Vec::new();
     let mut internal_types: Vec<serde_json::Value> = Vec::new();
     let mut seen_types: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -146,17 +156,19 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
             let function_builder = mapper.functions();
             let mapping = function_builder
                 .get_function(&(i as u16 + env_offset))
-                .unwrap();
+                .with_context(|| format!("resolving ABI entry function at index {i}"))?;
 
             let mut flattened_params = Vec::new();
 
             for (name, _type) in &mapping.parameters {
-                register_type(_type, mapper, &mut internal_types, &mut seen_types)?;
+                register_type(_type, mapper, &mut internal_types, &mut seen_types)
+                    .with_context(|| format!("registering ABI parameter {name} of entry {}", mapping.name))?;
                 
                 match _type {
                     Type::Struct(struct_type) => {
                         let builder = mapper.structs();
-                        let name_info = builder.get_name_by_ref(&struct_type)?;
+                        let name_info = builder.get_name_by_ref(&struct_type)
+                            .with_context(|| format!("resolving ABI struct for parameter {name} of entry {}", mapping.name))?;
                         
                         flattened_params.push(json!({
                             "name": name,
@@ -166,7 +178,8 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
                     },
                     Type::Enum(enum_type) => {
                         let builder = mapper.enums();
-                        let name_info = builder.get_name_by_ref(&enum_type)?;
+                        let name_info = builder.get_name_by_ref(&enum_type)
+                            .with_context(|| format!("resolving ABI enum for parameter {name} of entry {}", mapping.name))?;
                         
                         flattened_params.push(json!({
                             "name": name.to_string(),
@@ -185,7 +198,8 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
             }
 
             if let Some(return_type) = func.return_type() {
-                register_type(return_type, mapper, &mut internal_types, &mut seen_types)?;
+                register_type(return_type, mapper, &mut internal_types, &mut seen_types)
+                    .with_context(|| format!("registering ABI return type of entry {}", mapping.name))?;
             }
 
             let abi_entry = json!({
@@ -205,7 +219,8 @@ pub fn abi_from_parse<M>(program: &Program, mapper: &GlobalMapper, environment: 
         "data": abi_functions
     });
 
-    Ok(serde_json::to_string_pretty(&abi_root)?)
+    serde_json::to_string_pretty(&abi_root)
+        .context("serializing ABI to JSON")
 }
 
 #[cfg(test)]
@@ -233,7 +248,7 @@ mod tests {
             }
 
             impl JSONHelper for $name {
-                fn serialize_json(&self) -> anyhow::Result<serde_json::Value> {
+                fn serialize_json(&self) -> Result<serde_json::Value, Error> {
                     Ok(json!("dummy"))
                 }
 
@@ -253,6 +268,46 @@ mod tests {
 
     // Dummy type definitions to register opaque types
     impl_dummy_opaque!(Address);
+
+    #[test]
+    fn abi_errors_include_the_source_stage() {
+        let error = abi_from_silex::<()>("@", EnvironmentBuilder::default()).unwrap_err();
+        assert!(error.to_string().contains("tokenizing"));
+        assert!(error.downcast_ref::<silex_lexer::LexerError>().is_some());
+
+        let error = abi_from_silex::<()>("entry", EnvironmentBuilder::default()).unwrap_err();
+        assert!(error.to_string().contains("parsing"));
+        assert!(format!("{error:#}").contains("error at line"));
+    }
+
+    #[test]
+    fn missing_entry_mapping_returns_a_contextual_error() {
+        let mut program = Program::new();
+        program.add_function(FunctionType::Entry(EntryFunction::new(vec![], vec![], 0)));
+
+        let error = abi_from_parse::<()>(
+            &program,
+            &GlobalMapper::new(),
+            &EnvironmentBuilder::default(),
+        ).unwrap_err();
+        assert!(error.to_string().contains("entry function at index 0"));
+    }
+
+    #[test]
+    fn missing_abi_types_preserve_the_builder_error() {
+        let error = register_type(
+            &Type::Struct(silex_types::StructType::new(0, "Missing", vec![])),
+            &GlobalMapper::new(),
+            &mut Vec::new(),
+            &mut std::collections::HashSet::new(),
+        ).unwrap_err();
+
+        assert!(error.to_string().contains("Missing"));
+        assert!(matches!(
+            error.downcast_ref::<silex_builder::BuilderError>(),
+            Some(silex_builder::BuilderError::TypeNotFound),
+        ));
+    }
 
     #[test]
     fn test_abi_from_example_slx() {

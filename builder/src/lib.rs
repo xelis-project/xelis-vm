@@ -45,7 +45,7 @@ pub enum BuilderError {
         parameter_types: Vec<Option<Type>>,
     },
     #[error(transparent)]
-    Any(#[from] anyhow::Error)
+    Any(#[from] matriochka::Error)
 }
 
 #[cfg(test)]

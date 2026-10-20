@@ -14,5 +14,5 @@ silex-environment.workspace = true
 log.workspace = true
 thiserror.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
-anyhow.workspace = true
+matriochka.workspace = true
 paste.workspace = true

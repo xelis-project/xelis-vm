@@ -154,8 +154,14 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
     } else if options.json {
         quote! {
             impl #impl_generics #path::traits::JSONHelper for #ident #type_generics #where_clause {
-                fn serialize_json(&self) -> #path::__private::anyhow::Result<#path::__private::serde_json::Value> {
-                    Ok(#path::__private::serde_json::to_value(self)?)
+                fn serialize_json(&self) -> ::std::result::Result<#path::__private::serde_json::Value, #path::__private::matriochka::Error> {
+                    use #path::__private::matriochka::ResultExt as _;
+
+                    #path::__private::serde_json::to_value(self)
+                        .with_context(|| ::std::format!(
+                            "serializing opaque type {} to JSON",
+                            #path::traits::DynType::get_type_name(self),
+                        ))
                 }
                 fn is_json_supported(&self) -> bool { true }
             }

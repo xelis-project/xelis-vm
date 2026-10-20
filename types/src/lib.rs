@@ -52,7 +52,7 @@ pub type NoHashMap<V> = HashMap<IdentifierType, V, BuildHasherDefault<NoOpHasher
 // Paths used by generated code; consumers need not depend directly on JSON crates.
 #[doc(hidden)]
 pub mod __private {
-    pub use anyhow;
+    pub use matriochka;
     pub use serde;
     pub use serde_json;
 }

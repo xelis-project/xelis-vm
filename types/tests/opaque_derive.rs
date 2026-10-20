@@ -104,7 +104,7 @@ impl JSONHelper for CustomJson {
     fn is_json_supported(&self) -> bool {
         true
     }
-    fn serialize_json(&self) -> anyhow::Result<serde_json::Value> {
+    fn serialize_json(&self) -> Result<serde_json::Value, matriochka::Error> {
         Ok(serde_json::json!("custom"))
     }
 }
@@ -121,6 +121,51 @@ impl Opaque for Manual {
     fn get_size(&self) -> usize {
         123
     }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Opaque)]
+#[opaque(json)]
+struct InvalidJson;
+
+impl serde::Serialize for InvalidJson {
+    fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("fixture serialization failure"))
+    }
+}
+
+#[test]
+fn json_serialization_preserves_context_and_cause() {
+    let error = InvalidJson.serialize_json().unwrap_err();
+    assert!(error.to_string().contains("InvalidJson"));
+    assert!(error.downcast_ref::<serde_json::Error>().is_some());
+    assert!(format!("{error:#}").contains("fixture serialization failure"));
+
+    let error = serde_json::to_value(OpaqueWrapper::new(InvalidJson)).unwrap_err();
+    let diagnostic = error.to_string();
+    assert!(diagnostic.contains("InvalidJson"));
+    assert!(diagnostic.contains("fixture serialization failure"));
+}
+
+#[test]
+fn json_deserialization_preserves_context_and_cause() {
+    {
+        let mut registry = silex_types::traits::JSON_REGISTRY.write().unwrap();
+        silex_types::register_opaque_json!(registry, "InvalidJson", InvalidJson);
+    }
+
+    let error = silex_types::traits::JSON_REGISTRY.read().unwrap()["InvalidJson"](
+        serde_json::json!(true),
+    ).unwrap_err();
+    assert!(error.to_string().contains("InvalidJson"));
+    assert!(error.downcast_ref::<serde_json::Error>().is_some());
+
+    let error = serde_json::from_value::<OpaqueWrapper>(serde_json::json!({
+        "type": "InvalidJson",
+        "value": true,
+    })).unwrap_err();
+    let diagnostic = error.to_string();
+    assert!(diagnostic.contains("InvalidJson"));
+    assert!(diagnostic.contains("invalid type: boolean"));
 }
 
 #[test]

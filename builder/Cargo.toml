@@ -12,7 +12,7 @@ silex-ast.workspace = true
 silex-environment.workspace = true
 thiserror.workspace = true
 paste.workspace = true
-anyhow.workspace = true
+matriochka.workspace = true
 log.workspace = true
 hex.workspace = true
 

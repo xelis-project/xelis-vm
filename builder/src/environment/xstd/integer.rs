@@ -1,4 +1,4 @@
-use anyhow::Context as _;
+use matriochka::{Error, ResultExt as _};
 use silex_environment::{
     SysCallResult,
     FunctionHandler,
@@ -340,7 +340,10 @@ macro_rules! from_endian_bytes {
             fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
                 let value = params[0].as_bytes()?;
                 let slice: &[u8] = &value;
-                let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().context("invalid bytes size")?);
+                let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().with_context(|| format!(
+                    "decoding {}::from_{}_bytes: expected {} bytes, got {}",
+                    stringify!($f), stringify!($endian), std::mem::size_of::<$f>(), slice.len(),
+                ))?);
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(v)).into()))
             }
 
@@ -490,7 +493,10 @@ macro_rules! to_string {
                 
                 // Validate base range
                 if base < 2 || base > 36 {
-                    return Err(anyhow::anyhow!("Base must be between 2 and 36, got {}", base).into());
+                    return Err(Error::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Base must be between 2 and 36, got {}", base),
+                    )).context("converting u256 to string").into());
                 }
                 
                 // For U256, use custom implementation for all bases

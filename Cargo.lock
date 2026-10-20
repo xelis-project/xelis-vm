@@ -30,12 +30,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 
 [[package]]
-name = "anyhow"
-version = "1.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -708,7 +702,7 @@ dependencies = [
 name = "silex-abi"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "matriochka",
  "serde_json",
  "silex-ast",
  "silex-builder",
@@ -741,10 +735,10 @@ dependencies = [
 name = "silex-builder"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "futures",
  "hex",
  "log",
+ "matriochka",
  "paste",
  "silex-ast",
  "silex-bytecode",
@@ -801,11 +795,11 @@ dependencies = [
 name = "silex-environment"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "better_any",
  "futures",
  "hashbrown",
  "indexmap",
+ "matriochka",
  "runtime-context",
  "silex-bytecode",
  "silex-types",
@@ -826,9 +820,9 @@ dependencies = [
 name = "silex-parser"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "indexmap",
  "log",
+ "matriochka",
  "paste",
  "silex-ast",
  "silex-builder",
@@ -841,7 +835,6 @@ dependencies = [
 name = "silex-types"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "criterion",
  "hex",
  "indexmap",
@@ -1082,11 +1075,11 @@ dependencies = [
 name = "xelis-vm"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "criterion",
  "futures",
  "indexmap",
  "log",
+ "matriochka",
  "serde_json",
  "silex-builder",
  "silex-bytecode",

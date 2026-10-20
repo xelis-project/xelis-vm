@@ -1,4 +1,4 @@
-use anyhow::{Context, Error, anyhow};
+use matriochka::{Error, ResultExt};
 use silex_compiler::Compiler;
 use silex_environment::{Environment, EnvironmentError};
 use silex_builder::EnvironmentBuilder;
@@ -46,12 +46,16 @@ fn prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> (Modu
 
 #[track_caller]
 fn try_prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> Result<(Module, Environment<()>), Error> {
-    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>()?;
+    let tokens: Vec<_> = Lexer::new(code).into_iter().collect::<Result<_, _>>()
+        .context("tokenizing Silex source")?;
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse()
-        .map_err(|e| anyhow!("{}", e))?;
+        // Parser errors borrow the source and cannot be stored in an owned error.
+        .map_err(|e| Error::new(std::io::Error::other(e.to_string())))
+        .context("parsing Silex source")?;
 
     let env = env.build();
-    let module = Compiler::new(&program, &env).compile()?;
+    let module = Compiler::new(&program, &env).compile()
+        .context("compiling Silex program")?;
 
     Ok((module, env))
 }
@@ -100,6 +104,23 @@ fn test_code_id_expect_return(code: &str, expected: Primitive, id: u16) {
         run_code_id(code, id),
         expected
     );
+}
+
+#[test]
+fn test_byte_decoding_errors_preserve_context_and_cause() {
+    for endian in ["le", "be"] {
+        let code = format!(
+            "entry main() {{ return u64::from_{endian}_bytes(bytes::new()) }}",
+        );
+        let error = try_run_code(&code, 0).unwrap_err();
+        let VMError::EnvironmentError(EnvironmentError::Any(error)) = error else {
+            panic!("expected a native decoding error, got {error:?}");
+        };
+        let diagnostic = format!("{error:#}");
+        assert!(diagnostic.contains(&format!("u64::from_{endian}_bytes")));
+        assert!(diagnostic.contains("expected 8 bytes, got 0"));
+        assert!(error.downcast_ref::<std::array::TryFromSliceError>().is_some());
+    }
 }
 
 #[test]

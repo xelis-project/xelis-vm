@@ -79,7 +79,7 @@ pub enum VMError {
     #[error("out of memory")]
     OutOfMemory,
     #[error(transparent)]
-    Any(#[from] anyhow::Error)
+    Any(#[from] matriochka::Error)
 }
 
 impl From<EnvironmentError> for VMError {

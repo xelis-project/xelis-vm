@@ -41,7 +41,6 @@ xelis-vm = { path = "vm", version = "0.1.0" }
 
 octet = "0.2.2"
 matriochka = "0.1.1"
-anyhow = "1.0.95"
 better_any = "0.2.0"
 criterion = "0.5.1"
 futures = "0.3.31"

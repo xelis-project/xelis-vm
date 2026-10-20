@@ -41,7 +41,7 @@ pub enum EnvironmentError {
     #[error("Invalid key type")]
     InvalidKeyType,
     #[error(transparent)]
-    Any(#[from] anyhow::Error),
+    Any(#[from] matriochka::Error),
     #[error("Out of memory")]
     OutOfMemory,
     #[error("Unexpected behavior: {0}")]

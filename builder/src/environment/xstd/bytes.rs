@@ -1,4 +1,4 @@
-use anyhow::Context as _;
+use matriochka::ResultExt as _;
 use silex_environment::{VMContext, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, SysCallResult, ModuleMetadata};
 use silex_types::{PrimitiveInteger, Constant, Primitive, Type, ValueCell};
 
@@ -210,7 +210,7 @@ fn from_hex<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, conte
     context.increase_gas_usage(value.len() as _)?;
 
     let values = hex::decode(&value)
-        .context("decoding hex")?;
+        .context("decoding bytes from hexadecimal string")?;
 
     Ok(SysCallResult::Return(ValueCell::Bytes(values).into()))
 }

@@ -7,6 +7,7 @@ use std::{
     hash::{Hash, Hasher}
 };
 use schemars::*;
+use matriochka::ResultExt as _;
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
 use crate::{IdentifierType, ValueCell, ValueError};
@@ -395,7 +396,8 @@ impl Serialize for OpaqueWrapper {
 
         let value = if self.inner.is_json_supported() {
             self.inner.serialize_json()
-                .map_err(serde::ser::Error::custom)?
+                .with_context(|| format!("serializing opaque value of type {}", self.inner.get_type_name()))
+                .map_err(|error| serde::ser::Error::custom(format!("{error:#}")))?
         } else {
             Value::String("JSON not supported".to_owned())
         };
@@ -425,7 +427,8 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
             .ok_or(serde::de::Error::custom(format!("Unknown type '{}' for registry", type_name)))?;
 
         deserialize_fn(value)
-            .map_err(serde::de::Error::custom)
+            .with_context(|| format!("deserializing opaque value of type {type_name}"))
+            .map_err(|error| serde::de::Error::custom(format!("{error:#}")))
     }
 }
 

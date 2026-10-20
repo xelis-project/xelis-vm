@@ -240,5 +240,5 @@ pub enum ParserErrorKind<'a> {
     #[error("error on const function call: {0}")]
     ConstFunctionError(#[from] ConstFunctionError),
     #[error(transparent)]
-    Any(#[from] anyhow::Error)
+    Any(#[from] matriochka::Error)
 }

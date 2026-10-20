@@ -1,3 +1,5 @@
+use matriochka::ResultExt as _;
+
 /// Object-safe serialization capability for opaque values.
 /// Implemented automatically for types implementing Octet's `Serializable`.
 pub trait DynSerializable {
@@ -15,7 +17,8 @@ impl<T: octet::Serializable> DynSerializable for T {
     fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error> {
         let start = buffer.len();
         let mut writer = octet::Writer::new(&mut *buffer);
-        self.write(&mut writer)?;
+        self.write(&mut writer)
+            .with_context(|| format!("serializing opaque type {} to bytes", std::any::type_name::<T>()))?;
 
         Ok(buffer.len() - start)
     }

@@ -1,3 +1,4 @@
+use matriochka::ResultExt as _;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::Module;
 use crate::*;
@@ -21,7 +22,7 @@ fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -
     // Verify the module using validator
     let validator = ModuleValidator::new(&module, environment);
     validator.verify()
-        .map_err(|e| VMError::Any(e.into()))?;
+        .context("validating compiled module")?;
 
     let mut vm = VM::default();
     vm.append_module(ModuleMetadata {

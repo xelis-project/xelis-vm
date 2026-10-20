@@ -1,5 +1,6 @@
 use std::hash::{Hash, Hasher};
 
+use matriochka::ResultExt as _;
 use serde_json::{json, Value};
 use silex_types::{
     traits::JSON_REGISTRY, Constant, ConstantValueCell, Opaque, OpaqueWrapper, Primitive,
@@ -112,7 +113,7 @@ fn lifted_opaques_keep_their_legacy_wire_shape_hash_and_memory_cost() {
         Box::new(|value: Value| {
             Ok(OpaqueWrapper::new(serde_json::from_value::<Fixture>(
                 value,
-            )?))
+            ).context("deserializing PrimitiveSplitFixture from JSON")?))
         }),
     );
     let opaque = OpaqueWrapper::new(Fixture(42));

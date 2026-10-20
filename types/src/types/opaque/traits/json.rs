@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::RwLock};
-use anyhow::anyhow;
+use matriochka::Error;
 use lazy_static::lazy_static;
 use serde_json::Value;
 use crate::opaque::OpaqueWrapper;
 
-pub type DeserializeFn = dyn Fn(Value) -> Result<OpaqueWrapper, anyhow::Error> + Send + Sync;
+pub type DeserializeFn = dyn Fn(Value) -> Result<OpaqueWrapper, Error> + Send + Sync;
 
 lazy_static! {
     pub static ref JSON_REGISTRY: RwLock<HashMap<&'static str, Box<DeserializeFn>>> = RwLock::new(HashMap::new());
@@ -14,10 +14,10 @@ lazy_static! {
 macro_rules! register_opaque_json {
     ($registry:expr, $name:expr, $type:ty) => {
         $registry.insert($name, Box::new(|value| {
-            use anyhow::Context;
+            use $crate::__private::matriochka::ResultExt as _;
 
-            let value: $type = serde_json::from_value(value)
-                .context("Failed to deserialize JSON")?;
+            let value: $type = $crate::__private::serde_json::from_value(value)
+                .with_context(|| format!("deserializing opaque type {} from JSON", stringify!($type)))?;
 
             Ok($crate::opaque::OpaqueWrapper::new(value))
         }));
@@ -26,8 +26,11 @@ macro_rules! register_opaque_json {
 
 pub trait JSONHelper {
     // Serialize the type to JSON
-    fn serialize_json(&self) -> Result<Value, anyhow::Error> {
-        Err(anyhow!("Serialization not supported for this type"))
+    fn serialize_json(&self) -> Result<Value, Error> {
+        Err(Error::new(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Serialization not supported for this type",
+        )))
     }
 
     // Check if the type is supported by the JSON serialization

@@ -14,7 +14,7 @@ thiserror.workspace = true
 log.workspace = true
 indexmap.workspace = true
 futures.workspace = true
-anyhow.workspace = true
+matriochka.workspace = true
 
 [dev-dependencies]
 silex-builder.workspace = true
