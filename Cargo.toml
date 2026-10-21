@@ -39,7 +39,7 @@ silex-types-macros = { path = "types-macros", version = "0.1.0" }
 silex-types = { path = "types", version = "0.1.0" }
 xelis-vm = { path = "vm", version = "0.1.0" }
 
-octet = "0.2.2"
+octet = "0.3.0"
 matriochka = "0.1.1"
 better_any = "0.2.0"
 criterion = "0.5.1"
