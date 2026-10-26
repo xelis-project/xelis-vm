@@ -511,12 +511,13 @@ impl Type {
                 _ => self.is_compatible_with(other)
             },
             Self::Closure(f) => match other {
-                Self::Closure(f2) => f == f2,
-                Self::Function(f2) => f.eq(f2),
+                Self::Closure(f2) => f.is_compatible_with(f2),
+                Self::Function(f2) => f2.is_compatible_with_closure(f),
                 _ => self.is_compatible_with(other)
             },
             Self::Function(f) => match other {
-                Self::Function(f2) => f == f2,
+                Self::Function(f2) => f.is_compatible_with(f2),
+                Self::Closure(f2) => f.is_compatible_with_closure(f2),
                 _ => self.is_compatible_with(other)
             },
             Self::Tuples(tuples) => match other {
@@ -570,6 +571,20 @@ impl Type {
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         if other.is_generic() || self.is_generic() {
             return true
+        }
+
+        match (self, other) {
+            (Type::Closure(left), Type::Closure(right)) => {
+                return left.is_compatible_with(right);
+            },
+            (Type::Function(left), Type::Function(right)) => {
+                return left.is_compatible_with(right);
+            },
+            (Type::Closure(closure), Type::Function(function))
+            | (Type::Function(function), Type::Closure(closure)) => {
+                return function.is_compatible_with_closure(closure);
+            },
+            _ => {}
         }
 
         // Special case: voidable are shadow types
@@ -632,17 +647,7 @@ impl Type {
                 Type::Any | Type::T(None) => true,
                 _ => *self == *other
             },
-            Type::Closure(f) => match self {
-                Type::Closure(f2) => f == f2,
-                Type::Function(f2) => f.eq(f2),
-                Type::Any | Type::T(None) => true,
-                _ => *self == *other
-            },
-            Type::Function(f) => match self {
-                Type::Function(f2) => f == f2,
-                Type::Any | Type::T(None) => true,
-                _ => *self == *other
-            },
+            Type::Closure(_) | Type::Function(_) => false,
             Type::Voidable(inner) => self.is_compatible_with(inner),
             _ => *self == *other || self.is_generic(),
         }
@@ -968,6 +973,8 @@ impl fmt::Display for Type {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     #[test]
@@ -1030,22 +1037,58 @@ mod tests {
     }
 
     #[test]
-    fn test_fn_type_eq() {
+    fn test_fn_type_equality_and_compatibility() {
         let fn1 = FnType::new(None, false, vec![Type::U64, Type::String], Some(Type::Bool));
         let fn2 = FnType::new(None, false, vec![Type::Any, Type::Any], Some(Type::Bool));
         let fn3 = FnType::new(None, false, vec![Type::Array(Box::new(Type::Any))], Some(Type::Bool));
         let fn4 = FnType::new(None, false, vec![], Some(Type::Bool));
         let fn5 = FnType::new(None, false, vec![], Some(Type::Any));
 
-        assert_eq!(fn1, fn2);
-        assert_eq!(fn1, fn3);
-        assert_eq!(fn2, fn3);
-        assert_eq!(fn3, fn4);
-        assert_eq!(fn4, fn5);
+        assert_ne!(fn1, fn2);
+        assert_ne!(fn1, fn3);
+        assert_ne!(fn2, fn3);
+        assert_ne!(fn3, fn4);
+        assert_ne!(fn4, fn5);
+
+        assert!(fn1.is_compatible_with(&fn2));
+        assert!(fn1.is_compatible_with(&fn3));
+        assert!(fn2.is_compatible_with(&fn3));
+        assert!(fn3.is_compatible_with(&fn4));
+        assert!(fn4.is_compatible_with(&fn5));
 
         let a = FnType::new(None, false, vec![Type::U8], Some(Type::Any));
         let b = FnType::new(None, false, vec![Type::U64], Some(Type::Any));
         assert_ne!(a, b);
+        assert!(!a.is_compatible_with(&b));
+
+        let fn1_duplicate = fn1.clone();
+        let mut signatures = HashSet::new();
+        signatures.insert(fn1);
+        signatures.insert(fn1_duplicate);
+        signatures.insert(fn2);
+        assert_eq!(signatures.len(), 2);
+    }
+
+    #[test]
+    fn test_instance_function_closure_compatibility() {
+        let method = FnType::new(
+            Some(Type::String),
+            true,
+            vec![Type::U64],
+            Some(Type::Bool),
+        );
+        let compatible = ClosureType::new(
+            vec![Type::String, Type::U64],
+            Some(Type::Bool),
+        );
+        let missing_receiver = ClosureType::new(vec![Type::U64], Some(Type::Bool));
+
+        assert!(method.is_compatible_with_closure(&compatible));
+        assert!(!method.is_compatible_with_closure(&missing_receiver));
+        assert!(Type::Function(method.clone())
+            .is_compatible_with(&Type::Closure(compatible.clone())));
+        assert!(Type::Closure(compatible)
+            .is_compatible_with(&Type::Function(method)));
     }
 
     #[test]

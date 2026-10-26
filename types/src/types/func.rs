@@ -5,10 +5,33 @@ use serde::{Deserialize, Serialize};
 use crate::Type;
 
 
-#[derive(Clone, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ClosureType {
     parameters: Vec<Type>,
     return_type: Option<Box<Type>>
+}
+
+fn has_variadic_parameters(parameters: &[Type]) -> bool {
+    matches!(parameters, [Type::Array(inner)] if inner.as_ref() == &Type::Any)
+}
+
+fn return_types_are_compatible(left: Option<&Type>, right: Option<&Type>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.is_compatible_with(right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn parameters_are_compatible(left: &[Type], right: &[Type]) -> bool {
+    if has_variadic_parameters(left) || has_variadic_parameters(right) {
+        return true;
+    }
+
+    left.len() == right.len()
+        && left.iter()
+            .zip(right)
+            .all(|(left, right)| left.is_compatible_with(right))
 }
 
 impl ClosureType {
@@ -33,40 +56,16 @@ impl ClosureType {
     pub fn return_type(&self) -> Option<&Type> {
         self.return_type.as_deref()
     }
-}
 
-impl PartialEq for ClosureType {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.return_type, &other.return_type) {
-            (Some(a), Some(b)) if !a.is_compatible_with(b) => return false,
-            (None, Some(_)) | (Some(_), None) => return false,
-            _ => {}
-        }
-
-        // We have to check the params len
-        // SPECIAL CASE: If one of the function has singular Type::Any array as parameter,
-        // it means it can accept any number of parameters
-        if !((self.parameters.len() == 1 && self.parameters[0] == Type::Array(Box::new(Type::Any)))
-            || (other.parameters.len() == 1 && other.parameters[0] == Type::Array(Box::new(Type::Any)))) {
-
-            if self.parameters.len() != other.parameters.len() {
-                return false
-            }
-
-            for (a, b) in self.parameters.iter().zip(other.parameters.iter()) {
-                if !a.is_compatible_with(b) {
-                    return false
-                }
-            }
-        }
-
-        true
+    // Compatibility is intentionally separate from structural equality.
+    // Generic and variadic signatures may be compatible without being equal.
+    pub fn is_compatible_with(&self, other: &Self) -> bool {
+        return_types_are_compatible(self.return_type(), other.return_type())
+            && parameters_are_compatible(&self.parameters, &other.parameters)
     }
 }
 
-impl Eq for ClosureType {}
-
-#[derive(Clone, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct FnType {
     // Registered on a specific type
     // may be a static function if on_instance is false
@@ -88,66 +87,6 @@ impl AsRef<ClosureType> for FnType {
         &self.closure
     }
 }
-
-impl PartialEq for FnType {
-    fn eq(&self, other: &Self) -> bool {
-        if !(self.on_type == other.on_type
-            && self.on_instance == other.on_instance) {
-            return false
-        }
-
-        self.closure == other.closure
-    }
-}
-
-impl PartialEq<ClosureType> for FnType {
-    fn eq(&self, other: &ClosureType) -> bool {
-        // A function is just like a closure except:
-        // the on_type is considered as the first parameter if on_instance is true
-
-        // a.foo(10) is equivalent to foo(a, 10)
-
-        if self.on_instance {
-
-            // Check return type
-            match (&self.closure.return_type, &other.return_type) {
-                (Some(a), Some(b)) if !a.is_compatible_with(b) => return false,
-                (None, Some(_)) | (Some(_), None) => return false,
-                _ => {}
-            }
-
-            // Check the first parameter as the on_type
-            if let Some(on_type) = &self.on_type {
-                if !on_type.is_compatible_with(&other.parameters[0]) {
-                    return false
-                }
-            }
-
-            // We have to check the params len
-            // SPECIAL CASE: If one of the function has singular Type::Any array as parameter,
-            // it means it can accept any number of parameters
-            if !((self.closure.parameters.len() == 1 && self.closure.parameters[0] == Type::Array(Box::new(Type::Any)))
-                || (other.parameters.len() == 2 && other.parameters[1] == Type::Array(Box::new(Type::Any)))) {
-
-                if self.closure.parameters.len() != other.parameters.len() {
-                    return false
-                }
-
-                for (a, b) in self.closure.parameters.iter().zip(other.parameters.iter().skip(1)) {
-                    if !a.is_compatible_with(b) {
-                        return false
-                    }
-                }
-            }
-
-            true
-        } else {
-            self.closure == *other
-        }
-    }
-}
-
-impl Eq for FnType {}
 
 impl FnType {
     pub fn new(on_type: Option<Type>, on_instance: bool, parameters: Vec<Type>, return_type: Option<Type>) -> Self {
@@ -172,6 +111,30 @@ impl FnType {
 
     pub fn on_instance(&self) -> bool {
         self.on_instance
+    }
+
+    pub fn is_compatible_with(&self, other: &Self) -> bool {
+        self.on_type == other.on_type
+            && self.on_instance == other.on_instance
+            && self.closure.is_compatible_with(&other.closure)
+    }
+
+    // Instance methods expose their receiver as the closure's first parameter.
+    pub fn is_compatible_with_closure(&self, other: &ClosureType) -> bool {
+        if !return_types_are_compatible(self.return_type(), other.return_type()) {
+            return false;
+        }
+
+        if !self.on_instance {
+            return parameters_are_compatible(&self.closure.parameters, &other.parameters);
+        }
+
+        let (Some(on_type), Some(receiver)) = (self.on_type(), other.parameters.first()) else {
+            return false;
+        };
+
+        on_type.is_compatible_with(receiver)
+            && parameters_are_compatible(&self.closure.parameters, &other.parameters[1..])
     }
 }
 

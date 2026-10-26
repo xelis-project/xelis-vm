@@ -8,7 +8,7 @@ use std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Hash, Eq, Ord, JsonSchema)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, JsonSchema)]
 #[schemars(with = "String", description = "A 256-bit unsigned integer represented as a decimal string.")]
 pub struct U256([u64; 4]);
 
@@ -198,12 +198,14 @@ impl U256 {
             if exp_remaining & 1 == 1 {
                 result *= base;
             }
-            
-            // Square the base
-            base *= base;
-            
+
             // Move to next bit
             exp_remaining >>= 1;
+            if exp_remaining > 0 {
+                // Do not perform an unused final square: in debug builds that
+                // could panic even when the requested result itself fits.
+                base *= base;
+            }
         }
         
         result
@@ -224,8 +226,10 @@ impl U256 {
                 result = result.checked_mul(base)?;
             }
 
-            base = base.checked_mul(base)?;
             exp_remaining >>= 1;
+            if exp_remaining > 0 {
+                base = base.checked_mul(base)?;
+            }
         }
 
         Some(result)
@@ -928,25 +932,25 @@ impl Rem for U256 {
     }
 }
 
-impl PartialEq for U256 {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
 impl PartialOrd for U256 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for U256 {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
         // Compare from the most significant part to the least significant
         for i in (0..4).rev() {
             if self.0[i] < other.0[i] {
-                return Some(Ordering::Less);
+                return Ordering::Less;
             } else if self.0[i] > other.0[i] {
-                return Some(Ordering::Greater);
+                return Ordering::Greater;
             }
         }
-        Some(Ordering::Equal)
+        Ordering::Equal
     }
 }
 
@@ -1291,6 +1295,22 @@ mod tests {
         let max = U256::MAX;
         let (_, overflow) = max.overflowing_mul(U256::from(2u64));
         assert_eq!(overflow, true);
+    }
+
+    #[test]
+    fn checked_pow_only_checks_operations_needed_for_the_result() {
+        assert_eq!(U256::MAX.checked_pow(1), Some(U256::MAX));
+        assert_eq!(U256::MAX.pow(1), U256::MAX);
+        assert_eq!(U256::MAX.checked_pow(2), None);
+    }
+
+    #[test]
+    fn total_and_partial_order_use_numeric_limb_order() {
+        let high_limb = U256::new(0, 1, 0, 0);
+        let low_limb = U256::new(u64::MAX, 0, 0, 0);
+
+        assert!(high_limb > low_limb);
+        assert_eq!(high_limb.partial_cmp(&low_limb), Some(high_limb.cmp(&low_limb)));
     }
 
     #[test]

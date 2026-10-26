@@ -278,7 +278,7 @@ impl Hash for dyn Opaque {
 
 /// An Opaque value that can be used to store any type
 /// This allow environments to provide custom types to the VM
-#[derive(Debug, Hash, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 pub struct OpaqueWrapper {
     #[schemars(skip)]
     inner: Box<dyn Opaque>
@@ -303,6 +303,13 @@ impl PartialEq for OpaqueWrapper {
 }
 
 impl Eq for OpaqueWrapper {}
+
+impl Hash for OpaqueWrapper {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.get_type_id().hash(state);
+        self.inner.hash(state);
+    }
+}
 
 impl OpaqueWrapper {
     /// Create a new OpaqueWrapper
@@ -460,7 +467,7 @@ impl fmt::Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
-    use std::{any::TypeId, hash::DefaultHasher};
+    use std::{any::TypeId, hash::{DefaultHasher, Hasher}};
     use indexmap::IndexMap;
 
     use crate::{
@@ -528,13 +535,15 @@ mod tests {
         assert_eq!(opaque.to_string(), "CustomOpaque(42)");
         assert_eq!(opaque.get_type_id(), TypeId::of::<CustomOpaque>());
 
-        // Test hashing
-        let mut hasher = DefaultHasher::new();
-        opaque.hash(&mut hasher);
-
-        // Test equality
         let opaque2 = opaque.clone();
         assert_eq!(opaque, opaque2);
+
+        // Equal opaque values must also hash equally.
+        let mut left_hasher = DefaultHasher::new();
+        opaque.hash(&mut left_hasher);
+        let mut right_hasher = DefaultHasher::new();
+        opaque2.hash(&mut right_hasher);
+        assert_eq!(left_hasher.finish(), right_hasher.finish());
     }
 
     #[test]
