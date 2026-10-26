@@ -59,6 +59,32 @@ fn create_module_with_internal_chunk() -> Module {
 }
 
 #[test]
+fn test_control_flow_targets_must_be_instruction_boundaries() {
+    use silex_bytecode::OpCode;
+
+    for op in [OpCode::Jump, OpCode::JumpIfFalse, OpCode::IteratorNext, OpCode::Match] {
+        let mut module = Module::new();
+        let mut chunk = Chunk::new();
+        let constant = module.add_constant(Primitive::Integer(PrimitiveInteger::U8(1)));
+        chunk.emit_opcode(OpCode::Constant);
+        chunk.write_u16(constant as u16);
+        chunk.emit_opcode(op);
+        if matches!(op, OpCode::Match) {
+            chunk.write_u8(0);
+        }
+        chunk.write_u32(1); // middle of Constant's u16 operand
+        chunk.emit_opcode(OpCode::Return);
+        module.add_entry_chunk(chunk, None);
+
+        let env = create_environment();
+        assert!(matches!(
+            ModuleValidator::new(&module, &env).verify(),
+            Err(ValidatorError::InvalidJumpAddress(1))
+        ), "{op:?}");
+    }
+}
+
+#[test]
 fn test_verify_invoke_chunk_entry_no_params() {
     let module = create_module_with_entry_chunk(None);
     let env = create_environment();

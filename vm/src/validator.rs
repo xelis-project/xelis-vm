@@ -247,7 +247,11 @@ impl<'a, M> ModuleValidator<'a, M> {
             }
 
             let mut reader = ChunkReader::new(&entry.chunk, 0);
+            let mut instruction_starts = HashSet::new();
+            let mut jump_targets = HashSet::new();
+
             while let Some(instruction) = reader.next_u8() {
+                instruction_starts.insert(reader.index() - 1);
                 let op = OpCode::from_byte(instruction)
                     .ok_or(ValidatorError::InvalidOpCode)?;
 
@@ -283,7 +287,7 @@ impl<'a, M> ModuleValidator<'a, M> {
                         // Minus 2
                         count -= 2;
                     },
-                    OpCode::Jump | OpCode::JumpIfFalse => {
+                    OpCode::Jump | OpCode::JumpIfFalse | OpCode::IteratorNext => {
                         let addr = reader.read_u32()
                             .map_err(|_| ValidatorError::InvalidOpCode)?;
 
@@ -291,9 +295,21 @@ impl<'a, M> ModuleValidator<'a, M> {
                         if addr as usize >= entry.chunk.index() {
                             return Err(ValidatorError::InvalidJumpAddress(addr));
                         }
+                        jump_targets.insert(addr);
 
                         // Minus 4
                         count -= 4;
+                    },
+                    OpCode::Match => {
+                        reader.read_u8()
+                            .map_err(|_| ValidatorError::InvalidOpCode)?;
+                        let addr = reader.read_u32()
+                            .map_err(|_| ValidatorError::InvalidOpCode)?;
+                        if addr as usize >= entry.chunk.index() {
+                            return Err(ValidatorError::InvalidJumpAddress(addr));
+                        }
+                        jump_targets.insert(addr);
+                        count -= 5;
                     },
                     OpCode::Constant => {
                         let constant_id = reader.read_u16()
@@ -312,6 +328,12 @@ impl<'a, M> ModuleValidator<'a, M> {
 
                 reader.advance(count)
                     .map_err(|_| ValidatorError::InvalidOpCodeArguments(op, count))?;
+            }
+
+            for addr in jump_targets {
+                if !instruction_starts.contains(&(addr as usize)) {
+                    return Err(ValidatorError::InvalidJumpAddress(addr));
+                }
             }
         }
 
