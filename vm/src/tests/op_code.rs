@@ -205,7 +205,7 @@ fn test_struct() {
         vm.invoke_chunk_id_unchecked(0).expect("entry chunk at 0");
         assert_eq!(
             vm.run_blocking().unwrap(),
-            ValueCell::Object(
+            OwnedValue::Object(
                 vec![
                     Primitive::Integer(PrimitiveInteger::U8(10)).into(),
                     Primitive::Integer(PrimitiveInteger::U16(20)).into()

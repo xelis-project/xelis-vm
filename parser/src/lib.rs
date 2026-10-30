@@ -4563,7 +4563,7 @@ mod tests {
             Token::Identifier("MAX"),
         ];
 
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, silex_types::Opaque)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Opaque)]
         #[opaque(eq, hash)]
         struct Foo;
 

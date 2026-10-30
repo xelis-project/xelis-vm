@@ -8,7 +8,7 @@ use silex_environment::{
     SysCallResult,
     ModuleMetadata
 };
-use silex_types::{PrimitiveInteger, PrimitiveRange, Type, Primitive, ValueCell};
+use silex_types::{PrimitiveInteger, PrimitiveRange, Type, Primitive, RuntimeValue, HeapError};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -29,17 +29,17 @@ macro_rules! collect {
         paste! {
             {
                 if $start >= $end {
-                    ValueCell::Object(Vec::new())
+                    RuntimeValue::Object(Vec::new())
                 } else {
                     let diff = $end - $start;
                     if diff > u32::MAX as _ {
                         return Err(EnvironmentError::RangeTooLarge);
                     }
 
-                    $context.increase_gas_usage(diff as u64 * 8)?;
+                    $context.resources_mut().increase_gas_usage(diff as u64 * 8)?;
 
-                    let vec = (*$start..*$end).map(|i| Primitive::Integer(PrimitiveInteger::$t(i)).into()).collect();
-                    ValueCell::Object(vec)
+                    let vec = (*$start..*$end).map(|i| $context.heap_mut().insert(Primitive::Integer(PrimitiveInteger::$t(i)).into())).collect::<Result<_, HeapError>>()?;
+                    RuntimeValue::Object(vec)
                 }.into()
             }
         }
@@ -66,13 +66,13 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function_with_comment("count", Some(_type.clone()), vec![], FunctionHandler::Sync(count), 5, Some(Type::T(Some(0))), "Returns the number of values in the range.");
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let value = parameters.remove(0);
     let zelf = zelf?;
-    let range = zelf.as_range()?;
+    let range = zelf.as_range(context.heap())?.clone();
 
-    let value = value.as_ref();
-    Ok(SysCallResult::Return(match range {
+    let value = value.as_ref(context.heap());
+    Ok(SysCallResult::Return(match &range {
         PrimitiveRange::U8(range) => {
             let (start, end) = (&range.start, &range.end);
             contains!(u8, start, end, value)
@@ -102,8 +102,8 @@ fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
 
 fn collect<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let range = zelf.as_range()?;
-    Ok(SysCallResult::Return(match range {
+    let range = zelf.as_range(context.heap())?.clone();
+    Ok(SysCallResult::Return(match &range {
         PrimitiveRange::U8(range) => {
             let (start, end) = (&range.start, &range.end);
             collect!(U8, start, end, u8, context)
@@ -135,35 +135,35 @@ fn collect<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context:
                     return Err(EnvironmentError::RangeTooLarge);
                 }
 
-                context.increase_gas_usage(diff as u64 * 8)?;
+                context.resources_mut().increase_gas_usage(diff as u64 * 8)?;
 
                 for i in 0..diff {
-                    vec.push(Primitive::Integer(PrimitiveInteger::U256(i.into())).into());
+                    vec.push(context.heap_mut().insert(Primitive::Integer(PrimitiveInteger::U256(i.into())).into())?);
                 }
             }
 
-            ValueCell::Object(vec).into()
+            RuntimeValue::Object(vec).into()
         }
     }))
 }
 
-fn max<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn max<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let end = zelf.as_range()?.end();
+    let end = zelf.as_range(context.heap())?.end();
     Ok(SysCallResult::Return(end.into()))
 }
 
-fn min<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn min<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let start = zelf.as_range()?.start();
+    let start = zelf.as_range(context.heap())?.start();
     Ok(SysCallResult::Return(start.into()))
 }
 
-fn count<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn count<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let range = zelf.as_range()?;
+    let range = zelf.as_range(context.heap())?.clone();
 
-    Ok(SysCallResult::Return(match range {
+    Ok(SysCallResult::Return(match &range {
         PrimitiveRange::U8(range) => {
             let (start, end) = (&range.start, &range.end);
             count!(U8, start, end, u8)

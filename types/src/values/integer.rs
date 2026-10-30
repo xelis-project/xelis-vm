@@ -1,6 +1,7 @@
 use super::Primitive;
 use crate::{NumberType, Type, ValueError, U256};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
@@ -8,7 +9,7 @@ use std::{
 };
 
 /// An integer value with its exact VM width.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum PrimitiveInteger {
     U8(u8),
@@ -18,11 +19,13 @@ pub enum PrimitiveInteger {
         serialize_with = "super::serialize_u64_as_string",
         deserialize_with = "super::deserialize_u64_from_string"
     )]
+    #[schemars(with = "String")]
     U64(u64),
     #[serde(
         serialize_with = "super::serialize_u128_as_string",
         deserialize_with = "super::deserialize_u128_from_string"
     )]
+    #[schemars(with = "String")]
     U128(u128),
     U256(U256),
 }

@@ -1,5 +1,5 @@
 use std::{cmp::Ordering, mem};
-use silex_types::StackValue;
+use silex_types::{StackValue, Heap};
 
 use crate::trace;
 
@@ -127,16 +127,16 @@ impl ChunkManager {
 
     // Get the next value from the iterators stack
     #[inline(always)]
-    pub fn next_iterator(&mut self) -> Result<Option<StackValue>, VMError> {
+    pub fn next_iterator(&mut self, heap: &Heap) -> Result<Option<StackValue>, VMError> {
         self.iterators.last_mut()
             .ok_or(VMError::EmptyIterator)
-            .and_then(|v| v.next().map_err(VMError::from))
+            .and_then(|v| v.next(heap).map_err(VMError::from))
     }
 
     // Push/set a new value into the registers
     #[inline]
     pub fn set_register(&mut self, index: usize, mut value: StackValue) -> Result<Option<StackValue>, VMError> {
-        trace!("Setting register at index {}: {:?}, current {}", index, value.as_ref(), self.registers.len());
+        trace!("Setting register at index {}: {:?}, current {}", index, value, self.registers.len());
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
         }

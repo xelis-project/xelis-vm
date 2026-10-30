@@ -1,6 +1,6 @@
 mod integer;
 mod range;
-pub(crate) mod wire;
+mod serde_map;
 pub use integer::PrimitiveInteger;
 pub use range::PrimitiveRange;
 mod error;
@@ -12,6 +12,7 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher}
 };
+use schemars::JsonSchema;
 
 use super::{
     Type,
@@ -21,7 +22,7 @@ use super::{
 pub use cell::*;
 pub use error::*;
 pub use constant::*;
-use serde::{Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // Helper functions for U64 string serialization/deserialization
 // JSON parsers may have issues with large integers above 2^53
@@ -73,13 +74,15 @@ macro_rules! checked_cast {
 }
 
 /// A scalar VM value, without opaque containers or mutable VM references.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Primitive {
     Null,
     Boolean(bool),
-    Integer(PrimitiveInteger),
     String(String),
     Range(Box<PrimitiveRange>),
+    #[serde(untagged)]
+    Integer(PrimitiveInteger),
 }
 
 impl PartialOrd for Primitive {

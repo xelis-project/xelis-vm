@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{PrimitiveInteger, NumberType, OpaqueWrapper, Primitive, ValueCell, ValueError, ValuePointer};
+use crate::{PrimitiveInteger, NumberType, OpaqueWrapper, Primitive, OwnedValue, ValueError};
 
 /// A packed type representation
 /// Used for representing types in a compact way
@@ -148,17 +148,17 @@ impl TypePacked {
         })
     }
 
-    /// Check if a ValueCell matches the TypePacked
+    /// Check if a OwnedValue matches the TypePacked
     /// This is iterative to prevent stack overflow with deeply nested types
     #[inline(always)]
-    pub fn check(&self, value: &ValueCell) -> bool {
+    pub fn check(&self, value: &OwnedValue) -> bool {
         self.check_with_fn(value, |_, _| true)
     }
-    /// Check if a ValueCell matches the TypePacked
+    /// Check if a OwnedValue matches the TypePacked
     /// This is iterative to prevent stack overflow with deeply nested types
     /// Allows providing a function to validate opaque types
-    pub fn check_with_fn<F: Fn(&OpaqueWrapper, u16) -> bool>(&self, value: &ValueCell, f: F) -> bool {
-        let mut stack: Vec<(&TypePacked, &ValueCell, bool)> = vec![(self, value, false)];
+    pub fn check_with_fn<F: Fn(&OpaqueWrapper, u16) -> bool>(&self, value: &OwnedValue, f: F) -> bool {
+        let mut stack: Vec<(&TypePacked, &OwnedValue, bool)> = vec![(self, value, false)];
 
         while let Some((tp, val, is_map_key)) = stack.pop() {
             if is_map_key && !val.is_hashable() {
@@ -166,41 +166,41 @@ impl TypePacked {
             }
 
             match (tp, val) {
-                (TypePacked::Optional(_), ValueCell::Primitive(Primitive::Null)) => {},
+                (TypePacked::Optional(_), OwnedValue::Primitive(Primitive::Null)) => {},
                 (TypePacked::Optional(inner), v) => {
                     stack.push((inner, v, is_map_key));
                 },
-                (TypePacked::Number(nt), ValueCell::Primitive(p)) => {
+                (TypePacked::Number(nt), OwnedValue::Primitive(p)) => {
                     if !TypePacked::from_primitive(p)
                         .is_some_and(|v| v == TypePacked::Number(*nt)) {
                         return false;
                     }
                 },
-                (TypePacked::String, ValueCell::Primitive(Primitive::String(_))) => {},
-                (TypePacked::Bool, ValueCell::Primitive(Primitive::Boolean(_))) => {},
-                (TypePacked::Opaque(ty), ValueCell::Opaque(opaque)) => {
+                (TypePacked::String, OwnedValue::Primitive(Primitive::String(_))) => {},
+                (TypePacked::Bool, OwnedValue::Primitive(Primitive::Boolean(_))) => {},
+                (TypePacked::Opaque(ty), OwnedValue::Opaque(opaque)) => {
                     if !f(opaque, *ty) {
                         return false;
                     }
                 },
-                (TypePacked::Bytes, ValueCell::Bytes(_)) => {},
+                (TypePacked::Bytes, OwnedValue::Bytes(_)) => {},
                 (TypePacked::Any, _) => {},
-                (TypePacked::Array(inner), ValueCell::Object(values)) => {
+                (TypePacked::Array(inner), OwnedValue::Object(values)) => {
                     for v in values.iter() {
-                        stack.push((inner, v.as_ref(), is_map_key));
+                        stack.push((inner, v, is_map_key));
                     }
                 },
-                (TypePacked::Tuples(types), ValueCell::Object(values)) => {
+                (TypePacked::Tuples(types), OwnedValue::Object(values)) => {
                     if types.len() != values.len() {
                         return false;
                     }
                     for (t, v) in types.iter().zip(values.iter()) {
-                        stack.push((t, v.as_ref(), is_map_key));
+                        stack.push((t, v, is_map_key));
                     }
                 },
-                (TypePacked::OneOf(variants), ValueCell::Object(values)) => {
+                (TypePacked::OneOf(variants), OwnedValue::Object(values)) => {
                     // First element should be the variant index (u8)
-                    let Some(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(index)))) = values.get(0).map(ValuePointer::as_ref) else {
+                    let Some(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(index)))) = values.first() else {
                         return false;
                     };
 
@@ -217,16 +217,16 @@ impl TypePacked {
                     }
 
                     for (t, v) in variant_types.iter().zip(data.iter()) {
-                        stack.push((t, v.as_ref(), is_map_key));
+                        stack.push((t, v, is_map_key));
                     }
                 },
-                (TypePacked::Map(key_type, value_type), ValueCell::Map(map)) => {
+                (TypePacked::Map(key_type, value_type), OwnedValue::Map(map)) => {
                     for (k, v) in map.iter() {
                         stack.push((key_type, k, true));
-                        stack.push((value_type, v.as_ref(), is_map_key));
+                        stack.push((value_type, v, is_map_key));
                     }
                 },
-                (TypePacked::Range(nt), ValueCell::Primitive(Primitive::Range(range))) => {
+                (TypePacked::Range(nt), OwnedValue::Primitive(Primitive::Range(range))) => {
                     if range.number_type() != **nt { return false; }
                 },
                 _ => return false,
@@ -240,88 +240,89 @@ impl TypePacked {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{U256, ValueCell, ValuePointer};
+    use crate::{U256, OwnedValue};
+    fn identity(value: OwnedValue) -> OwnedValue { value }
 
     #[test]
     fn test_bytes() {
         let tp_bytes = TypePacked::Bytes;
-        let val_bytes = ValueCell::Bytes(vec![1, 2, 3]);
+        let val_bytes = OwnedValue::Bytes(vec![1, 2, 3]);
         assert!(tp_bytes.check(&val_bytes));
     }
 
     #[test]
     fn test_bool() {
         let tp_bool = TypePacked::Bool;
-        let val_bool = ValueCell::Primitive(Primitive::Boolean(true));
+        let val_bool = OwnedValue::Primitive(Primitive::Boolean(true));
         assert!(tp_bool.check(&val_bool));
     }
 
     #[test]
     fn test_string() {
         let tp_string = TypePacked::String;
-        let val_string = ValueCell::Primitive(Primitive::String("Test".to_string()));
+        let val_string = OwnedValue::Primitive(Primitive::String("Test".to_string()));
         assert!(tp_string.check(&val_string));
     }
 
     #[test]
     fn test_u8() {
         let tp_number_u8 = TypePacked::Number(NumberType::U8);
-        let val_number_u8 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(255)));
+        let val_number_u8 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(255)));
         assert!(tp_number_u8.check(&val_number_u8));
     }
 
     #[test]
     fn test_u16() {
         let tp_number_u16 = TypePacked::Number(NumberType::U16);
-        let val_number_u16 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U16(1000)));
+        let val_number_u16 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U16(1000)));
         assert!(tp_number_u16.check(&val_number_u16));
     }
 
     #[test]
     fn test_u32() {
         let tp_number_u32 = TypePacked::Number(NumberType::U32);
-        let val_number_u32 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(1_000_000)));
+        let val_number_u32 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(1_000_000)));
         assert!(tp_number_u32.check(&val_number_u32));
     }
 
     #[test]
     fn test_u64() {
         let tp_number_u64 = TypePacked::Number(NumberType::U64);
-        let val_number_u64 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1_000_000_000)));
+        let val_number_u64 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1_000_000_000)));
         assert!(tp_number_u64.check(&val_number_u64));
     }
 
     #[test]
     fn test_u128() {
         let tp_number_u128 = TypePacked::Number(NumberType::U128);
-        let val_number_u128 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U128(1_000_000_000_000)));
+        let val_number_u128 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U128(1_000_000_000_000)));
         assert!(tp_number_u128.check(&val_number_u128));
     }
 
     #[test]
     fn test_u256() {
         let tp_number_u256 = TypePacked::Number(NumberType::U256);
-        let val_number_u256 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U256(U256::from(42u64))));
+        let val_number_u256 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U256(U256::from(42u64))));
         assert!(tp_number_u256.check(&val_number_u256));
     }
 
     #[test]
     fn test_optional() {
         let tp_optional = TypePacked::Optional(Box::new(TypePacked::Number(NumberType::U8)));
-        let val_null = ValueCell::Primitive(Primitive::Null);
-        let val_number_u8 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(100)));
+        let val_null = OwnedValue::Primitive(Primitive::Null);
+        let val_number_u8 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(100)));
         assert!(tp_optional.check(&val_null));
         assert!(tp_optional.check(&val_number_u8));
 
-        assert!(!tp_optional.check(&ValueCell::Primitive(Primitive::String("Test".to_string()))));
+        assert!(!tp_optional.check(&OwnedValue::Primitive(Primitive::String("Test".to_string()))));
     }
 
     #[test]
     fn test_any() {
         let tp_any = TypePacked::Any;
-        let val_string = ValueCell::Primitive(Primitive::String("Test".to_string()));
-        let val_bool = ValueCell::Primitive(Primitive::Boolean(true));
-        let val_number_u8 = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(100)));
+        let val_string = OwnedValue::Primitive(Primitive::String("Test".to_string()));
+        let val_bool = OwnedValue::Primitive(Primitive::Boolean(true));
+        let val_number_u8 = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(100)));
         assert!(tp_any.check(&val_string));
         assert!(tp_any.check(&val_bool));
         assert!(tp_any.check(&val_number_u8));
@@ -331,17 +332,17 @@ mod tests {
     #[test]
     fn test_array_empty() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Number(NumberType::U8)));
-        let val_array = ValueCell::Object(vec![]);
+        let val_array = OwnedValue::Object(vec![]);
         assert!(tp_array.check(&val_array));
     }
 
     #[test]
     fn test_array_u8() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Number(NumberType::U8)));
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
+        let val_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
         ]);
         assert!(tp_array.check(&val_array));
     }
@@ -349,9 +350,9 @@ mod tests {
     #[test]
     fn test_array_string() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::String));
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("hello".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("world".to_string()))),
+        let val_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("hello".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::String("world".to_string()))),
         ]);
         assert!(tp_array.check(&val_array));
     }
@@ -359,9 +360,9 @@ mod tests {
     #[test]
     fn test_array_mixed_types_fails() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Number(NumberType::U8)));
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("invalid".to_string()))),
+        let val_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::String("invalid".to_string()))),
         ]);
         assert!(!tp_array.check(&val_array));
     }
@@ -369,17 +370,17 @@ mod tests {
     #[test]
     fn test_array_nested() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Array(Box::new(TypePacked::Number(NumberType::U32)))));
-        let inner_array1 = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(2)))),
+        let inner_array1 = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(1)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(2)))),
         ]);
-        let inner_array2 = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(3)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(4)))),
+        let inner_array2 = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(3)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(4)))),
         ]);
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(inner_array1),
-            ValuePointer::from(inner_array2),
+        let val_array = OwnedValue::Object(vec![
+            identity(inner_array1),
+            identity(inner_array2),
         ]);
         assert!(tp_array.check(&val_array));
     }
@@ -387,10 +388,10 @@ mod tests {
     #[test]
     fn test_array_with_any() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Any));
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("mixed".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))),
+        let val_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::String("mixed".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))),
         ]);
         assert!(tp_array.check(&val_array));
     }
@@ -398,10 +399,10 @@ mod tests {
     #[test]
     fn test_array_with_optional() {
         let tp_array = TypePacked::Array(Box::new(TypePacked::Optional(Box::new(TypePacked::Number(NumberType::U8)))));
-        let val_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Null)),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
+        let val_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::Null)),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
         ]);
         assert!(tp_array.check(&val_array));
     }
@@ -410,15 +411,15 @@ mod tests {
     #[test]
     fn test_tuple_empty() {
         let tp_tuple = TypePacked::Tuples(vec![]);
-        let val_tuple = ValueCell::Object(vec![]);
+        let val_tuple = OwnedValue::Object(vec![]);
         assert!(tp_tuple.check(&val_tuple));
     }
 
     #[test]
     fn test_tuple_single() {
         let tp_tuple = TypePacked::Tuples(vec![TypePacked::Number(NumberType::U8)]);
-        let val_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
+        let val_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
         ]);
         assert!(tp_tuple.check(&val_tuple));
     }
@@ -430,10 +431,10 @@ mod tests {
             TypePacked::String,
             TypePacked::Bool,
         ]);
-        let val_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("hello".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))),
+        let val_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
+            identity(OwnedValue::Primitive(Primitive::String("hello".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))),
         ]);
         assert!(tp_tuple.check(&val_tuple));
     }
@@ -444,8 +445,8 @@ mod tests {
             TypePacked::Number(NumberType::U8),
             TypePacked::String,
         ]);
-        let val_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
+        let val_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
         ]);
         assert!(!tp_tuple.check(&val_tuple));
     }
@@ -456,9 +457,9 @@ mod tests {
             TypePacked::Number(NumberType::U8),
             TypePacked::String,
         ]);
-        let val_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))), // should be String
+        let val_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))), // should be String
         ]);
         assert!(!tp_tuple.check(&val_tuple));
     }
@@ -472,13 +473,13 @@ mod tests {
                 TypePacked::Bool,
             ]),
         ]);
-        let inner_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("nested".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(false))),
+        let inner_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("nested".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(false))),
         ]);
-        let val_tuple = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(999)))),
-            ValuePointer::from(inner_tuple),
+        let val_tuple = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(999)))),
+            identity(inner_tuple),
         ]);
         assert!(tp_tuple.check(&val_tuple));
     }
@@ -492,10 +493,10 @@ mod tests {
             TypePacked::Number(NumberType::U8),
             TypePacked::Bool,
         ]);
-        let val_struct = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Alice".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(30)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))),
+        let val_struct = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("Alice".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(30)))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))),
         ]);
         assert!(tp_struct.check(&val_struct));
     }
@@ -509,16 +510,16 @@ mod tests {
         ]);
         
         // With some nickname
-        let val_with_nickname = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("nick".to_string()))),
+        let val_with_nickname = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1)))),
+            identity(OwnedValue::Primitive(Primitive::String("nick".to_string()))),
         ]);
         assert!(tp_struct.check(&val_with_nickname));
         
         // Without nickname (null)
-        let val_without_nickname = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(2)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Null)),
+        let val_without_nickname = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(2)))),
+            identity(OwnedValue::Primitive(Primitive::Null)),
         ]);
         assert!(tp_struct.check(&val_without_nickname));
     }
@@ -530,14 +531,14 @@ mod tests {
             TypePacked::String,
             TypePacked::Array(Box::new(TypePacked::Number(NumberType::U32))),
         ]);
-        let scores_array = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(100)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(95)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(87)))),
+        let scores_array = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(100)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(95)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(87)))),
         ]);
-        let val_struct = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Bob".to_string()))),
-            ValuePointer::from(scores_array),
+        let val_struct = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("Bob".to_string()))),
+            identity(scores_array),
         ]);
         assert!(tp_struct.check(&val_struct));
     }
@@ -555,20 +556,20 @@ mod tests {
         
         // Each variant is represented as (variant_index, variant_data)
         // Active variant (index 0)
-        let val_active = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
+        let val_active = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
         ]);
         assert!(tp_enum.check(&val_active));
         
         // Inactive variant (index 1)
-        let val_inactive = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+        let val_inactive = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
         ]);
         assert!(tp_enum.check(&val_inactive));
         
         // Pending variant (index 2)
-        let val_pending = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
+        let val_pending = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
         ]);
         assert!(tp_enum.check(&val_pending));
     }
@@ -583,24 +584,24 @@ mod tests {
         ]);
         
         // Text variant (index 0)
-        let val_text = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Hello".to_string()))),
+        let val_text = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
+            identity(OwnedValue::Primitive(Primitive::String("Hello".to_string()))),
         ]);
         assert!(tp_enum.check(&val_text));
         
         // Number variant (index 1)
-        let val_number = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(12345)))),
+        let val_number = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(12345)))),
         ]);
         assert!(tp_enum.check(&val_number));
         
         // Pair variant (index 2)
-        let val_pair = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))),
+        let val_pair = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))),
         ]);
         assert!(tp_enum.check(&val_pair));
     }
@@ -615,8 +616,8 @@ mod tests {
         ]);
         
         // Invalid variant index (3, out of bounds)
-        let val_invalid = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
+        let val_invalid = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(3)))),
         ]);
         assert!(!tp_enum.check(&val_invalid));
     }
@@ -630,9 +631,9 @@ mod tests {
         ]);
         
         // Int variant with String data (wrong type)
-        let val_wrong = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))), // Int variant
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("wrong".to_string()))), // Should be u64
+        let val_wrong = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))), // Int variant
+            identity(OwnedValue::Primitive(Primitive::String("wrong".to_string()))), // Should be u64
         ]);
         assert!(!tp_enum.check(&val_wrong));
     }
@@ -646,10 +647,10 @@ mod tests {
         ]);
         
         // Single variant with two values (wrong count)
-        let val_wrong = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))), // Single variant
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))), // Extra value
+        let val_wrong = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))), // Single variant
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2)))), // Extra value
         ]);
         assert!(!tp_enum.check(&val_wrong));
     }
@@ -667,20 +668,20 @@ mod tests {
         ]);
         
         // Ok variant with Person struct
-        let person = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Charlie".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(25)))),
+        let person = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("Charlie".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(25)))),
         ]);
-        let val_ok = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
-            ValuePointer::from(person),
+        let val_ok = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
+            identity(person),
         ]);
         assert!(tp_enum.check(&val_ok));
         
         // Err variant
-        let val_err = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Something went wrong".to_string()))),
+        let val_err = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::String("Something went wrong".to_string()))),
         ]);
         assert!(tp_enum.check(&val_err));
     }
@@ -694,15 +695,15 @@ mod tests {
         ]);
         
         // None variant
-        let val_none = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
+        let val_none = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0)))),
         ]);
         assert!(tp_enum.check(&val_none));
         
         // Some variant
-        let val_some = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)))),
+        let val_some = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1)))),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)))),
         ]);
         assert!(tp_enum.check(&val_some));
     }
@@ -715,7 +716,7 @@ mod tests {
             Box::new(TypePacked::String),
             Box::new(TypePacked::Number(NumberType::U64)),
         );
-        let val_map = ValueCell::Map(Box::new(IndexMap::new()));
+        let val_map = OwnedValue::Map(IndexMap::new());
         assert!(tp_map.check(&val_map));
     }
 
@@ -728,14 +729,14 @@ mod tests {
         );
         let mut map = IndexMap::new();
         map.insert(
-            ValueCell::Primitive(Primitive::String("key1".to_string())),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(100)))),
+            OwnedValue::Primitive(Primitive::String("key1".to_string())),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(100)))),
         );
         map.insert(
-            ValueCell::Primitive(Primitive::String("key2".to_string())),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(200)))),
+            OwnedValue::Primitive(Primitive::String("key2".to_string())),
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(200)))),
         );
-        let val_map = ValueCell::Map(Box::new(map));
+        let val_map = OwnedValue::Map(map);
         assert!(tp_map.check(&val_map));
     }
 
@@ -748,10 +749,10 @@ mod tests {
         );
         let mut map = IndexMap::new();
         map.insert(
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))), // Wrong key type (should be String)
-            ValuePointer::from(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(100)))),
+            OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))), // Wrong key type (should be String)
+            identity(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(100)))),
         );
-        let val_map = ValueCell::Map(Box::new(map));
+        let val_map = OwnedValue::Map(map);
         assert!(!tp_map.check(&val_map));
     }
 
@@ -764,10 +765,10 @@ mod tests {
         );
         let mut map = IndexMap::new();
         map.insert(
-            ValueCell::Primitive(Primitive::String("key".to_string())),
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("wrong".to_string()))), // Wrong value type
+            OwnedValue::Primitive(Primitive::String("key".to_string())),
+            identity(OwnedValue::Primitive(Primitive::String("wrong".to_string()))), // Wrong value type
         );
-        let val_map = ValueCell::Map(Box::new(map));
+        let val_map = OwnedValue::Map(map);
         assert!(!tp_map.check(&val_map));
     }
 
@@ -782,16 +783,16 @@ mod tests {
                 TypePacked::Bool,
             ])),
         );
-        let person = ValueCell::Object(vec![
-            ValuePointer::from(ValueCell::Primitive(Primitive::String("Dave".to_string()))),
-            ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))),
+        let person = OwnedValue::Object(vec![
+            identity(OwnedValue::Primitive(Primitive::String("Dave".to_string()))),
+            identity(OwnedValue::Primitive(Primitive::Boolean(true))),
         ]);
         let mut map = IndexMap::new();
         map.insert(
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
-            ValuePointer::from(person),
+            OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
+            identity(person),
         );
-        let val_map = ValueCell::Map(Box::new(map));
+        let val_map = OwnedValue::Map(map);
         assert!(tp_map.check(&val_map));
     }
 

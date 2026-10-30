@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use thiserror::Error;
 use silex_environment::Environment;
-use silex_types::{OpaqueChild, Primitive, ValueCell, ValueError};
+use silex_types::{Opaque, OpaqueChild, Primitive, OwnedValue, ValueError};
 use silex_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
@@ -76,16 +76,22 @@ impl<'a, M> ModuleValidator<'a, M> {
     }
 
     // Walk values and opaque children before type matching or custom validation.
-    pub fn verify_constant(&self, constant: &ValueCell) -> Result<(), ValidatorError> {
-        let mut stack = vec![(OpaqueChild::Value(constant), 0, false)];
+    pub fn verify_constant(&self, constant: &OwnedValue) -> Result<(), ValidatorError> {
+        enum Node<'a> {
+            Value(&'a OwnedValue),
+            Opaque(&'a dyn Opaque),
+            Runtime,
+        }
+        let mut stack = vec![(Node::Value(constant), 0, false)];
         let mut opaques = Vec::new();
         while let Some((node, depth, is_key)) = stack.pop() {
             if depth > self.constant_max_depth {
                 return Err(ValidatorError::ConstantTooDeep);
             }
             let value = match node {
-                OpaqueChild::Value(value) => value,
-                OpaqueChild::Opaque(opaque) => {
+                Node::Runtime => return Err(ValidatorError::InvalidOpaque),
+                Node::Value(value) => value,
+                Node::Opaque(opaque) => {
                     if !self
                         .environment
                         .get_opaques()
@@ -97,28 +103,33 @@ impl<'a, M> ModuleValidator<'a, M> {
                     }
                     opaques.push(opaque);
                     opaque.visit_children(&mut |child| {
-                        stack.push((child, depth + 1, false))
+                        match child {
+                            OpaqueChild::Owned(value) => stack.push((Node::Value(value), depth + 1, false)),
+                            OpaqueChild::Value(_) => stack.push((Node::Runtime, depth + 1, false)),
+                            OpaqueChild::Opaque(value) => stack.push((Node::Opaque(value), depth + 1, false)),
+                            OpaqueChild::Pointer(_) => stack.push((Node::Runtime, depth + 1, false)),
+                        }
                     });
                     continue;
                 }
             };
             match value {
-                ValueCell::Object(values) => {
+                OwnedValue::Object(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
                     stack.extend(
                         values
                             .iter()
-                            .map(|v| (OpaqueChild::Value(v.as_ref()), depth + 1, is_key)),
+                            .map(|v| (Node::Value(v), depth + 1, is_key)),
                     );
                 }
-                ValueCell::Bytes(values) => {
+                OwnedValue::Bytes(values) => {
                     if values.len() > u32::MAX as usize {
                         return Err(ValidatorError::TooManyConstants);
                     }
                 }
-                ValueCell::Map(map) => {
+                OwnedValue::Map(map) => {
                     if is_key {
                         return Err(ValidatorError::InvalidMapKeyType);
                     }
@@ -126,20 +137,20 @@ impl<'a, M> ModuleValidator<'a, M> {
                         return Err(ValidatorError::TooManyConstants);
                     }
                     for (key, value) in map.iter() {
-                        stack.push((OpaqueChild::Value(key), depth + 1, true));
-                        stack.push((OpaqueChild::Value(value.as_ref()), depth + 1, false));
+                        stack.push((Node::Value(key), depth + 1, true));
+                        stack.push((Node::Value(value), depth + 1, false));
                     }
                 }
-                ValueCell::Opaque(opaque) => {
+                OwnedValue::Opaque(opaque) => {
                     if is_key && !opaque.is_hashable() {
                         return Err(ValidatorError::InvalidMapKeyType);
                     }
-                    stack.push((OpaqueChild::Opaque(opaque.inner()), depth, is_key));
+                    stack.push((Node::Opaque(opaque.inner()), depth, is_key));
                 }
-                ValueCell::Primitive(Primitive::String(value)) if value.len() > u32::MAX as usize => {
+                OwnedValue::Primitive(Primitive::String(value)) if value.len() > u32::MAX as usize => {
                     return Err(ValidatorError::StringTooBig);
                 }
-                ValueCell::Primitive(_) => {}
+                OwnedValue::Primitive(_) => {}
             }
         }
         // Exposed payloads must be bounded before custom validation can run.
@@ -150,7 +161,7 @@ impl<'a, M> ModuleValidator<'a, M> {
     }
 
     // Verify all the declared constants in the module
-    pub fn verify_constants<'b, I: Iterator<Item = &'b ValueCell>>(&self, constants: I) -> Result<(), ValidatorError> {
+    pub fn verify_constants<'b, I: Iterator<Item = &'b OwnedValue>>(&self, constants: I) -> Result<(), ValidatorError> {
         let mut memory_usage = 0;
         for c in constants {
             self.verify_constant(&c)?;
@@ -166,7 +177,7 @@ impl<'a, M> ModuleValidator<'a, M> {
 
     // Verify the parameters provided to invoke a chunk
     // Returns an error if the parameters are invalid
-    pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b ValueCell> + ExactSizeIterator>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
+    pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b OwnedValue> + ExactSizeIterator>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
         let chunk = self.module.get_chunk_at(chunk_id)
             .ok_or(ValidatorError::InvalidEntryId(chunk_id))?;
 

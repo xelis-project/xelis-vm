@@ -17,6 +17,7 @@ struct Options {
     size: Option<Expr>,
     children: Option<Expr>,
     deep_clone: Option<Expr>,
+    deep_clone_in: Option<Expr>,
 }
 
 fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
@@ -49,6 +50,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
                 "children" if !type_only => options.children = Some(meta.value()?.parse()?),
                 "deep_clone" if !type_only => options.deep_clone = Some(meta.value()?.parse()?),
+                "deep_clone_in" if !type_only => options.deep_clone_in = Some(meta.value()?.parse()?),
                 _ => return Err(meta.error("unsupported opaque option")),
             }
             Ok(())
@@ -207,6 +209,11 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
     let deep_clone = options
         .deep_clone
         .unwrap_or_else(|| parse_quote!(::std::clone::Clone::clone(self)));
+    let deep_clone_in = options.deep_clone_in.map(|expression| quote! {
+        fn deep_clone_in(&self, heap: &mut #path::Heap) -> ::std::result::Result<::std::boxed::Box<dyn #path::Opaque>, #path::HeapError> {
+            Ok(::std::boxed::Box::new(#expression))
+        }
+    });
     let children = options.children.map(|children| {
         quote! {
             fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(#path::OpaqueChild<'a>)) {
@@ -230,6 +237,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
             #eq
             #size
             #children
+            #deep_clone_in
         }
     })
 }
@@ -247,11 +255,15 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 ///   Map keys require both `hash` and `eq`.
 /// - `size = expression`: override the size used for value accounting.
 /// - `deep_clone = expression`: produce an independent `Self` with retained VM
-///   values deeply cloned. Defaults to `Clone`; containers retaining VM pointers
-///   must override this to detach their payloads.
+///   owned values deeply cloned. Defaults to `Clone`.
+/// - `deep_clone_in = expression`: clone runtime payloads using the mutable
+///   heap available as `heap`. Containers retaining heap handles must
+///   override this to detach their payloads. The expression produces `Self`
+///   and can use `?` to propagate `HeapError`.
 /// - `children = expression`: an iterable of direct children convertible to
-///   `OpaqueChild` for bounded validation and depth checking. Use `&ValueCell`
-///   (for example, `&self.values`), `&dyn Opaque`, or `OpaqueChild` to mix both.
+///   `OpaqueChild` for bounded validation and depth checking. Use `&RuntimeValue`
+///   (for example, `&self.values`), `ValueId`, `&OwnedValue`, `&StackValue`,
+///   `&dyn Opaque`, or `OpaqueChild` to mix them.
 /// - `skip_json`: keep an existing custom `JSONHelper` implementation.
 /// - `crate = "path"`: override the automatically resolved `silex-types` path.
 ///
@@ -259,7 +271,9 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// type. Generic parameters and where clauses are preserved.
 ///
 /// ```ignore
-/// #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, silex_types::Opaque)]
+/// use silex_types::Opaque;
+///
+/// #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, Opaque)]
 /// #[opaque(name = "Account", display, json, serializable)]
 /// struct Account { /* ... */ }
 /// // Implement Display and octet::Serializable separately.

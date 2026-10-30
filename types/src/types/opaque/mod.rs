@@ -10,7 +10,7 @@ use schemars::*;
 use matriochka::ResultExt as _;
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
-use crate::{IdentifierType, ValueCell, ValueError};
+use crate::{IdentifierType, RuntimeValue, ValueError, ValuePointer, StackValue, Heap, HeapError, OwnedValue};
 use traits::*;
 use super::Type;
 
@@ -211,12 +211,18 @@ impl<'a> Deserialize<'a> for OpaqueType {
 /// A directly contained VM value or opaque object, borrowed without a wrapper.
 #[derive(Debug, Clone, Copy)]
 pub enum OpaqueChild<'a> {
-    Value(&'a ValueCell),
+    Value(&'a RuntimeValue),
+    Owned(&'a OwnedValue),
+    Pointer(ValuePointer),
     Opaque(&'a dyn Opaque),
 }
 
-impl<'a> From<&'a ValueCell> for OpaqueChild<'a> {
-    fn from(value: &'a ValueCell) -> Self {
+impl<'a> From<&'a OwnedValue> for OpaqueChild<'a> {
+    fn from(value: &'a OwnedValue) -> Self { Self::Owned(value) }
+}
+
+impl<'a> From<&'a RuntimeValue> for OpaqueChild<'a> {
+    fn from(value: &'a RuntimeValue) -> Self {
         Self::Value(value)
     }
 }
@@ -224,6 +230,21 @@ impl<'a> From<&'a ValueCell> for OpaqueChild<'a> {
 impl<'a> From<&'a dyn Opaque> for OpaqueChild<'a> {
     fn from(value: &'a dyn Opaque) -> Self {
         Self::Opaque(value)
+    }
+}
+
+impl<'a> From<&'a StackValue> for OpaqueChild<'a> {
+    fn from(value: &'a StackValue) -> Self {
+        match value {
+            StackValue::Owned(value) => Self::Value(value),
+            StackValue::Pointer { ptr, .. } => Self::Pointer(*ptr),
+        }
+    }
+}
+
+impl From<ValuePointer> for OpaqueChild<'_> {
+    fn from(value: ValuePointer) -> Self {
+        Self::Pointer(value)
     }
 }
 
@@ -236,6 +257,12 @@ pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     fn deep_clone(&self) -> Box<dyn Opaque> {
         // By default, fallback on clone_box
         self.clone_box()
+    }
+
+    /// Detach runtime handles into fresh slots in the supplied heap.
+    /// Types retaining handles must override this and expose them as children.
+    fn deep_clone_in(&self, _: &mut Heap) -> Result<Box<dyn Opaque>, HeapError> {
+        Ok(self.deep_clone())
     }
 
     /// Return the binary serialization capability when supported.
@@ -448,6 +475,10 @@ impl Clone for OpaqueWrapper {
 }
 
 impl OpaqueWrapper {
+    pub fn deep_clone_in(&self, heap: &mut Heap) -> Result<Self, HeapError> {
+        Ok(Self { inner: self.inner.deep_clone_in(heap)? })
+    }
+
     pub fn deep_clone(&self) -> Self {
         Self { inner: self.inner.deep_clone() }
     }
@@ -474,7 +505,6 @@ mod tests {
         register_opaque_json,
         Primitive,
         Type,
-        ValueCell
     };
     use super::*;
 
@@ -597,12 +627,12 @@ mod tests {
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let mut map = IndexMap::new();
-        map.insert(ValueCell::Opaque(opaque), ValueCell::Primitive(Primitive::String("hello world".to_owned())).into());
-        map.insert(ValueCell::Primitive(Primitive::String("key test".to_owned())), ValueCell::Primitive(Primitive::String("hello world 2".to_owned())).into());
+        map.insert(OwnedValue::Opaque(opaque), OwnedValue::Primitive(Primitive::String("hello world".to_owned())).into());
+        map.insert(OwnedValue::Primitive(Primitive::String("key test".to_owned())), OwnedValue::Primitive(Primitive::String("hello world 2".to_owned())).into());
 
-        let map = ValueCell::Map(Box::new(map));
+        let map = OwnedValue::Map(map);
         let json = serde_json::to_string(&map).unwrap();
-        let map2: ValueCell = serde_json::from_str(&json).unwrap();
+        let map2: OwnedValue = serde_json::from_str(&json).unwrap();
 
         assert_eq!(map, map2);
     }

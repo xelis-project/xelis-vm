@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::Type;
+use crate::{HeapError, Type};
 use super::{constant::Constant, Primitive};
 
 
@@ -14,8 +14,8 @@ pub enum ValueError {
     ExpectedFnType,
     #[error("expected bytes type")]
     ExpectedBytes,
-    #[error("Invalid stack pointer")]
-    InvalidPointer,
+    #[error(transparent)]
+    HeapError(#[from] HeapError),
     #[error("Expected a value")]
     ExpectedValue,
     #[error("Unexpected cycle reference")]

@@ -51,30 +51,30 @@ pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
 }
 
-fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = &parameters[0];
-    println!("{}", param.as_ref());
+    println!("{}", param.as_ref(context.heap()).display(context.heap()));
 
     Ok(SysCallResult::None)
 }
 
-fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{:?}", param);
 
     Ok(SysCallResult::None)
 }
 
-fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let value = param.into_owned();
+    let value = param.into_owned(context.heap_mut())?;
 
-    Err(EnvironmentError::Panic(format!("{:#}", value)))
+    Err(EnvironmentError::Panic(format!("{:#}", value.display(context.heap()))))
 }
 
-fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let param = &parameters[0];
-    let value = param.as_bool()?;
+    let value = param.as_bool(context.heap())?;
 
     if value {
         Ok(SysCallResult::None)
@@ -83,21 +83,21 @@ fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: 
     }
 }
 
-fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-    let left = parameters[0].as_ref();
-    let right = parameters[1].as_ref();
+fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let left = parameters[0].as_ref(context.heap());
+    let right = parameters[1].as_ref(context.heap());
     let same = ptr::from_ref(left) == ptr::from_ref(right);
 
     Ok(SysCallResult::Return(Primitive::Boolean(same).into()))
 }
 
-fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let msg = parameters.remove(1)
-        .into_owned()
+        .into_owned(context.heap_mut())?
         .into_string()?;
 
     let param = &parameters[0];
-    let value = param.as_bool()?;
+    let value = param.as_bool(context.heap())?;
 
     if value {
         Ok(SysCallResult::None)
@@ -109,9 +109,9 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
 fn clone<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
 
-    let memory = zelf.as_ref().calculate_memory_usage(context.memory_left())?;
+    let memory = zelf.as_ref(context.heap()).calculate_memory_usage(context.heap(), context.resources().memory_left())?;
     // Double cost: computation for cloning and memory allocation?
-    context.increase_memory_usage_unchecked(memory)?;
+    context.resources_mut().increase_memory_usage_unchecked(memory)?;
 
-    Ok(SysCallResult::Return(zelf.deep_clone().into()))
+    Ok(SysCallResult::Return(zelf.to_owned(context.heap_mut())?))
 }

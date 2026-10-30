@@ -16,8 +16,8 @@ macro_rules! sqrt_fn {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
             // Square root implementation using a simple binary search method
-            fn [<sqrt_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let n = zelf?.[<as_ $f>]()?;
+            fn [<sqrt_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let n = zelf?.[<as_ $f>](context.heap())?;
                 let one = $f::from(1u8);
 
                 // Binary search for the square root

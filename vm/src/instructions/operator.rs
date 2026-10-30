@@ -7,14 +7,14 @@ use crate::{
     VMContext,
     VMError
 };
-use silex_types::{PrimitiveInteger, Primitive, ValueCell, Type};
+use silex_types::{PrimitiveInteger, Primitive, RuntimeValue, Type};
 
 use super::InstructionResult;
 
 macro_rules! op {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => match (a, b) {
                 (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
@@ -29,9 +29,9 @@ macro_rules! op {
 }
 
 macro_rules! op_bool {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => match (a, b) {
                 (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
@@ -47,9 +47,9 @@ macro_rules! op_bool {
 }
 
 macro_rules! op_string {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => match (a, b) {
                 (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Integer(PrimitiveInteger::U8(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Integer(PrimitiveInteger::U16(a $op b)),
                 (Primitive::Integer(PrimitiveInteger::U32(a)), Primitive::Integer(PrimitiveInteger::U32(b))) => Primitive::Integer(PrimitiveInteger::U32(a $op b)),
@@ -88,9 +88,9 @@ macro_rules! op_string {
 }
 
 macro_rules! op_bool_res {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => match (a, b) {
                 (Primitive::Boolean(a), Primitive::Boolean(b)) => Primitive::Boolean(a $op b),
                 (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => Primitive::Boolean(a $op b),
                 (Primitive::Integer(PrimitiveInteger::U16(a)), Primitive::Integer(PrimitiveInteger::U16(b))) => Primitive::Boolean(a $op b),
@@ -107,26 +107,26 @@ macro_rules! op_bool_res {
 }
 
 macro_rules! op_bool_all {
-    ($a: expr, $b: expr, $op: tt) => {{
-        Primitive::Boolean($a $op $b)
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
+        Primitive::Boolean($a.equals($b, $values))
     }};
 }
 
 macro_rules! opcode_op {
-    ($self: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $context: expr, $macr: tt, $op: tt) => {
         {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
             // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked($macr!(left.as_ref(), right.as_ref(), $op).into());
+            $self.push_stack_unchecked($macr!($context.heap(), left.as_ref($context.heap()), right.as_ref($context.heap()), $op).into());
         }
     };
 }
 
 macro_rules! op_div {
-    ($a: expr, $b: expr, $op: tt) => {{
+    ($values: expr, $a: expr, $b: expr, $op: tt) => {{
         match ($a, $b) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => match (a, b) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => match (a, b) {
                 (Primitive::Integer(PrimitiveInteger::U8(a)), Primitive::Integer(PrimitiveInteger::U8(b))) => {
                     if *b == 0 {
                         return Err(VMError::DivisionByZero);
@@ -171,22 +171,22 @@ macro_rules! op_div {
 }
 
 macro_rules! opcode_op_assign {
-    ($self: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $context: expr, $macr: tt, $op: tt) => {
         {
             let right = $self.pop_stack()?;
             let mut left = $self.pop_stack()?;
-            let result = $macr!(left.as_ref(), right.as_ref(), $op);
+            let result = $macr!($context.heap(), left.as_ref($context.heap()), right.as_ref($context.heap()), $op);
 
-            *left.as_mut() = result.into();
+            *left.as_mut($context.heap_mut()) = result.into();
         }
     };
 }
 
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
-        pub fn $fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+        pub fn $fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
             debug!(stringify!($fn));
-            $macro1!(stack, $macro2, $op);
+            $macro1!(stack, context, $macro2, $op);
             Ok(InstructionResult::Nothing)
         }
     };
@@ -222,11 +222,11 @@ opcode_fn!(bitwise_xor_assign, opcode_op_assign, op_bool, ^);
 opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
-pub fn neg<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn neg<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("neg");
 
     let value = stack.pop_stack()?;
-    stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool()?).into());
+    stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool(context.heap())?).into());
     Ok(InstructionResult::Nothing)
 }
 
@@ -236,26 +236,26 @@ pub fn assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
 
-    let owned = right.into_owned();
+    let owned = right.into_owned(context.heap_mut())?;
 
     let left_depth = left.depth();
-    owned.calculate_depth(
-        context.max_value_depth()
+    owned.calculate_depth(context.heap(),
+        context.resources().max_value_depth()
             .saturating_sub(left_depth)
     )?;
 
-    *left.as_mut() = owned;
+    *left.as_mut(context.heap_mut()) = owned;
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pow");
 
-    let right = stack.pop_stack()?.into_owned();
-    let left = stack.pop_stack()?.into_owned();
+    let right = stack.pop_stack()?.into_owned(context.heap_mut())?;
+    let left = stack.pop_stack()?.into_owned(context.heap_mut())?;
     let result = match (&left, &right) {
-        (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
+        (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => {
             let pow_n = b.as_u32()?;
             match a {
                 Primitive::Integer(PrimitiveInteger::U8(a)) => Primitive::Integer(PrimitiveInteger::U8(a.pow(pow_n))),
@@ -273,14 +273,14 @@ pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pow_assign");
 
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let result = {
-        match (left.as_ref(), right.as_ref()) {
-            (ValueCell::Primitive(a), ValueCell::Primitive(b)) => {
+        match (left.as_ref(context.heap()), right.as_ref(context.heap())) {
+            (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
                     Primitive::Integer(PrimitiveInteger::U8(a)) => Primitive::Integer(PrimitiveInteger::U8(a.pow(pow_n))),
@@ -296,17 +296,17 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
         }
     };
 
-    *left.as_mut() = result.into();
+    *left.as_mut(context.heap_mut()) = result.into();
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("cast");
 
     let ty = reader.read_type()?;
     let mut current = stack.pop_stack()?
-        .into_owned();
+        .into_owned(context.heap_mut())?;
 
     let value = match ty {
         Type::U8 => Primitive::Integer(PrimitiveInteger::U8(current.cast_to_u8()?)),
@@ -324,41 +324,41 @@ pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     Ok(InstructionResult::Nothing)
 }
 
-pub fn and<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn and<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("and");
 
     let value = stack.pop_stack()?;
-    let left = value.as_bool()?;
-    let right = stack.pop_stack()?.as_bool()?;
+    let left = value.as_bool(context.heap())?;
+    let right = stack.pop_stack()?.as_bool(context.heap())?;
     stack.push_stack_unchecked(Primitive::Boolean(left && right).into());
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn or<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn or<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("or");
 
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
-    let value = left.as_bool()? || right.as_bool()?;
+    let value = left.as_bool(context.heap())? || right.as_bool(context.heap())?;
     stack.push_stack_unchecked(Primitive::Boolean(value).into());
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn increment<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn increment<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("increment");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut().increment()?;
+    v.as_mut(context.heap_mut()).increment()?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn decrement<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn decrement<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("decrement");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut().decrement()?;
+    v.as_mut(context.heap_mut()).decrement()?;
 
     Ok(InstructionResult::Nothing)
 }

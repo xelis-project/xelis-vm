@@ -3,19 +3,22 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{PrimitiveInteger, PrimitiveRange, DefinedType, Opaque, OpaqueWrapper, Type, U256};
-use super::{Primitive, ValueError};
+use super::{serde_map, Primitive, ValueError};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum Constant {
-    Primitive(Primitive),
     Opaque(OpaqueWrapper),
     Array(Vec<Constant>),
     // Bytes represents a Vec<u8>
     Bytes(Vec<u8>),
 
     // Map cannot be used as a key in another map
+    #[serde(with = "serde_map")]
     Map(IndexMap<Constant, Constant>),
     Typed(Vec<Constant>, DefinedType),
+    #[serde(untagged)]
+    Primitive(Primitive),
 }
 
 // Wrapper to drop the value without stackoverflow

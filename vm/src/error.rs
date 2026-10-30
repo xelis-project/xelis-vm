@@ -1,7 +1,7 @@
 use thiserror::Error;
 use silex_bytecode::ChunkReaderError;
 use silex_environment::EnvironmentError;
-use silex_types::ValueError;
+use silex_types::{HeapError, ValueError};
 
 #[derive(Debug, Error)]
 pub enum VMError {
@@ -59,7 +59,9 @@ pub enum VMError {
     #[error("error from environment: {0}")]
     EnvironmentError(EnvironmentError),
     #[error("error from value: {0}")]
-    ValueError(#[from] ValueError),
+    ValueError(#[source] ValueError),
+    #[error(transparent)]
+    HeapError(#[from] HeapError),
     #[error("empty iterator")]
     EmptyIterator,
     #[error("stack index out of bounds")]
@@ -87,7 +89,18 @@ impl From<EnvironmentError> for VMError {
         match error {
             EnvironmentError::DivisionByZero => VMError::DivisionByZero,
             EnvironmentError::OutOfMemory => VMError::OutOfMemory,
+            EnvironmentError::HeapError(error)
+            | EnvironmentError::ValueError(ValueError::HeapError(error)) => VMError::HeapError(error),
             other => VMError::EnvironmentError(other),
+        }
+    }
+}
+
+impl From<ValueError> for VMError {
+    fn from(error: ValueError) -> Self {
+        match error {
+            ValueError::HeapError(error) => Self::HeapError(error),
+            other => Self::ValueError(other),
         }
     }
 }

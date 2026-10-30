@@ -2,10 +2,12 @@ use matriochka::ResultExt as _;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::Module;
 use crate::*;
+use silex_types::OwnedValue;
 
 /// This module contains all the tests for the VM
 /// Where each test is crafted by hand using OpCodes
 mod op_code;
+mod arena;
 
 /// This module contains all the tests using the suite available
 /// (Lexer, Parser, Compiler) to produce a valid Module.
@@ -30,7 +32,7 @@ fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -
         environment: environment.into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
     vm.invoke_chunk_id_unchecked(id as _).expect("valid entry chunk");
     vm.run_blocking().map(|mut v| v.into_value().expect("primitive"))
 }
@@ -45,7 +47,7 @@ fn assert_send<T: Send>(_: T) {}
 
 #[test]
 fn assert_thread_safe() {
-    assert_send(ValueCell::default());
+    assert_send(OwnedValue::default());
 
     let mut vm = VM::<()>::default();
     assert_send(&vm);

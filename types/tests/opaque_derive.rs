@@ -1,50 +1,64 @@
 use silex_types::{
-    PrimitiveInteger,
-    traits::{DynType, JSONHelper},
-    Constant, ConstantValueCell, Opaque, OpaqueWrapper, Primitive, StackValue, ValueCell, ValueError, ValuePointer,
+    DynType, PrimitiveInteger, register_opaque_json,
+    traits::{DynType, JSONHelper, JSON_REGISTRY},
+    Constant, OwnedValue, Opaque, OpaqueWrapper, Primitive, StackValue, RuntimeValue, ValueError, ValuePointer, Heap, HeapError,
 };
 
 #[derive(Debug, Clone, Opaque)]
 struct Plain;
 
+#[test]
+fn opaque_heap_errors_propagate_through_import_clone_and_export() {
+    #[derive(Debug, Clone, Opaque)]
+    #[opaque(deep_clone_in = Err::<Self, HeapError>(HeapError::CapacityExceeded)?)]
+    struct FailingClone;
+
+    let mut heap = Heap::new();
+    let value = RuntimeValue::Opaque(OpaqueWrapper::new(FailingClone));
+    assert!(matches!(heap.detach(value.clone_ref()), Err(HeapError::CapacityExceeded)));
+    let owned = OwnedValue::Object(vec![OwnedValue::Opaque(OpaqueWrapper::new(FailingClone))]);
+    assert!(matches!(heap.import(&owned), Err(HeapError::CapacityExceeded)));
+    assert!(matches!(heap.export(value.into()), Err(ValueError::HeapError(HeapError::CapacityExceeded))));
+    assert!(heap.is_empty());
+}
+
 #[derive(Debug, Clone, Opaque)]
 #[opaque(
-    children = std::iter::once(self.0.as_ref()),
-    deep_clone = Self(ValuePointer::new(self.0.as_ref().deep_clone()))
+    children = std::iter::once(self.0),
+    deep_clone_in = { let cell = self.0.to_owned(heap)?; let cell = heap.detach(cell)?; Self(heap.insert(cell)?) }
 )]
 struct RetainedValue(ValuePointer);
 
 #[test]
 fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
+    let mut heap = Heap::new();
     for nested in [false, true] {
         for mode in 0..4 {
-            let mut original = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
-            let mut value = ValueCell::Opaque(OpaqueWrapper::new(
+            let original = heap.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
+            let mut value = RuntimeValue::Opaque(OpaqueWrapper::new(
                 RetainedValue(original.clone()),
             ));
             if nested {
-                value = ValueCell::Object(vec![value.into()]);
+                value = RuntimeValue::Object(vec![heap.insert(value).unwrap()]);
             }
             let snapshot = match mode {
-                0 => value.deep_clone(),
-                1 => value.references_free(),
-                2 => StackValue::Owned(value).into_owned(),
-                3 => StackValue::from(ValuePointer::new(value)).into_owned(),
+                0 => heap.detach(value.clone_ref()).unwrap(),
+                1 => heap.detach(value).unwrap(),
+                2 => StackValue::Owned(value).into_owned(&mut heap).unwrap(),
+                3 => StackValue::from(heap.insert(value).unwrap()).into_owned(&mut heap).unwrap(),
                 _ => unreachable!(),
             };
             let retained = if nested {
-                snapshot.as_vec().unwrap()[0].as_ref()
+                snapshot.as_vec().unwrap()[0].as_ref(&heap)
             } else {
                 &snapshot
             }
             .as_opaque_type::<RetainedValue>()
-            .unwrap();
-            assert!(!retained.0.ptr_eq(&original));
+            .unwrap().0;
+            assert!(!retained.ptr_eq(original));
             // No payload references are live during this mutation.
-            unsafe {
-                *original.as_mut() = Primitive::Integer(PrimitiveInteger::U64(2)).into();
-            }
-            assert_eq!(retained.0.as_ref().as_u64().unwrap(), 1);
+            *original.as_mut(&mut heap) = Primitive::Integer(PrimitiveInteger::U64(2)).into();
+            assert_eq!(retained.as_ref(&heap).as_u64().unwrap(), 1);
         }
     }
 }
@@ -55,10 +69,11 @@ struct OpaqueParent(Plain);
 
 #[test]
 fn direct_opaque_children_use_the_same_derive_option() {
-    let value = ValueCell::Opaque(OpaqueWrapper::new(OpaqueParent(Plain)));
-    assert_eq!(value.calculate_depth(1).unwrap(), 1);
+    let heap = Heap::new();
+    let value = RuntimeValue::Opaque(OpaqueWrapper::new(OpaqueParent(Plain)));
+    assert_eq!(value.calculate_depth(&heap, 1).unwrap(), 1);
     assert!(matches!(
-        value.calculate_depth(0),
+        value.calculate_depth(&heap, 0),
         Err(ValueError::MaxDepthReached)
     ));
 }
@@ -109,7 +124,7 @@ impl JSONHelper for CustomJson {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, silex_types::DynType)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, DynType)]
 #[opaque(name = "Manual")]
 struct Manual;
 
@@ -149,11 +164,11 @@ fn json_serialization_preserves_context_and_cause() {
 #[test]
 fn json_deserialization_preserves_context_and_cause() {
     {
-        let mut registry = silex_types::traits::JSON_REGISTRY.write().unwrap();
-        silex_types::register_opaque_json!(registry, "InvalidJson", InvalidJson);
+        let mut registry = JSON_REGISTRY.write().unwrap();
+        register_opaque_json!(registry, "InvalidJson", InvalidJson);
     }
 
-    let error = silex_types::traits::JSON_REGISTRY.read().unwrap()["InvalidJson"](
+    let error = JSON_REGISTRY.read().unwrap()["InvalidJson"](
         serde_json::json!(true),
     ).unwrap_err();
     assert!(error.to_string().contains("InvalidJson"));
@@ -270,18 +285,19 @@ fn custom_implementations_are_preserved() {
 
 #[test]
 fn constant_opaque_conversion_detaches_retained_values() {
+    let mut heap = Heap::new();
     for nested in [false, true] {
         for clone_first in [false, true] {
-            let original = ValuePointer::new(PrimitiveInteger::U64(1).into());
+            let original = heap.insert(PrimitiveInteger::U64(1).into()).unwrap();
             let value = Constant::Opaque(OpaqueWrapper::new(RetainedValue(original.clone())));
-            let constant = ConstantValueCell::from(if nested { Constant::Array(vec![value]) } else { value });
-            let snapshot = if clone_first { constant.clone().to_value_cell() } else { constant.to_value_cell() };
-            let retained = if nested { snapshot.as_vec().unwrap()[0].as_ref() } else { &snapshot }
+            let constant = OwnedValue::from(if nested { Constant::Array(vec![value]) } else { value });
+            let snapshot = if clone_first { constant.clone().to_runtime_value(&mut heap).unwrap() } else { constant.to_runtime_value(&mut heap).unwrap() };
+            let retained = if nested { snapshot.as_vec().unwrap()[0].as_ref(&heap) } else { &snapshot }
                 .as_opaque_type::<RetainedValue>().unwrap();
-            assert!(!retained.0.ptr_eq(&original));
+            assert!(!retained.0.ptr_eq(original));
             drop(snapshot);
             drop(constant);
-            assert_eq!(original.strong_count(), 1);
+            assert_eq!(original.as_ref(&heap).as_u64().unwrap(), 1);
         }
     }
 }

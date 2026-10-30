@@ -1,352 +1,67 @@
 mod stack_value;
-pub(crate) mod serde_map;
+mod arena;
 mod pointer;
-pub(crate) mod constant_cell;
+mod heap;
+mod heap_error;
+pub(crate) mod owned_value;
 
 use std::{
     borrow::Cow,
-    fmt::{self, Write},
-    hash::{Hash, Hasher},
     mem
 };
-use schemars::*;
 use indexmap::IndexMap;
-use itertools::Itertools;
-use serde_json::json;
 use crate::{
     opaque::OpaqueWrapper,
-    DefinedType,
     Opaque,
-    OpaqueChild,
     Type,
     U256
 };
-use super::{Constant, Primitive, PrimitiveInteger, PrimitiveRange, ValueError};
+use super::{ Primitive, PrimitiveInteger, PrimitiveRange, ValueError};
 
 pub use stack_value::*;
 pub use pointer::*;
-pub use constant_cell::*;
-
-pub type CellArray = Vec<ValuePointer>;
-pub type CellMap = IndexMap<ValueCell, ValuePointer>;
+pub use heap::*;
+pub use heap_error::*;
+pub use owned_value::*;
 
 pub enum Either<L, R> {
     Left(L),
     Right(R),
 }
 
-// Give inner mutability for values with inner types.
-// This is NOT thread-safe due to the RefCell usage.
-#[derive(Debug, Eq)]
-pub enum ValueCell {
+// Runtime node. Child handles are resolved exclusively through the VM's heap.
+#[derive(Debug)]
+pub enum RuntimeValue {
     Primitive(Primitive),
     Opaque(OpaqueWrapper),
     Bytes(Vec<u8>),
-    Object(CellArray),
+    Object(Vec<ValuePointer>),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    Map(Box<CellMap>),
+    Map(Box<IndexMap<OwnedValue, ValuePointer>>),
 }
 
-impl PartialOrd for ValueCell {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (Self::Primitive(a), Self::Primitive(b)) => a.partial_cmp(b),
-            (Self::Bytes(a), Self::Bytes(b)) => a.partial_cmp(b),
-            _ => None
-        }
-    }
-}
-
-// NOTE: we implement JsonSchema manually to reflect the serde_map serialization
-// and to prevent the stack overflow on the Map variant.
-impl JsonSchema for ValueCell {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("ValueCell")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let primitive_schema = gen.subschema_for::<super::wire::LegacyPrimitiveWire>();
-        let self_schema = gen.subschema_for::<ValueCell>();
-
-        // Build JSON values for each variant. We use serde_json::Value so we can
-        // easily include the Schema values returned by gen.subschema_for.
-        let primitive_variant = json!({
-            "type": "object",
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "const": "primitive"
-                },
-                "value": primitive_schema
-            },
-            "required": ["type", "value"]
-        });
-
-        let bytes_variant = json!({
-            "type": "object",
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "const": "bytes"
-                },
-                "value": { "type": "string", "description": "hex-encoded bytes" }
-            },
-            "required": ["type", "value"]
-        });
-
-        let object_variant = json!({
-            "type": "object",
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "const": "object"
-                },
-                "value": {
-                    "type": "array",
-                    "items": self_schema
-                }
-            },
-            "required": ["type", "value"]
-        });
-
-        // Map variant — NOTE: this reflects the serde_map serialization: an array
-        // of two-item arrays [key, value] where both items are ValueCell
-        let map_pair_schema = json!({
-            "type": "array",
-            "prefixItems": [ self_schema.clone(), self_schema.clone() ],
-            "minItems": 2,
-            "maxItems": 2
-        });
-
-        let map_variant = json!({
-            "type": "object",
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "const": "map"
-                },
-                "value": {
-                    "type": "array",
-                    "items": map_pair_schema,
-                    "description": "A list of [key, value] pairs"
-                }
-            },
-            "required": ["type", "value"]
-        });
-
-        json_schema!({
-            "oneOf": [ primitive_variant, bytes_variant, object_variant, map_variant ],
-            "title": "ValueCell",
-            "description": "A recursive ValueCell (primitive, bytes, array of values, or map encoded as pairs)"
-        })
-    }
-}
-
-pub enum ValueCellRef<'a> {
-    Owned(ValueCell),
-    Ref(&'a ValueCell),
-    Pointer(ValuePointer),
-}
-
-impl<'a> ValueCellRef<'a> {
-    pub fn value(&self) -> &ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Ref(v) => v,
-            Self::Pointer(v) => v.as_ref(),
-        }
-    }
-}
-
-#[cfg(feature = "infinite-cell-depth")]
-impl Drop for ValueCell {
-    fn drop(&mut self) {
-        if matches!(self, Self::Default(_) | Self::Bytes(_)) {
-            return;
-        }
-
-        let mut stack = Vec::new();
-        match self {
-            ValueCell::Object(values) => {
-                stack.reserve(values.len());
-                stack.append(values);
-            },
-            ValueCell::Map(map) => {
-                stack.reserve(map.len() * 2);
-                stack.extend(map.drain().flat_map(|(k, v)| [k, v]));
-            },
-            _ => unreachable!()
-        };
-
-        while let Some(mut value) = stack.pop() {
-            match &mut value {
-                ValueCell::Object(values) => {
-                    stack.reserve(values.len());
-                    stack.append(values);
-                },
-                ValueCell::Map(map) => {
-                    stack.reserve(map.len() * 2);
-                    stack.extend(
-                        map.drain()
-                            .flat_map(|(k, v)| [k, v])
-                    );
-                }
-                _ => {}
-            };
-        }
-    }
-}
-
-impl PartialEq for ValueCell {
-    fn eq(&self, other: &Self) -> bool {
-        if let Self::Primitive(a) = self {
-            if let Self::Primitive(b) = other {
-                return a == b;
-            } else {
-                return false;
-            }
-        }
-
-        if let Self::Opaque(a) = self {
-            return matches!(other, Self::Opaque(b) if a == b);
-        }
-
-        // Use iterative comparison to avoid stack overflow on deep nesting
-        let mut stack = vec![(ValueCellRef::Ref(self), ValueCellRef::Ref(other))];
-        
-        while let Some((left, right)) = stack.pop() {
-            match (left.value(), right.value()) {
-                (Self::Primitive(a), Self::Primitive(b)) => {
-                    if a != b {
-                        return false;
-                    }
-                }
-                (Self::Opaque(a), Self::Opaque(b)) => {
-                    if a != b {
-                        return false;
-                    }
-                }
-                (Self::Bytes(a), Self::Bytes(b)) => {
-                    if a != b {
-                        return false;
-                    }
-                }
-                (Self::Object(a), Self::Object(b)) => {
-                    if a.len() != b.len() {
-                        return false;
-                    }
-                    // Push pairs in reverse order to maintain comparison order
-                    for (left_item, right_item) in a.iter().zip(b.iter()).rev() {
-                        stack.push((ValueCellRef::Pointer(left_item.clone()), ValueCellRef::Pointer(right_item.clone())));
-                    }
-                }
-                (Self::Map(a), Self::Map(b)) => {
-                    if a.len() != b.len() {
-                        return false;
-                    }
-                    // Compare maps: check all keys exist and values match
-                    // We need to compare both key and value pairs
-                    for ((left_key, left_val), (right_key, right_val)) in a.iter().zip(b.iter()).rev() {
-                        stack.push((ValueCellRef::Owned(left_key.clone_ref()), ValueCellRef::Owned(right_key.clone_ref())));
-                        stack.push((ValueCellRef::Pointer(left_val.clone()), ValueCellRef::Pointer(right_val.clone())));
-                    }
-                }
-                _ => return false
-            }
-        }
-        
-        true
-    }
-}
-
-impl Hash for ValueCell {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // Fast path
-        if let Self::Primitive(v) = self {
-            v.hash(state);
-            return;
-        }
-
-        if let Self::Opaque(value) = self {
-            10u8.hash(state);
-            value.hash(state);
-            return;
-        }
-
-        let mut stack = vec![ValueCellRef::Ref(self)];
-        while let Some(value) = stack.pop() {
-            match value.value() {
-                Self::Primitive(v) => v.hash(state),
-                Self::Opaque(v) => {
-                    10u8.hash(state);
-                    v.hash(state);
-                },
-                Self::Object(values) => {
-                    11u8.hash(state);
-                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
-                },
-                Self::Bytes(values) => {
-                    12u8.hash(state);
-                    values.hash(state);
-                }
-                Self::Map(map) => {
-                    13u8.hash(state);
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
-                    )
-                }
-            }
-        }
-    }
-}
-
-impl Default for ValueCell {
+impl Default for RuntimeValue {
     fn default() -> Self {
         Self::Primitive(Default::default())
     }
 }
 
-impl From<Primitive> for ValueCell {
+impl From<Primitive> for RuntimeValue {
     fn from(value: Primitive) -> Self {
         Self::Primitive(value)
     }
 }
 
-impl<T: Opaque> From<T> for ValueCell {
+impl<T: Opaque> From<T> for RuntimeValue {
     fn from(value: T) -> Self { Self::Opaque(value.into()) }
 }
 
-impl From<OpaqueWrapper> for ValueCell {
+impl From<OpaqueWrapper> for RuntimeValue {
     fn from(value: OpaqueWrapper) -> Self { Self::Opaque(value) }
 }
 
-impl From<Constant> for ValueCell {
-    fn from(value: Constant) -> Self {
-        match value {
-            Constant::Primitive(v) => Self::Primitive(v),
-            Constant::Opaque(v) => Self::Opaque(v),
-            Constant::Array(values) => Self::Object(values.into_iter().map(|v| v.into()).collect()),
-            Constant::Bytes(values) => ValueCell::Bytes(values),
-            Constant::Map(map) => Self::Map(Box::new(map.into_iter().map(|(k, v)| (k.into(), v.into())).collect())),
-            Constant::Typed(values, ty) => {
-                let mut cells = Vec::with_capacity(values.len());
-
-                // We inject the variant id
-                if let DefinedType::Enum(ty) = ty {
-                    cells.push(Primitive::Integer(PrimitiveInteger::U8(ty.variant_id())).into());
-                }
-
-                cells.extend(values.into_iter().map(|v| v.into()));
-
-                Self::Object(cells)
-            },
-        }
-    }
-}
-
-impl ValueCell {
+impl RuntimeValue {
     // Check if our type contains any sub values
     // that could be used to get a pointer from
     pub fn has_sub_values(&self) -> bool {
@@ -355,151 +70,6 @@ impl ValueCell {
             | Self::Map(_) => true,
             _ => false,
         }
-    }
-
-    fn check_serializability<F>(&self, check_opaque: F) -> bool
-    where
-        F: Fn(&OpaqueWrapper) -> bool,
-    {
-        let mut stack = vec![ValueCellRef::Ref(self)];
-        while let Some(next) = stack.pop() {
-            let v = next.value();
-            match v {
-                ValueCell::Opaque(obj) if !check_opaque(obj) => return false,
-                ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
-                ValueCell::Map(map) => stack.extend(
-                    map.iter()
-                        .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
-                ),
-                _ => {}
-            }
-        }
-
-        true
-    }
-
-    #[inline]
-    pub fn is_json_serializable(&self) -> bool {
-        self.check_serializability(OpaqueWrapper::is_json_serializable)
-    }
-
-    #[inline]
-    pub fn is_serializable(&self) -> bool {
-        self.check_serializability(OpaqueWrapper::is_serializable)
-    }
-
-    #[inline]
-    pub fn is_hashable(&self) -> bool {
-        let mut stack = vec![ValueCellRef::Ref(self)];
-        while let Some(next) = stack.pop() {
-            match next.value() {
-                ValueCell::Opaque(value) if !value.is_hashable() => return false,
-                ValueCell::Object(values) => stack.extend(values.iter().cloned().map(ValueCellRef::Pointer)),
-                ValueCell::Map(_) => return false,
-                _ => {}
-            }
-        }
-
-        true
-    }
-
-    // Calculate the depth of the value
-    pub fn calculate_depth<'a>(&'a self, max_depth: usize) -> Result<usize, ValueError> {
-        // Prevent allocation if the value is a default value
-        if matches!(self, Self::Primitive(_)) {
-            return Ok(0);
-        }
-
-        let mut stack = vec![(OpaqueChild::Value(self), 0)];
-        let mut biggest_depth = 0;
-
-        while let Some((next, depth)) = stack.pop() {
-            if depth > max_depth {
-                return Err(ValueError::MaxDepthReached);
-            }
-
-            if depth > biggest_depth {
-                biggest_depth = depth;
-            }
-
-            let value = match next {
-                OpaqueChild::Value(value) => value,
-                OpaqueChild::Opaque(opaque) => {
-                    opaque.visit_children(&mut |child| stack.push((child, depth + 1)));
-                    continue;
-                }
-            };
-            match value {
-                ValueCell::Opaque(opaque) => {
-                    stack.push((OpaqueChild::Opaque(opaque.inner()), depth));
-                },
-                ValueCell::Primitive(_) => {},
-                ValueCell::Bytes(_) => {},
-                ValueCell::Object(values) => {
-                    let depth = depth + 1;
-                    stack.extend(values.iter().map(|v| (OpaqueChild::Value(v.as_ref()), depth)));
-                },
-                ValueCell::Map(map) => {
-                    let depth = depth + 1;
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [
-                                (OpaqueChild::Value(k), depth),
-                                (OpaqueChild::Value(v.as_ref()), depth),
-                            ])
-                    )
-                }
-            };
-        }
-
-        Ok(biggest_depth)
-    }
-
-    // Calculate the depth of the value
-    pub fn calculate_memory_usage<'a>(&'a self, max_memory: usize) -> Result<usize, ValueError> {
-        // Prevent allocation if the value is a default value
-        if let Self::Primitive(v) = self {
-            return Ok(v.get_memory_usage());
-        }
-
-        // Opaque values retain the original primitive accounting: 8 at the root,
-        // and 1 + 8 when nested in a container.
-        if matches!(self, Self::Opaque(_)) {
-            return Ok(8);
-        }
-        let mut stack = vec![ValueCellRef::Ref(self)];
-        let mut memory = 0;
-
-        while let Some(next) = stack.pop() {
-            if memory > max_memory {
-                return Err(ValueError::MaxMemoryReached(memory, max_memory));
-            }
-
-            match next.value() {
-                ValueCell::Opaque(_) => memory += 9,
-                ValueCell::Primitive(v) => {
-                    memory += 1;
-                    memory += v.get_memory_usage();
-                },
-                ValueCell::Bytes(bytes) => {
-                    memory += 32;
-                    memory += bytes.len();
-                },
-                ValueCell::Object(values) => {
-                    memory += 32;
-                    stack.extend(values.iter().cloned().map(ValueCellRef::Pointer));
-                },
-                ValueCell::Map(map) => {
-                    memory += 64;
-                    stack.extend(
-                        map.iter()
-                            .flat_map(|(k, v)| [ValueCellRef::Owned(k.clone_ref()), ValueCellRef::Pointer(v.clone())])
-                    )
-                }
-            };
-        }
-
-        Ok(memory)
     }
 
     #[inline]
@@ -591,7 +161,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&CellMap, ValueError> {
+    pub fn as_map(&self) -> Result<&IndexMap<OwnedValue, ValuePointer>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedMap)
@@ -599,7 +169,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut CellMap, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<OwnedValue, ValuePointer>, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedMap),
@@ -607,7 +177,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_map<'a>(&'a mut self) -> Result<CellMap, ValueError> {
+    pub fn to_map<'a>(&'a mut self) -> Result<IndexMap<OwnedValue, ValuePointer>, ValueError> {
         match mem::take(self) {
             Self::Map(n) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Map(Box::new(Type::T(Some(0))), Box::new(Type::T(Some(1))))))
@@ -618,7 +188,7 @@ impl ValueCell {
     // If it's a primitive u16, return the function id.
     // If it's an object with 3 elements, return the cell array (chunk id u16, is syscall bool, from chunk u16)
     #[inline]
-    pub fn as_fn_ptr<'a>(&'a self) -> Result<Either<u16, &'a CellArray>, ValueError> {
+    pub fn as_fn_ptr<'a>(&'a self) -> Result<Either<u16, &'a Vec<ValuePointer>>, ValueError> {
         match self {
             Self::Primitive(Primitive::Integer(PrimitiveInteger::U16(id))) => Ok(Either::Left(*id)),
             Self::Object(values) if values.len() == 3 => Ok(Either::Right(values)),
@@ -627,7 +197,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_vec<'a>(&'a self) -> Result<&'a CellArray, ValueError> {
+    pub fn as_vec<'a>(&'a self) -> Result<&'a Vec<ValuePointer>, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
@@ -635,7 +205,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut CellArray, ValueError> {
+    pub fn as_mut_vec<'a>(&'a mut self) -> Result<&'a mut Vec<ValuePointer>, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
@@ -643,7 +213,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn to_vec<'a>(&'a mut self) -> Result<CellArray, ValueError> {
+    pub fn to_vec<'a>(&'a mut self) -> Result<Vec<ValuePointer>, ValueError> {
         match mem::take(self) {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
@@ -651,7 +221,7 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn into_vec(self) -> Result<CellArray, ValueError> {
+    pub fn into_vec(self) -> Result<Vec<ValuePointer>, ValueError> {
         match self {
             Self::Object(n) => Ok(n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::T(None)))))
@@ -799,36 +369,36 @@ impl ValueCell {
     }
 
     #[inline]
-    pub fn as_enum<'a>(&'a self) -> Result<(u8, &'a [ValuePointer]), ValueError> {
+    pub fn as_enum<'a>(&'a self, heap: &Heap) -> Result<(u8, &'a [ValuePointer]), ValueError> {
         // the enum variant id is injected as first element
         let values = self.as_vec()?;
         if values.is_empty() {
             return Err(ValueError::ExpectedEnumWithVariantId)
         }
 
-        Ok((values[0].as_ref().as_u8()?, &values[1..]))
+        Ok((values[0].as_ref(heap).as_u8()?, &values[1..]))
     }
 
     #[inline]
-    pub fn as_mut_enum<'a>(&'a mut self) -> Result<(u8, &'a mut [ValuePointer]), ValueError> {
+    pub fn as_mut_enum<'a>(&'a mut self, heap: &Heap) -> Result<(u8, &'a mut [ValuePointer]), ValueError> {
         // the enum variant id is injected as first element
         let values = self.as_mut_vec()?;
         if values.is_empty() {
             return Err(ValueError::ExpectedEnumWithVariantId)
         }
 
-        Ok((values[0].as_ref().as_u8()?, &mut values[1..]))
+        Ok((values[0].as_ref(heap).as_u8()?, &mut values[1..]))
     }
 
     #[inline]
-    pub fn to_enum(&mut self) -> Result<(u8, CellArray), ValueError> {
+    pub fn to_enum(&mut self, heap: &Heap) -> Result<(u8, Vec<ValuePointer>), ValueError> {
         // the enum variant id is injected as first element
         let values = self.to_vec()?;
         if values.is_empty() {
             return Err(ValueError::ExpectedEnumWithVariantId)
         }
 
-        Ok((values[0].as_ref().as_u8()?, values[1..].into()))
+        Ok((values[0].as_ref(heap).as_u8()?, values[1..].into()))
     }
 
     #[inline]
@@ -1020,427 +590,14 @@ impl ValueCell {
             Self::Map(map) => return Self::Map(map.clone()),
         }
     }
-
-    /// Detach nested references, moving uniquely owned data instead of cloning it.
-    pub fn references_free(self) -> Self {
-        match self {
-            Self::Bytes(_) => self,
-            Self::Primitive(_) => self,
-            Self::Opaque(value) => Self::Opaque(value.deep_clone()),
-            _ => Self::detach(ValueCellRef::Owned(self)),
-        }
-    }
-
-    /// Clone the value and detach all nested references without consuming it.
-    pub fn deep_clone(&self) -> Self {
-        match self {
-            Self::Bytes(v) => Self::Bytes(v.clone()),
-            Self::Primitive(v) => Self::Primitive(v.clone()),
-            Self::Opaque(v) => Self::Opaque(v.deep_clone()),
-            _ => Self::detach(ValueCellRef::Ref(self)),
-        }
-    }
-
-    // Iteratively rebuild the value, reusing owned payloads and cloning borrowed ones.
-    fn detach(value: ValueCellRef<'_>) -> Self {
-        #[derive(Debug)]
-        enum QueueItem {
-            Leaf(ValueCell),
-            Array {
-                len: usize,
-            },
-            Map {
-                len: usize,
-            },
-            Bytes(Vec<u8>)
-        }
-
-        let mut stack = vec![value];
-        let mut queue = Vec::new();
-
-        // Disassemble
-        while let Some(value) = stack.pop() {
-            let value = match value {
-                ValueCellRef::Pointer(pointer) => ValueCellRef::Owned(pointer.unwrap()),
-                value => value,
-            };
-            match value {
-                ValueCellRef::Owned(owned) => match owned {
-                    Self::Primitive(v) => queue.push(QueueItem::Leaf(Self::Primitive(v))),
-                    Self::Opaque(v) => queue.push(QueueItem::Leaf(Self::Opaque(v.deep_clone()))),
-                    Self::Object(values) => {
-                        queue.push(QueueItem::Array { len: values.len() });
-                        stack.extend(values.into_iter().map(ValueCellRef::Pointer));
-                    },
-                    Self::Bytes(bytes) => {
-                        queue.push(QueueItem::Bytes(bytes));
-                    }
-                    Self::Map(map) => {
-                        queue.push(QueueItem::Map { len: map.len() });
-                        stack.reserve(map.len() * 2);
-                        stack.extend(map.into_iter().flat_map(|(k, v)| [ValueCellRef::Owned(k), ValueCellRef::Pointer(v)]));
-                    }
-                },
-                ValueCellRef::Ref(value) => match value {
-                    Self::Primitive(v) => queue.push(QueueItem::Leaf(Self::Primitive(v.clone()))),
-                    Self::Opaque(v) => queue.push(QueueItem::Leaf(Self::Opaque(v.deep_clone()))),
-                    Self::Object(values) => {
-                        queue.push(QueueItem::Array { len: values.len() });
-                        stack.extend(values.iter().map(|v| ValueCellRef::Ref(v.as_ref())));
-                    },
-                    Self::Bytes(bytes) => queue.push(QueueItem::Bytes(bytes.clone())),
-                    Self::Map(map) => {
-                        queue.push(QueueItem::Map { len: map.len() });
-                        stack.reserve(map.len() * 2);
-                        stack.extend(map.iter().flat_map(|(k, v)| [ValueCellRef::Ref(k), ValueCellRef::Ref(v.as_ref())]));
-                    }
-                },
-                ValueCellRef::Pointer(_) => unreachable!(),
-            }
-        };
-
-        let mut stack = Vec::with_capacity(queue.len());
-        // Assemble back
-        while let Some(item) = queue.pop() {
-            match item {
-                QueueItem::Leaf(v) => stack.push(v),
-                QueueItem::Array { len } => {
-                    let values = stack.split_off(stack.len() - len);
-                    stack.push(ValueCell::Object(values.into_iter().map(Into::into).collect()));
-                },
-                QueueItem::Bytes(bytes) => {
-                    stack.push(ValueCell::Bytes(bytes));
-                }
-                QueueItem::Map { len } => {
-                    let map = stack.split_off(stack.len() - len * 2)
-                        .into_iter()
-                        .tuples()
-                        .map(|(k, v)| (k, v.into()))
-                        .collect();
-
-                    stack.push(ValueCell::Map(Box::new(map)));
-                }
-            }
-        }
-
-        debug_assert!(stack.len() == 1);
-        stack.remove(0)
-    }
 }
 
-impl fmt::Display for ValueCell {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Use iterative formatting to avoid stack overflow on deep nesting
-        enum FormatItem<'a> {
-            Value(ValueCellRef<'a>),
-            OpenArray,
-            CloseArray,
-            OpenMap,
-            CloseMap,
-            MapSeparator,
-            ArraySeparator,
-        }
-
-        let mut output = String::new();
-        let mut stack = vec![FormatItem::Value(ValueCellRef::Ref(self))];
-        let mut first_in_container = Vec::new();
-
-        while let Some(item) = stack.pop() {
-            match item {
-                FormatItem::Value(cell_ref) => {
-                    match cell_ref.value() {
-                        Self::Primitive(v) => {
-                            write!(&mut output, "{}", v).map_err(|_| fmt::Error)?;
-                        }
-                        Self::Opaque(v) => write!(&mut output, "{}", v).map_err(|_| fmt::Error)?,
-                        Self::Bytes(bytes) => {
-                            write!(&mut output, "bytes{:?}", bytes).map_err(|_| fmt::Error)?;
-                        }
-                        Self::Object(values) => {
-                            if values.is_empty() {
-                                output.push_str("[]");
-                            } else {
-                                stack.push(FormatItem::CloseArray);
-                                first_in_container.push(true);
-                                for value in values.iter().rev() {
-                                    stack.push(FormatItem::Value(ValueCellRef::Pointer(value.clone())));
-                                    stack.push(FormatItem::ArraySeparator);
-                                }
-                                stack.push(FormatItem::OpenArray);
-                            }
-                        }
-                        Self::Map(map) => {
-                            if map.is_empty() {
-                                output.push_str("map{}");
-                            } else {
-                                stack.push(FormatItem::CloseMap);
-                                first_in_container.push(true);
-                                for (k, v) in map.iter().rev() {
-                                    stack.push(FormatItem::Value(ValueCellRef::Pointer(v.clone())));
-                                    stack.push(FormatItem::MapSeparator);
-                                    stack.push(FormatItem::Value(ValueCellRef::Owned(k.clone_ref())));
-                                    stack.push(FormatItem::ArraySeparator);
-                                }
-                                stack.push(FormatItem::OpenMap);
-                            }
-                        }
-                    }
-                }
-                FormatItem::OpenArray => output.push('['),
-                FormatItem::CloseArray => {
-                    output.push(']');
-                    first_in_container.pop();
-                }
-                FormatItem::OpenMap => output.push_str("map{"),
-                FormatItem::CloseMap => {
-                    output.push('}');
-                    first_in_container.pop();
-                }
-                FormatItem::MapSeparator => output.push_str(": "),
-                FormatItem::ArraySeparator => {
-                    if let Some(first) = first_in_container.last_mut() {
-                        if *first {
-                            *first = false;
-                        } else {
-                            output.push_str(", ");
-                        }
-                    }
-                }
-            }
-        }
-
-        write!(f, "{}", output)
-    }
-}
-
-impl Clone for ValueCell {
-    #[inline(always)]
+impl Clone for RuntimeValue {
     fn clone(&self) -> Self {
-        self.deep_clone()
+        self.clone_ref()
     }
 }
 
-impl From<PrimitiveInteger> for ValueCell {
+impl From<PrimitiveInteger> for RuntimeValue {
     fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::hash::DefaultHasher;
-
-    use serde_json::json;
-
-    use super::*;
-
-    #[cfg(feature = "infinite-cell-depth")]
-    const MAX_ITERS: usize = 100_000;
-    #[cfg(not(feature = "infinite-cell-depth"))]
-    const MAX_ITERS: usize = 1000;
-
-    #[test]
-    fn test_detach_shared_nested_values() {
-        for consume in [false, true] {
-            let shared = ValuePointer::new(ValueCell::Bytes(vec![1, 2, 3]));
-            let mut map = IndexMap::new();
-            map.insert(Primitive::Integer(PrimitiveInteger::U8(7)).into(), shared.clone());
-            let original = ValueCell::Object(vec![
-                shared.clone(),
-                ValueCell::Map(Box::new(map)).into(),
-            ]);
-            let expected = serde_json::to_value(&original).unwrap();
-            let detached = if consume {
-                original.references_free()
-            } else {
-                let detached = original.deep_clone();
-                assert_eq!(serde_json::to_value(&original).unwrap(), expected);
-                detached
-            };
-            assert_eq!(serde_json::to_value(&detached).unwrap(), expected);
-
-            let ValueCell::Object(mut values) = detached else { panic!("Failed to extract object") };
-            let ValueCell::Map(map) = values[1].as_ref() else { panic!("Failed to extract map") };
-            let nested = map.values().next().unwrap();
-            assert!(!values[0].ptr_eq(&shared));
-            assert!(!nested.ptr_eq(&shared));
-            assert!(!values[0].ptr_eq(nested));
-            unsafe { *values[0].as_mut() = ValueCell::Bytes(vec![9]); }
-            assert_eq!(shared.as_ref(), &ValueCell::Bytes(vec![1, 2, 3]));
-            let ValueCell::Map(map) = values[1].as_ref() else { panic!("Failed to extract map") };
-            assert_eq!(map.values().next().unwrap().as_ref(), shared.as_ref());
-        }
-    }
-
-    #[test]
-    fn test_references_free_reuses_unique_byte_buffer() {
-        let bytes = vec![1, 2, 3];
-        let buffer = bytes.as_ptr();
-        let value = ValueCell::Object(vec![ValueCell::Bytes(bytes).into()]);
-        let ValueCell::Object(values) = value.references_free() else { panic!("Failed to free references") };
-        let ValueCell::Bytes(bytes) = values[0].as_ref() else { panic!("Expected bytes") };
-        assert_eq!(bytes.as_ptr(), buffer);
-    }
-
-    #[test]
-    fn test_drop_and_clone() {
-        let v = ValueCell::default();
-        drop(v.clone_ref());
-        drop(v);
-
-        let v = ValueCell::Object(vec![Default::default()]);
-        drop(v.clone_ref());
-        drop(v);
-
-        // Create a array with a huge depth of 100000
-        let mut v = ValueCell::Object(vec![Default::default()]);
-        for _ in 0..MAX_ITERS {
-            v = ValueCell::Object(vec![v.into()]);
-        }
-
-        drop(v.clone_ref());
-        drop(v);
-
-        // Create a map with a huge depth of 100000
-        let mut v = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..MAX_ITERS {
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), v.into());
-            v = ValueCell::Map(Box::new(inner_map));
-        }
-
-        drop(v.clone_ref());
-        drop(v);
-    }
-
-    #[test]
-    fn test_max_depth() {
-        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..MAX_ITERS {
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
-        }
-
-        assert!(matches!(map.calculate_depth(MAX_ITERS), Ok(MAX_ITERS)));
-        assert!(matches!(map.calculate_depth(MAX_ITERS - 1), Err(ValueError::MaxDepthReached)));
-    }
-
-    #[test]
-    fn test_std_hash() {
-        // Create a map that contains a map that contains a map...
-        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..MAX_ITERS {
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
-        }
-
-        let mut hasher = DefaultHasher::new();
-        map.hash(&mut hasher);
-
-        // Try the Eq impl
-        assert_eq!(map, map.clone_ref());
-        assert_eq!(map, map.clone());
-    }
-
-    #[test]
-    fn test_display_deep_nesting() {
-        // Test that Display doesn't stack overflow on deeply nested structures
-        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..MAX_ITERS {
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
-        }
-
-        // This should not stack overflow
-        let display = format!("{}", map);
-        assert!(display.starts_with("map{"));
-        assert!(display.ends_with("}"));
-
-        // Test with deeply nested arrays
-        let mut array = ValueCell::Object(vec![Primitive::Integer(PrimitiveInteger::U64(42)).into()]);
-        for _ in 0..MAX_ITERS {
-            array = ValueCell::Object(vec![array.into()]);
-        }
-
-        let display = format!("{}", array);
-        assert!(display.starts_with("["));
-        assert!(display.ends_with("]"));
-    }
-
-    #[test]
-    fn test_debug_deep_nesting() {
-        // Test that Debug doesn't stack overflow on deeply nested structures via ValuePointer
-        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..100 {  // Use smaller depth for Debug since it's more verbose
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
-        }
-
-        let ptr: ValuePointer = map.into();
-        // This should not stack overflow
-        let debug = format!("{:?}", ptr);
-        assert!(debug.starts_with("ValuePointer("));
-        assert!(debug.ends_with(")"));
-    }
-
-    #[test]
-    fn test_serde() {
-        let mut map = ValueCell::Map(Box::new(IndexMap::new()));
-        for _ in 0..200 {
-            let mut inner_map = IndexMap::new();
-            inner_map.insert(Primitive::Integer(PrimitiveInteger::U8(10)).into(), map.into());
-            map = ValueCell::Map(Box::new(inner_map));
-        }
-
-        let serialized = serde_json::to_value(&map).unwrap();
-
-        let got: ValueCell = serde_json::from_value(serialized).unwrap();
-        assert_eq!(map, got);
-    }
-
-    #[test]
-    fn test_serde_huge_map() {
-        let mut map: IndexMap<ValueCell, ValuePointer> = IndexMap::new();
-        for i in 0..MAX_ITERS * 1000 {
-            let inner_map = IndexMap::new();
-            map.insert(Primitive::Integer(PrimitiveInteger::U64(i as u64)).into(), ValueCell::Map(Box::new(inner_map)).into());
-        }
-
-        let map = ValueCell::Map(Box::new(map));
-        let serialized = json!(map);
-
-        let got: ValueCell = serde_json::from_value(serialized).unwrap();
-        assert_eq!(map, got);
-    }
-
-    #[test]
-    fn test_serde_stackoverflow() {
-        let v = r#"{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[[{"type":"primitive","value":{"type":"u8","value":10}},{"type":"map","value":[]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}]]}"#;
-        assert!(serde_json::from_str::<ValueCell>(v).is_err_and(|e| e.to_string().contains("recursion limit exceeded")));
-    }
-
-    #[test]
-    fn test_schema() {
-        let _: Schema = schemars::schema_for!(ValueCell);
-    }
-
-    #[test]
-    fn test_hashing_types() {
-        let value = ValuePointer::new(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(10))));
-
-        let single = ValueCell::Object(vec![value.clone(), value.clone()]);
-        let twice = ValueCell::Object(vec![value.clone()]);
-
-        let mut hasher = DefaultHasher::new();
-        single.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        hasher = DefaultHasher::new();
-        twice.hash(&mut hasher);
-        let hash2 = hasher.finish();
-
-        assert_ne!(hash, hash2);
-    }
 }

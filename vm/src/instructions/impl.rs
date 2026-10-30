@@ -21,9 +21,10 @@ pub fn constant<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack
     debug!("constant load at {}", index);
 
     let constant = backend.get_constant_with_id(index)?;
+    let constant = context.heap_mut().import(&constant)?;
 
-    let memory_usage = constant.calculate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage)?;
+    let memory_usage = constant.calculate_memory_usage(context.heap(), context.resources().memory_left())?;
+    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack(constant.into())?;
     Ok(InstructionResult::Nothing)
@@ -34,10 +35,10 @@ pub fn subload<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     debug!("subload at {}", index);
 
     let path = stack.pop_stack()?;
-    let sub = path.get_at_index(index as usize)?;
+    let sub = path.get_at_index(context.heap(), index as usize)?;
 
-    let memory_usage = sub.estimate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage)?;
+    let memory_usage = sub.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(sub);
 
@@ -48,10 +49,10 @@ pub fn copy<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     debug!("copy");
     let value = stack.last_stack()?;
 
-    let memory_usage = value.estimate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage)?;
+    let memory_usage = value.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
 
-    stack.push_stack(value.to_owned())?;
+    stack.push_stack(value.to_owned(context.heap_mut())?)?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -62,10 +63,10 @@ pub fn copy_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut S
 
     let value = stack.get_stack_at(index as usize)?;
 
-    let memory_usage = value.estimate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage)?;
+    let memory_usage = value.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
 
-    stack.push_stack(value.to_owned())?;
+    stack.push_stack(value.to_owned(context.heap_mut())?)?;
 
     Ok(InstructionResult::Nothing)
 }
@@ -74,9 +75,9 @@ pub fn to_owned<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut
     debug!("to_owned");
 
     let value = stack.last_mut_stack()?;
-    if value.make_owned() {
-        let memory = value.estimate_memory_usage(context.memory_left())?;
-        context.increase_memory_usage_unchecked(memory)?;
+    if value.make_owned(context.heap_mut())? {
+        let memory = value.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+        context.resources_mut().increase_memory_usage_unchecked(memory)?;
     }
 
     Ok(InstructionResult::Nothing)
@@ -88,8 +89,8 @@ pub fn pop<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     let value = stack.pop_stack()?;
     // Decrease memory usage
     let memory = value
-        .estimate_memory_usage(context.max_memory_usage())?;
-    context.decrease_memory_usage(memory);
+        .estimate_memory_usage(context.heap(), context.resources().max_memory_usage())?;
+    context.resources_mut().decrease_memory_usage(memory);
 
     Ok(InstructionResult::Nothing)
 }
@@ -103,8 +104,8 @@ pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut St
     let len = inner.len();
     if len >= n as usize {
         for value in &inner[len - n as usize..] {
-            let memory = value.estimate_memory_usage(context.max_memory_usage())?;
-            context.decrease_memory_usage(memory);
+            let memory = value.estimate_memory_usage(context.heap(), context.resources().max_memory_usage())?;
+            context.resources_mut().decrease_memory_usage(memory);
         }
     }
 
@@ -112,7 +113,7 @@ pub fn pop_n<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut St
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn swap<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index = reader.read_u8()?;
     debug!("swap at {}", index);
 
@@ -120,7 +121,7 @@ pub fn swap<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     Ok(InstructionResult::Nothing)
 }
 
-pub fn swap2<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn swap2<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let index_a = reader.read_u8()?;
     let index_b = reader.read_u8()?;
 
@@ -132,20 +133,20 @@ pub fn swap2<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut St
 
 pub fn array_call<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let index = value.as_u32()?;
+    let index = value.as_u32(context.heap())?;
     debug!("array call at {}", index);
 
     let value = stack.pop_stack()?;
-    let sub = value.get_at_index(index as usize)?;
+    let sub = value.get_at_index(context.heap(), index as usize)?;
 
-    let memory_usage = sub.estimate_memory_usage(context.memory_left())?;
-    context.increase_memory_usage_unchecked(memory_usage)?;
+    let memory_usage = sub.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
 
     stack.push_stack_unchecked(sub);
     Ok(InstructionResult::Nothing)
 }
 
-pub fn invoke_chunk<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn invoke_chunk<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let id = reader.read_u16()?;
     let args = reader.read_u8()? as usize;
     internal_invoke_chunk(stack, id, args, None)
@@ -190,15 +191,15 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
         .get(id as usize)
         .ok_or(VMError::UnknownSysCall(id))?;
 
-    context.increase_gas_usage(f.get_cost())?;
+    context.resources_mut().increase_gas_usage(f.get_cost())?;
 
     let args = f.get_parameters().len();
     let mut arguments = VecDeque::with_capacity(args);
     for _ in 0..args + f.is_on_instance() as usize {
         let value = stack.pop_stack()?;
         // reduce memory usage
-        let memory = value.estimate_memory_usage(context.max_memory_usage())?;
-        context.decrease_memory_usage(memory);
+        let memory = value.estimate_memory_usage(context.heap(), context.resources().max_memory_usage())?;
+        context.resources_mut().decrease_memory_usage(memory);
 
         arguments.push_front(value);
     }
@@ -212,7 +213,7 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, i
 
 pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let ptr = value.as_ref()
+    let ptr = value.as_ref(context.heap())
         .as_fn_ptr()?;
 
     let args = reader.read_u8()? as usize;
@@ -224,9 +225,9 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
                 return Err(VMError::InvalidDynamicCall)
             }
 
-            let id = values[0].as_u16()?;
-            let syscall = values[1].as_bool()?;
-            let from = values[2].as_u16()?;
+            let id = values[0].as_ref(context.heap()).as_u16()?;
+            let syscall = values[1].as_ref(context.heap()).as_bool()?;
+            let from = values[2].as_ref(context.heap()).as_u16()?;
 
             debug!("dynamic call: {}, syscall: {}, args: {}", id, syscall, args);
 
@@ -239,7 +240,7 @@ pub fn dynamic_call<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, s
     }
 }
 
-pub fn capture_context<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn capture_context<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     manager.set_context(ChunkContext::ShouldKeep);
     Ok(InstructionResult::Nothing)
 }

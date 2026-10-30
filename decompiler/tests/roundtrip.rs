@@ -5,7 +5,7 @@ use silex_decompiler::Decompiler;
 use silex_environment::ModuleMetadata;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::{Primitive, PrimitiveInteger};
+use silex_types::{Primitive, PrimitiveInteger, Type};
 use xelis_vm::{ModuleValidator, VM};
 
 fn compile(source: &str, env: &EnvironmentBuilder<()>, packed: bool, fold: bool) -> Module {
@@ -53,7 +53,7 @@ fn execute(module: &Module, env: &EnvironmentBuilder<()>, entry: usize) -> Primi
         metadata: (&()).into(),
     })
     .unwrap();
-    vm.context_mut().set_gas_limit(1_000_000);
+    vm.context_mut().resources_mut().set_gas_limit(1_000_000);
     vm.invoke_chunk_id_unchecked(entry).unwrap();
     vm.run_blocking().unwrap().into_value().unwrap()
 }
@@ -110,8 +110,8 @@ fn packed_parameters_and_hooks() {
     let mut env = EnvironmentBuilder::default();
     env.register_hook(
         "constructor",
-        vec![("value", silex_types::Type::U64)],
-        Some(silex_types::Type::U64),
+        vec![("value", Type::U64)],
+        Some(Type::U64),
     );
     let module = compile("pub fn test(v: u64) -> u64 { return v + 1 } hook constructor(v: u64) -> u64 { return test(v) }", &env, true, false);
     let recovered = Decompiler::new(&module, &env).decompile().unwrap();
@@ -156,9 +156,9 @@ fn custom_environment_resolves_ids_without_default_std() {
         "scaled",
         Some(Type::U64),
         vec![("scale", Type::U64)],
-        FunctionHandler::Sync(|v, args, _, _| {
+        FunctionHandler::Sync(|v, args, _, context| {
             Ok(SysCallResult::Return(
-                Primitive::Integer(PrimitiveInteger::U64(v?.as_u64()? * args[0].as_u64()?)).into(),
+                Primitive::Integer(PrimitiveInteger::U64(v?.as_u64(context.heap())? * args[0].as_u64(context.heap())?)).into(),
             ))
         }),
         1,
@@ -348,7 +348,7 @@ fn discarded_expressions_still_trap() {
             metadata: (&()).into(),
         })
         .unwrap();
-        vm.context_mut().set_gas_limit(1_000_000);
+        vm.context_mut().resources_mut().set_gas_limit(1_000_000);
         vm.invoke_chunk_id_unchecked(0).unwrap();
         assert!(vm.run_blocking().is_err(), "{recovered}");
     }

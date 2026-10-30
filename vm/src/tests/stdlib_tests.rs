@@ -3,7 +3,7 @@ use silex_compiler::Compiler;
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::{Primitive, PrimitiveInteger, ValueError};
+use silex_types::{Primitive, PrimitiveInteger, ValueError, RuntimeValue};
 use super::*;
 
 #[track_caller]
@@ -63,13 +63,19 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
 
     // Check the original graph before ownership conversion can copy it. Shared
     // descendants are allowed; a node revisited on its active path is a cycle.
-    fn check_graph(value: &ValueCell) -> Result<(), EnvironmentError> {
+    fn check_graph(value: &RuntimeValue, heap: &Heap) -> Result<(), EnvironmentError> {
         let mut pending = vec![(OpaqueChild::Value(value), false)];
         let mut active = HashSet::new();
         let mut complete = HashSet::new();
         while let Some((node, leaving)) = pending.pop() {
+            let node = match node {
+                OpaqueChild::Pointer(id) => OpaqueChild::Value(heap.get(id)?),
+                OpaqueChild::Owned(value) => { value.calculate_depth(16)?; continue; }
+                node => node,
+            };
             let id = match node {
-                OpaqueChild::Value(value) => (false, value as *const ValueCell as usize),
+                OpaqueChild::Pointer(_) | OpaqueChild::Owned(_) => unreachable!(),
+                OpaqueChild::Value(value) => (false, value as *const RuntimeValue as usize),
                 OpaqueChild::Opaque(value) => {
                     (true, value as *const dyn Opaque as *const () as usize)
                 }
@@ -87,24 +93,25 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
             }
             pending.push((node, true));
             match node {
+                OpaqueChild::Pointer(_) | OpaqueChild::Owned(_) => unreachable!(),
                 OpaqueChild::Opaque(value) => {
                     value.visit_children(&mut |child| pending.push((child, false)))
                 }
                 OpaqueChild::Value(value) => match value {
-                    ValueCell::Object(values) => pending.extend(
+                    RuntimeValue::Object(values) => pending.extend(
                         values
                             .iter()
-                            .map(|value| (OpaqueChild::Value(value.as_ref()), false)),
+                            .map(|value| (OpaqueChild::Value(value.as_ref(heap)), false)),
                     ),
-                    ValueCell::Map(values) => {
+                    RuntimeValue::Map(values) => {
                         pending.extend(values.iter().flat_map(|(key, value)| {
                             [
-                                (OpaqueChild::Value(key), false),
-                                (OpaqueChild::Value(value.as_ref()), false),
+                                (OpaqueChild::Owned(key), false),
+                                (OpaqueChild::Value(value.as_ref(heap)), false),
                             ]
                         }))
                     }
-                    ValueCell::Opaque(value) => {
+                    RuntimeValue::Opaque(value) => {
                         pending.push((OpaqueChild::Opaque(value.inner()), false))
                     }
                     _ => {}
@@ -118,10 +125,10 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         _: FnInstance,
         params: FnParams,
         metadata: &ModuleMetadata<'_, Probes>,
-        _: &mut VMContext,
+        context: &mut VMContext,
     ) -> FnReturnType<Probes> {
         let value = params.into_iter().next().unwrap();
-        check_graph(value.as_ref())?;
+        check_graph(value.as_ref(context.heap()), context.heap())?;
         assert!(!value.is_owned(), "probe must retain the original VM slot");
         metadata.metadata.lock().unwrap().push(value);
         Ok(SysCallResult::None)
@@ -153,14 +160,14 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         ModuleValidator::new(&module, &environment).verify().unwrap();
         let probes = Probes::default();
         let mut vm = VM::default();
-        vm.context_mut().set_gas_limit(100_000_000);
+        vm.context_mut().resources_mut().set_gas_limit(100_000_000);
         vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&probes).into() }).unwrap();
         vm.invoke_entry_chunk(0).unwrap();
         let result = vm.run_blocking().unwrap_or_else(|error| panic!("{body}: {error:?}"));
         assert_eq!(result.as_u64().unwrap(), 0, "{body}");
         drop(result);
+        for value in probes.lock().unwrap().iter() { check_graph(value.as_ref(vm.context().heap()), vm.context().heap()).unwrap(); }
         drop(vm);
-        for value in probes.into_inner().unwrap() { check_graph(value.as_ref()).unwrap(); }
     }
 }
 
@@ -3144,7 +3151,7 @@ fn test_iterator_depth_uses_the_configured_limit() {
         let code = format!("entry main() {{ {declarations} return 0u64 }}");
         let (module, environment) = prepare_module(&code);
         let mut vm = VM::default();
-        vm.context_mut().set_max_value_depth(4);
+        vm.context_mut().resources_mut().set_max_value_depth(4);
         vm.append_module(ModuleMetadata {
             module: (&module).into(),
             environment: (&environment).into(),
@@ -3210,7 +3217,7 @@ fn test_iterator_eager_flatten_count_uses_configured_depth_budget() {
         );
         let (module, environment) = prepare_module(&code);
         let mut vm = VM::default();
-        vm.context_mut().set_max_value_depth(4);
+        vm.context_mut().resources_mut().set_max_value_depth(4);
         vm.append_module(ModuleMetadata {
             module: (&module).into(),
             environment: (&environment).into(),

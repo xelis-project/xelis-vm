@@ -1,29 +1,30 @@
-use std::{mem, ops::{Deref, DerefMut}};
+use std::mem;
+use super::{Heap, HeapError, RuntimeValue, ValuePointer};
 
 use crate::{
     PrimitiveInteger,
-    values::{cell::pointer::ValuePointer, ValueError},
-    Constant,
+    PrimitiveRange,
+    U256,
+    ValueError,
     Opaque,
     OpaqueWrapper,
     Primitive,
     Type
 };
-use super::ValueCell;
 
+// Logical reference size for gas and memory accounting, independent of handle layout.
 pub const REFERENCE_SIZE: usize = 8;
 
 // StackValue represent a value on the stack
 // It can be either an owned value or a pointer to a value
 // Note that the pointer can be nested (pointer to pointer)
-// because of the ValueCell format (Object containing ValuePointers)
-// WARNING: Be careful when manipulating StackValue pointers
-// especially with mutable references! You must ensure that no other
-// references exist when you get a mutable reference to the inner ValueCell
+// because of the RuntimeValue format (Object containing ValuePointers)
+// Resolving a handle borrows the heap. Mutable resolution requires exclusive
+// heap access, so cloned handles cannot create overlapping Rust references.
 #[derive(Debug, Clone)]
 pub enum StackValue {
     // Value is on stack directly
-    Owned(ValueCell),
+    Owned(RuntimeValue),
     Pointer {
         ptr: ValuePointer,
         depth: usize
@@ -37,39 +38,52 @@ impl Default for StackValue {
 }
 
 impl StackValue {
+    pub fn as_u8<'a>(&'a self, heap: &'a Heap) -> Result<u8, ValueError> { self.as_ref(heap).as_u8() }
+    pub fn as_u16<'a>(&'a self, heap: &'a Heap) -> Result<u16, ValueError> { self.as_ref(heap).as_u16() }
+    pub fn as_u128<'a>(&'a self, heap: &'a Heap) -> Result<u128, ValueError> { self.as_ref(heap).as_u128() }
+    pub fn as_u256<'a>(&'a self, heap: &'a Heap) -> Result<U256, ValueError> { self.as_ref(heap).as_u256() }
+    pub fn is_null(&self, heap: &Heap) -> bool { self.as_ref(heap).is_null() }
+    pub fn as_string<'a>(&'a self, heap: &'a Heap) -> Result<&'a str, ValueError> { self.as_ref(heap).as_string() }
+    pub fn as_bytes<'a>(&'a self, heap: &'a Heap) -> Result<&'a Vec<u8>, ValueError> { self.as_ref(heap).as_bytes() }
+    pub fn as_vec<'a>(&'a self, heap: &'a Heap) -> Result<&'a Vec<ValuePointer>, ValueError> { self.as_ref(heap).as_vec() }
+    pub fn as_range<'a>(&'a self, heap: &'a Heap) -> Result<&'a PrimitiveRange, ValueError> { self.as_ref(heap).as_range() }
+    pub fn as_value<'a>(&'a self, heap: &'a Heap) -> Result<&'a Primitive, ValueError> { self.as_ref(heap).as_value() }
+    pub fn as_opaque_type<'a, T: Opaque>(&'a self, heap: &'a Heap) -> Result<&'a T, ValueError> { self.as_ref(heap).as_opaque_type::<T>() }
+    pub fn as_opaque_type_mut<'a, T: Opaque>(&'a mut self, heap: &'a mut Heap) -> Result<&'a mut T, ValueError> { self.as_mut(heap).as_opaque_type_mut::<T>() }
+    pub fn as_mut_vec<'a>(&'a mut self, heap: &'a mut Heap) -> Result<&'a mut Vec<ValuePointer>, ValueError> { self.as_mut(heap).as_mut_vec() }
+
     #[inline(always)]
-    pub fn as_bool<'a>(&'a self) -> Result<bool, ValueError> {
-        self.as_ref().as_bool()
+    pub fn as_bool(&self, heap: &Heap) -> Result<bool, ValueError> {
+        self.as_ref(heap).as_bool()
     }
 
     #[inline(always)]
-    pub fn as_u32<'a>(&'a self) -> Result<u32, ValueError> {
-        self.as_ref().as_u32()
+    pub fn as_u32(&self, heap: &Heap) -> Result<u32, ValueError> {
+        self.as_ref(heap).as_u32()
     }
 
     #[inline(always)]
-    pub fn as_u64<'a>(&'a self) -> Result<u64, ValueError> {
-        self.as_ref().as_u64()
+    pub fn as_u64(&self, heap: &Heap) -> Result<u64, ValueError> {
+        self.as_ref(heap).as_u64()
     }
 
     #[inline(always)]
-    pub fn estimate_memory_usage(&self, max: usize) -> Result<usize, ValueError> {
+    pub fn estimate_memory_usage(&self, heap: &Heap, max: usize) -> Result<usize, ValueError> {
         match self {
-            Self::Owned(v) => v.calculate_memory_usage(max),
+            Self::Owned(v) => v.calculate_memory_usage(heap, max),
             Self::Pointer { .. } => {
                 // Otherwise, we consider only the pointer size
-                // We can't rely on Arc::strong_count or any caching here
-                // because a branching in such critical path is too costly
+                // Logical accounting remains independent of heap storage.
                 Ok(REFERENCE_SIZE)
             }
         }
     }
 
     // Get the sub value at index requested
-    pub fn get_at_index(self, index: usize) -> Result<StackValue, ValueError> {
+    pub fn get_at_index(self, heap: &Heap, index: usize) -> Result<StackValue, ValueError> {
         match self {
             Self::Owned(v) => match v {
-                ValueCell::Object(mut values) => {
+                RuntimeValue::Object(mut values) => {
                     let len = values.len();
                     if index >= len {
                         return Err(ValueError::OutOfBounds(index, len))
@@ -77,21 +91,21 @@ impl StackValue {
 
                     Ok(Self::Pointer { ptr: values.swap_remove(index), depth: 1 })
                 },
-                ValueCell::Bytes(mut bytes) => {
+                RuntimeValue::Bytes(mut bytes) => {
                     let len = bytes.len();
                     if index >= len {
                         return Err(ValueError::OutOfBounds(index, len))
                     }
 
-                    Ok(Self::Owned(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(bytes.swap_remove(index))))))
+                    Ok(Self::Owned(RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(bytes.swap_remove(index))))))
                 },
                 _ => Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
             },
             Self::Pointer { ptr, depth } => {
-                let cell = ptr.as_ref();
+                let cell = ptr.as_ref(heap);
 
                 Ok(match cell {
-                    ValueCell::Object(values) => {
+                    RuntimeValue::Object(values) => {
                         let len = values.len();
                         let at_index = values
                             .get(index)
@@ -102,12 +116,12 @@ impl StackValue {
                             depth: depth + 1
                         }
                     },
-                    ValueCell::Bytes(bytes) => {
+                    RuntimeValue::Bytes(bytes) => {
                         let at_index = bytes.get(index)
                             .copied()
                             .ok_or_else(|| ValueError::OutOfBounds(index, bytes.len()))?;
 
-                        Self::Owned(ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(at_index))))
+                        Self::Owned(RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(at_index))))
                     },
                     _ => return Err(ValueError::ExpectedValueOfType(Type::Array(Box::new(Type::Any))))
                 })
@@ -116,15 +130,14 @@ impl StackValue {
     }
 
     #[inline(always)]
-    pub fn reference(&mut self) -> Self {
-        match self {
+    pub fn reference(&mut self, heap: &mut Heap) -> Result<Self, HeapError> {
+        Ok(match self {
             Self::Pointer { ptr, depth } => Self::Pointer {
                 ptr: ptr.clone(),
                 depth: *depth,
             },
             Self::Owned(value) => {
-                let v = mem::take(value);
-                let pointer = ValuePointer::new(v);
+                let pointer = heap.insert_from(value)?;
                 *self = Self::Pointer {
                     ptr: pointer.clone(),
                     depth: 0
@@ -135,43 +148,42 @@ impl StackValue {
                     depth: 0
                 }
             }
-        }
+        })
     }
 
     // Get an owned variant from it
     #[inline(always)]
-    pub fn to_owned(&self) -> Self {
-        Self::Owned(self.as_ref().deep_clone())
+    pub fn to_owned(&self, heap: &mut Heap) -> Result<Self, HeapError> {
+        let value = self.try_as_ref(heap)?.clone_ref();
+        Ok(Self::Owned(heap.detach(value)?))
     }
 
     // Get the value of the path
-    // This is doing a `deep_clone` to be free
-    // from any reference link
+    // Detach the value from shared heap slots.
     #[inline(always)]
-    pub fn into_owned(self) -> ValueCell {
+    pub fn into_owned(self, heap: &mut Heap) -> Result<RuntimeValue, HeapError> {
         match self {
-            Self::Owned(v) => v.references_free(),
-            Self::Pointer { ptr, .. } => ptr.as_ref().deep_clone()
+            Self::Owned(v) => heap.detach(v),
+            Self::Pointer { ptr, .. } => heap.detach(ptr.to_owned(heap)?)
         }
     }
 
     #[inline(always)]
-    pub fn raw_owned(self) -> ValueCell {
+    pub fn raw_owned(self, heap: &Heap) -> Result<RuntimeValue, HeapError> {
         match self {
-            Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.raw_owned()
+            Self::Owned(v) => Ok(v),
+            Self::Pointer { ptr, .. } => ptr.raw_owned(heap)
         }
     }
 
     // Get a mutable reference to the value
-    // Caller must ensure no other references exist
+    // Exclusive access is enforced by the mutable heap borrow.
     #[inline(always)]
-    pub fn as_mut<'a>(&'a mut self) -> &'a mut ValueCell {
+    pub fn as_mut<'a>(&'a mut self, heap: &'a mut Heap) -> &'a mut RuntimeValue {
         match self {
             Self::Owned(v) => v,
             Self::Pointer { ptr, .. } => {
-                // SAFETY: NativeFunction::verify_parameters ensures no other references exist
-                unsafe { ptr.as_mut() }
+                ptr.as_mut(heap)
             }
         }
     }
@@ -179,9 +191,9 @@ impl StackValue {
     // Take the ownership by stealing the value from the pointer
     // and replace our current pointer as a owned value
     #[inline(always)]
-    pub unsafe fn take_ownership(&mut self) {
+    pub fn take_ownership(&mut self, heap: &mut Heap) {
         if let Self::Pointer { ptr, .. } = self {
-            let cell = ptr.as_mut();
+            let cell = ptr.as_mut(heap);
             let owned = mem::take(cell);
             *self = owned.into();
         }
@@ -189,27 +201,28 @@ impl StackValue {
 
     // Make the path owned if the pointer is the same
     #[inline(always)]
-    pub fn make_owned_if_same_ptr(&mut self, other: ValuePointer) {
+    pub fn make_owned_if_same_ptr(&mut self, heap: &mut Heap, other: ValuePointer) -> Result<(), HeapError> {
         if let Self::Pointer { ptr,  .. } = self {
             if *ptr == other {
-                let cell = ptr.as_ref();
-                *self = cell.deep_clone().into();
+                let cell = heap.get(*ptr)?;
+                *self = heap.detach(cell.clone_ref())?.into();
             }
         }
+        Ok(())
     }
 
     // Transform the StackValue into an Owned variant if its a pointer
     // Do nothing if its a Owned variant already
     #[inline(always)]
-    pub fn make_owned(&mut self) -> bool {
-        if let Self::Pointer { ptr, .. } = self {
-            let cell = ptr.as_ref();
-            *self = cell.deep_clone().into();
+    pub fn make_owned(&mut self, heap: &mut Heap) -> Result<bool, HeapError> {
+        Ok(if let Self::Pointer { ptr, .. } = self {
+            let cell = heap.get(*ptr)?;
+            *self = heap.detach(cell.clone_ref())?.into();
 
             true
         } else {
             false
-        }
+        })
     }
 
     // Is it a owned value
@@ -222,17 +235,37 @@ impl StackValue {
     #[inline]
     pub fn ptr_eq(&self, other: &Self) -> bool {
         if let (Self::Pointer { ptr: a, .. }, Self::Pointer { ptr: b, .. }) = (self, other) {
-            a.ptr_eq(b)
+            a.ptr_eq(*b)
         } else {
             false
         }
     }
 
-    #[inline(always)]
-    pub fn ptr(&self) -> *const ValueCell {
+    pub fn id(&self) -> Option<ValuePointer> {
         match self {
-            Self::Owned(v) => v as *const ValueCell,
-            Self::Pointer { ptr, .. } => ptr.ptr()
+            Self::Owned(_) => None,
+            Self::Pointer { ptr, .. } => Some(*ptr),
+        }
+    }
+
+    pub fn try_as_ref<'a>(&'a self, heap: &'a Heap) -> Result<&'a RuntimeValue, HeapError> {
+        match self {
+            Self::Owned(value) => Ok(value),
+            Self::Pointer { ptr, .. } => heap.get(*ptr),
+        }
+    }
+
+    pub fn as_ref<'a>(&'a self, heap: &'a Heap) -> &'a RuntimeValue {
+        match self {
+            Self::Owned(value) => value,
+            Self::Pointer { ptr, .. } => ptr.as_ref(heap),
+        }
+    }
+
+    pub fn into_pointer(self, heap: &mut Heap) -> Result<ValuePointer, HeapError> {
+        match self {
+            Self::Owned(value) => heap.insert(value),
+            Self::Pointer { ptr, .. } => Ok(ptr),
         }
     }
 
@@ -246,20 +279,14 @@ impl StackValue {
     }
 }
 
-impl From<ValueCell> for StackValue {
-    fn from(value: ValueCell) -> Self {
+impl From<RuntimeValue> for StackValue {
+    fn from(value: RuntimeValue) -> Self {
         Self::Owned(value)
     }
 }
 
 impl From<Primitive> for StackValue {
     fn from(value: Primitive) -> Self {
-        Self::Owned(value.into())
-    }
-}
-
-impl From<Constant> for StackValue {
-    fn from(value: Constant) -> Self {
         Self::Owned(value.into())
     }
 }
@@ -272,58 +299,16 @@ impl From<ValuePointer> for StackValue {
 
 impl<T: Opaque> From<T> for StackValue {
     fn from(value: T) -> Self {
-        Self::Owned(ValueCell::Opaque(value.into()))
+        Self::Owned(RuntimeValue::Opaque(value.into()))
     }
 }
 
 impl From<OpaqueWrapper> for StackValue {
     fn from(value: OpaqueWrapper) -> Self {
-        Self::Owned(ValueCell::Opaque(value))
+        Self::Owned(RuntimeValue::Opaque(value))
     }
 }
 
-impl Deref for StackValue {
-    type Target = ValueCell;
-
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-impl AsRef<ValueCell> for StackValue {
-    #[inline(always)]
-    fn as_ref(&self) -> &ValueCell {
-        match self {
-            Self::Owned(v) => v,
-            Self::Pointer { ptr, .. } => ptr.as_ref()
-        }
-    }
-}
-
-
-impl AsMut<ValueCell> for StackValue {
-    #[inline(always)]
-    fn as_mut(&mut self) -> &mut ValueCell {
-        StackValue::as_mut(self)
-    }
-}
-
-impl DerefMut for StackValue {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
-    }
-}
-
-impl Into<ValuePointer> for StackValue {
-    fn into(self) -> ValuePointer {
-        match self {
-            StackValue::Owned(v) => ValuePointer::new(v),
-            StackValue::Pointer { ptr, .. } => ptr,
-        }
-    }
-}
 impl From<PrimitiveInteger> for StackValue {
     fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
 }

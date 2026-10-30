@@ -16,7 +16,7 @@ use memory::*;
 
 use silex_bytecode::OpCode;
 use silex_environment::{ModuleMetadata, OnCallAsyncFn};
-use silex_types::{PrimitiveInteger, PrimitiveRange, Primitive, StackValue, ValueCell};
+use silex_types::{PrimitiveInteger, PrimitiveRange, Primitive, StackValue, RuntimeValue};
 
 use crate::{ChunkReader, VMContext};
 
@@ -212,21 +212,21 @@ impl<'a: 'r, 'ty: 'a, 'r, M> InstructionTable<'a, 'ty, 'r, M> {
         let (instruction, cost) = self.instructions[opcode as usize];
 
         // Increase the gas usage
-        context.increase_gas_usage(cost)?;
+        context.resources_mut().increase_gas_usage(cost)?;
 
         instruction(backend, stack, chunk_manager, reader, context)
     }
 }
 
-fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Err(VMError::UnknownOpCode)
 }
 
-fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     debug!("jump at address {}", addr);
 
@@ -234,11 +234,11 @@ fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
     debug!("jump_if_false at address {}", addr);
-    if !value.as_bool()? {
+    if !value.as_bool(context.heap())? {
         debug!("jumping to {}", addr);
         reader.set_index(addr as usize)?;
     }
@@ -247,10 +247,10 @@ fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
 
 fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
-    let values = value.into_owned()
+    let values = value.into_owned(context.heap_mut())?
         .to_vec()?;
 
-    context.increase_gas_usage(values.len() as _)?;
+    context.resources_mut().increase_gas_usage(values.len() as _)?;
     stack.extend_stack(values.into_iter().map(Into::into))?;
 
     Ok(InstructionResult::Nothing)
@@ -260,10 +260,10 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?
-            .as_ref();
+            .as_ref(context.heap());
 
         // Check if the magic byte is the same
-        let same = actual.as_vec()?.get(0) == Some(&Primitive::Integer(PrimitiveInteger::U8(magic_byte - 1)).into());
+        let same = actual.as_vec()?.first().is_some_and(|id| id.as_ref(context.heap()).as_u8().ok() == Some(magic_byte - 1));
 
         // if its the same, flatten it
         if same {
@@ -274,10 +274,10 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
     } else {
         let expected = stack.pop_stack()?;
         let actual = stack.last_stack()?
-            .as_ref();
+            .as_ref(context.heap());
     
-        let expected_ref = expected.as_ref();
-        if let (ValueCell::Primitive(v), ValueCell::Primitive(Primitive::Range(range))) = (actual, expected_ref) {
+        let expected_ref = expected.as_ref(context.heap());
+        if let (RuntimeValue::Primitive(v), RuntimeValue::Primitive(Primitive::Range(range))) = (actual, expected_ref) {
             macro_rules! match_range {
                 ($prim:ident, $val:ident) => {
                     if let PrimitiveRange::$prim(bounds) = &**range {
@@ -294,10 +294,10 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
                 Primitive::Integer(PrimitiveInteger::U32(v)) => match_range!(U32, v),
                 Primitive::Integer(PrimitiveInteger::U64(v)) => match_range!(U64, v),
                 Primitive::Integer(PrimitiveInteger::U128(v)) => match_range!(U128, v),
-                _ => actual == expected_ref
+                _ => actual.equals(expected_ref, context.heap())
             }
         } else {
-            actual == expected_ref
+            actual.equals(expected_ref, context.heap())
         }
     };
 

@@ -9,7 +9,7 @@ use silex_environment::{
     VMContext,
     EnvironmentError,
 };
-use silex_types::{PrimitiveInteger, Type, Primitive, ValueCell, Constant, U256 as u256};
+use silex_types::{PrimitiveInteger, Type, Primitive, RuntimeValue, Constant, U256 as u256};
 use paste::paste;
 
 use crate::EnvironmentBuilder;
@@ -18,9 +18,9 @@ macro_rules! checked_fn {
     // Special cases for div and rem with primitive types to check for division by zero
     ($env: expr, div, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_div_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+            fn [<checked_div_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 
                 // Check for division by zero
                 if other == 0 {
@@ -48,9 +48,9 @@ macro_rules! checked_fn {
     };
     ($env: expr, rem, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_rem_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+            fn [<checked_rem_ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 
                 // Check for division by zero
                 if other == 0 {
@@ -79,11 +79,11 @@ macro_rules! checked_fn {
     // General case for all other operations
     ($env: expr, $op: ident, $t: ident, $f: ident, $param: ident, $param_ty: ident, $cost: expr) => {
         paste! {
-            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+            fn [<checked_ $op _ $f>]<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
                 let other = parameters[0]
-                    .as_ref()
+                    .as_ref(context.heap())
                     .[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 
                 let result = value.[<checked_ $op>](other);
                 Ok(SysCallResult::Return(
@@ -132,10 +132,10 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut VMContext
+                context: &mut VMContext
             ) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
 
                 // Check for division by zero (for primitive types)
                 if other == 0 {
@@ -163,10 +163,10 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut VMContext
+                context: &mut VMContext
             ) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
 
                 // Check for division by zero (for primitive types)
                 if other == 0 {
@@ -194,11 +194,11 @@ macro_rules! wrapping_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut VMContext
+                context: &mut VMContext
             ) -> FnReturnType<M> {
                 // Extract and convert parameters
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
 
                 // Perform the operation with `$op`
                 let result = value.[<$op>](other);
@@ -245,10 +245,10 @@ macro_rules! integer_param_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut VMContext
+                context: &mut VMContext
             ) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
 
                 // Check for division by zero
                 if other == 0 {
@@ -277,10 +277,10 @@ macro_rules! integer_param_fn {
                 zelf: FnInstance,
                 parameters: FnParams,
                 _: &ModuleMetadata<'_, M>,
-                _: &mut VMContext
+                context: &mut VMContext
             ) -> FnReturnType<M> {
-                let other = parameters[0].as_ref().[<as_ $param>]()?;
-                let value = zelf?.[<as_ $f>]()?;
+                let other = parameters[0].as_ref(context.heap()).[<as_ $param>]()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
 
                 let result = value.[<$op>](other);
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(result)).into()))
@@ -315,10 +315,10 @@ macro_rules! register_saturating_fns {
 macro_rules! to_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
+            fn [<to_ $endian _bytes_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 let bytes = value.[<to_ $endian _bytes>]();
-                Ok(SysCallResult::Return(ValueCell::Bytes(bytes.to_vec()).into()))
+                Ok(SysCallResult::Return(RuntimeValue::Bytes(bytes.to_vec()).into()))
             }
 
             $env.register_native_function_with_comment(
@@ -337,8 +337,8 @@ macro_rules! to_endian_bytes {
 macro_rules! from_endian_bytes {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = params[0].as_bytes()?;
+            fn [<from_ $endian _bytes_ $f>]<M>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = params[0].as_bytes(context.heap())?;
                 let slice: &[u8] = &value;
                 let v = [<$f>]::[<from_ $endian _bytes>](slice.try_into().with_context(|| format!(
                     "decoding {}::from_{}_bytes: expected {} bytes, got {}",
@@ -363,8 +363,8 @@ macro_rules! from_endian_bytes {
 macro_rules! integer_no_param_fn {
     ($env: expr, $t: ident, $f: ident, $func: ident) => {
         paste! {
-            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
+            fn [<$f _ $func>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(value.[<$func>]())).into()))
             }
 
@@ -400,8 +400,8 @@ macro_rules! integer_numbers {
 macro_rules! register_reverse_bits {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
-            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
+            fn [<reverse_bits_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>](context.heap())?;
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(value.reverse_bits())).into()))
             }
 
@@ -431,9 +431,9 @@ macro_rules! register_endian_bytes {
 macro_rules! min {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
-                let other = params[0].as_ref().[<as_ $f>]()?;
+            fn [<min_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>](context.heap())?;
+                let other = params[0].as_ref(context.heap()).[<as_ $f>]()?;
 
                 let min = value.min(other);
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(min)).into()))
@@ -455,9 +455,9 @@ macro_rules! min {
 macro_rules! max {
     ($env: expr, $t: ident, $f: ident, $endian: ident) => {
         paste! {
-            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
-                let other = params[0].as_ref().[<as_ $f>]()?;
+            fn [<max_ $f>]<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+                let value = zelf?.[<as_ $f>](context.heap())?;
+                let other = params[0].as_ref(context.heap()).[<as_ $f>]()?;
 
                 let min = value.max(other);
                 Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::$t(min)).into()))
@@ -488,8 +488,8 @@ macro_rules! to_string {
                 _: &ModuleMetadata<'_, M>,
                 context: &mut VMContext
             ) -> FnReturnType<M> {
-                let value = zelf?.as_u256()?;
-                let base = parameters[0].as_ref().as_u32()?;
+                let value = zelf?.as_u256(context.heap())?;
+                let base = parameters[0].as_ref(context.heap()).as_u32()?;
                 
                 // Validate base range
                 if base < 2 || base > 36 {
@@ -535,7 +535,7 @@ macro_rules! to_string {
                 // Scale linearly by bit_width/256, with ceil division
                 let max_digits = ((baseline_256 as u64) * (256 as u64) + 255) / 256;
 
-                context.increase_gas_usage(max_digits as u64)?;
+                context.resources_mut().increase_gas_usage(max_digits as u64)?;
 
                 while !num.is_zero() {
                     let remainder_u256 = num % base_u256;
@@ -567,8 +567,8 @@ macro_rules! to_string {
                 _: &ModuleMetadata<'_, M>,
                 context: &mut VMContext
             ) -> FnReturnType<M> {
-                let value = zelf?.[<as_ $f>]()?;
-                let base = parameters[0].as_ref().as_u32()?;
+                let value = zelf?.[<as_ $f>](context.heap())?;
+                let base = parameters[0].as_ref(context.heap()).as_u32()?;
 
                 // Validate base
                 if base < 2 || base > 36 {
@@ -589,7 +589,7 @@ macro_rules! to_string {
                     (bit_width + base_log2 - 1) / base_log2 + 1
                 };
 
-                context.increase_gas_usage(max_digits as u64)?;
+                context.resources_mut().increase_gas_usage(max_digits as u64)?;
 
                 // Convert to string with the given base
                 let result = match base {

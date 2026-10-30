@@ -22,7 +22,7 @@ macro_rules! bench {
 
                 vm.invoke_entry_chunk($id).expect("entry");
                 vm.run_blocking().expect("run");
-                vm.context_mut().reset_usage();
+                vm.context_mut().resources_mut().reset_usage();
             });
         });
     };

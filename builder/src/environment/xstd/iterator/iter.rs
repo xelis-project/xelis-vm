@@ -1,15 +1,18 @@
 use std::collections::VecDeque;
 
-use silex_environment::{EnvironmentError, VMContext};
+use silex_environment::{EnvironmentError};
 use silex_types::{
     PrimitiveInteger,
+    Opaque,
     OpaqueChild,
     OpaqueWrapper,
     Primitive,
     StackValue,
-    ValueCell,
+    RuntimeValue,
     ValueError,
     ValuePointer,
+    Heap,
+    HeapError,
 };
 
 /// Leaf generator: produces items without consuming another `XIterator`.
@@ -71,8 +74,8 @@ pub const MAX_PIPE_DEPTH: usize = 128;
 /// Ordinary `Clone` preserves shared payload pointers. Opaque ownership
 /// conversion uses `detached_clone` to copy those payloads independently.
 /// Chain/Zip nesting is bounded by the VM, and Drop drains it iteratively.
-#[derive(Debug, Clone, silex_types::Opaque)]
-#[opaque(name = "Iterator", display, children = self.children(), deep_clone = self.detached_clone())]
+#[derive(Debug, Clone, Opaque)]
+#[opaque(name = "Iterator", display, children = self.children(), deep_clone_in = self.detached_clone(heap)?)]
 pub struct XIterator {
     pub(crate) source: BaseSource,
     pub(crate) pipe: VecDeque<PipeStep>,
@@ -88,87 +91,58 @@ impl std::fmt::Display for XIterator {
 }
 
 impl XIterator {
-    /// Detach every VM payload while preserving the source and pipeline state.
-    fn detached_clone(&self) -> Self {
-        fn clone_values(values: &VecDeque<ValuePointer>) -> VecDeque<ValuePointer> {
-            values
-                .iter()
-                .map(|value| ValuePointer::new(value.as_ref().deep_clone()))
-                .collect()
+    pub(crate) fn detached_clone(&self, heap: &mut Heap) -> Result<Self, HeapError> {
+        fn clone_values(items: &VecDeque<ValuePointer>, heap: &mut Heap) -> Result<VecDeque<ValuePointer>, HeapError> {
+            items.iter().map(|id| {
+                let value = id.to_owned(heap)?;
+                let value = heap.detach(value)?;
+                heap.insert(value)
+            }).collect()
         }
         let source = match &self.source {
-            BaseSource::Dequeue(values) => BaseSource::Dequeue(clone_values(values)),
-            BaseSource::Once(value) => BaseSource::Once(
-                value
-                    .as_ref()
-                    .map(|value| ValuePointer::new(value.as_ref().deep_clone())),
-            ),
+            BaseSource::Dequeue(items) => BaseSource::Dequeue(clone_values(items, heap)?),
+            BaseSource::Once(value) => BaseSource::Once(value.map(|id| {
+                let value = id.to_owned(heap)?;
+                let value = heap.detach(value)?;
+                heap.insert(value)
+            }).transpose()?),
             BaseSource::Empty => BaseSource::Empty,
             BaseSource::Unfold { closure, state } => BaseSource::Unfold {
-                closure: closure.to_owned(),
-                state: state.as_ref().map(StackValue::to_owned),
+                closure: closure.to_owned(heap)?,
+                state: state.as_ref().map(|value| value.to_owned(heap)).transpose()?,
             },
         };
-        let pipe = self
-            .pipe
-            .iter()
-            .map(|step| match step {
-                PipeStep::Map(closure) => PipeStep::Map(closure.to_owned()),
-                PipeStep::Filter(closure) => PipeStep::Filter(closure.to_owned()),
-                PipeStep::Chain(child) => PipeStep::Chain(Box::new(child.detached_clone())),
-                PipeStep::Zip(child) => PipeStep::Zip(Box::new(child.detached_clone())),
-                PipeStep::Flatten(values) => PipeStep::Flatten(clone_values(values)),
-                step => step.clone(),
-            })
-            .collect();
-        Self {
-            source,
-            pipe,
-            depth: self.depth,
-        }
+        let pipe = self.pipe.iter().map(|step| Ok(match step {
+            PipeStep::Map(closure) => PipeStep::Map(closure.to_owned(heap)?),
+            PipeStep::Filter(closure) => PipeStep::Filter(closure.to_owned(heap)?),
+            PipeStep::Chain(child) => PipeStep::Chain(Box::new(child.detached_clone(heap)?)),
+            PipeStep::Zip(child) => PipeStep::Zip(Box::new(child.detached_clone(heap)?)),
+            PipeStep::Flatten(items) => PipeStep::Flatten(clone_values(items, heap)?),
+            step => step.clone(),
+        })).collect::<Result<_, HeapError>>()?;
+        Ok(Self { source, pipe, depth: self.depth })
     }
 
-    // Expose direct payloads without advancing the iterator or running closures.
-    fn children(&self) -> impl Iterator<Item = OpaqueChild<'_>> {
-        let dequeue = match &self.source {
-            BaseSource::Dequeue(values) => Some(values),
-            _ => None,
-        };
-        let once = match &self.source {
-            BaseSource::Once(value) => value.as_ref().map(ValuePointer::as_ref),
-            _ => None,
-        };
-        let unfold = match &self.source {
-            BaseSource::Unfold { closure, state } => Some((closure, state)),
-            _ => None,
-        };
-        dequeue
-            .into_iter()
-            .flat_map(|values| values.iter().map(ValuePointer::as_ref))
-            .chain(once)
-            .chain(unfold.into_iter().flat_map(|(closure, state)| {
-                std::iter::once(closure.as_ref()).chain(state.as_ref().map(StackValue::as_ref))
-            }))
-            .chain(self.pipe.iter().filter_map(|step| match step {
-                PipeStep::Map(closure) | PipeStep::Filter(closure) => Some(closure.as_ref()),
-                _ => None,
-            }))
-            .chain(
-                self.pipe
-                    .iter()
-                    .filter_map(|step| match step {
-                        PipeStep::Flatten(values) => Some(values),
-                        _ => None,
-                    })
-                    .flat_map(|values| values.iter().map(ValuePointer::as_ref)),
-            )
-            .map(OpaqueChild::Value)
-            .chain(self.pipe.iter().filter_map(|step| match step {
-                PipeStep::Chain(child) | PipeStep::Zip(child) => {
-                    Some(OpaqueChild::Opaque(child.as_ref()))
-                }
-                _ => None,
-            }))
+    fn children(&self) -> std::vec::IntoIter<OpaqueChild<'_>> {
+        let mut children = Vec::new();
+        match &self.source {
+            BaseSource::Dequeue(items) => children.extend(items.iter().map(|id| OpaqueChild::Pointer(*id))),
+            BaseSource::Once(item) => children.extend(item.iter().map(|id| OpaqueChild::Pointer(*id))),
+            BaseSource::Unfold { closure, state } => {
+                children.push(closure.into());
+                children.extend(state.iter().map(OpaqueChild::from));
+            }
+            BaseSource::Empty => {}
+        }
+        for step in &self.pipe {
+            match step {
+                PipeStep::Map(value) | PipeStep::Filter(value) => children.push(value.into()),
+                PipeStep::Chain(value) | PipeStep::Zip(value) => children.push(OpaqueChild::Opaque(&**value)),
+                PipeStep::Flatten(items) => children.extend(items.iter().map(|id| OpaqueChild::Pointer(*id))),
+                _ => {}
+            }
+        }
+        children.into_iter()
     }
 
     #[inline(always)]
@@ -177,8 +151,8 @@ impl XIterator {
     }
 
     #[inline(always)]
-    pub fn once(value: ValueCell) -> Self {
-        Self { source: BaseSource::Once(Some(ValuePointer::new(value))), pipe: VecDeque::new(), depth: 0 }
+    pub fn once(value: RuntimeValue, heap: &mut Heap) -> Result<Self, HeapError> {
+        Ok(Self { source: BaseSource::Once(Some(heap.insert(value)?)), pipe: VecDeque::new(), depth: 0 })
     }
 
     #[inline(always)]
@@ -197,8 +171,8 @@ impl XIterator {
     }
 
     /// Push a Chain or Zip step, enforcing both pipeline depth and nesting depth.
-    pub(crate) fn push_nested_step(&mut self, step: PipeStep, child_depth: usize, context: &VMContext<'_, '_>) -> Result<(), EnvironmentError> {
-        if child_depth >= context.max_value_depth() {
+    pub(crate) fn push_nested_step(&mut self, step: PipeStep, child_depth: usize, max_depth: usize) -> Result<(), EnvironmentError> {
+        if child_depth >= max_depth {
             return Err(EnvironmentError::Static("iterator nesting too deep"));
         }
         self.push_step(step)?;
@@ -228,16 +202,17 @@ impl XIterator {
     }
 
     fn check_retained_depth(
-        value: &ValueCell,
+        value: &RuntimeValue,
         max_depth: usize,
         nesting: usize,
+        heap: &Heap,
     ) -> Result<(), EnvironmentError> {
         let budget = max_depth
             .checked_sub(nesting)
             .and_then(|depth| depth.checked_sub(1))
             .ok_or(ValueError::MaxDepthReached)?;
 
-        value.calculate_depth(budget)?;
+        value.calculate_depth(heap, budget)?;
 
         Ok(())
     }
@@ -246,9 +221,10 @@ impl XIterator {
         values: &VecDeque<ValuePointer>,
         max_depth: usize,
         nesting: usize,
+        heap: &Heap,
     ) -> Result<(), EnvironmentError> {
         for value in values {
-            Self::check_retained_depth(value.as_ref(), max_depth, nesting)?;
+            Self::check_retained_depth(value.as_ref(heap), max_depth, nesting, heap)?;
         }
 
         Ok(())
@@ -263,7 +239,7 @@ impl XIterator {
     /// Mutates `self` in-place. Returns `Err` if any step requires a callback.
     /// New payloads are checked against the caller's remaining depth budget.
     /// Existing validated data is not rescanned.
-    pub fn next_sync(&mut self, max_depth: usize) -> Result<Option<ValuePointer>, EnvironmentError> {
+    pub fn next_sync(&mut self, max_depth: usize, heap: &mut Heap) -> Result<Option<ValuePointer>, EnvironmentError> {
         /// How to resume the parent iterator after completing a nested descent.
         enum ResumeKind {
             /// Chain: use the nested result as `current`, continue from `pipe_idx + 1`.
@@ -323,7 +299,7 @@ impl XIterator {
 
                     if let Some(inner_item) = pending_front {
                         if let Some(outer_item) = current.take() {
-                            Self::check_retained_depth(outer_item.as_ref(), max_depth, stack.len())?;
+                            Self::check_retained_depth(outer_item.as_ref(heap), max_depth, stack.len(), heap)?;
                             match &mut iter.source {
                                 BaseSource::Dequeue(d) => d.push_front(outer_item),
                                 BaseSource::Once(slot) if slot.is_none() => *slot = Some(outer_item),
@@ -364,11 +340,11 @@ impl XIterator {
                             if let Some(item) = current.take() {
                                 let idx = *counter;
                                 *counter += 1;
-                                let pair = ValueCell::Object(vec![
-                                    Primitive::Integer(PrimitiveInteger::U32(idx)).into(),
+                                let pair = RuntimeValue::Object(vec![
+                                    heap.insert(Primitive::Integer(PrimitiveInteger::U32(idx)).into())?,
                                     item,
                                 ]);
-                                current = Some(ValuePointer::new(pair));
+                                current = Some(heap.insert(pair)?);
                             }
                         }
                         PipeStep::Chain(next_iter) => {
@@ -407,13 +383,13 @@ impl XIterator {
                         PipeStep::Flatten(pending) => {
                             // pending is empty here (non-empty case handled above).
                             if let Some(ptr) = current.take() {
-                                match ptr.to_owned() {
-                                    ValueCell::Object(elements) => {
+                                match ptr.to_owned(heap)? {
+                                    RuntimeValue::Object(elements) => {
                                         *pending = elements.into();
                                         current = pending.pop_front();
-                                        Self::check_pending_depth(&pending, max_depth, stack.len())?;
+                                        Self::check_pending_depth(&pending, max_depth, stack.len(), heap)?;
                                     }
-                                    ValueCell::Opaque(w) => {
+                                    RuntimeValue::Opaque(w) => {
                                         // Drain all items from the inner iterator into
                                         // `pending`, consistent with the array path.
                                         // The inner iterator is a separate owned value
@@ -424,11 +400,11 @@ impl XIterator {
                                         let budget = max_depth.checked_sub(stack.len())
                                             .ok_or(ValueError::MaxDepthReached)?;
                                         pending.clear();
-                                        while let Some(item) = inner.next_sync(budget)? {
+                                        while let Some(item) = inner.next_sync(budget, heap)? {
                                             pending.push_back(item);
                                         }
                                         current = pending.pop_front();
-                                        Self::check_pending_depth(&pending, max_depth, stack.len())?;
+                                        Self::check_pending_depth(&pending, max_depth, stack.len(), heap)?;
                                     }
                                     _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
                                 }
@@ -462,7 +438,7 @@ impl XIterator {
                         ResumeKind::ZipRight(left) => {
                             let zipped = match result {
                                 None => None,
-                                Some(r) => Some(ValuePointer::new(ValueCell::Object(vec![left, r]))),
+                                Some(r) => Some(heap.insert(RuntimeValue::Object(vec![left, r]))?),
                             };
                             resume = Some((frame.pipe_idx + 1, zipped));
                         }
@@ -477,7 +453,7 @@ impl XIterator {
 /// Wraps an `XIterator` into an opaque `StackValue` suitable for VM storage.
 #[inline(always)]
 pub(crate) fn wrap_iter(iter: XIterator) -> StackValue {
-    ValueCell::Opaque(OpaqueWrapper::new(iter)).into()
+    RuntimeValue::Opaque(OpaqueWrapper::new(iter)).into()
 }
 
 /// Custom `Drop` to iteratively drain nested `Chain`/`Zip` iterators.
@@ -521,32 +497,57 @@ impl Drop for XIterator {
 #[cfg(test)]
 mod depth_tests {
     use super::*;
+    use silex_environment::VMContext;
+    fn retains_id(root: &RuntimeValue, expected: ValuePointer, heap: &Heap) -> bool {
+        let mut work = vec![OpaqueChild::Value(root)];
+        while let Some(child) = work.pop() {
+            let cell = match child {
+                OpaqueChild::Pointer(id) => {
+                    if id == expected { return true; }
+                    id.as_ref(heap)
+                }
+                OpaqueChild::Value(value) => value,
+                OpaqueChild::Opaque(value) => { value.visit_children(&mut |child| work.push(child)); continue; }
+                OpaqueChild::Owned(_) => continue,
+            };
+            match cell {
+                RuntimeValue::Object(children) => work.extend(children.iter().map(|id| OpaqueChild::Pointer(*id))),
+                RuntimeValue::Map(children) => work.extend(children.values().map(|id| OpaqueChild::Pointer(*id))),
+                RuntimeValue::Opaque(value) => work.push(OpaqueChild::Opaque(value.inner())),
+                _ => {}
+            }
+        }
+        false
+    }
+
 
     #[test]
     fn owned_iterators_detach_their_source_slots() {
-        let mut slot = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
+        let slot = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
         let iter = XIterator::from_dequeue(VecDeque::from([slot.clone()]));
-        let value = ValueCell::Opaque(OpaqueWrapper::new(iter));
-        let detached = value.deep_clone();
+        let value = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
+        let detached = values.detach(value.clone_ref()).unwrap();
         // No payload references are live while replacing the original slot.
-        unsafe {
-            *slot.as_mut() = detached;
-        }
-        assert_eq!(slot.as_ref().calculate_depth(16).unwrap(), 1);
-        assert_eq!(value.calculate_depth(16).unwrap(), 2);
+        *slot.as_mut(values) = detached;
+        assert_eq!(slot.as_ref(values).calculate_depth(values, 16).unwrap(), 1);
+        assert_eq!(value.calculate_depth(values, 16).unwrap(), 2);
         drop(value);
-        assert_eq!(slot.strong_count(), 1);
+        assert_eq!(slot.as_ref(values).calculate_depth(values, 16).unwrap(), 1);
     }
 
     #[test]
     fn deep_clone_detaches_every_retained_payload_and_nested_iterator() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         for position in 0..10 {
-            let original = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
-            let payload = ValueCell::Object(vec![original.clone()]);
+            let original = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
+            let payload = RuntimeValue::Object(vec![original.clone()]);
             let mut iter = XIterator::empty();
             match position {
-                0 => iter.source = BaseSource::Dequeue(VecDeque::from([payload.into()])),
-                1 => iter.source = BaseSource::Once(Some(payload.into())),
+                0 => iter.source = BaseSource::Dequeue(VecDeque::from([values.insert(payload).unwrap()])),
+                1 => iter.source = BaseSource::Once(Some(values.insert(payload).unwrap())),
                 2 => {
                     iter.source = BaseSource::Unfold {
                         closure: payload.into(),
@@ -563,9 +564,9 @@ mod depth_tests {
                 5 => iter.pipe.push_back(PipeStep::Filter(payload.into())),
                 6 => iter
                     .pipe
-                    .push_back(PipeStep::Flatten(VecDeque::from([payload.into()]))),
+                    .push_back(PipeStep::Flatten(VecDeque::from([values.insert(payload).unwrap()]))),
                 7 | 8 => {
-                    let child = Box::new(XIterator::once(payload));
+                    let child = Box::new(XIterator::once(payload, values).unwrap());
                     iter.depth = 1;
                     iter.pipe.push_back(if position == 7 {
                         PipeStep::Chain(child)
@@ -574,43 +575,40 @@ mod depth_tests {
                     });
                 }
                 9 => {
-                    iter = XIterator::once(ValueCell::Opaque(OpaqueWrapper::new(
-                        XIterator::once(payload),
-                    )))
+                    let inner = XIterator::once(payload, values).unwrap();
+                    iter = XIterator::once(RuntimeValue::Opaque(OpaqueWrapper::new(inner)), values).unwrap()
                 }
                 _ => unreachable!(),
             }
-            let source = ValueCell::Opaque(OpaqueWrapper::new(iter));
-            let snapshot = source.deep_clone();
+            let source = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
+            let snapshot = values.detach(source.clone_ref()).unwrap();
             drop(source);
-            assert_eq!(
-                original.strong_count(),
-                1,
-                "retained source slot at position {position}"
-            );
-            snapshot.calculate_depth(16).unwrap();
+            assert!(!retains_id(&snapshot, original, values), "retained source slot at position {position}");
+            snapshot.calculate_depth(values, 16).unwrap();
         }
     }
 
-    fn payload(depth: usize) -> ValueCell {
-        let mut value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+    fn payload(depth: usize, heap: &mut Heap) -> RuntimeValue {
+        let mut value = RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
         for _ in 0..depth {
-            value = ValueCell::Object(vec![value.into()]);
+            value = RuntimeValue::Object(vec![heap.insert(value).unwrap()]);
         }
         value
     }
-    fn depth(iter: XIterator) -> Result<usize, ValueError> {
-        ValueCell::Opaque(OpaqueWrapper::new(iter)).calculate_depth(16)
+    fn depth(iter: XIterator, heap: &Heap) -> Result<usize, ValueError> {
+        RuntimeValue::Opaque(OpaqueWrapper::new(iter)).calculate_depth(heap, 16)
     }
     #[test]
     fn stored_payloads_obey_the_depth_boundary() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         for position in 0..7 {
             for nesting in [15, 16] {
-                let value = payload(nesting);
+                let value = payload(nesting, values);
                 let mut iter = XIterator::empty();
                 match position {
-                    0 => iter.source = BaseSource::Once(Some(value.into())),
-                    1 => iter.source = BaseSource::Dequeue(VecDeque::from([value.into()])),
+                    0 => iter.source = BaseSource::Once(Some(values.insert(value).unwrap())),
+                    1 => iter.source = BaseSource::Dequeue(VecDeque::from([values.insert(value).unwrap()])),
                     2 => {
                         iter.source = BaseSource::Unfold {
                             closure: value.into(),
@@ -627,23 +625,26 @@ mod depth_tests {
                     5 => iter.pipe.push_back(PipeStep::Filter(value.into())),
                     6 => iter
                         .pipe
-                        .push_back(PipeStep::Flatten(VecDeque::from([value.into()]))),
+                        .push_back(PipeStep::Flatten(VecDeque::from([values.insert(value).unwrap()]))),
                     _ => unreachable!(),
                 }
                 if nesting == 15 {
-                    assert_eq!(depth(iter).unwrap(), 16);
+                    assert_eq!(depth(iter, values).unwrap(), 16);
                 } else {
-                    assert!(matches!(depth(iter), Err(ValueError::MaxDepthReached)));
+                    assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
                 }
             }
         }
     }
     #[test]
     fn chain_and_zip_include_nested_payload_depth() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         for zip in [false, true] {
             for nesting in [14, 15] {
                 let mut iter = XIterator::empty();
-                let child = Box::new(XIterator::once(payload(nesting)));
+                let value = payload(nesting, values);
+                let child = Box::new(XIterator::once(value, values).unwrap());
                 iter.depth = 1;
                 iter.pipe.push_back(if zip {
                     PipeStep::Zip(child)
@@ -651,15 +652,17 @@ mod depth_tests {
                     PipeStep::Chain(child)
                 });
                 if nesting == 14 {
-                    assert_eq!(depth(iter).unwrap(), 16);
+                    assert_eq!(depth(iter, values).unwrap(), 16);
                 } else {
-                    assert!(matches!(depth(iter), Err(ValueError::MaxDepthReached)));
+                    assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
                 }
             }
         }
     }
     #[test]
     fn deeply_nested_empty_iterators_are_bounded_without_recursion() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         let mut iter = XIterator::empty();
         for nesting in 1..=1000 {
             let mut parent = XIterator::empty();
@@ -667,38 +670,38 @@ mod depth_tests {
             parent.pipe.push_back(PipeStep::Chain(Box::new(iter)));
             iter = parent;
         }
-        assert!(matches!(depth(iter), Err(ValueError::MaxDepthReached)));
+        assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
     }
     #[test]
     fn cyclic_payloads_are_bounded_without_consuming_the_iterator() {
-        let mut pointer = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
+        let pointer = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
         let mut iter = XIterator::empty();
         iter.source = BaseSource::Once(Some(pointer.clone()));
-        let value = ValueCell::Opaque(OpaqueWrapper::new(iter));
+        let value = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
         // SAFETY: no payload references are live during these mutations.
-        unsafe {
-            *pointer.as_mut() = ValueCell::Object(vec![pointer.clone()]);
-        }
-        let result = value.calculate_depth(16);
-        unsafe {
-            *pointer.as_mut() = Primitive::Integer(PrimitiveInteger::U64(1)).into();
-        }
+        *pointer.as_mut(values) = RuntimeValue::Object(vec![pointer.clone()]);
+        let result = value.calculate_depth(values, 16);
+        *pointer.as_mut(values) = Primitive::Integer(PrimitiveInteger::U64(1)).into();
         assert!(matches!(result, Err(ValueError::MaxDepthReached)));
-        assert_eq!(value.calculate_depth(16).unwrap(), 1);
+        assert_eq!(value.calculate_depth(values, 16).unwrap(), 1);
     }
 
     #[test]
     fn flatten_checks_only_newly_retained_payloads() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         for nesting in [16, 17] {
-            let mut iter = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+            let mut iter = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into(), values).unwrap();
             for _ in 0..nesting {
                 iter.push_step(PipeStep::Enumerate(0)).unwrap();
             }
             iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-            let result = iter.next_sync(16);
+            let result = iter.next_sync(16, values);
             if nesting == 16 {
-                assert_eq!(result.unwrap().unwrap().as_ref(), &Primitive::Integer(PrimitiveInteger::U32(0)).into());
-                assert_eq!(depth(iter).unwrap(), 16);
+                assert_eq!(result.unwrap().unwrap().as_ref(values).as_u32().unwrap(), 0);
+                assert_eq!(depth(iter, values).unwrap(), 16);
             } else {
                 assert!(matches!(
                     result,
@@ -710,45 +713,48 @@ mod depth_tests {
 
     #[test]
     fn flatten_pending_budget_includes_nested_iterator_position() {
-        let mut child = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
+        let mut child = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into(), values).unwrap();
         for _ in 0..16 {
             child.push_step(PipeStep::Enumerate(0)).unwrap();
         }
         child.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
         let mut parent = XIterator::empty();
         parent
-            .push_nested_step(PipeStep::Chain(Box::new(child)), 0, &VMContext::default())
+            .push_nested_step(PipeStep::Chain(Box::new(child)), 0, 16)
             .unwrap();
         assert!(matches!(
-            parent.next_sync(16),
+            parent.next_sync(16, values),
             Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
         ));
     }
 
     #[test]
     fn next_does_not_scan_unconsumed_payloads() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         use std::sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
         };
-        #[derive(Debug, Clone, silex_types::Opaque)]
+        #[derive(Debug, Clone, Opaque)]
         #[opaque(children = self.children())]
         struct Probe(Arc<AtomicUsize>);
         impl Probe {
-            fn children(&self) -> impl Iterator<Item = &ValueCell> {
+            fn children(&self) -> impl Iterator<Item = &RuntimeValue> {
                 self.0.fetch_add(1, Ordering::Relaxed);
                 std::iter::empty()
             }
         }
         let calls = Arc::new(AtomicUsize::new(0));
         let iter = XIterator::from_dequeue(VecDeque::from([
-            Primitive::Integer(PrimitiveInteger::U64(1)).into(),
-            ValueCell::Opaque(OpaqueWrapper::new(Probe(calls.clone())))
-                .into(),
+            values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap(),
+            values.insert(RuntimeValue::Opaque(OpaqueWrapper::new(Probe(calls.clone())))).unwrap(),
         ]));
         let instance: StackValue =
-            ValueCell::Opaque(OpaqueWrapper::new(iter)).into();
-        instance.as_ref().calculate_depth(16).unwrap();
+            RuntimeValue::Opaque(OpaqueWrapper::new(iter)).into();
+        instance.as_ref(values).calculate_depth(values, 16).unwrap();
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         calls.store(0, Ordering::Relaxed);
         let module = silex_bytecode::Module::new();
@@ -762,29 +768,31 @@ mod depth_tests {
             Ok(instance),
             vec![],
             &metadata,
-            &mut VMContext::default(),
+            &mut context,
         )
         .unwrap();
         let silex_environment::SysCallResult::Return(value) = result else {
             panic!("expected an item");
         };
-        assert_eq!(value.as_u64().unwrap(), 1);
+        assert_eq!(value.as_u64(context.heap()).unwrap(), 1);
         assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn flatten_checks_transformed_items_reinserted_into_the_source() {
+        let mut context = VMContext::default();
+        let values = context.heap_mut();
         let mut iter = XIterator::from_dequeue(VecDeque::from([
-            Primitive::Integer(PrimitiveInteger::U64(1)).into(),
-            Primitive::Integer(PrimitiveInteger::U64(2)).into(),
+            values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap(),
+            values.insert(Primitive::Integer(PrimitiveInteger::U64(2)).into()).unwrap(),
         ]));
         for _ in 0..16 {
             iter.push_step(PipeStep::Enumerate(0)).unwrap();
         }
         iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-        assert!(iter.next_sync(16).unwrap().is_some());
+        assert!(iter.next_sync(16, values).unwrap().is_some());
         assert!(matches!(
-            iter.next_sync(16),
+            iter.next_sync(16, values),
             Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
         ));
     }

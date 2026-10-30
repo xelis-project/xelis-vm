@@ -1,4 +1,4 @@
-use silex_types::{PrimitiveInteger, ClosureType, Constant, Primitive, StackValue, Type, U256, ValueCell};
+use silex_types::{PrimitiveInteger, ClosureType, Constant, Primitive, StackValue, Type, U256, RuntimeValue, Heap};
 use silex_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult};
 use crate::ConstFunctionError;
 
@@ -118,109 +118,87 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 }
 
 // native functions
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-    let len = zelf?.as_vec()?.len();
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let len = zelf?.as_vec(context.heap())?.len();
     Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
 fn push<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let mut zelf = zelf?;
-    let array = zelf.as_mut().as_mut_vec()?;
-    if array.len() >= u32::MAX as usize {
+    if zelf.as_vec(heap)?.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
-
     let param = parameters.remove(0);
     let depth = param.depth();
-    let value = param.into_owned();
-
-    value.calculate_depth(
-        context.max_value_depth()
-            .saturating_sub(depth.saturating_add(1))
-    )?;
-
-    array.push(value.into());
-
+    let value = param.into_owned(heap)?;
+    value.calculate_depth(heap, resources.max_value_depth().saturating_sub(depth.saturating_add(1)))?;
+    let id = heap.insert(value)?;
+    zelf.as_mut_vec(heap)?.push(id);
     Ok(SysCallResult::None)
 }
 
 fn remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let index = parameters.remove(0)
-        .as_u32()? as usize;
-
+    let (heap, resources) = context.split_heap();
+    let index = parameters.remove(0).as_u32(heap)? as usize;
     let mut zelf = zelf?;
-    let array = zelf.as_mut().as_mut_vec()?;
-
-    if index >= array.len() {
-        return Err(EnvironmentError::OutOfBounds(index, array.len()))
+    let len = zelf.as_vec(heap)?.len();
+    if index >= len {
+        return Err(EnvironmentError::OutOfBounds(index, len))
     }
-
-    // moving all elements after the index to the left is costly
-    let shift_len = array.len() - index;
-    context.increase_gas_usage((shift_len as u64) * 5)?;
-
-    Ok(SysCallResult::Return(array.remove(index).into()))
+    let shift_len = len - index;
+    resources.increase_gas_usage((shift_len as u64) * 5)?;
+    Ok(SysCallResult::Return(zelf.as_mut_vec(heap)?.remove(index).into()))
 }
 
 fn swap_remove<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let index = parameters.remove(0).as_u32()? as usize;
-
+    let (heap, resources) = context.split_heap();
+    let index = parameters.remove(0).as_u32(heap)? as usize;
     let mut zelf = zelf?;
-    let array = zelf.as_mut().as_mut_vec()?;
+    let array = zelf.as_vec(heap)?;
     if index >= array.len() {
         return Err(EnvironmentError::OutOfBounds(index, array.len()))
     }
-
-    // Moving the last element into the removed slot is still proportional to
-    // the size of the value being moved.
-    let memory = array[index].as_ref().calculate_memory_usage(context.memory_left())?;
-    context.increase_gas_usage(memory as u64)?;
-
-    Ok(SysCallResult::Return(array.swap_remove(index).into()))
+    // Preserve the legacy size-based charge; removal itself moves a handle.
+    let memory = array[index].as_ref(heap).calculate_memory_usage(heap, resources.memory_left())?;
+    resources.increase_gas_usage(memory as u64)?;
+    Ok(SysCallResult::Return(zelf.as_mut_vec(heap)?.swap_remove(index).into()))
 }
 
 fn insert<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let index = parameters.remove(0).as_u32()? as usize;
+    let (heap, resources) = context.split_heap();
+    let index = parameters.remove(0).as_u32(heap)? as usize;
     let param = parameters.remove(0);
     let depth = param.depth();
-    let value = param.into_owned();
-
+    let value = param.into_owned(heap)?;
     let mut zelf = zelf?;
-    let array = zelf.as_mut().as_mut_vec()?;
-
-    if index >= array.len() {
-        return Err(EnvironmentError::OutOfBounds(index, array.len()))
+    let len = zelf.as_vec(heap)?.len();
+    if index >= len {
+        return Err(EnvironmentError::OutOfBounds(index, len))
     }
-
-    if array.len() >= u32::MAX as usize || array.len() + 1 > u32::MAX as usize {
+    if len >= u32::MAX as usize || len + 1 > u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
     }
-
-    value.calculate_depth(
-        context.max_value_depth()
-            .saturating_sub(depth.saturating_add(1))
-    )?;
-
-    // moving all elements after the index to the right is costly
-    let shift_len = array.len() - index;
-    context.increase_gas_usage((shift_len as u64) * 5)?;
-
-    array.insert(index, value.into());
-
+    value.calculate_depth(heap, resources.max_value_depth().saturating_sub(depth.saturating_add(1)))?;
+    let shift_len = len - index;
+    resources.increase_gas_usage((shift_len as u64) * 5)?;
+    let id = heap.insert(value)?;
+    zelf.as_mut_vec(heap)?.insert(index, id);
     Ok(SysCallResult::None)
 }
 
 fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let value = parameters.remove(0);
-    let handle = value.as_ref();
+    let handle = value.as_ref(heap);
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
+    let vec = zelf.as_vec(heap)?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage
-    context.increase_gas_usage((vec.len() as u64) * 5)?;
+    resources.increase_gas_usage((vec.len() as u64) * 5)?;
 
     for (i, v) in vec.iter().enumerate() {
-        if *v.as_ref() == *handle {
+        if v.as_ref(heap).equals(handle, heap) {
             return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(i as u32)).into()))
         }
     }
@@ -228,9 +206,9 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     Ok(Primitive::Null.into())
 }
 
-fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let mut zelf = zelf?;
-    let array = zelf.as_mut().as_mut_vec()?;
+    let array = zelf.as_mut(context.heap_mut()).as_mut_vec()?;
     if let Some(value) = array.pop() {
         Ok(SysCallResult::Return(value.into()))
     } else {
@@ -239,107 +217,90 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMCo
 }
 
 fn slice<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let param = parameters.remove(0);
-    let range = param.as_ref();
-    let range = range.as_range()?;
+    let range = param.as_ref(heap).as_range()?;
     let start = Primitive::Integer(range.start()).as_u32()?;
     let end = Primitive::Integer(range.end()).as_u32()?;
-
-    let mut zelf = zelf?;
-    let vec = zelf.as_mut().as_mut_vec()?;
-    let len = vec.len() as u32;
+    let zelf = zelf?;
+    let array = zelf.as_vec(heap)?;
+    let len = array.len() as u32;
     if start >= len || end >= len || start >= end {
         return Err(EnvironmentError::InvalidRange(start, end))
     }
-
-    // we need to go through all elements in the slice, thus we increase the gas usage
-    context.increase_gas_usage((vec.len() as u64) * 5)?;
-
-    let mut slice = Vec::new();
-    for i in start..end {
-        // due to ValuePointer, slice are connected.
-        let value = vec.get(i as usize)
-            .cloned()
-            .ok_or(EnvironmentError::NoValueFoundAtIndex(i))?;
-        slice.push(value);
-    }
-
-    Ok(SysCallResult::Return(ValueCell::Object(slice).into()))
+    resources.increase_gas_usage((array.len() as u64) * 5)?;
+    let slice = array[start as usize..end as usize].to_vec();
+    Ok(SysCallResult::Return(RuntimeValue::Object(slice).into()))
 }
 
 fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let value = parameters.remove(0);
-    let handle = value.as_ref();
+    let handle = value.as_ref(heap);
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
+    let vec = zelf.as_vec(heap)?;
 
     // we need to go through all elements in the slice, thus we increase the gas usage
-    context.increase_gas_usage((vec.len() as u64) * 5)?;
+    resources.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| *v.as_ref() == *handle).is_some()).into()))
+    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| v.as_ref(heap).equals(handle, heap)).is_some()).into()))
 }
 
-fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
-    let index = parameters.remove(0).as_u32()? as usize;
+fn get<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let index = parameters.remove(0).as_u32(context.heap())? as usize;
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
+    let vec = zelf.as_vec(context.heap())?;
     if let Some(value) = vec.get(index) {
-        Ok(SysCallResult::Return(value.to_owned().into()))
+        Ok(SysCallResult::Return(value.to_owned(context.heap())?.into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
+    let vec = zelf.as_vec(context.heap())?;
     if let Some(value) = vec.first() {
-        Ok(SysCallResult::Return(value.to_owned().into()))
+        Ok(SysCallResult::Return(value.to_owned(context.heap())?.into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
-fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _: &mut VMContext) -> FnReturnType<M> {
+fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
+    let vec = zelf.as_vec(context.heap())?;
     if let Some(value) = vec.last() {
-        Ok(SysCallResult::Return(value.to_owned().into()))
+        Ok(SysCallResult::Return(value.to_owned(context.heap())?.into()))
     } else {
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
 }
 
 fn extend<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let other = parameters.remove(0)
-        .into_owned()
-        .to_vec()?;
-
-    context.increase_gas_usage(other.len() as _)?;
-
+    let (heap, resources) = context.split_heap();
+    let other = parameters.remove(0).into_owned(heap)?.to_vec()?;
+    resources.increase_gas_usage(other.len() as _)?;
     let mut zelf = zelf?;
-    // SAFETY: we have exclusive access to zelf
-    let vec = zelf.as_mut().as_mut_vec()?;
-
-    if other.len() as u64 + vec.len() as u64 > u32::MAX as u64 {
+    let array = zelf.as_mut_vec(heap)?;
+    if other.len() as u64 + array.len() as u64 > u32::MAX as u64 {
         return Err(EnvironmentError::OutOfMemory)
     }
-
-    vec.extend(other);
-
+    array.extend(other);
     Ok(SysCallResult::None)
 }
 
 fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let zelf = zelf?;
-    let vec = zelf.as_vec()?;
-    context.increase_gas_usage(vec.len() as u64)?;
+    let vec = zelf.as_vec(heap)?;
+    resources.increase_gas_usage(vec.len() as u64)?;
 
     let mut result = Vec::new();
     for el in vec.iter() {
-        let v = el.as_ref().as_vec()?;
+        let v = el.as_ref(heap).as_vec()?;
 
-        context.increase_gas_usage(v.len() as u64)?;
+        resources.increase_gas_usage(v.len() as u64)?;
         // Check len is <= u32::MAX
         if result.len() as u64 + v.len() as u64 > u32::MAX as u64 {
             return Err(EnvironmentError::OutOfMemory)
@@ -348,7 +309,7 @@ fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: 
         result.extend(v.iter().cloned());
     }
 
-    Ok(SysCallResult::Return(ValueCell::Object(result).into()))
+    Ok(SysCallResult::Return(RuntimeValue::Object(result).into()))
 }
 
 fn const_with(mut params: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
@@ -359,96 +320,80 @@ fn const_with(mut params: Vec<Constant>) -> Result<Constant, ConstFunctionError>
 }
 
 fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let zelf = zelf?;
-    let values = zelf.as_vec()?;
+    let values = zelf.as_vec(heap)?;
     let len = values.len();
 
-    context.increase_gas_usage(len as _)?;
+    resources.increase_gas_usage(len as _)?;
 
     let bytes = values.iter()
-        .map(|v| v.as_ref().as_u8())
+        .map(|v| v.as_ref(heap).as_u8())
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(SysCallResult::Return(ValueCell::Bytes(bytes).into()))
+    Ok(SysCallResult::Return(RuntimeValue::Bytes(bytes).into()))
 }
 
 fn split_off<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let index = parameters.remove(0).as_u32()? as usize;
-
+    let (heap, resources) = context.split_heap();
+    let index = parameters.remove(0).as_u32(heap)? as usize;
     let mut zelf = zelf?;
-    let vec = zelf.as_mut().as_mut_vec()?;
-    if index > vec.len() {
-        return Err(EnvironmentError::OutOfBounds(index, vec.len()))
+    let len = zelf.as_vec(heap)?.len();
+    if index > len {
+        return Err(EnvironmentError::OutOfBounds(index, len))
     }
-
-    // we need to allocate all elements in the new slice, thus we increase the gas usage
-    context.increase_gas_usage((vec.len() - index) as u64)?;
-
-    let second = vec.split_off(index);
-    Ok(SysCallResult::Return(ValueCell::Object(second).into()))
+    resources.increase_gas_usage((len - index) as u64)?;
+    let second = zelf.as_mut_vec(heap)?.split_off(index);
+    Ok(SysCallResult::Return(RuntimeValue::Object(second).into()))
 }
 
 fn truncate<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let size = parameters.remove(0).as_u32()? as usize;
-
+    let (heap, resources) = context.split_heap();
+    let size = parameters.remove(0).as_u32(heap)? as usize;
     let mut zelf = zelf?;
-    let vec = zelf.as_mut().as_mut_vec()?;
-    if size > vec.len() {
-        return Err(EnvironmentError::OutOfBounds(size, vec.len()))
+    let len = zelf.as_vec(heap)?.len();
+    if size > len {
+        return Err(EnvironmentError::OutOfBounds(size, len))
     }
-
-    context.increase_gas_usage((vec.len() - size) as u64)?;
-    vec.truncate(size);
-
+    resources.increase_gas_usage((len - size) as u64)?;
+    zelf.as_mut_vec(heap)?.truncate(size);
     Ok(SysCallResult::None)
 }
 
 fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let mut zelf = zelf?;
-
-    let ascending = params[0].as_bool()?;
-    let vec = zelf.as_mut().as_mut_vec()?;
-
-    if vec.is_empty() {
+    let ascending = params[0].as_bool(heap)?;
+    let array = zelf.as_vec(heap)?;
+    if array.is_empty() {
         return Ok(SysCallResult::None)
     }
-
-    // Len cannot be zero as we checked for first above
-    let len = vec.len() as u64;
-    // n × (log₂n + 5) without float
+    let len = array.len() as u64;
     let log2n = len.ilog2() as u64;
-    context.increase_gas_usage(len * (log2n + 5))?;
-
-    // use the OrdKey enum to compare values
-    let mut keys = Vec::with_capacity(vec.len());
-    for (i, v) in vec.iter().enumerate() {
-        let key = OrdKey::from_value(v.to_owned())?;
-        keys.push((i, key));
+    resources.increase_gas_usage(len * (log2n + 5))?;
+    let mut keys = Vec::with_capacity(array.len());
+    for (i, id) in array.iter().enumerate() {
+        keys.push((i, OrdKey::from_value(id.to_owned(heap)?)?));
     }
-
     if ascending {
         keys.sort_by(|a, b| a.1.cmp(&b.1));
     } else {
         keys.sort_by(|a, b| b.1.cmp(&a.1));
     }
-
-    let cloned = vec.clone();
+    let original = array.clone();
+    let array = zelf.as_mut_vec(heap)?;
     for (new_index, (original_index, _)) in keys.into_iter().enumerate() {
-        vec[new_index] = cloned[original_index].clone();
+        array[new_index] = original[original_index];
     }
-
     Ok(SysCallResult::None)
 }
 
 fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let mut zelf = zelf?;
-    let vec = zelf.as_mut().as_mut_vec()?;
-
-    let len = vec.len();
-    context.increase_gas_usage((len / 2) as u64)?;
-
-    vec.reverse();
-
+    let len = zelf.as_vec(heap)?.len();
+    resources.increase_gas_usage((len / 2) as u64)?;
+    zelf.as_mut_vec(heap)?.reverse();
     Ok(SysCallResult::None)
 }
 
@@ -460,14 +405,15 @@ pub struct MapState {
 }
 
 fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+    let (heap, resources) = context.split_heap();
     let key_fn = parameters.remove(0);
     let mut zelf = zelf?;
 
     // First we need to prepare a state with all the mapped keys
-    let vec = zelf.as_mut().as_mut_vec()?;
+    let vec = zelf.as_mut(heap).as_mut_vec()?;
 
     let len = vec.len();
-    context.increase_gas_usage(len as u64 * 10)?;
+    resources.increase_gas_usage(len as u64 * 10)?;
 
     let Some(first) = vec.first().cloned() else {
         return Ok(SysCallResult::Return(zelf))
@@ -476,6 +422,7 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
     fn map_callback<M>(
         state: CallbackState,
         params: FnParams,
+        heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut state = state
             .downcast::<MapState>()
@@ -486,14 +433,15 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             .ok_or(EnvironmentError::InvalidCallbackParameters)?
             .clone();
 
-        let tmp = state.tmp
-            .as_mut_vec()?;
-        tmp.push(key.into_owned().into());
+        let key = key.into_owned(heap)?;
+        let key = heap.insert(key)?;
+        let tmp = state.tmp.as_mut_vec(heap)?;
+        tmp.push(key);
 
         state.index += 1;
 
         let Some(next) = state.ptr
-            .as_mut_vec()?
+            .as_mut_vec(heap)?
             .get(state.index)
             .cloned() else {
                 return Ok(SysCallResult::Return(state.tmp))
@@ -515,7 +463,7 @@ fn map<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>,
             closure_ptr: key_fn,
             index: 0,
             ptr: zelf.into(),
-            tmp: ValueCell::Object(Vec::new()).into(),
+            tmp: RuntimeValue::Object(Vec::new()).into(),
         }),
         callback_params_len: 1,
         callback: CallbackType::Sync(map_callback),
@@ -561,15 +509,15 @@ impl OrdKey {
         }
     }
 
-    fn from_value(p: ValueCell) -> Result<Self, EnvironmentError> {
+    fn from_value(p: RuntimeValue) -> Result<Self, EnvironmentError> {
         match p {
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(v))) => Ok(OrdKey::U8(v)),
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U16(v))) => Ok(OrdKey::U16(v)),
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(v))) => Ok(OrdKey::U32(v)),
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(v))) => Ok(OrdKey::U64(v)),
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U128(v))) => Ok(OrdKey::U128(v)),
-            ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U256(v))) => Ok(OrdKey::U256(v)),
-            ValueCell::Bytes(v) => Ok(OrdKey::Bytes(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(v))) => Ok(OrdKey::U8(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U16(v))) => Ok(OrdKey::U16(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(v))) => Ok(OrdKey::U32(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(v))) => Ok(OrdKey::U64(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U128(v))) => Ok(OrdKey::U128(v)),
+            RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U256(v))) => Ok(OrdKey::U256(v)),
+            RuntimeValue::Bytes(v) => Ok(OrdKey::Bytes(v)),
             _ => Err(EnvironmentError::Static("only supports primitive types that implement Ord")),
         }
     }
@@ -587,12 +535,13 @@ enum OrdKeyKind {
 }
 
 fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let ascending = parameters.remove(1).as_bool()?;
+    let (heap, resources) = context.split_heap();
+    let ascending = parameters.remove(1).as_bool(heap)?;
     let key_fn = parameters.remove(0);
     let mut zelf = zelf?;
 
     // First we need to prepare a state with all the mapped keys
-    let vec = zelf.as_mut().as_mut_vec()?;
+    let vec = zelf.as_mut(heap).as_mut_vec()?;
 
     let Some(first) = vec.first().cloned() else {
         return Ok(SysCallResult::None)
@@ -602,11 +551,12 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
     let len = vec.len() as u64;
     // n × (log₂n + 5) without float
     let log2n = len.ilog2() as u64;
-    context.increase_gas_usage(len * (log2n + 5))?;
+    resources.increase_gas_usage(len * (log2n + 5))?;
 
     fn sort_by_key_callback<M>(
         state: CallbackState,
         params: FnParams,
+        heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut state = state
             .downcast::<SortByKeyState>()
@@ -617,7 +567,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
             .ok_or(EnvironmentError::InvalidCallbackParameters)?
             .clone();
 
-        let mapped_key = OrdKey::from_value(key.into_owned())?;
+        let mapped_key = OrdKey::from_value(key.into_owned(heap)?)?;
 
         let kind = mapped_key.kind();
         match state.kind {
@@ -635,7 +585,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
         state.index += 1;
 
         let next = state.ptr
-            .as_mut_vec()?
+            .as_mut_vec(heap)?
             .get(state.index)
             .cloned();
         match next {
@@ -651,7 +601,7 @@ fn sort_by_key<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata
             None => {
                 // Cache is built, now we can sort the array based on it
                 let array = state.ptr
-                    .as_mut_vec()?;
+                    .as_mut_vec(heap)?;
 
                 let mut keys = state.cache;
 

@@ -1,28 +1,13 @@
 use std::ops::{Deref, DerefMut};
 use runtime_context::Context;
 use crate::EnvironmentError;
+use silex_types::{StackValue, RuntimeValue, Heap};
 
 pub struct VMContext<'ty, 'r> {
     // main Context
     context: Context<'ty, 'r>,
-    // Configurable gas limit for an execution
-    // By default, set to u64::MAX because
-    // no program should be able to run indefinitely
-    max_gas: u64,
-    // Price per byte of memory
-    memory_price_per_byte: u64,
-    // Max value depth allowed
-    // This is used to prevent stack overflow attacks
-    max_value_depth: usize,
-    // Max memory usage allowed
-    max_memory_usage: usize,
-    // Current gas used in the execution
-    current_gas: u64,
-    // Current memory used in the execution
-    current_memory: usize,
-    // Peak memory used in the execution (Ethereum-style)
-    // Only pay gas when growing beyond this peak
-    peak_memory: usize,
+    heap: Heap,
+    resources: VMResources,
 }
 
 impl Default for VMContext<'_, '_> {
@@ -44,16 +29,108 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     pub fn with_context(context: Context<'ty, 'r>) -> Self {
         Self {
             context,
-            max_gas: u64::MAX,
-            current_gas: 0,
-            memory_price_per_byte: 1,
-            max_value_depth: 16,
-            max_memory_usage: 1024 * 1024 * 128, // 128 MB
-            current_memory: 0,
-            peak_memory: 0,
+            heap: Heap::new(),
+            resources: VMResources {
+                max_gas: u64::MAX,
+                current_gas: 0,
+                memory_price_per_byte: 1,
+                max_value_depth: 16,
+                max_memory_usage: 1024 * 1024 * 128, // 128 MB
+                current_memory: 0,
+                peak_memory: 0,
+            },
         }
     }
 
+    #[inline]
+    pub fn heap(&self) -> &Heap {
+        &self.heap
+    }
+
+    #[inline]
+    pub fn heap_mut(&mut self) -> &mut Heap {
+        &mut self.heap
+    }
+
+    /// Temporarily moves a node out of its slot so an operation can also use
+    /// the heap. The slot is restored before the operation returns.
+    pub fn with_value<R>(&mut self, value: &mut StackValue, operation: impl FnOnce(&mut RuntimeValue, &mut Self) -> R) -> R {
+        let mut cell = std::mem::take(value.as_mut(&mut self.heap));
+        let result = operation(&mut cell, self);
+        *value.as_mut(&mut self.heap) = cell;
+        result
+    }
+
+    #[inline]
+    pub fn split_heap(&mut self) -> (&mut Heap, &mut VMResources) {
+        (&mut self.heap, &mut self.resources)
+    }
+
+    #[inline]
+    pub fn resources(&self) -> &VMResources {
+        &self.resources
+    }
+
+    #[inline]
+    pub fn resources_mut(&mut self) -> &mut VMResources {
+        &mut self.resources
+    }
+
+}
+
+impl<'ty, 'r> Deref for VMContext<'ty, 'r> {
+    type Target = Context<'ty, 'r>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.context
+    }
+}
+
+impl<'ty, 'r> AsRef<Context<'ty, 'r>> for VMContext<'ty, 'r> {
+    #[inline]
+    fn as_ref(&self) -> &Context<'ty, 'r> {
+        &self.context
+    }
+}
+
+impl<'ty, 'r> AsMut<Context<'ty, 'r>> for VMContext<'ty, 'r> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut Context<'ty, 'r> {
+        &mut self.context
+    }
+}
+
+impl<'ty, 'r> DerefMut for VMContext<'ty, 'r> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.context
+    }
+}
+/// Execution accounting is separate from value storage so native functions can
+/// charge the existing costs while borrowing heap cells.
+pub struct VMResources {
+    // Configurable gas limit for an execution
+    // By default, set to u64::MAX because
+    // no program should be able to run indefinitely
+    max_gas: u64,
+    // Price per byte of memory
+    memory_price_per_byte: u64,
+    // Max value depth allowed
+    // This is used to prevent stack overflow attacks
+    max_value_depth: usize,
+    // Max memory usage allowed
+    max_memory_usage: usize,
+    // Current gas used in the execution
+    current_gas: u64,
+    // Current memory used in the execution
+    current_memory: usize,
+    // Peak memory used in the execution (Ethereum-style)
+    // Only pay gas when growing beyond this peak
+    peak_memory: usize,
+}
+
+impl VMResources {
     // Set a gas limit for the Context
     #[inline(always)]
     pub fn set_gas_limit(&mut self, gas: u64) {
@@ -212,35 +289,5 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
         self.current_gas = 0;
         self.current_memory = 0;
         self.peak_memory = 0;
-    }
-}
-
-impl<'ty, 'r> Deref for VMContext<'ty, 'r> {
-    type Target = Context<'ty, 'r>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.context
-    }
-}
-
-impl<'ty, 'r> AsRef<Context<'ty, 'r>> for VMContext<'ty, 'r> {
-    #[inline]
-    fn as_ref(&self) -> &Context<'ty, 'r> {
-        &self.context
-    }
-}
-
-impl<'ty, 'r> AsMut<Context<'ty, 'r>> for VMContext<'ty, 'r> {
-    #[inline]
-    fn as_mut(&mut self) -> &mut Context<'ty, 'r> {
-        &mut self.context
-    }
-}
-
-impl<'ty, 'r> DerefMut for VMContext<'ty, 'r> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.context
     }
 }

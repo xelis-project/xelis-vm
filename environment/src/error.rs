@@ -1,5 +1,5 @@
 use thiserror::Error;
-use silex_types::ValueError;
+use silex_types::{HeapError, ValueError};
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {
@@ -28,7 +28,9 @@ pub enum EnvironmentError {
     #[error("Invalid type")]
     InvalidType,
     #[error(transparent)]
-    ValueError(#[from] ValueError),
+    ValueError(ValueError),
+    #[error(transparent)]
+    HeapError(#[from] HeapError),
     #[error("Invalid range: too large")]
     RangeTooLarge,
     #[error("Not enough gas: limit {limit}, actual {actual}")]
@@ -57,5 +59,14 @@ pub enum EnvironmentError {
 impl From<&'static str> for EnvironmentError {
     fn from(value: &'static str) -> Self {
         EnvironmentError::Static(value)
+    }
+}
+
+impl From<ValueError> for EnvironmentError {
+    fn from(error: ValueError) -> Self {
+        match error {
+            ValueError::HeapError(error) => Self::HeapError(error),
+            other => Self::ValueError(other),
+        }
     }
 }

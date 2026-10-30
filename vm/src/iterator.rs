@@ -1,4 +1,4 @@
-use silex_types::{PrimitiveInteger, StackValue, Primitive, ValueCell, ValueError};
+use silex_types::{PrimitiveInteger, StackValue, Primitive, RuntimeValue, ValueError, Heap};
 
 #[derive(Debug)]
 pub struct ValueIterator {
@@ -7,32 +7,32 @@ pub struct ValueIterator {
 }
 
 impl ValueIterator {
-    pub fn new(inner: StackValue) -> Result<Self, ValueError> {
-        let index = match inner.as_ref() {
-            ValueCell::Primitive(Primitive::Range(range)) => range.start(),
+    pub fn new(inner: StackValue, heap: &Heap) -> Result<Self, ValueError> {
+        let index = match inner.as_ref(heap) {
+            RuntimeValue::Primitive(Primitive::Range(range)) => range.start(),
             _ => PrimitiveInteger::U32(0),
         };
 
         Ok(ValueIterator { inner, index })
     }
 
-    pub fn next(&mut self) -> Result<Option<StackValue>, ValueError> {
+    pub fn next(&mut self, heap: &Heap) -> Result<Option<StackValue>, ValueError> {
         let index = self.index;
         self.index.increment();
 
-        let value = self.inner.as_ref();
+        let value = self.inner.as_ref(heap);
         Ok(match value {
-            ValueCell::Object(v) => {
+            RuntimeValue::Object(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
                 .map(|v| v.clone().into())
             },
-            ValueCell::Bytes(v) => {
+            RuntimeValue::Bytes(v) => {
                 let index = index.to_u32()? as usize;
                 v.get(index)
                     .map(|v| Primitive::Integer(PrimitiveInteger::U8(*v)).into())
             },
-            ValueCell::Primitive(Primitive::Range(range)) => {
+            RuntimeValue::Primitive(Primitive::Range(range)) => {
                 // Only need to check top bound, because index is init by low bound
                 if index < range.end() {
                     Some(index.into())

@@ -85,7 +85,7 @@ impl TryFrom<(Primitive, Primitive)> for PrimitiveRange {
 }
 impl Hash for PrimitiveRange {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Keep the legacy pair-of-primitives hash, without an extra enum tag.
+        // Hash both endpoints without an extra enum tag.
         self.start().hash(state);
         self.end().hash(state);
     }

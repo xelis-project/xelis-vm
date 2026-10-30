@@ -34,26 +34,26 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
             params,
         })),
         SysCallResult::Return(v) => {
-            let budget = context.max_value_depth()
+            let budget = context.resources().max_value_depth()
                 .checked_sub(v.depth())
                 .ok_or(ValueError::MaxDepthReached)?;
 
-            v.as_ref().calculate_depth(budget)?;
+            v.try_as_ref(context.heap())?.calculate_depth(context.heap(), budget)?;
 
-            let memory_usage = v.estimate_memory_usage(context.memory_left())?;
-            context.increase_memory_usage_unchecked(memory_usage)?;
+            let memory_usage = v.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+            context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
             stack.push_stack(v)?;
             Ok(PerformSysCallHelper::End(InstructionResult::Nothing))
         },
         SysCallResult::DynamicCall { ptr, params } => {
-            let values = ptr.as_ref().as_vec()?;
+            let values = ptr.try_as_ref(context.heap())?.as_vec()?;
             if values.len() != 3 {
                 return Err(VMError::InvalidDynamicCall);
             }
 
-            let id = values[0].as_u16()?;
-            let syscall = values[1].as_bool()?;
-            let from = values[2].as_u16()?;
+            let id = values[0].as_ref(context.heap()).as_u16()?;
+            let syscall = values[1].as_ref(context.heap()).as_bool()?;
+            let from = values[2].as_ref(context.heap()).as_u16()?;
 
             if syscall {
                 Ok(PerformSysCallHelper::Next {
@@ -62,8 +62,8 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                 })
             } else {
                 for param in params {
-                    let memory_usage = param.estimate_memory_usage(context.memory_left())?;
-                    context.increase_memory_usage_unchecked(memory_usage)?;
+                    let memory_usage = param.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+                    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
                     stack.push_stack(param)?;
                 }
 
@@ -85,14 +85,14 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
             }))
         },
         SysCallResult::ExecuteAndCallback { ptr, params, state, callback_params_len, callback } => {
-            let values = ptr.as_ref().as_vec()?;
+            let values = ptr.try_as_ref(context.heap())?.as_vec()?;
             if values.len() != 3 {
                 return Err(VMError::InvalidDynamicCall);
             }
 
-            let id = values[0].as_u16()?;
-            let syscall = values[1].as_bool()?;
-            let from = values[2].as_u16()?;
+            let id = values[0].as_ref(context.heap()).as_u16()?;
+            let syscall = values[1].as_ref(context.heap()).as_bool()?;
+            let from = values[2].as_ref(context.heap()).as_u16()?;
 
             stack.push_callback(Callback {
                 state,
@@ -107,8 +107,8 @@ pub fn handle_perform_syscall<'a, 'ty, 'r, M>(
                 })
             } else {
                 for param in params.into_iter().rev() {
-                    let memory_usage = param.estimate_memory_usage(context.memory_left())?;
-                    context.increase_memory_usage_unchecked(memory_usage)?;
+                    let memory_usage = param.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
+                    context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
                     stack.push_stack(param)?;
                 }
 
@@ -137,7 +137,7 @@ pub fn perform_syscall<'a, 'ty, 'r, M>(
                     .get(f as usize)
                     .ok_or(VMError::UnknownSysCall(f))?;
 
-                context.increase_gas_usage(f.get_cost())?;
+                context.resources_mut().increase_gas_usage(f.get_cost())?;
                 let res = f.call_function(params, m, context)?;
                 syscall = handle_perform_syscall(
                     stack,

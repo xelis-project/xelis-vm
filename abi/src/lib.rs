@@ -229,7 +229,7 @@ mod tests {
     use std::fs;
 
     use silex_builder::{EnvironmentBuilder};
-    use silex_types::{Opaque, traits::{
+    use silex_types::{Opaque, StructType, traits::{
       DynType, JSONHelper
     }};
 
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn missing_abi_types_preserve_the_builder_error() {
         let error = register_type(
-            &Type::Struct(silex_types::StructType::new(0, "Missing", vec![])),
+            &Type::Struct(StructType::new(0, "Missing", vec![])),
             &GlobalMapper::new(),
             &mut Vec::new(),
             &mut std::collections::HashSet::new(),

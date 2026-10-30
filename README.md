@@ -39,6 +39,75 @@ JSON bytecode output is still available with `--format json` when a human-readab
 - `silex-types` (`types`): Provides the shared runtime and compile-time type system: primitive values, constants, cells, references, arrays, maps, structs, enums, opaque traits, numeric helpers, `U256`, and packed type checks.
 - `xelis-vm` (`vm`): Executes bytecode modules with an instruction table, stack, call stack, module stack, VM context, native/syscall integration, hooks, entry invocation, and bytecode validation.
 
+## Runtime heap
+
+Each `VMContext` owns a `Heap`. `RuntimeValue` arrays and maps contain four-byte
+`ValueId` slot indices (`ValuePointer` is the same type). Moving or copying a
+handle preserves reference identity within its heap without cloning the value.
+Slots are not reused until the heap is cleared. Logical reference accounting
+remains eight bytes to preserve the existing gas computation.
+
+Reading a cell borrows the heap; writing it requires a mutable heap borrow.
+The Rust borrow checker therefore enforces exclusivity across every handle,
+including aliases passed to native functions. No `UnsafeCell`, manual `Send`/`Sync`
+implementation, or per-cell lock is required.
+
+```rust
+use silex_types::{Heap, PrimitiveInteger, ValueError};
+
+let mut heap = Heap::new();
+let id = heap.insert(PrimitiveInteger::U64(1).into())?;
+let alias = id;
+let previous = heap.get(alias)?.as_u64()?;
+*heap.get_mut(id)? = PrimitiveInteger::U64(previous + 1).into();
+assert_eq!(heap.get(alias)?.as_u64()?, 2);
+# Ok::<(), ValueError>(())
+```
+
+Native functions use `context.heap()` and `context.heap_mut()` to resolve
+`StackValue`s. `context.resources()` and `context.resources_mut()` expose
+`VMResources` for gas and memory accounting. `context.split_heap()` provides
+disjoint access to the heap and
+the existing gas/memory accounting fields when an operation needs both. Callback
+functions receive `&mut Heap` as their third argument; async callback futures
+borrow it for the duration of the callback. Heap lookups and insertions return
+`HeapError`, which is propagated as `VMError::HeapError` during execution.
+
+Module constants, entry arguments, and returned container trees use `OwnedValue`.
+Import them with `heap.import(&owned)` and export runtime containers with
+`heap.snapshot(&cell)?`. Maps store owned, immutable keys. Runtime cells themselves
+no longer implement standalone Serde, `Hash`, or equality without a heap; use
+owned snapshots or `cell.equals(&other, &heap)` as appropriate.
+
+Opaque types retaining runtime handles must expose them through `children` and
+implement `deep_clone_in` to detach them using the supplied heap. The derive
+option `#[opaque(deep_clone_in = expression)]` makes that heap available as
+`heap`; the expression can use `?` to propagate `HeapError`. Opaque payloads retaining runtime handles remain tied to that heap,
+including when their wrapper is held in an owned container. Portable opaque
+payloads should contain owned data instead.
+
+Heap storage is retained until `Heap::clear()` or drop. The caller must use each
+handle only with its originating heap and discard every retained handle before
+clearing or replacing the heap, including handles in stack values, registers,
+iterators, callbacks, and opaque payloads. Handles carry no heap identity or
+generation; lookups check bounds only, and cleared indices can be reused.
+`VMResources::reset_usage()` resets accounting only. The logical memory sizes and gas
+formulas remain independent of the heap's allocation layout.
+
+## Serialization
+
+Scalar values serialize with flat tags in `Primitive`, `OwnedValue`, and
+`Constant`. An owned `u64` value is:
+
+```json
+{"type":"u64","value":"42"}
+```
+
+Opaque values use their own `opaque` variant. Byte buffers serialize as arrays of
+numbers. Maps serialize as lists of `[key, value]` pairs so keys can be structured
+values. Integer widths remain explicit, with `u64`, `u128`, and `u256` payloads
+encoded as strings to avoid JSON precision loss.
+
 ## Types
 
 The supported types are:

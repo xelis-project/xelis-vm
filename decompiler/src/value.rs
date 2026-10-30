@@ -1,5 +1,5 @@
 use silex_builder::EnvironmentBuilder;
-use silex_types::{PrimitiveInteger, NumberType, Primitive, Type, TypePacked, ValueCell};
+use silex_types::{PrimitiveInteger, NumberType, Primitive, Type, TypePacked, OwnedValue};
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -181,28 +181,28 @@ pub(crate) fn primitive(value: &Primitive) -> Result<Expr, String> {
     Ok(Expr::new(text, ty))
 }
 
-pub(crate) fn literal(value: &ValueCell, depth: usize) -> Result<Expr, String> {
+pub(crate) fn literal(value: &OwnedValue, depth: usize) -> Result<Expr, String> {
     if depth > 128 {
         return Err("constant nesting exceeds 128".into());
     }
     Ok(match value {
-        ValueCell::Primitive(v) => primitive(v)?,
-        ValueCell::Opaque(_) => return Err("opaque constant has no source literal".into()),
-        ValueCell::Bytes(v) => {
+        OwnedValue::Primitive(v) => primitive(v)?,
+        OwnedValue::Opaque(_) => return Err("opaque constant has no source literal".into()),
+        OwnedValue::Bytes(v) => {
             let text = std::str::from_utf8(v)
                 .map_err(|_| "non-UTF-8 bytes have no byte-string literal")?;
             Expr::new(format!("b{}", quoted(text)), Type::Bytes)
         }
-        ValueCell::Object(values) => Expr::object(
+        OwnedValue::Object(values) => Expr::object(
             values
                 .iter()
-                .map(|v| literal(v.as_ref(), depth + 1))
+                .map(|v| literal(v, depth + 1))
                 .collect::<Result<_, _>>()?,
         ),
-        ValueCell::Map(values) => {
+        OwnedValue::Map(values) => {
             let entries = values
                 .iter()
-                .map(|(k, v)| Ok((literal(k, depth + 1)?, literal(v.as_ref(), depth + 1)?)))
+                .map(|(k, v)| Ok((literal(k, depth + 1)?, literal(v, depth + 1)?)))
                 .collect::<Result<Vec<_>, String>>()?;
             map(entries)
         }

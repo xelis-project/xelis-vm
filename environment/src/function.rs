@@ -1,10 +1,10 @@
 use std::{collections::VecDeque, fmt, sync::Arc};
 
 use futures::future::BoxFuture;
-use indexmap::IndexMap;
+use std::collections::HashMap;
 use silex_bytecode::Module;
-use silex_types::{Primitive, StackValue, Type, ValueCell};
-use crate::{VMContext, Environment, IdentityBuildHasher, ModuleMetadata};
+use silex_types::{Primitive, StackValue, Type, RuntimeValue, Heap, ValuePointer};
+use crate::{VMContext, Environment, ModuleMetadata};
 
 use super::EnvironmentError;
 
@@ -13,15 +13,17 @@ pub type CallbackState = Box<dyn std::any::Any + Send + Sync>;
 pub type CallbackFunction<M> = fn(
     state: CallbackState,
     params: FnParams,
+    heap: &mut Heap,
 ) -> Result<SysCallResult<M>, EnvironmentError>;
 
 /// Callback type can be sync or async
 pub enum CallbackType<M> {
     Sync(CallbackFunction<M>),
-    Async(fn(
+    Async(for<'a> fn(
         state: CallbackState,
         params: FnParams,
-    ) -> BoxFuture<'static, Result<SysCallResult<M>, EnvironmentError>>),
+        heap: &'a mut Heap,
+    ) -> BoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>>),
 }
 
 // SysCall Result represent all possible actions
@@ -92,8 +94,8 @@ impl<M> From<Primitive> for SysCallResult<M> {
     }
 }
 
-impl<M> From<ValueCell> for SysCallResult<M> {
-    fn from(value: ValueCell) -> Self {
+impl<M> From<RuntimeValue> for SysCallResult<M> {
+    fn from(value: RuntimeValue) -> Self {
         SysCallResult::Return(value.into())
     }
 }
@@ -189,7 +191,7 @@ impl<M> NativeFunction<M> {
                     let instance = parameters.pop_front()
                         .ok_or(EnvironmentError::MissingInstanceFnCall)?;
 
-                    verify_instance_against_parameters(&instance, parameters.make_contiguous())?;
+                    verify_instance_against_parameters(&instance, parameters.make_contiguous(), context.heap_mut())?;
 
                     Ok(instance)
                 } else {
@@ -250,14 +252,15 @@ impl<'ty, M> fmt::Debug for NativeFunction<M> {
 }
 
 // Verify that the instance is not duplicated in the parameters
-// Instance may be mutably borrowed, so we need to ensure no other references exist 
-pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
+// Preserve the existing argument detachment semantics. Heap borrowing itself
+// enforces Rust reference exclusivity.
+pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mut [StackValue], heap: &mut Heap) -> Result<(), EnvironmentError> {
     if !instance.is_owned() {
         // Check if the instance is duplicated in the parameters
-        let instance_ptr = instance.ptr();
+        let instance_ptr = instance.id();
         for param in parameters.iter_mut() {
-            if param.ptr() == instance_ptr {
-                *param = param.to_owned();
+            if param.id() == instance_ptr {
+                *param = param.to_owned(heap)?;
             }
         }
     }
@@ -265,14 +268,14 @@ pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mu
     Ok(())
 }
 
-// Verify that all parameters are safe to use
-// If a parameter is a pointer that is shared with another parameter
-pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), EnvironmentError> {
-    let mut pointers: IndexMap<*const ValueCell, usize, IdentityBuildHasher> = IndexMap::default();
+// Explicitly detach duplicate parameters when independent argument values are
+// wanted. This is no longer needed to enforce Rust aliasing rules.
+pub fn verify_parameters(parameters: &mut [StackValue], heap: &mut Heap) -> Result<(), EnvironmentError> {
+    let mut pointers: HashMap<Option<ValuePointer>, usize> = HashMap::new();
 
     for param in parameters.iter_mut() {
         if !param.is_owned() {
-            *pointers.entry(param.ptr())
+            *pointers.entry(param.id())
                 .or_default() += 1;
         }
     }
@@ -280,10 +283,10 @@ pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), Environmen
     // Now, for each parameter that is a pointer
     // check if its count is more than 1
     for param in parameters.iter_mut().rev() {
-        if let Some(count) = pointers.get_mut(&param.ptr()) {
+        if let Some(count) = pointers.get_mut(&param.id()) {
             if *count > 1 {
                 // Clone the parameter to make it owned
-                *param = param.to_owned();
+                *param = param.to_owned(heap)?;
                 *count -= 1;
             }
         }
@@ -295,10 +298,11 @@ pub fn verify_parameters(parameters: &mut [StackValue]) -> Result<(), Environmen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use silex_types::{Primitive, PrimitiveInteger, ValuePointer};
+    use silex_types::{Primitive, PrimitiveInteger};
 
     #[test]
     fn test_no_duplicated_params_all_owned() {
+        let mut heap = Heap::new();
         // All parameters are owned - no duplicates possible
         let mut params = vec![
             StackValue::from(Primitive::Integer(PrimitiveInteger::U64(100))),
@@ -306,7 +310,7 @@ mod tests {
             StackValue::from(Primitive::Integer(PrimitiveInteger::U64(300))),
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // All should remain owned
@@ -317,10 +321,11 @@ mod tests {
 
     #[test]
     fn test_no_duplicated_params_different_pointers() {
+        let mut heap = Heap::new();
         // Different pointers - no duplicates
-        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
-        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(200))));
-        let ptr3 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(300))));
+        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200)))).unwrap();
+        let ptr3 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(300)))).unwrap();
 
         let mut params = vec![
             StackValue::from(ptr1),
@@ -329,7 +334,7 @@ mod tests {
         ];
 
         let init = params.clone();
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // All should remain as pointers (not cloned)
@@ -339,21 +344,22 @@ mod tests {
 
         // Verify values are still correct
         for (a, b) in params.iter().zip(init.iter()) {
-            assert_eq!(a.ptr(), b.ptr());
+            assert_eq!(a.id(), b.id());
         }
     }
 
     #[test]
     fn test_duplicated_params_same_pointer_twice() {
+        let mut heap = Heap::new();
         // Same pointer used twice - should clone one
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
             StackValue::from(ptr.clone()),
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // First paraemter stays as a pointer, the second is cloned (owned)
@@ -363,8 +369,9 @@ mod tests {
 
     #[test]
     fn test_duplicated_params_same_pointer_three_times() {
+        let mut heap = Heap::new();
         // Same pointer used three times - should clone two of them
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -373,7 +380,7 @@ mod tests {
         ];
 
         let init = params.clone();
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // First parameter stays as a pointer, the next two are cloned (owned)
@@ -381,18 +388,19 @@ mod tests {
         assert!(params[1].is_owned());
         assert!(params[2].is_owned());
 
-        assert_eq!(params[0].ptr(), init[0].ptr());
+        assert_eq!(params[0].id(), init[0].id());
 
         // Verify values are still correct
         for (a, b) in params.iter().zip(init.iter()).skip(1) {
-            assert_ne!(a.ptr(), b.ptr());
+            assert_ne!(a.id(), b.id());
         }
     }
 
     #[test]
     fn test_mixed_owned_and_duplicated_pointers() {
+        let mut heap = Heap::new();
         // Mix of owned values and duplicated pointers
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
         
         let mut params = vec![
             StackValue::from(Primitive::Integer(PrimitiveInteger::U64(999))), // Owned
@@ -401,7 +409,7 @@ mod tests {
             StackValue::from(ptr.clone()),          // Same pointer again
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // Owned values remain owned
@@ -415,9 +423,10 @@ mod tests {
 
     #[test]
     fn test_multiple_different_duplicated_pointers() {
+        let mut heap = Heap::new();
         // Multiple sets of duplicated pointers
-        let ptr1 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
-        let ptr2 = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(200))));
+        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200)))).unwrap();
         
         let mut params = vec![
             StackValue::from(ptr1.clone()),
@@ -426,7 +435,7 @@ mod tests {
             StackValue::from(ptr2.clone()), // ptr2 duplicate
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // First occurrence of each pointer stay as pointer, duplicates are cloned
@@ -438,22 +447,24 @@ mod tests {
 
     #[test]
     fn test_empty_params() {
+        let mut heap = Heap::new();
         // Empty parameter list should work fine
         let mut params: Vec<StackValue> = vec![];
         
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         assert!(params.is_empty());
     }
 
     #[test]
     fn test_single_param_pointer() {
+        let mut heap = Heap::new();
         // Single pointer parameter - no duplicates possible
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
         
         let mut params = vec![StackValue::from(ptr)];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // Should remain as pointer (not cloned)
@@ -462,19 +473,20 @@ mod tests {
 
     #[test]
     fn test_complex_value_duplication() {
+        let mut heap = Heap::new();
         // Test with complex values (arrays/objects)
-        let complex_value = ValueCell::Object(vec![
-            ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(1)))),
-            ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(2)))),
+        let complex_value = RuntimeValue::Object(vec![
+            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(1)))).unwrap(),
+            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(2)))).unwrap(),
         ]);
-        let ptr = ValuePointer::new(complex_value);
+        let ptr = heap.insert(complex_value).unwrap();
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
             StackValue::from(ptr.clone()),
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
         
         // Last should be cloned, first remains pointer
@@ -484,9 +496,10 @@ mod tests {
 
     #[test]
     fn test_reverse_processing_order() {
+        let mut heap = Heap::new();
         // Verify that processing happens in reverse order
         // (last occurrences keep the pointer, earlier ones are cloned)
-        let ptr = ValuePointer::new(ValueCell::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
         
         let mut params = vec![
             StackValue::from(ptr.clone()), // Should be cloned (index 0)
@@ -494,7 +507,7 @@ mod tests {
             StackValue::from(ptr.clone()), // Should remain pointer (index 2 - last)
         ];
 
-        let result = verify_parameters(&mut params);
+        let result = verify_parameters(&mut params, &mut heap);
         assert!(result.is_ok());
 
         // First two are pointers, last is cloned (owned)
@@ -503,8 +516,8 @@ mod tests {
         assert!(params[2].is_owned());
         
         // Verify the values are still correct after cloning
-        assert_eq!(params[0].as_u64().unwrap(), 100);
-        assert_eq!(params[1].as_u64().unwrap(), 100);
-        assert_eq!(params[2].as_u64().unwrap(), 100);
+        assert_eq!(params[0].as_u64(&heap).unwrap(), 100);
+        assert_eq!(params[1].as_u64(&heap).unwrap(), 100);
+        assert_eq!(params[2].as_u64(&heap).unwrap(), 100);
     }
 }

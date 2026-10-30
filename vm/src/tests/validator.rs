@@ -1,12 +1,13 @@
 use indexmap::IndexMap;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Chunk, Module};
-use silex_types::{PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, ValueCell, ValuePointer};
+use silex_types::{DynType, PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynEq, DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, OwnedValue, RuntimeValue, OpaqueChild, Heap};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_compiler::Compiler;
 
 use crate::{ModuleValidator, ValidatorError};
+fn identity(value: OwnedValue) -> OwnedValue { value }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct NonHashableOpaque;
@@ -24,7 +25,7 @@ impl DynType for NonHashableOpaque {
 impl JSONHelper for NonHashableOpaque {}
 
 impl Opaque for NonHashableOpaque {
-    fn as_eq(&self) -> Option<&dyn silex_types::traits::DynEq> { Some(self) }
+    fn as_eq(&self) -> Option<&dyn DynEq> { Some(self) }
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
@@ -136,7 +137,7 @@ fn test_verify_invoke_chunk_with_u64_param() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Correct parameter type
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -149,7 +150,7 @@ fn test_verify_invoke_chunk_wrong_param_type() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Wrong parameter type (U8 instead of U64)
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -166,9 +167,9 @@ fn test_verify_invoke_chunk_multiple_params() {
     let validator = ModuleValidator::new(&module, &env);
 
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
-        ValueCell::Primitive(Primitive::String("hello".to_string())),
-        ValueCell::Primitive(Primitive::Boolean(true)),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
+        OwnedValue::Primitive(Primitive::String("hello".to_string())),
+        OwnedValue::Primitive(Primitive::Boolean(true)),
     ];
     let result = validator.verify_invoke_chunk(0, values.iter());
     assert!(result.is_ok());
@@ -185,8 +186,8 @@ fn test_verify_invoke_chunk_second_param_wrong_type() {
     let validator = ModuleValidator::new(&module, &env);
 
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
-        ValueCell::Primitive(Primitive::Boolean(true)), // Should be String
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
+        OwnedValue::Primitive(Primitive::Boolean(true)), // Should be String
     ];
     let result = validator.verify_invoke_chunk(0, values.iter());
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(1))));
@@ -200,12 +201,12 @@ fn test_verify_invoke_chunk_optional_param() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Test with null value
-    let null_value = ValueCell::Primitive(Primitive::Null);
+    let null_value = OwnedValue::Primitive(Primitive::Null);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&null_value));
     assert!(result.is_ok());
 
     // Test with actual value
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -218,11 +219,11 @@ fn test_verify_invoke_chunk_any_param() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Any type should accept any value
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 
-    let value = ValueCell::Primitive(Primitive::String("test".to_string()));
+    let value = OwnedValue::Primitive(Primitive::String("test".to_string()));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -249,7 +250,7 @@ fn test_verify_invoke_chunk_bytes_param() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Test with bytes value
-    let value = ValueCell::Bytes(vec![1, 2, 3].into());
+    let value = OwnedValue::Bytes(vec![1, 2, 3].into());
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -263,11 +264,11 @@ fn test_verify_invoke_chunk_array_param() {
 
     // Test with array of u8 values
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(3))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(3))).into(),
     ];
-    let array_value = ValueCell::Object(values);
+    let array_value = OwnedValue::Object(values);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&array_value));
     assert!(result.is_ok());
 }
@@ -281,9 +282,9 @@ fn test_verify_invoke_chunk_array_wrong_inner_type() {
 
     // Test with array of wrong type (U64 instead of U8)
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))).into(),
     ];
-    let array_value = ValueCell::Object(values);
+    let array_value = OwnedValue::Object(values);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&array_value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -296,7 +297,7 @@ fn test_verify_invoke_chunk_public_with_params() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Correct parameter type on public chunk
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(100)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(100)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -319,7 +320,7 @@ fn test_verify_invoke_chunk_all_number_types() {
         let module = create_module_with_entry_chunk(params);
         let validator = ModuleValidator::new(&module, &env);
 
-        let value = ValueCell::Primitive(primitive);
+        let value = OwnedValue::Primitive(primitive);
         let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
         assert!(result.is_ok(), "Failed for number type {:?}", num_type);
     }
@@ -337,10 +338,10 @@ fn test_verify_invoke_chunk_tuples_param() {
 
     // Test with tuple value
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42))).into(),
-        ValueCell::Primitive(Primitive::String("hello".to_string())).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42))).into(),
+        OwnedValue::Primitive(Primitive::String("hello".to_string())).into(),
     ];
-    let tuple_value = ValueCell::Object(values);
+    let tuple_value = OwnedValue::Object(values);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&tuple_value));
     assert!(result.is_ok());
 }
@@ -357,9 +358,9 @@ fn test_verify_invoke_chunk_tuples_wrong_length() {
 
     // Test with wrong tuple length (only 1 element instead of 2)
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(42))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(42))).into(),
     ];
-    let tuple_value = ValueCell::Object(values);
+    let tuple_value = OwnedValue::Object(values);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&tuple_value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -406,8 +407,8 @@ fn test_compiler_entry_enforce_correct_params() {
     let validator = ModuleValidator::new(&module, &env);
 
     let args = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(10))),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(20))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(10))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(20))),
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(result.is_ok());
@@ -422,8 +423,8 @@ fn test_compiler_entry_enforce_wrong_type() {
 
     // Pass u32 instead of u64 for first param
     let args = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(10))),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(20))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(10))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(20))),
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
@@ -437,8 +438,8 @@ fn test_compiler_entry_enforce_second_param_wrong_type() {
     let validator = ModuleValidator::new(&module, &env);
 
     let args = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(10))),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U32(20))), // wrong: u32 instead of u64
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(10))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U32(20))), // wrong: u32 instead of u64
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(1))));
@@ -452,8 +453,8 @@ fn test_compiler_pub_fn_enforce_correct_params() {
     let validator = ModuleValidator::new(&module, &env);
 
     let args = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(5))),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(7))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(5))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(7))),
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(result.is_ok());
@@ -467,8 +468,8 @@ fn test_compiler_pub_fn_enforce_wrong_type() {
     let validator = ModuleValidator::new(&module, &env);
 
     let args = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(5))),
-        ValueCell::Primitive(Primitive::Boolean(true)), // wrong: bool instead of u64
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(5))),
+        OwnedValue::Primitive(Primitive::Boolean(true)), // wrong: bool instead of u64
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(1))));
@@ -484,8 +485,8 @@ fn test_compiler_no_enforce_skips_validation() {
 
     // Wrong types but since parameters() is None, validator does not check
     let args = vec![
-        ValueCell::Primitive(Primitive::Boolean(true)),
-        ValueCell::Primitive(Primitive::String("oops".to_string())),
+        OwnedValue::Primitive(Primitive::Boolean(true)),
+        OwnedValue::Primitive(Primitive::String("oops".to_string())),
     ];
     let result = validator.verify_invoke_chunk(0, args.iter());
     assert!(result.is_ok());
@@ -550,14 +551,14 @@ fn test_verify_invoke_chunk_map_param_correct() {
 
     let mut map = IndexMap::new();
     map.insert(
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
-        ValuePointer::from(ValueCell::Primitive(Primitive::String("hello".to_string()))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
+        identity(OwnedValue::Primitive(Primitive::String("hello".to_string()))),
     );
     map.insert(
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(2))),
-        ValuePointer::from(ValueCell::Primitive(Primitive::String("world".to_string()))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(2))),
+        identity(OwnedValue::Primitive(Primitive::String("world".to_string()))),
     );
-    let value = ValueCell::Map(Box::new(map));
+    let value = OwnedValue::Map(map);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -575,10 +576,10 @@ fn test_verify_invoke_chunk_map_wrong_key_type() {
 
     let mut map = IndexMap::new();
     map.insert(
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))), // wrong key type
-        ValuePointer::from(ValueCell::Primitive(Primitive::String("hello".to_string()))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))), // wrong key type
+        identity(OwnedValue::Primitive(Primitive::String("hello".to_string()))),
     );
-    let value = ValueCell::Map(Box::new(map));
+    let value = OwnedValue::Map(map);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -596,10 +597,10 @@ fn test_verify_invoke_chunk_map_wrong_value_type() {
 
     let mut map = IndexMap::new();
     map.insert(
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
-        ValuePointer::from(ValueCell::Primitive(Primitive::Boolean(true))), // wrong value type
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))),
+        identity(OwnedValue::Primitive(Primitive::Boolean(true))), // wrong value type
     );
-    let value = ValueCell::Map(Box::new(map));
+    let value = OwnedValue::Map(map);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -617,19 +618,19 @@ fn test_verify_invoke_chunk_oneof_correct_variant() {
 
     // Use variant 0 with a u64 payload
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(), // variant index
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(), // variant index
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(),
     ];
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(values)));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(values)));
     assert!(result.is_ok());
 
     // Use variant 1 with (string, bool) payload
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(), // variant index
-        ValueCell::Primitive(Primitive::String("hi".to_string())).into(),
-        ValueCell::Primitive(Primitive::Boolean(false)).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(), // variant index
+        OwnedValue::Primitive(Primitive::String("hi".to_string())).into(),
+        OwnedValue::Primitive(Primitive::Boolean(false)).into(),
     ];
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(values)));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(values)));
     assert!(result.is_ok());
 }
 
@@ -645,10 +646,10 @@ fn test_verify_invoke_chunk_oneof_wrong_variant_payload() {
     let validator = ModuleValidator::new(&module, &env);
 
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(), // variant 0
-        ValueCell::Primitive(Primitive::Boolean(true)).into(), // wrong: bool instead of u64
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(), // variant 0
+        OwnedValue::Primitive(Primitive::Boolean(true)).into(), // wrong: bool instead of u64
     ];
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(values)));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(values)));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
 
@@ -660,9 +661,9 @@ fn test_compiler_entry_enforce_struct_param() {
     );
     let validator = ModuleValidator::new(&module, &env);
 
-    let struct_value = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(3))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(4))).into(),
+    let struct_value = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(3))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(4))).into(),
     ]);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&struct_value));
     assert!(result.is_ok());
@@ -676,9 +677,9 @@ fn test_compiler_entry_enforce_struct_param_wrong_field_type() {
     let validator = ModuleValidator::new(&module, &env);
 
     // y field is string instead of u64
-    let struct_value = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(3))).into(),
-        ValueCell::Primitive(Primitive::String("bad".to_string())).into(),
+    let struct_value = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(3))).into(),
+        OwnedValue::Primitive(Primitive::String("bad".to_string())).into(),
     ]);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&struct_value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
@@ -692,7 +693,7 @@ fn test_verify_invoke_chunk_optional_wrong_inner_type() {
     let env = create_environment();
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Primitive(Primitive::String("not a u64".to_string()));
+    let value = OwnedValue::Primitive(Primitive::String("not a u64".to_string()));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -708,9 +709,9 @@ fn test_verify_invoke_chunk_tuples_wrong_element_type() {
     let env = create_environment();
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
-        ValueCell::Primitive(Primitive::Boolean(true)).into(), // wrong: bool instead of string
+    let value = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
+        OwnedValue::Primitive(Primitive::Boolean(true)).into(), // wrong: bool instead of string
     ]);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
@@ -727,10 +728,10 @@ fn test_verify_invoke_chunk_oneof_out_of_range_variant() {
 
     // Variant index 5 but only variant 0 exists
     let values = vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(5))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(5))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(),
     ];
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(values)));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(values)));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
 
@@ -744,7 +745,7 @@ fn test_verify_invoke_chunk_oneof_missing_variant_index() {
     let env = create_environment();
     let validator = ModuleValidator::new(&module, &env);
 
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(vec![])));
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(vec![])));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
 
@@ -760,8 +761,8 @@ fn test_verify_invoke_chunk_oneof_unit_variant() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Only the variant index, no payload
-    let values = vec![ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into()];
-    let result = validator.verify_invoke_chunk(0, std::iter::once(&ValueCell::Object(values)));
+    let values = vec![OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into()];
+    let result = validator.verify_invoke_chunk(0, std::iter::once(&OwnedValue::Object(values)));
     assert!(result.is_ok());
 }
 
@@ -776,7 +777,7 @@ fn test_verify_invoke_chunk_map_empty_is_ok() {
     let env = create_environment();
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Map(Box::new(IndexMap::new()));
+    let value = OwnedValue::Map(IndexMap::new());
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
@@ -796,11 +797,11 @@ fn test_verify_invoke_chunk_map_rejects_non_hashable_opaque_key() {
 
     let mut map = IndexMap::new();
     map.insert(
-        ValueCell::Opaque(OpaqueWrapper::new(NonHashableOpaque)),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))).into(),
+        OwnedValue::Opaque(OpaqueWrapper::new(NonHashableOpaque)),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(1))).into(),
     );
 
-    let value = ValueCell::Map(Box::new(map));
+    let value = OwnedValue::Map(map);
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -813,14 +814,14 @@ fn test_verify_invoke_chunk_range_param() {
     let env = create_environment();
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Primitive(Primitive::Range(Box::new(PrimitiveRange::U64(0..100))));
+    let value = OwnedValue::Primitive(Primitive::Range(Box::new(PrimitiveRange::U64(0..100))));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_verify_invoke_chunk_opaque_param_correct() {
-    #[derive(Debug, PartialEq, Eq, Hash, Clone, silex_types::Opaque)]
+    #[derive(Debug, PartialEq, Eq, Hash, Clone, Opaque)]
     #[opaque(eq, hash, size = 0)]
     struct TestOpaque;
 
@@ -835,7 +836,7 @@ fn test_verify_invoke_chunk_opaque_param_correct() {
 
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Opaque(OpaqueWrapper::new(TestOpaque));
+    let value = OwnedValue::Opaque(OpaqueWrapper::new(TestOpaque));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(result.is_ok(), "opaque type id={} env={:?}", opaque_type.id(), env.get_opaques());
 }
@@ -849,7 +850,7 @@ fn test_verify_invoke_chunk_opaque_wrong_type() {
 
     let validator = ModuleValidator::new(&module, &env);
 
-    let value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+    let value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
     let result = validator.verify_invoke_chunk(0, std::iter::once(&value));
     assert!(matches!(result, Err(ValidatorError::InvalidChunkParam(0))));
 }
@@ -864,20 +865,20 @@ fn test_compiler_entry_enforce_enum_all_unit_variants() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Variant A (index 0) — unit: only the variant index
-    let variant_a = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
+    let variant_a = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
     ]);
     assert!(validator.verify_invoke_chunk(0, std::iter::once(&variant_a)).is_ok());
 
     // Variant B (index 1) — unit: only the variant index
-    let variant_b = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
+    let variant_b = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
     ]);
     assert!(validator.verify_invoke_chunk(0, std::iter::once(&variant_b)).is_ok());
 
     // Out-of-range variant index → should fail
-    let bad_variant = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(2))).into(),
+    let bad_variant = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(2))).into(),
     ]);
     assert!(matches!(
         validator.verify_invoke_chunk(0, std::iter::once(&bad_variant)),
@@ -885,9 +886,9 @@ fn test_compiler_entry_enforce_enum_all_unit_variants() {
     ));
 
     // Unit variant with unexpected payload → should fail
-    let variant_a_with_payload = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(), // unexpected
+    let variant_a_with_payload = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))).into(), // unexpected
     ]);
     assert!(matches!(
         validator.verify_invoke_chunk(0, std::iter::once(&variant_a_with_payload)),
@@ -905,22 +906,22 @@ fn test_compiler_entry_enforce_enum_mixed_variants() {
     let validator = ModuleValidator::new(&module, &env);
 
     // Variant A (index 0) with correct string payload
-    let variant_a = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
-        ValueCell::Primitive(Primitive::String("hello".to_string())).into(),
+    let variant_a = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
+        OwnedValue::Primitive(Primitive::String("hello".to_string())).into(),
     ]);
     assert!(validator.verify_invoke_chunk(0, std::iter::once(&variant_a)).is_ok());
 
     // Variant B (index 1) — unit
-    let variant_b = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
+    let variant_b = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
     ]);
     assert!(validator.verify_invoke_chunk(0, std::iter::once(&variant_b)).is_ok());
 
     // Variant A with wrong payload type (u64 instead of string) → should fail
-    let variant_a_bad = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(99))).into(),
+    let variant_a_bad = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(0))).into(),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(99))).into(),
     ]);
     assert!(matches!(
         validator.verify_invoke_chunk(0, std::iter::once(&variant_a_bad)),
@@ -928,9 +929,9 @@ fn test_compiler_entry_enforce_enum_mixed_variants() {
     ));
 
     // Variant B with unexpected payload → should fail
-    let variant_b_with_payload = ValueCell::Object(vec![
-        ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
-        ValueCell::Primitive(Primitive::String("unexpected".to_string())).into(),
+    let variant_b_with_payload = OwnedValue::Object(vec![
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(1))).into(),
+        OwnedValue::Primitive(Primitive::String("unexpected".to_string())).into(),
     ]);
     assert!(matches!(
         validator.verify_invoke_chunk(0, std::iter::once(&variant_b_with_payload)),
@@ -938,10 +939,10 @@ fn test_compiler_entry_enforce_enum_mixed_variants() {
     ));
 }
 
-fn nested_objects(depth: usize) -> ValueCell {
-    let mut value = ValueCell::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
+fn nested_objects(depth: usize) -> OwnedValue {
+    let mut value = OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
     for _ in 0..depth {
-        value = ValueCell::Object(vec![value.into()]);
+        value = OwnedValue::Object(vec![value.into()]);
     }
     value
 }
@@ -995,7 +996,7 @@ fn test_map_key_and_value_depth_boundaries() {
                 (Primitive::Integer(PrimitiveInteger::U64(1)).into(), nested_objects(depth))
             };
             map.insert(key, value.into());
-            let value = ValueCell::Map(Box::new(map));
+            let value = OwnedValue::Map(map);
             if depth == 15 {
                 assert!(validator.verify_constant(&value).is_ok());
                 assert!(validator
@@ -1016,44 +1017,12 @@ fn test_map_key_and_value_depth_boundaries() {
 }
 
 #[test]
-fn test_cyclic_values_and_map_keys_reject_without_unbounded_walks() {
-    let env = create_environment();
-    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
-    let validator = ModuleValidator::new(&module, &env);
-    for as_key in [false, true] {
-        let mut pointer = ValuePointer::new(Primitive::Integer(PrimitiveInteger::U64(1)).into());
-        let mut map = IndexMap::new();
-        // Insert while acyclic: map insertion itself hashes the key.
-        if as_key {
-            map.insert(
-                ValueCell::Object(vec![pointer.clone()]),
-                Primitive::Integer(PrimitiveInteger::U64(1)).into(),
-            );
-        }
-        // SAFETY: no references to the payload are live during either mutation.
-        unsafe {
-            *pointer.as_mut() = ValueCell::Object(vec![pointer.clone()]);
-        }
-        let value = if as_key {
-            ValueCell::Map(Box::new(map))
-        } else {
-            ValueCell::Object(vec![pointer.clone()])
-        };
-        let constant_result = validator.verify_constant(&value);
-        let invoke_result = validator.verify_invoke_chunk(0, std::iter::once(&value));
-        // Break the cycle before assertions and dropping the test fixture.
-        unsafe {
-            *pointer.as_mut() = Primitive::Integer(PrimitiveInteger::U64(1)).into();
-        }
-        assert!(matches!(
-            constant_result,
-            Err(ValidatorError::ConstantTooDeep)
-        ));
-        assert!(matches!(
-            invoke_result,
-            Err(ValidatorError::ConstantTooDeep)
-        ));
-    }
+fn test_cyclic_runtime_values_cannot_be_exported_as_constants() {
+    let mut heap = Heap::new();
+    let id = heap.insert(RuntimeValue::Primitive(Primitive::Null)).unwrap();
+    *heap.get_mut(id).unwrap() = RuntimeValue::Object(vec![id]);
+    let value = RuntimeValue::Object(vec![id]);
+    assert!(matches!(heap.snapshot(&value), Err(ValueError::CyclicError)));
 }
 
 #[test]
@@ -1061,10 +1030,10 @@ fn test_map_key_nested_map_remains_invalid() {
     let env = create_environment();
     let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
     let validator = ModuleValidator::new(&module, &env);
-    let key = ValueCell::Object(vec![ValueCell::Map(Box::new(IndexMap::new())).into()]);
+    let key = OwnedValue::Object(vec![OwnedValue::Map(IndexMap::new()).into()]);
     let mut map = IndexMap::new();
     map.insert(key, Primitive::Integer(PrimitiveInteger::U64(1)).into());
-    let value = ValueCell::Map(Box::new(map));
+    let value = OwnedValue::Map(map);
     assert!(matches!(
         validator.verify_constant(&value),
         Err(ValidatorError::InvalidMapKeyType)
@@ -1075,19 +1044,19 @@ fn test_map_key_nested_map_remains_invalid() {
     ));
 }
 
-#[derive(Debug, Clone, silex_types::Opaque)]
+#[derive(Debug, Clone, Opaque)]
 #[opaque(children = &self.values)]
 struct OpaqueContainer {
-    values: Vec<ValueCell>,
+    values: Vec<OwnedValue>,
 }
 
-#[derive(Debug, Clone, silex_types::Opaque)]
+#[derive(Debug, Clone, Opaque)]
 #[opaque(children = [
-    silex_types::OpaqueChild::Value(&self.value),
-    silex_types::OpaqueChild::Opaque(&self.child),
+    OpaqueChild::Owned(&self.value),
+    OpaqueChild::Opaque(&self.child),
 ])]
 struct MixedOpaqueContainer {
-    value: ValueCell,
+    value: OwnedValue,
     child: OpaqueContainer,
 }
 
@@ -1101,7 +1070,7 @@ fn test_mixed_opaque_children_share_depth_and_validation_checks() {
     let validator = ModuleValidator::new(&module, &env);
     for opaque_branch in [false, true] {
         for too_deep in [false, true] {
-            let value: ValueCell = ValueCell::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+            let value: OwnedValue = OwnedValue::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
                 value: nested_objects(if opaque_branch {
                     0
                 } else {
@@ -1138,12 +1107,12 @@ fn test_mixed_opaque_children_share_depth_and_validation_checks() {
             }
         }
     }
-    let value = ValueCell::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+    let value = OwnedValue::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
         value: Primitive::Integer(PrimitiveInteger::U64(0)).into(),
         child: OpaqueContainer {
-            values: vec![ValueCell::Map(Box::new(indexmap::IndexMap::from_iter([
-                (ValueCell::Map(Box::default()), Primitive::Null.into()),
-            ])))
+            values: vec![OwnedValue::Map(indexmap::IndexMap::from_iter([
+                (OwnedValue::Map(IndexMap::default()), Primitive::Null.into()),
+            ]))
             .into()],
         },
     }))
@@ -1169,7 +1138,7 @@ fn test_direct_opaque_children_require_external_input_registration() {
         let env = builder.build();
         let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
         let validator = ModuleValidator::new(&module, &env);
-        let value = ValueCell::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
+        let value = OwnedValue::Opaque(OpaqueWrapper::new(MixedOpaqueContainer {
             value: Primitive::Integer(PrimitiveInteger::U64(0)).into(),
             child: OpaqueContainer { values: vec![] },
         }))
@@ -1193,7 +1162,7 @@ fn test_opaque_children_participate_in_depth_and_value_validation() {
     let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
     let validator = ModuleValidator::new(&module, &env);
     for depth in [15, 16] {
-        let value = ValueCell::Opaque(OpaqueWrapper::new(OpaqueContainer {
+        let value = OwnedValue::Opaque(OpaqueWrapper::new(OpaqueContainer {
             values: vec![nested_objects(depth)],
         }))
         .into();
@@ -1218,11 +1187,11 @@ fn test_opaque_children_participate_in_depth_and_value_validation() {
             ));
         }
     }
-    let invalid_map = ValueCell::Map(Box::new(indexmap::IndexMap::from_iter([
-        (ValueCell::Map(Box::default()), Primitive::Null.into()),
-    ])))
+    let invalid_map = OwnedValue::Map(indexmap::IndexMap::from_iter([
+        (OwnedValue::Map(IndexMap::default()), Primitive::Null.into()),
+    ]))
     .into();
-    let value = ValueCell::Opaque(OpaqueWrapper::new(OpaqueContainer {
+    let value = OwnedValue::Opaque(OpaqueWrapper::new(OpaqueContainer {
         values: vec![invalid_map],
     }))
     .into();
@@ -1247,7 +1216,7 @@ fn test_any_parameters_cannot_hide_unregistered_or_internal_opaques() {
         let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
         let validator = ModuleValidator::new(&module, &env);
         let value =
-            ValueCell::Opaque(OpaqueWrapper::new(OpaqueContainer { values: vec![] })).into();
+            OwnedValue::Opaque(OpaqueWrapper::new(OpaqueContainer { values: vec![] })).into();
         assert!(matches!(
             validator.verify_invoke_chunk(0, std::iter::once(&value)),
             Err(ValidatorError::InvalidChunkParam(0))
@@ -1260,13 +1229,13 @@ fn test_shared_values_are_checked_at_each_path_depth() {
     let env = create_environment();
     let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
     let validator = ModuleValidator::new(&module, &env);
-    let shared = ValuePointer::new(nested_objects(2));
-    let mut deeper = ValueCell::Object(vec![shared.clone()]);
+    let shared = identity(nested_objects(2));
+    let mut deeper = OwnedValue::Object(vec![shared.clone()]);
     for _ in 0..14 {
-        deeper = ValueCell::Object(vec![deeper.into()]);
+        deeper = OwnedValue::Object(vec![deeper.into()]);
     }
     // One branch reaches the shared payload shallowly; the other exceeds 16.
-    let value = ValueCell::Object(vec![shared, deeper.into()]);
+    let value = OwnedValue::Object(vec![shared, deeper.into()]);
     assert!(matches!(
         validator.verify_constant(&value),
         Err(ValidatorError::ConstantTooDeep)
@@ -1283,19 +1252,19 @@ fn test_depth_boundary_with_empty_containers_and_bytes() {
     let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
     let validator = ModuleValidator::new(&module, &env);
     for leaf in [
-        ValueCell::Object(vec![]),
-        ValueCell::Map(Box::new(IndexMap::new())),
-        ValueCell::Bytes(vec![1]),
+        OwnedValue::Object(vec![]),
+        OwnedValue::Map(IndexMap::new()),
+        OwnedValue::Bytes(vec![1]),
     ] {
         let mut value = leaf;
         for _ in 0..16 {
-            value = ValueCell::Object(vec![value.into()]);
+            value = OwnedValue::Object(vec![value.into()]);
         }
         assert!(validator.verify_constant(&value).is_ok());
         assert!(validator
             .verify_invoke_chunk(0, std::iter::once(&value))
             .is_ok());
-        let value = ValueCell::Object(vec![value.into()]);
+        let value = OwnedValue::Object(vec![value.into()]);
         assert!(matches!(
             validator.verify_constant(&value),
             Err(ValidatorError::ConstantTooDeep)
@@ -1313,9 +1282,9 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
-    #[derive(Debug, Clone, silex_types::DynType)]
+    #[derive(Debug, Clone, DynType)]
     struct ValidatedContainer {
-        value: ValueCell,
+        value: OwnedValue,
         calls: Arc<AtomicUsize>,
     }
     impl JSONHelper for ValidatedContainer {}
@@ -1323,7 +1292,7 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
         fn clone_box(&self) -> Box<dyn Opaque> {
             Box::new(self.clone())
         }
-        fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(silex_types::OpaqueChild<'a>)) {
+        fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(OpaqueChild<'a>)) {
             visitor((&self.value).into());
         }
         fn validate(&self) -> Result<(), ValueError> {
@@ -1338,7 +1307,7 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
     let validator = ModuleValidator::new(&module, &env);
     let calls = Arc::new(AtomicUsize::new(0));
     let too_deep =
-        ValueCell::Opaque(OpaqueWrapper::new(ValidatedContainer {
+        OwnedValue::Opaque(OpaqueWrapper::new(ValidatedContainer {
             value: nested_objects(16),
             calls: calls.clone(),
         }));
@@ -1351,7 +1320,7 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
         Err(ValidatorError::ConstantTooDeep)
     ));
     assert_eq!(calls.load(Ordering::Relaxed), 0);
-    let shallow = ValueCell::Opaque(OpaqueWrapper::new(ValidatedContainer {
+    let shallow = OwnedValue::Opaque(OpaqueWrapper::new(ValidatedContainer {
         value: nested_objects(0),
         calls: calls.clone(),
     }));
