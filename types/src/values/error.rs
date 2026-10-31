@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{HeapError, Type};
-use super::{constant::Constant, Primitive};
+use super::{OwnedValue, Primitive};
 
 
 #[derive(Debug, Error)]
@@ -18,8 +18,6 @@ pub enum ValueError {
     HeapError(#[from] HeapError),
     #[error("Expected a value")]
     ExpectedValue,
-    #[error("Unexpected cycle reference")]
-    CyclicError,
     #[error("Invalid opaque: type mismatch")]
     InvalidOpaqueTypeMismatch,
     #[error("max depth reached")]
@@ -27,7 +25,7 @@ pub enum ValueError {
     #[error("Invalid value: {0:?} is not of type {1:?}")]
     InvalidValue(Primitive, Type),
     #[error("Invalid value type: {0:?} is not of type {1:?}")]
-    InvalidValueType(Constant, Type),
+    InvalidValueType(OwnedValue, Type),
     #[error("Expected a value of type {0:?}")]
     ExpectedValueOfType(Type),
     #[error("Expected opaque value")]

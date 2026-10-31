@@ -1,5 +1,7 @@
-use silex_environment::{VMContext, EnvironmentError, FunctionHandler};
-use silex_types::{PrimitiveInteger, Type, Primitive, RuntimeValue, HeapError};
+use crate::environment::xstd::native;
+use silex_types::Heap;
+use silex_environment::{VMContext, EnvironmentError};
+use silex_types::{PrimitiveInteger, Type, Primitive, RuntimeValue};
 use super::{
     FnInstance,
     FnParams,
@@ -11,32 +13,32 @@ use super::{
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // String
-    env.register_native_function_with_comment("len", Some(Type::String), vec![], FunctionHandler::Sync(len), 1, Some(Type::U32), "Returns the byte length of the string.");
-    env.register_native_function_with_comment("trim", Some(Type::String), vec![], FunctionHandler::Sync(trim), 1, Some(Type::String), "Returns a copy of the string without leading or trailing whitespace.");
-    env.register_native_function_with_comment("contains", Some(Type::String), vec![("substring", Type::String)], FunctionHandler::Sync(contains), 1, Some(Type::Bool), "Returns true when the string contains the substring.");
-    env.register_native_function_with_comment("contains_ignore_case", Some(Type::String), vec![("substring", Type::String)], FunctionHandler::Sync(contains_ignore_case), 1, Some(Type::Bool), "Returns true when the string contains the substring, ignoring case.");
-    env.register_native_function_with_comment("to_uppercase", Some(Type::String), vec![], FunctionHandler::Sync(to_uppercase), 1, Some(Type::String), "Returns an uppercase copy of the string.");
-    env.register_native_function_with_comment("to_lowercase", Some(Type::String), vec![], FunctionHandler::Sync(to_lowercase), 1, Some(Type::String), "Returns a lowercase copy of the string.");
-    env.register_native_function_with_comment("to_bytes", Some(Type::String), vec![], FunctionHandler::Sync(to_bytes), 5, Some(Type::Bytes), "Returns the UTF-8 bytes of the string.");
-    env.register_native_function_with_comment("index_of", Some(Type::String), vec![("substring", Type::String)], FunctionHandler::Sync(index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the first byte index of the substring, or null if it is absent.");
-    env.register_native_function_with_comment("last_index_of", Some(Type::String), vec![("substring", Type::String)], FunctionHandler::Sync(last_index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the last byte index of the substring, or null if it is absent.");
-    env.register_native_function_with_comment("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], FunctionHandler::Sync(replace), 5, Some(Type::String), "Returns a copy with every occurrence of one substring replaced by another.");
-    env.register_native_function_with_comment("starts_with", Some(Type::String), vec![("prefix", Type::String)], FunctionHandler::Sync(starts_with), 3, Some(Type::Bool), "Returns true when the string starts with the prefix.");
-    env.register_native_function_with_comment("ends_with", Some(Type::String), vec![("suffix", Type::String)], FunctionHandler::Sync(ends_with), 3, Some(Type::Bool), "Returns true when the string ends with the suffix.");
-    env.register_native_function_with_comment("split", Some(Type::String), vec![("separator", Type::String)], FunctionHandler::Sync(split), 5, Some(Type::Array(Box::new(Type::String))), "Splits the string by the separator and returns the parts.");
-    env.register_native_function_with_comment("char_at", Some(Type::String), vec![("index", Type::U32)], FunctionHandler::Sync(char_at), 1, Some(Type::Optional(Box::new(Type::String))), "Returns the character at the character index as a one-character string, or null if out of bounds.");
+    env.register_native_function_with_comment("len", Some(Type::String), vec![], native(len), 1, Some(Type::U32), "Returns the byte length of the string.");
+    env.register_native_function_with_comment("trim", Some(Type::String), vec![], native(trim), 1, Some(Type::String), "Returns a copy of the string without leading or trailing whitespace.");
+    env.register_native_function_with_comment("contains", Some(Type::String), vec![("substring", Type::String)], native(contains), 1, Some(Type::Bool), "Returns true when the string contains the substring.");
+    env.register_native_function_with_comment("contains_ignore_case", Some(Type::String), vec![("substring", Type::String)], native(contains_ignore_case), 1, Some(Type::Bool), "Returns true when the string contains the substring, ignoring case.");
+    env.register_native_function_with_comment("to_uppercase", Some(Type::String), vec![], native(to_uppercase), 1, Some(Type::String), "Returns an uppercase copy of the string.");
+    env.register_native_function_with_comment("to_lowercase", Some(Type::String), vec![], native(to_lowercase), 1, Some(Type::String), "Returns a lowercase copy of the string.");
+    env.register_native_function_with_comment("to_bytes", Some(Type::String), vec![], native(to_bytes), 5, Some(Type::Bytes), "Returns the UTF-8 bytes of the string.");
+    env.register_native_function_with_comment("index_of", Some(Type::String), vec![("substring", Type::String)], native(index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the first byte index of the substring, or null if it is absent.");
+    env.register_native_function_with_comment("last_index_of", Some(Type::String), vec![("substring", Type::String)], native(last_index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the last byte index of the substring, or null if it is absent.");
+    env.register_native_function_with_comment("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], native(replace), 5, Some(Type::String), "Returns a copy with every occurrence of one substring replaced by another.");
+    env.register_native_function_with_comment("starts_with", Some(Type::String), vec![("prefix", Type::String)], native(starts_with), 3, Some(Type::Bool), "Returns true when the string starts with the prefix.");
+    env.register_native_function_with_comment("ends_with", Some(Type::String), vec![("suffix", Type::String)], native(ends_with), 3, Some(Type::Bool), "Returns true when the string ends with the suffix.");
+    env.register_native_function_with_comment("split", Some(Type::String), vec![("separator", Type::String)], native(split), 5, Some(Type::Array(Box::new(Type::String))), "Splits the string by the separator and returns the parts.");
+    env.register_native_function_with_comment("char_at", Some(Type::String), vec![("index", Type::U32)], native(char_at), 1, Some(Type::Optional(Box::new(Type::String))), "Returns the character at the character index as a one-character string, or null if out of bounds.");
 
-    env.register_native_function_with_comment("is_empty", Some(Type::String), vec![], FunctionHandler::Sync(is_empty), 1, Some(Type::Bool), "Returns true when the string has no bytes.");
-    env.register_native_function_with_comment("matches", Some(Type::String), vec![("pattern", Type::String)], FunctionHandler::Sync(string_matches), 50, Some(Type::Array(Box::new(Type::String))), "Returns all non-overlapping matches of the pattern.");
-    env.register_native_function_with_comment("substring", Some(Type::String), vec![("start", Type::U32)], FunctionHandler::Sync(string_substring), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring from the byte index to the end, or null if the index is invalid.");
-    env.register_native_function_with_comment("substring_range", Some(Type::String), vec![("start", Type::U32), ("end", Type::U32)], FunctionHandler::Sync(string_substring_range), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring in the byte range, or null if the range is invalid.");
+    env.register_native_function_with_comment("is_empty", Some(Type::String), vec![], native(is_empty), 1, Some(Type::Bool), "Returns true when the string has no bytes.");
+    env.register_native_function_with_comment("matches", Some(Type::String), vec![("pattern", Type::String)], native(string_matches), 50, Some(Type::Array(Box::new(Type::String))), "Returns all non-overlapping matches of the pattern.");
+    env.register_native_function_with_comment("substring", Some(Type::String), vec![("start", Type::U32)], native(string_substring), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring from the byte index to the end, or null if the index is invalid.");
+    env.register_native_function_with_comment("substring_range", Some(Type::String), vec![("start", Type::U32), ("end", Type::U32)], native(string_substring_range), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring in the byte range, or null if the range is invalid.");
 
     // from utf8
     env.register_static_function_with_comment(
         "from_utf8",
         Type::String,
         vec![("bytes", Type::Bytes)],
-        FunctionHandler::Sync(string_from_utf8),
+        native(string_from_utf8),
         5,
         Some(Type::Optional(Box::new(Type::String))),
         "Builds a string from UTF-8 bytes, returning null when the bytes are invalid."
@@ -46,95 +48,87 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         "from_utf8_lossy",
         Type::String,
         vec![("bytes", Type::Bytes)],
-        FunctionHandler::Sync(string_from_utf8_lossy),
+        native(string_from_utf8_lossy),
         5,
         Some(Type::String),
         "Builds a string from bytes, replacing invalid UTF-8 sequences."
     );
 }
 
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, _resources) = context.split_heap();
+fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let len = zelf?.as_string(heap)?.len();
     Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
-fn trim<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn trim<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let value = zelf.as_string(heap)?;
-    resources.increase_gas_usage(value.len() as u64)?;
+    context.increase_gas_usage(value.len() as u64)?;
     let s = value.trim().to_string();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn contains<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
-    let param = parameters.remove(0);
+fn contains<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
 
     let zelf = zelf?;
     let s = zelf.as_string(heap)?;
-    resources.increase_gas_usage((s.len() + value.len()) as u64)?;
+    context.increase_gas_usage((s.len() + value.len()) as u64)?;
     let contains = s.contains(value);
 
     Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn contains_ignore_case<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
-    let param = parameters.remove(0);
+fn contains_ignore_case<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?.to_lowercase();
     let zelf = zelf?;
     let original = zelf.as_string(heap)?;
-    resources.increase_gas_usage((original.len() + value.len()) as u64 * 2)?;
+    context.increase_gas_usage((original.len() + value.len()) as u64 * 2)?;
     let s: String = original.to_lowercase();
     Ok(SysCallResult::Return(Primitive::Boolean(s.contains(&value)).into()))
 }
 
-fn to_uppercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn to_uppercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let value = zelf.as_string(heap)?;
-    resources.increase_gas_usage(value.len() as u64)?;
+    context.increase_gas_usage(value.len() as u64)?;
     let s: String = value.to_uppercase();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn to_lowercase<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let value = zelf.as_string(heap)?;
-    resources.increase_gas_usage(value.len() as u64)?;
+    context.increase_gas_usage(value.len() as u64)?;
     let s: String = value.to_lowercase();
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
     let values = s.as_bytes();
-    resources.increase_gas_usage(values.len() as _)?;
+    context.increase_gas_usage(values.len() as _)?;
 
     let bytes = values.to_vec();
     Ok(SysCallResult::Return(RuntimeValue::Bytes(bytes).into()))
 }
 
-fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn index_of<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param = parameters.remove(0);
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
-    resources.increase_gas_usage((s.len() + value.len()) as u64)?;
+    context.increase_gas_usage((s.len() + value.len()) as u64)?;
     if let Some(index) = s.find(value) {
         let inner = Primitive::Integer(PrimitiveInteger::U32(index as u32)).into();
         Ok(SysCallResult::Return(inner))
@@ -143,16 +137,15 @@ fn index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_
     }
 }
 
-fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn last_index_of<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param = parameters.remove(0);
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
-    resources.increase_gas_usage((s.len() + value.len()) as u64)?;
+    context.increase_gas_usage((s.len() + value.len()) as u64)?;
     if let Some(index) = s.rfind(value) {
         let inner = Primitive::Integer(PrimitiveInteger::U32(index as u32)).into();
         Ok(SysCallResult::Return(inner))
@@ -161,14 +154,13 @@ fn last_index_of<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetada
     }
 }
 
-fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn replace<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param1 = parameters.remove(0);
-    let param2 = parameters.remove(0);
+    let param1 = &parameters[0];
+    let param2 = &parameters[1];
     let handle1 = param1.as_ref(heap);
     let handle2 = param2.as_ref(heap);
     let old = handle1.as_string()?;
@@ -183,83 +175,79 @@ fn replace<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_,
         // second scan just to count characters.
         let boundaries = s.len()
             .checked_add(1)
-            .ok_or(EnvironmentError::OutOfMemory)?;
+            .ok_or_else(|| EnvironmentError::OutOfMemory)?;
         let tmp = boundaries
             .checked_mul(new.len())
-            .ok_or(EnvironmentError::OutOfMemory)?;
+            .ok_or_else(|| EnvironmentError::OutOfMemory)?;
         s.len()
             .checked_add(tmp)
-            .ok_or(EnvironmentError::OutOfMemory)?
+            .ok_or_else(|| EnvironmentError::OutOfMemory)?
     } else {
         // Non-overlapping matches are at most this many. The bound is
         // conservative and avoids scanning the input twice before replace().
         let max_replacements = s.len() / old.len();
         let tmp = max_replacements
             .checked_mul(new.len())
-            .ok_or(EnvironmentError::OutOfMemory)?;
+            .ok_or_else(|| EnvironmentError::OutOfMemory)?;
         s.len()
             .checked_add(tmp)
-            .ok_or(EnvironmentError::OutOfMemory)?
+            .ok_or_else(|| EnvironmentError::OutOfMemory)?
     };
 
     // Include the string's value bytes and its small container overhead.
-    resources.ensure_memory_available(result_len.saturating_add(32))?;
-    resources.increase_gas_usage((s.len() + old.len() + new.len()) as u64)?;
+    context.ensure_memory_available(result_len.saturating_add(32))?;
+    context.increase_gas_usage((s.len() + old.len() + new.len()) as u64)?;
     let s = s.replace(old, new);
     Ok(SysCallResult::Return(Primitive::String(s).into()))
 }
 
-fn starts_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn starts_with<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param = parameters.remove(0);
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
-    resources.increase_gas_usage((s.len().min(value.len())) as u64)?;
+    context.increase_gas_usage((s.len().min(value.len())) as u64)?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.starts_with(value)).into()))
 }
 
-fn ends_with<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn ends_with<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param = parameters.remove(0);
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
-    resources.increase_gas_usage((s.len().min(value.len())) as u64)?;
+    context.increase_gas_usage((s.len().min(value.len())) as u64)?;
     Ok(SysCallResult::Return(Primitive::Boolean(s.ends_with(value)).into()))
 }
 
-fn split<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn split<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    let param = parameters.remove(0);
+    let param = &parameters[0];
     let handle = param.as_ref(heap);
     let value = handle.as_string()?;
-    resources.increase_gas_usage((s.len() + value.len()) as u64)?;
+    context.increase_gas_usage((s.len() + value.len()) as u64)?;
     let strings: Vec<_> = s.split(value).map(str::to_owned).collect();
-    let values = strings.into_iter().map(|s| heap.insert(Primitive::String(s).into())).collect::<Result<_, HeapError>>()?;
+    let values = strings.into_iter().map(|s| heap.insert(Primitive::String(s).into())).collect();
 
     Ok(SysCallResult::Return(RuntimeValue::Object(values).into()))
 }
 
-fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
-    let param =  parameters.remove(0);
+fn char_at<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    let param = &parameters[0];
     let index = param.as_u32(heap)? as usize;
 
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
-    resources.increase_gas_usage(index as u64)?;
+    context.increase_gas_usage(index as u64)?;
 
     if let Some(c) = s.chars().nth(index) {
         let inner = Primitive::String(c.to_string()).into();
@@ -269,8 +257,7 @@ fn char_at<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_,
     }
 }
 
-fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, _resources) = context.split_heap();
+fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
@@ -278,30 +265,28 @@ fn is_empty<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
     Ok(SysCallResult::Return(Primitive::Boolean(s.is_empty()).into()))
 }
 
-fn string_matches<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn string_matches<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
-    resources.increase_gas_usage(s.len() as u64 * 5)?;
+    context.increase_gas_usage(s.len() as u64 * 5)?;
 
     let param = parameters[0].as_string(heap)?;
 
     let strings: Vec<_> = s.matches(param).map(str::to_owned).collect();
-    let values = strings.into_iter().map(|s| heap.insert(Primitive::String(s).into())).collect::<Result<_, HeapError>>()?;
+    let values = strings.into_iter().map(|s| heap.insert(Primitive::String(s).into())).collect();
     Ok(SysCallResult::Return(RuntimeValue::Object(values).into()))
 }
 
-fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
 
     let start = parameters[0].as_u32(heap)? as usize;
     if let Some(s) = s.get(start..) {
-        resources.increase_gas_usage(s.len() as u64)?;
+        context.increase_gas_usage(s.len() as u64)?;
         let inner = Primitive::String(s.to_owned()).into();
         Ok(SysCallResult::Return(inner))
     } else {
@@ -309,8 +294,7 @@ fn string_substring<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadat
     }
 }
 
-fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let s = zelf.as_ref(heap)
         .as_string()?;
@@ -318,7 +302,7 @@ fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleM
     let start = parameters[0].as_u32(heap)? as usize;
     let end = parameters[1].as_u32(heap)? as usize;
     if let Some(s) = s.get(start..end) {
-        resources.increase_gas_usage(s.len() as u64)?;
+        context.increase_gas_usage(s.len() as u64)?;
         let inner = Primitive::String(s.to_owned()).into();
         Ok(SysCallResult::Return(inner))
     } else {
@@ -326,14 +310,14 @@ fn string_substring_range<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleM
     }
 }
 
-fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let bytes = parameters[0]
         .as_bytes(heap)?;
 
-    resources.increase_gas_usage(bytes.len() as u64)?;
+    context.increase_gas_usage(bytes.len() as u64)?;
 
-    let str = String::from_utf8(bytes.clone())
+    let bytes = parameters.remove(0).into_value(heap).to_bytes()?;
+    let str = String::from_utf8(bytes)
         .ok()
         .map(|s| Primitive::String(s))
         .unwrap_or_default();
@@ -341,12 +325,11 @@ fn string_from_utf8<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'
     Ok(SysCallResult::Return(str.into()))
 }
 
-fn string_from_utf8_lossy<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let (heap, resources) = context.split_heap();
+fn string_from_utf8_lossy<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let bytes = parameters[0]
         .as_bytes(heap)?;
 
-    resources.increase_gas_usage(bytes.len() as u64)?;
+    context.increase_gas_usage(bytes.len() as u64)?;
 
     let str = String::from_utf8_lossy(&bytes).into_owned();
 

@@ -1,11 +1,10 @@
 mod integer;
 mod range;
 mod serde_map;
-pub use integer::PrimitiveInteger;
-pub use range::PrimitiveRange;
 mod error;
-mod cell;
-mod constant;
+mod runtime_value;
+mod stack_value;
+pub(crate) mod owned;
 
 use std::{
     borrow::Cow,
@@ -19,9 +18,12 @@ use super::{
     U256
 };
 
-pub use cell::*;
+pub use integer::PrimitiveInteger;
+pub use range::PrimitiveRange;
+pub use runtime_value::*;
+pub use stack_value::*;
+pub use owned::*;
 pub use error::*;
-pub use constant::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // Helper functions for U64 string serialization/deserialization
@@ -130,6 +132,7 @@ impl Primitive {
         PrimitiveRange::try_from((start, end)).map(|range| Self::Range(Box::new(range)))
     }
 
+    #[inline]
     pub fn get_memory_usage(&self) -> usize {
         match self {
             Primitive::Null => 1,
@@ -531,7 +534,7 @@ impl Primitive {
     // Returns an error if it can't be determined
     #[inline]
     pub fn get_type(&self) -> Result<Type, ValueError> {
-        Type::from_value(self).ok_or(ValueError::UnknownType)
+        Type::from_value(self).ok_or_else(|| ValueError::UnknownType)
     }
 }
 

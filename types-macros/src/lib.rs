@@ -6,6 +6,7 @@ use syn::{parse_macro_input, parse_quote, DeriveInput, Expr, LitStr, Path};
 
 #[derive(Default)]
 struct Options {
+    runtime: bool,
     name: Option<LitStr>,
     crate_path: Option<Path>,
     display: bool,
@@ -16,6 +17,7 @@ struct Options {
     skip_json: bool,
     size: Option<Expr>,
     children: Option<Expr>,
+    children_mut: Option<Expr>,
     deep_clone: Option<Expr>,
     deep_clone_in: Option<Expr>,
 }
@@ -41,6 +43,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
                     let path: LitStr = meta.value()?.parse()?;
                     options.crate_path = Some(path.parse()?);
                 }
+                "runtime" if !type_only => options.runtime = true,
                 "display" if !type_only => options.display = true,
                 "json" if !type_only => options.json = true,
                 "serializable" if !type_only => options.serializable = true,
@@ -49,6 +52,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
                 "skip_json" if !type_only => options.skip_json = true,
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
                 "children" if !type_only => options.children = Some(meta.value()?.parse()?),
+                "children_mut" if !type_only => options.children_mut = Some(meta.value()?.parse()?),
                 "deep_clone" if !type_only => options.deep_clone = Some(meta.value()?.parse()?),
                 "deep_clone_in" if !type_only => options.deep_clone_in = Some(meta.value()?.parse()?),
                 _ => return Err(meta.error("unsupported opaque option")),
@@ -110,9 +114,13 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
     let ident = &input.ident;
     let mut generics = input.generics.clone();
     generics.make_where_clause().predicates.push(parse_quote!(
-        Self: 'static + ::std::clone::Clone + ::std::fmt::Debug + ::std::marker::Send
-            + ::std::marker::Sync
+        Self: 'static + ::std::clone::Clone + ::std::fmt::Debug
     ));
+    if !options.runtime {
+        generics.make_where_clause().predicates.push(parse_quote!(
+            Self: ::std::marker::Send + ::std::marker::Sync
+        ));
+    }
     if options.hash {
         generics
             .make_where_clause()
@@ -210,7 +218,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
         .deep_clone
         .unwrap_or_else(|| parse_quote!(::std::clone::Clone::clone(self)));
     let deep_clone_in = options.deep_clone_in.map(|expression| quote! {
-        fn deep_clone_in(&self, heap: &mut #path::Heap) -> ::std::result::Result<::std::boxed::Box<dyn #path::Opaque>, #path::HeapError> {
+        fn deep_clone_in(&self, heap: &mut #path::Heap) -> ::std::result::Result<::std::boxed::Box<dyn #path::RuntimeOpaque>, #path::HeapError> {
             Ok(::std::boxed::Box::new(#expression))
         }
     });
@@ -221,23 +229,48 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
             }
         }
     });
+    let children_mut = options.children_mut.map(|expression| quote! {
+        fn visit_children_mut(&mut self, visitor: &mut dyn FnMut(#path::OpaqueChildMut<'_>) -> ::std::result::Result<(), #path::HeapError>) -> ::std::result::Result<bool, #path::HeapError> {
+            #expression?;
+            Ok(true)
+        }
+    });
+    let cloning = if options.runtime {
+        quote! {
+            impl #impl_generics #path::RuntimeOpaque for #ident #type_generics #where_clause {
+                fn clone_runtime(&self) -> ::std::boxed::Box<dyn #path::RuntimeOpaque> {
+                    ::std::boxed::Box::new(::std::clone::Clone::clone(self))
+                }
+                #deep_clone_in
+                #children_mut
+            }
+        }
+    } else {
+        if deep_clone_in.is_some() || children_mut.is_some() {
+            return Err(syn::Error::new_spanned(input, "heap-aware cloning requires #[opaque(runtime)]"));
+        }
+        quote! {
+            impl #impl_generics #path::Opaque for #ident #type_generics #where_clause {
+                fn clone_box(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
+                    ::std::boxed::Box::new(::std::clone::Clone::clone(self))
+                }
+                fn deep_clone(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
+                    ::std::boxed::Box::new(#deep_clone)
+                }
+            }
+        }
+    };
     Ok(quote! {
         #type_impl
         #json_impl
-        impl #impl_generics #path::Opaque for #ident #type_generics #where_clause {
-            fn clone_box(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
-                ::std::boxed::Box::new(::std::clone::Clone::clone(self))
-            }
-            fn deep_clone(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
-                ::std::boxed::Box::new(#deep_clone)
-            }
+        #cloning
+        impl #impl_generics #path::OpaqueValue for #ident #type_generics #where_clause {
             #display
             #serializable
             #hash
             #eq
             #size
             #children
-            #deep_clone_in
         }
     })
 }
@@ -256,19 +289,24 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// - `size = expression`: override the size used for value accounting.
 /// - `deep_clone = expression`: produce an independent `Self` with retained VM
 ///   owned values deeply cloned. Defaults to `Clone`.
-/// - `deep_clone_in = expression`: clone runtime payloads using the mutable
+/// - `runtime`: implement `RuntimeOpaque` for an execution-local type instead
+///   of portable `Opaque`. The type may contain runtime handles and cannot be
+///   stored in `OwnedValue`.
+/// - `deep_clone_in = expression`: with `runtime`, clone payloads using the mutable
 ///   heap available as `heap`. Containers retaining heap handles must
 ///   override this to detach their payloads. The expression produces `Self`
 ///   and can use `?` to propagate `HeapError`.
+/// - `children_mut = expression`: expose mutable runtime children for iterative
+///   heap detachment; the expression receives `visitor` and returns a Result.
 /// - `children = expression`: an iterable of direct children convertible to
 ///   `OpaqueChild` for bounded validation and depth checking. Use `&RuntimeValue`
-///   (for example, `&self.values`), `ValueId`, `&OwnedValue`, `&StackValue`,
+///   (for example, `&self.values`), `&ValuePointer`, `&OwnedValue`, `&StackValue`,
 ///   `&dyn Opaque`, or `OpaqueChild` to mix them.
 /// - `skip_json`: keep an existing custom `JSONHelper` implementation.
 /// - `crate = "path"`: override the automatically resolved `silex-types` path.
 ///
-/// `Clone`, `Debug`, `Send`, and `Sync` must be provided by the
-/// type. Generic parameters and where clauses are preserved.
+/// `Clone` and `Debug` are required. Portable types also require `Send` and
+/// `Sync`. Generic parameters and where clauses are preserved.
 ///
 /// ```ignore
 /// use silex_types::Opaque;

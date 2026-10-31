@@ -1,4 +1,5 @@
 use thiserror::Error;
+use matriochka::Error as AnyError;
 use silex_bytecode::ChunkReaderError;
 use silex_environment::EnvironmentError;
 use silex_types::{HeapError, ValueError};
@@ -81,7 +82,7 @@ pub enum VMError {
     #[error("out of memory")]
     OutOfMemory,
     #[error(transparent)]
-    Any(#[from] matriochka::Error)
+    Any(#[from] AnyError)
 }
 
 impl From<EnvironmentError> for VMError {

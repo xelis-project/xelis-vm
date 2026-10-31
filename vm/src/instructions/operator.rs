@@ -7,7 +7,7 @@ use crate::{
     VMContext,
     VMError
 };
-use silex_types::{PrimitiveInteger, Primitive, RuntimeValue, Type};
+use silex_types::{Heap, PrimitiveInteger, Primitive, RuntimeValue, Type};
 
 use super::InstructionResult;
 
@@ -113,12 +113,12 @@ macro_rules! op_bool_all {
 }
 
 macro_rules! opcode_op {
-    ($self: expr, $context: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $heap: expr, $macr: tt, $op: tt) => {
         {
             let right = $self.pop_stack()?;
             let left = $self.pop_stack()?;
             // Push the result to the stack, no need to check as we poped 2 values
-            $self.push_stack_unchecked($macr!($context.heap(), left.as_ref($context.heap()), right.as_ref($context.heap()), $op).into());
+            $self.push_stack_unchecked($macr!(&*$heap, left.as_ref(&*$heap), right.as_ref(&*$heap), $op).into());
         }
     };
 }
@@ -171,22 +171,22 @@ macro_rules! op_div {
 }
 
 macro_rules! opcode_op_assign {
-    ($self: expr, $context: expr, $macr: tt, $op: tt) => {
+    ($self: expr, $heap: expr, $macr: tt, $op: tt) => {
         {
             let right = $self.pop_stack()?;
             let mut left = $self.pop_stack()?;
-            let result = $macr!($context.heap(), left.as_ref($context.heap()), right.as_ref($context.heap()), $op);
+            let result = $macr!(&*$heap, left.as_ref(&*$heap), right.as_ref(&*$heap), $op);
 
-            *left.as_mut($context.heap_mut()) = result.into();
+            $heap.replace_stack(&mut left, result.into());
         }
     };
 }
 
 macro_rules! opcode_fn {
     ($fn: ident, $macro1: tt, $macro2: tt, $op: tt) => {
-        pub fn $fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+        pub fn $fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
             debug!(stringify!($fn));
-            $macro1!(stack, context, $macro2, $op);
+            $macro1!(stack, heap, $macro2, $op);
             Ok(InstructionResult::Nothing)
         }
     };
@@ -222,38 +222,32 @@ opcode_fn!(bitwise_xor_assign, opcode_op_assign, op_bool, ^);
 opcode_fn!(bitwise_shl_assign, opcode_op_assign, op, <<);
 opcode_fn!(bitwise_shr_assign, opcode_op_assign, op, >>);
 
-pub fn neg<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn neg<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("neg");
 
     let value = stack.pop_stack()?;
-    stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool(context.heap())?).into());
+    stack.push_stack_unchecked(Primitive::Boolean(!value.as_bool(heap)?).into());
     Ok(InstructionResult::Nothing)
 }
 
-pub fn assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("assign");
 
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
 
-    let owned = right.into_owned(context.heap_mut())?;
+    let owned = right.into_owned(heap)?;
 
-    let left_depth = left.depth();
-    owned.calculate_depth(context.heap(),
-        context.resources().max_value_depth()
-            .saturating_sub(left_depth)
-    )?;
-
-    *left.as_mut(context.heap_mut()) = owned;
+    heap.replace_stack(&mut left, owned);
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pow");
 
-    let right = stack.pop_stack()?.into_owned(context.heap_mut())?;
-    let left = stack.pop_stack()?.into_owned(context.heap_mut())?;
+    let right = stack.pop_stack()?.into_owned(heap)?;
+    let left = stack.pop_stack()?.into_owned(heap)?;
     let result = match (&left, &right) {
         (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => {
             let pow_n = b.as_u32()?;
@@ -273,13 +267,13 @@ pub fn pow<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     Ok(InstructionResult::Nothing)
 }
 
-pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("pow_assign");
 
     let right = stack.pop_stack()?;
     let mut left = stack.pop_stack()?;
     let result = {
-        match (left.as_ref(context.heap()), right.as_ref(context.heap())) {
+        match (left.as_ref(heap), right.as_ref(heap)) {
             (RuntimeValue::Primitive(a), RuntimeValue::Primitive(b)) => {
                 let pow_n = b.as_u32()?;
                 match a {
@@ -296,17 +290,17 @@ pub fn pow_assign<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &m
         }
     };
 
-    *left.as_mut(context.heap_mut()) = result.into();
+    heap.replace_stack(&mut left, result.into());
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("cast");
 
     let ty = reader.read_type()?;
     let mut current = stack.pop_stack()?
-        .into_owned(context.heap_mut())?;
+        .into_owned(heap)?;
 
     let value = match ty {
         Type::U8 => Primitive::Integer(PrimitiveInteger::U8(current.cast_to_u8()?)),
@@ -324,41 +318,42 @@ pub fn cast<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Sta
     Ok(InstructionResult::Nothing)
 }
 
-pub fn and<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn and<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("and");
 
     let value = stack.pop_stack()?;
-    let left = value.as_bool(context.heap())?;
-    let right = stack.pop_stack()?.as_bool(context.heap())?;
+    let left = value.as_bool(heap)?;
+    let right_value = stack.pop_stack()?;
+    let right = right_value.as_bool(heap)?;
     stack.push_stack_unchecked(Primitive::Boolean(left && right).into());
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn or<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn or<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("or");
 
     let right = stack.pop_stack()?;
     let left = stack.pop_stack()?;
-    let value = left.as_bool(context.heap())? || right.as_bool(context.heap())?;
+    let value = left.as_bool(heap)? || right.as_bool(heap)?;
     stack.push_stack_unchecked(Primitive::Boolean(value).into());
 
     Ok(InstructionResult::Nothing)
 }
 
-pub fn increment<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn increment<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("increment");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut(context.heap_mut()).increment()?;
+    v.as_mut(heap).increment()?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn decrement<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn decrement<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("decrement");
 
     let v = stack.last_mut_stack()?;
-    v.as_mut(context.heap_mut()).decrement()?;
+    v.as_mut(heap).decrement()?;
 
     Ok(InstructionResult::Nothing)
 }

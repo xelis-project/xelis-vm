@@ -1,3 +1,5 @@
+#[cfg(test)]
+use silex_types::OpaqueValue;
 use matriochka::{Error, OptionExt, ResultExt};
 use serde_json::json;
 use silex_builder::EnvironmentBuilder;
@@ -54,7 +56,7 @@ fn register_type(
                 register_type(ty, mapper, internal_types, seen_types)?;
             }
         },
-        
+
         // Then handle struct/enum (existing code)
         Type::Struct(struct_type) => {
             let builder = mapper.structs();
@@ -140,7 +142,7 @@ fn register_type(
             // Primitives, Any, T, Opaque, Function, Bytes - nothing to register
         }
     }
-    
+
     Ok(())
 }
 
@@ -259,9 +261,13 @@ mod tests {
 
 
             impl Opaque for $name {
-                fn clone_box(&self) -> Box<dyn Opaque> {
+    fn clone_box(&self) -> Box<dyn Opaque> {
                     Box::new($name)
                 }
+}
+
+impl OpaqueValue for $name {
+
             }
         };
     }

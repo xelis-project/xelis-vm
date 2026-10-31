@@ -1,28 +1,20 @@
-mod stack_value;
-mod arena;
-mod pointer;
-mod heap;
-mod heap_error;
-pub(crate) mod owned_value;
-
 use std::{
     borrow::Cow,
+    fmt,
     mem
 };
 use indexmap::IndexMap;
-use crate::{
+use crate::{RuntimeOpaqueWrapper, OpaqueValue,
     opaque::OpaqueWrapper,
     Opaque,
     Type,
-    U256
+    U256,
+    Heap,
+    OwnedValue,
+    ValuePointer,
 };
 use super::{ Primitive, PrimitiveInteger, PrimitiveRange, ValueError};
 
-pub use stack_value::*;
-pub use pointer::*;
-pub use heap::*;
-pub use heap_error::*;
-pub use owned_value::*;
 
 pub enum Either<L, R> {
     Left(L),
@@ -30,10 +22,10 @@ pub enum Either<L, R> {
 }
 
 // Runtime node. Child handles are resolved exclusively through the VM's heap.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RuntimeValue {
     Primitive(Primitive),
-    Opaque(OpaqueWrapper),
+    Opaque(RuntimeOpaqueWrapper),
     Bytes(Vec<u8>),
     Object(Vec<ValuePointer>),
     // Map cannot be used as a key in another map
@@ -54,11 +46,15 @@ impl From<Primitive> for RuntimeValue {
 }
 
 impl<T: Opaque> From<T> for RuntimeValue {
-    fn from(value: T) -> Self { Self::Opaque(value.into()) }
+    fn from(value: T) -> Self {
+        Self::Opaque(value.into())
+    }
 }
 
 impl From<OpaqueWrapper> for RuntimeValue {
-    fn from(value: OpaqueWrapper) -> Self { Self::Opaque(value) }
+    fn from(value: OpaqueWrapper) -> Self {
+        Self::Opaque(value.into())
+    }
 }
 
 impl RuntimeValue {
@@ -329,7 +325,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_opaque(&self) -> Result<&OpaqueWrapper, ValueError> {
+    pub fn as_opaque(&self) -> Result<&RuntimeOpaqueWrapper, ValueError> {
         match self {
             Self::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
@@ -337,7 +333,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_opaque_mut(&mut self) -> Result<&mut OpaqueWrapper, ValueError> {
+    pub fn as_opaque_mut(&mut self) -> Result<&mut RuntimeOpaqueWrapper, ValueError> {
         match self {
             Self::Opaque(opaque) => Ok(opaque),
             _ => Err(ValueError::ExpectedOpaque)
@@ -345,7 +341,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_opaque_type<T: Opaque>(&self) -> Result<&T, ValueError> {
+    pub fn as_opaque_type<T: OpaqueValue>(&self) -> Result<&T, ValueError> {
         match self {
             Self::Opaque(opaque) => opaque.as_ref::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
@@ -353,7 +349,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_opaque_type_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
+    pub fn as_opaque_type_mut<T: OpaqueValue>(&mut self) -> Result<&mut T, ValueError> {
         match self {
             Self::Opaque(opaque) => opaque.as_mut::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
@@ -361,7 +357,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn into_opaque_type<T: Opaque>(self) -> Result<T, ValueError> {
+    pub fn into_opaque_type<T: OpaqueValue>(self) -> Result<T, ValueError> {
         match self {
             Self::Opaque(opaque) => opaque.into_inner::<T>(),
             _ => Err(ValueError::ExpectedOpaque)
@@ -579,25 +575,240 @@ impl RuntimeValue {
         }
     }
 
-    /// Create a clone while keeping the same references for sub values (i.e. shallow clone)
-    #[inline(always)]
-    pub fn clone_ref(&self) -> Self {
-        match self {
-            Self::Bytes(v) => return Self::Bytes(v.clone()),
-            Self::Primitive(v) => return Self::Primitive(v.clone()),
-            Self::Opaque(v) => return Self::Opaque(v.clone()),
-            Self::Object(values) => return Self::Object(values.clone()),
-            Self::Map(map) => return Self::Map(map.clone()),
-        }
-    }
-}
-
-impl Clone for RuntimeValue {
-    fn clone(&self) -> Self {
-        self.clone_ref()
-    }
 }
 
 impl From<PrimitiveInteger> for RuntimeValue {
-    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
+    fn from(value: PrimitiveInteger) -> Self {
+        Primitive::Integer(value).into()
+    }
+}
+
+enum Node<'a> {
+    Runtime(&'a RuntimeValue),
+    Owned(&'a OwnedValue),
+}
+
+impl RuntimeValue {
+    pub fn equals(&self, other: &Self, heap: &Heap) -> bool {
+        match (self, other) {
+            (Self::Primitive(left), Self::Primitive(right)) => return left == right,
+            (Self::Bytes(left), Self::Bytes(right)) => return left == right,
+            _ => {}
+        }
+        let mut work = vec![(self, other)];
+        while let Some((left, right)) = work.pop() {
+            match (left, right) {
+                (Self::Primitive(a), Self::Primitive(b)) if a == b => {}
+                (Self::Opaque(a), Self::Opaque(b)) if a == b => {}
+                (Self::Bytes(a), Self::Bytes(b)) if a == b => {}
+                (Self::Object(a), Self::Object(b)) if a.len() == b.len() => {
+                    work.extend(a.iter().zip(b).map(|(a, b)| (a.as_ref(heap), b.as_ref(heap))));
+                }
+                (Self::Map(a), Self::Map(b)) if a.len() == b.len() => {
+                    for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {
+                        if ak != bk {
+                            return false;
+                        }
+                        work.push((av.as_ref(heap), bv.as_ref(heap)));
+                    }
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+
+    #[inline]
+    pub fn calculate_memory_usage(&self, heap: &Heap, max: usize) -> Result<usize, ValueError> {
+        if let Self::Primitive(value) = self {
+            return Ok(value.get_memory_usage());
+        }
+        if matches!(self, Self::Opaque(_)) {
+            return Ok(8);
+        }
+        self.calculate_nested_memory_usage(heap, max)
+    }
+
+    fn calculate_nested_memory_usage(&self, heap: &Heap, max: usize) -> Result<usize, ValueError> {
+        let mut memory = 0;
+        let mut work = vec![Node::Runtime(self)];
+        while let Some(node) = work.pop() {
+            if memory > max {
+                return Err(ValueError::MaxMemoryReached(memory, max));
+            }
+            match node {
+                Node::Runtime(Self::Primitive(value)) | Node::Owned(OwnedValue::Primitive(value)) => memory += 1 + value.get_memory_usage(),
+                Node::Runtime(Self::Opaque(_)) | Node::Owned(OwnedValue::Opaque(_)) => memory += 9,
+                Node::Runtime(Self::Bytes(value)) | Node::Owned(OwnedValue::Bytes(value)) => memory += 32 + value.len(),
+                Node::Runtime(Self::Object(children)) => {
+                    memory += 32;
+                    work.extend(children.iter().map(|id| Node::Runtime(id.as_ref(heap))));
+                }
+                Node::Runtime(Self::Map(children)) => {
+                    memory += 64;
+                    work.extend(children.iter().flat_map(|(key, id)| [Node::Owned(key), Node::Runtime(id.as_ref(heap))]));
+                }
+                Node::Owned(OwnedValue::Object(children)) => {
+                    memory += 32;
+                    work.extend(children.iter().map(Node::Owned));
+                }
+                Node::Owned(OwnedValue::Map(children)) => {
+                    memory += 64;
+                    work.extend(children.iter().flat_map(|(key, value)| [Node::Owned(key), Node::Owned(value)]));
+                }
+            }
+        }
+        Ok(memory)
+    }
+
+    pub fn display<'a>(&'a self, heap: &'a Heap) -> impl fmt::Display + 'a {
+        struct Display<'a>(&'a RuntimeValue, &'a Heap);
+        impl fmt::Display for Display<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                enum Item<'a> {
+                    Value(&'a RuntimeValue),
+                    Owned(&'a OwnedValue),
+                    Text(&'static str),
+                }
+                let mut work = vec![Item::Value(self.0)];
+                while let Some(item) = work.pop() {
+                    match item {
+                        Item::Text(text) => f.write_str(text)?,
+                        Item::Owned(value) => value.fmt(f)?,
+                        Item::Value(value) => match value {
+                            RuntimeValue::Primitive(value) => value.fmt(f)?,
+                            RuntimeValue::Opaque(value) => value.fmt(f)?,
+                            RuntimeValue::Bytes(value) => write!(f, "bytes{:?}", value)?,
+                            RuntimeValue::Object(values) => {
+                                f.write_str("[")?;
+                                work.push(Item::Text("]"));
+                                for (index, value) in values.iter().enumerate().rev() {
+                                    work.push(Item::Value(self.1.get(value)));
+                                    if index > 0 {
+                                        work.push(Item::Text(", "));
+                                    }
+                                }
+                            }
+                            RuntimeValue::Map(values) => {
+                                f.write_str("map{")?;
+                                work.push(Item::Text("}"));
+                                for (index, (key, value)) in values.iter().enumerate().rev() {
+                                    work.push(Item::Value(self.1.get(value)));
+                                    work.push(Item::Text(": "));
+                                    work.push(Item::Owned(key));
+                                    if index > 0 {
+                                        work.push(Item::Text(", "));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+        Display(self, heap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{HeapError, PrimitiveInteger, StackValue};
+
+    #[test]
+    fn handles_preserve_identity_and_removed_buffers() {
+        let mut heap = unsafe { Heap::new() };
+        let bytes = vec![1, 2, 3];
+        let buffer = bytes.as_ptr();
+        let id = heap.insert(RuntimeValue::Bytes(bytes));
+        let mut array = RuntimeValue::Object(vec![id.clone()]);
+        let removed = array.as_mut_vec().unwrap().swap_remove(0);
+        assert_eq!(id, removed);
+        assert_eq!(removed.as_ref(&heap).as_bytes().unwrap().as_ptr(), buffer);
+        assert_eq!(std::mem::size_of::<ValuePointer>(), 8);
+        let value: StackValue = removed.into();
+        assert_eq!(value.estimate_memory_usage(&heap, 0).unwrap(), 8);
+    }
+
+    #[test]
+    fn exporting_an_owned_byte_buffer_reuses_its_allocation() {
+        let mut heap = unsafe { Heap::new() };
+        let bytes = vec![1, 2, 3];
+        let original = bytes.as_ptr();
+        let result = heap.export(StackValue::Owned(RuntimeValue::Bytes(bytes))).unwrap();
+        assert_eq!(result.as_bytes().unwrap().as_ptr(), original);
+    }
+
+    #[test]
+    fn snapshots_allow_shared_children() {
+        let mut heap = unsafe { Heap::new() };
+        let id = heap.insert(PrimitiveInteger::U64(42).into());
+        let root = RuntimeValue::Object(vec![id.clone(), id.clone()]);
+        let snapshot = heap.snapshot(&root).unwrap();
+        assert_eq!(snapshot.as_vec().unwrap()[0].as_u64().unwrap(), 42);
+        assert_eq!(snapshot.as_vec().unwrap()[1].as_u64().unwrap(), 42);
+    }
+
+    #[test]
+    fn explicit_deep_clone_detaches_nested_slots() {
+        let mut heap = unsafe { Heap::new() };
+        let shared = heap.insert(RuntimeValue::Bytes(vec![1, 2, 3]));
+        let map_child = shared.clone();
+        let map = RuntimeValue::Map(Box::new([(OwnedValue::from(7u8), map_child)].into_iter().collect()));
+        let map = heap.insert(map);
+        let first = shared.clone();
+        let original = RuntimeValue::Object(vec![first, map]);
+        let copy = original.clone();
+        let detached = heap.detach(copy).unwrap();
+        let children = detached.as_vec().unwrap();
+        let detached_first = children[0].clone();
+        let detached_map = children[1].clone();
+        assert_ne!(detached_first, shared);
+        let nested = detached_map.as_ref(&heap).as_map().unwrap().values().next().unwrap().clone();
+        assert_ne!(nested, shared);
+        assert_ne!(nested, detached_first);
+        *heap.get_mut(&detached_first) = RuntimeValue::Bytes(vec![9]);
+        assert_eq!(shared.as_ref(&heap).as_bytes().unwrap(), &[1, 2, 3]);
+        assert_eq!(nested.as_ref(&heap).as_bytes().unwrap(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn runtime_opaque_export_does_not_traverse_its_children() {
+        #[derive(Debug, Clone, Opaque)]
+        #[opaque(runtime, children = std::iter::once(&self.0))]
+        struct Retained(ValuePointer);
+        let mut heap = unsafe { Heap::new() };
+        let child = heap.insert(RuntimeValue::default());
+        let id = heap.insert(RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(Retained(child))));
+        let root = RuntimeValue::Object(vec![id]);
+        assert!(matches!(heap.snapshot(&root), Err(ValueError::HeapError(HeapError::NonPortableValue))));
+
+    }
+
+    #[test]
+    fn clearing_a_heap_resets_its_storage() {
+        let mut heap = unsafe { Heap::new() };
+        {
+            let id = heap.insert(PrimitiveInteger::U64(1).into());
+            assert_eq!(heap.get(&id).as_u64().unwrap(), 1);
+        }
+        heap.clear();
+        assert!(heap.is_empty());
+        assert_eq!(heap.len(), 0);
+        let id = heap.insert(PrimitiveInteger::U64(2).into());
+        assert_eq!(heap.get(&id).as_u64().unwrap(), 2);
+    }
+
+    #[test]
+    fn heap_growth_keeps_handles_valid() {
+        let mut heap = unsafe { Heap::new() };
+        let first = heap.insert(PrimitiveInteger::U64(42).into());
+        for i in 0..10_000 {
+            heap.insert(PrimitiveInteger::U64(i).into());
+        }
+        assert_eq!(heap.get(&first).as_u64().unwrap(), 42);
+        *heap.get_mut(&first) = PrimitiveInteger::U64(99).into();
+        assert_eq!(heap.get(&first).as_u64().unwrap(), 99);
+    }
 }

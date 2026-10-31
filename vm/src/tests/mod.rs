@@ -8,6 +8,7 @@ use silex_types::OwnedValue;
 /// Where each test is crafted by hand using OpCodes
 mod op_code;
 mod arena;
+mod confinement;
 
 /// This module contains all the tests using the suite available
 /// (Lexer, Parser, Compiler) to produce a valid Module.
@@ -32,9 +33,11 @@ fn run_internal<'a>(module: Module, environment: &'a Environment<()>, id: u16) -
         environment: environment.into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     vm.invoke_chunk_id_unchecked(id as _).expect("valid entry chunk");
-    vm.run_blocking().map(|mut v| v.into_value().expect("primitive"))
+    let result = vm.run_blocking().map(|mut v| v.into_value().expect("primitive"));
+    if result.is_ok() { assert!(vm.is_idle()); }
+    result
 }
 
 #[track_caller]

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
-use silex_types::{Constant, Type, ValueError};
+use silex_types::{OwnedValue, Type, ValueError};
 
 use crate::BuilderError;
 
-pub type ConstFnParams = Vec<Constant>;
-pub type ConstFnCall = fn(ConstFnParams) -> Result<Constant, ConstFunctionError>;
+pub type ConstFnParams = Vec<OwnedValue>;
+pub type ConstFnCall = fn(ConstFnParams) -> Result<OwnedValue, ConstFunctionError>;
 
 #[derive(Debug, Error)]
 pub enum ConstFunctionError {
@@ -25,33 +25,27 @@ pub struct ConstFunction<'a> {
     pub name: &'a str,
     pub parameters: Vec<(&'a str, Type)>,
     pub on_call: ConstFnCall,
+    pub return_type: Option<Type>,
     pub comment: Option<&'a str>,
 }
 
 impl<'a> ConstFunction<'a> {
-    pub fn call(&self, parameters: Vec<Constant>) -> Result<Constant, ConstFunctionError> {
+    pub fn call(&self, parameters: Vec<(OwnedValue, Type)>) -> Result<OwnedValue, ConstFunctionError> {
         // Check that the params match
         if self.parameters.len() != parameters.len() {
             return Err(BuilderError::InvalidConstFnParametersMismatch.into());
         }
 
         let mut updated_constants = Vec::with_capacity(parameters.len());
-        for (param, (_, expected_type)) in parameters.into_iter().zip(self.parameters.iter()) {
-            if let Some(param_type) = Type::from_value_type(&param) {
-                if param_type != *expected_type {
-                    if param_type.is_castable_to(expected_type) {
-                        // Try to cast it
-                        let cast = param.checked_cast_to_primitive_type(expected_type)?;
-                        updated_constants.push(cast);
-                        continue;
-                    }
-                } else {
-                    updated_constants.push(param);
-                    continue;
-                }
+        for ((mut param, param_type), (_, expected_type)) in parameters.into_iter().zip(self.parameters.iter()) {
+            if param_type == *expected_type {
+                updated_constants.push(param);
+            } else if param_type.is_castable_to(expected_type) {
+                let cast = param.checked_cast_to_primitive_type(expected_type)?;
+                updated_constants.push(cast);
+            } else {
+                return Err(BuilderError::InvalidConstFnParameters.into());
             }
-
-            return Err(BuilderError::InvalidConstFnParameters.into());
         }
 
         // Call the function
@@ -84,6 +78,7 @@ impl<'a> ConstFunctionMapper<'a> {
             name,
             parameters,
             on_call,
+            return_type: None,
             comment
         };
 
@@ -91,6 +86,22 @@ impl<'a> ConstFunctionMapper<'a> {
             .or_insert_with(HashMap::new)
             .insert(name, const_fn);
 
+        Ok(())
+    }
+
+    pub fn register_with_return_type(
+        &mut self,
+        name: &'a str,
+        for_type: Type,
+        parameters: Vec<(&'a str, Type)>,
+        return_type: Type,
+        on_call: ConstFnCall,
+    ) -> Result<(), BuilderError> {
+        self.register(name, for_type.clone(), parameters, on_call)?;
+        let function = self.mappings.get_mut(&for_type)
+            .and_then(|functions| functions.get_mut(name))
+            .ok_or(BuilderError::MappingNotFound)?;
+        function.return_type = Some(return_type);
         Ok(())
     }
 

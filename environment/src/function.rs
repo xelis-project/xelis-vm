@@ -1,14 +1,15 @@
-use std::{collections::VecDeque, fmt, sync::Arc};
+use std::{any::Any, fmt, sync::Arc};
 
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, LocalBoxFuture};
 use std::collections::HashMap;
 use silex_bytecode::Module;
-use silex_types::{Primitive, StackValue, Type, RuntimeValue, Heap, ValuePointer};
-use crate::{VMContext, Environment, ModuleMetadata};
+use silex_types::{Primitive, StackValue, Type, RuntimeValue, Heap, ValuePointer, OwnedValue};
+use crate::scope::resume_owned;
+use crate::{NativeState, NativeCallback, NativeScope, VMContext, Environment, ModuleMetadata};
 
 use super::EnvironmentError;
 
-pub type CallbackState = Box<dyn std::any::Any + Send + Sync>;
+pub type CallbackState = Box<dyn Any>;
 
 pub type CallbackFunction<M> = fn(
     state: CallbackState,
@@ -21,9 +22,9 @@ pub enum CallbackType<M> {
     Sync(CallbackFunction<M>),
     Async(for<'a> fn(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'a>,
         heap: &'a mut Heap,
-    ) -> BoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>>),
+    ) -> LocalBoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>>),
 }
 
 // SysCall Result represent all possible actions
@@ -35,15 +36,15 @@ pub enum SysCallResult<M> {
     Return(StackValue),
     // Async Call instruction
     AsyncCall {
-        ptr: OnCallAsyncFn<M>,
+        ptr: AsyncHandler<M>,
         instance: bool,
-        params: VecDeque<StackValue>,
+        params: Vec<StackValue>,
     },
     // Call dynamically a chunk or a syscall fn
     DynamicCall {
         // Should contains [id: u16, is_syscall bool, from: u16]
         ptr: StackValue,
-        params: VecDeque<StackValue>,
+        params: Vec<StackValue>,
     },
     // NOTE: due to the invariant lifetime issue
     // we don't provide any reference
@@ -55,7 +56,7 @@ pub enum SysCallResult<M> {
         chunk: u16,
         // It must be a list of parameters
         // that will be passed to the chunk
-        params: VecDeque<StackValue>,
+        params: Vec<StackValue>,
     },
     // Execute the said function ptr and after that call the callback function
     // Same as a dynamic call but with a callback after execution
@@ -63,7 +64,7 @@ pub enum SysCallResult<M> {
         // Should contains [id: u16, is_syscall bool, from: u16]
         ptr: StackValue,
         // Stack params for the above ptr call
-        params: VecDeque<StackValue>,
+        params: Vec<StackValue>,
         // The state can be anything
         state: CallbackState,
         // Count of required parameters for the callback
@@ -109,26 +110,130 @@ impl<M> From<StackValue> for SysCallResult<M> {
 // first parameter is the current value / instance
 // second is the list of all parameters for this function call
 pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
-pub type FnInstance<'a> = Result<StackValue, EnvironmentError>;
-pub type FnParams = Vec<StackValue>;
+pub type FnInstance<'a> = Result<&'a mut StackValue, EnvironmentError>;
+pub type FnParams<'a> = &'a mut Vec<StackValue>;
 pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
-        FnParams,
+        FnParams<'a>,
         &'a ModuleMetadata<'_, M>,
         &'a mut VMContext<'ty, 'r>,
+        &'a mut Heap,
     ) -> FnReturnType<M>;
 
-pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
+pub type RawAsyncFn<M> = for<'a, 'ty, 'r> fn(
         FnInstance<'a>,
-        FnParams,
+        FnParams<'a>,
         &'a ModuleMetadata<'_, M>,
         &'a mut VMContext<'ty, 'r>,
-    ) -> BoxFuture<'a, FnReturnType<M>>;
+        &'a mut Heap,
+    ) -> LocalBoxFuture<'a, FnReturnType<M>>;
+
+pub type ScopedNativeFn<M> = for<'call, 'ty, 'r> fn(
+    &mut NativeScope<'call, M>,
+    &ModuleMetadata<'_, M>,
+    &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError>;
+
+pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
+    Option<OwnedValue>,
+    Vec<OwnedValue>,
+    &'a ModuleMetadata<'_, M>,
+    &'a mut VMContext<'ty, 'r>,
+) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>>;
+
+#[derive(Debug)]
+enum RawHandler<M> {
+    Sync(OnCallSyncFn<M>),
+    Async(RawAsyncFn<M>),
+}
+
+impl<M> Copy for RawHandler<M> {}
+impl<M> Clone for RawHandler<M> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+/// An explicitly trusted extension of the execution engine.
+/// Safe native registration uses `FunctionHandler::Sync` or `Async` instead.
+///
+/// ```compile_fail
+/// use silex_environment::{FunctionHandler, FnInstance, FnParams, FnReturnType, ModuleMetadata, VMContext, SysCallResult};
+/// use silex_types::Heap;
+/// fn raw(_: FnInstance, _: FnParams, _: &ModuleMetadata<'_, ()>, _: &mut VMContext, _: &mut Heap) -> FnReturnType<()> {
+///     Ok(SysCallResult::None)
+/// }
+/// let handler = FunctionHandler::sync_unchecked(raw);
+/// ```
+#[derive(Debug)]
+pub struct UncheckedFunction<M>(RawHandler<M>);
+
+impl<M> Copy for UncheckedFunction<M> {}
+impl<M> Clone for UncheckedFunction<M> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum FunctionHandler<M> {
-    Sync(OnCallSyncFn<M>),
+    Sync(ScopedNativeFn<M>),
     Async(OnCallAsyncFn<M>),
+    Unchecked(UncheckedFunction<M>),
+}
+
+impl<M> FunctionHandler<M> {
+    /// # Safety
+    /// The handler and every callback/opaque it creates must keep all runtime
+    /// owners inside this execution, including across suspension and destruction.
+    /// Heap mutations must preserve acyclicity by detaching inserted graphs.
+    /// Any retained foreign state must be Send: moving the Rc family does not
+    /// make thread-affine host resources safe to move.
+    pub unsafe fn sync_unchecked(handler: OnCallSyncFn<M>) -> Self {
+        Self::Unchecked(UncheckedFunction(RawHandler::Sync(handler)))
+    }
+
+    /// # Safety
+    /// The complete returned future and all retained runtime owners must remain
+    /// confined to this execution. Foreign captured data must be Send.
+    /// Heap mutations must preserve acyclicity by detaching inserted graphs.
+    pub unsafe fn async_unchecked(handler: RawAsyncFn<M>) -> Self {
+        Self::Unchecked(UncheckedFunction(RawHandler::Async(handler)))
+    }
+}
+
+pub enum AsyncHandler<M> {
+    Owned(OnCallAsyncFn<M>),
+    Prepared {
+        future: BoxFuture<'static, Result<OwnedValue, EnvironmentError>>,
+        state: NativeState,
+        callback: NativeCallback<M>,
+        retained: Vec<StackValue>,
+    },
+    Unchecked(UncheckedFunction<M>),
+}
+
+impl<M: 'static> AsyncHandler<M> {
+    pub async fn call<'ty, 'r>(self, instance: FnInstance<'_>, params: FnParams<'_>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> FnReturnType<M> {
+        match self {
+            Self::Prepared { future, state, callback, retained } => {
+                let response = future.await?;
+                let response = heap.import_owned(response);
+                resume_owned(state, callback, retained, vec![response.into()], heap)
+            }
+            Self::Owned(handler) => {
+                let instance = instance.ok().map(|value| heap.export(value.take())).transpose()?;
+                let params = params.iter_mut().map(|value| heap.export(value.take()))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let value = handler(instance, params, metadata, context).await?;
+                Ok(SysCallResult::Return(heap.import_owned(value).into()))
+            }
+            Self::Unchecked(UncheckedFunction(RawHandler::Async(handler))) => {
+                handler(instance, params, metadata, context, heap).await
+            }
+            Self::Unchecked(_) => unreachable!("synchronous handler cannot suspend"),
+        }
+    }
 }
 
 // Native function that is implemented in Rust
@@ -175,7 +280,10 @@ impl<M> NativeFunction<M> {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, mut parameters: VecDeque<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>) -> Result<SysCallResult<M>, EnvironmentError> {
+    pub fn call_function<'ty, 'r>(&self, mut parameters: Vec<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<SysCallResult<M>, EnvironmentError>
+    where
+        M: 'static,
+    {
         if parameters.len() != self.parameters.len() + self.require_instance as usize {
             return Err(EnvironmentError::InvalidFnCall(parameters.len(), self.parameters.len()));
         }
@@ -183,28 +291,41 @@ impl<M> NativeFunction<M> {
         // Raw call to the function if its a sync function
         // otherwise return the async call
         match self.on_call {
-            FunctionHandler::Sync(on_call) => {
+            FunctionHandler::Unchecked(UncheckedFunction(RawHandler::Sync(on_call))) => {
                 // Verify only the parameters for direct execution
                 // For the async case, it will be done in the VM loop
 
-                let on_value = if self.is_on_instance() {
-                    let instance = parameters.pop_front()
-                        .ok_or(EnvironmentError::MissingInstanceFnCall)?;
-
-                    verify_instance_against_parameters(&instance, parameters.make_contiguous(), context.heap_mut())?;
-
-                    Ok(instance)
-                } else {
-                    Err(EnvironmentError::FnExpectedInstance)
-                };
-
-                (on_call)(on_value, parameters.into(), metadata, context)
+                let mut instance = if self.is_on_instance() {
+                    let instance = parameters.remove(0);
+                    verify_instance_against_parameters(&instance, parameters.as_mut_slice(), heap)?;
+                    Some(instance)
+                } else { None };
+                // Arguments must be released before the instance, including on errors.
+                let mut arguments = parameters;
+                (on_call)(instance.as_mut().ok_or_else(|| EnvironmentError::FnExpectedInstance), &mut arguments, metadata, context, heap)
             },
-            FunctionHandler::Async(ptr) => Ok(SysCallResult::AsyncCall {
-                ptr,
+            FunctionHandler::Sync(handler) => {
+                let instance = if self.is_on_instance() {
+                    let instance = parameters.remove(0);
+                    verify_instance_against_parameters(&instance, parameters.as_mut_slice(), heap)?;
+                    Some(instance)
+                } else {
+                    None
+                };
+                let mut scope = NativeScope::new(heap, parameters, instance);
+                handler(&mut scope, metadata, context)?;
+                Ok(scope.finish())
+            }
+            FunctionHandler::Async(handler) => Ok(SysCallResult::AsyncCall {
+                ptr: AsyncHandler::Owned(handler),
                 instance: self.is_on_instance(),
                 params: parameters
-            })
+            }),
+            FunctionHandler::Unchecked(handler) => Ok(SysCallResult::AsyncCall {
+                ptr: AsyncHandler::Unchecked(handler),
+                instance: self.is_on_instance(),
+                params: parameters,
+            }),
         }
     }
 
@@ -260,7 +381,8 @@ pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mu
         let instance_ptr = instance.id();
         for param in parameters.iter_mut() {
             if param.id() == instance_ptr {
-                *param = param.to_owned(heap)?;
+                let owned = param.to_owned(heap)?;
+                *param = owned;
             }
         }
     }
@@ -271,22 +393,26 @@ pub fn verify_instance_against_parameters(instance: &StackValue, parameters: &mu
 // Explicitly detach duplicate parameters when independent argument values are
 // wanted. This is no longer needed to enforce Rust aliasing rules.
 pub fn verify_parameters(parameters: &mut [StackValue], heap: &mut Heap) -> Result<(), EnvironmentError> {
-    let mut pointers: HashMap<Option<ValuePointer>, usize> = HashMap::new();
+    let mut pointers: HashMap<ValuePointer, usize> = HashMap::new();
 
-    for param in parameters.iter_mut() {
-        if !param.is_owned() {
-            *pointers.entry(param.id())
-                .or_default() += 1;
+    for param in parameters.iter() {
+        if let Some(ptr) = param.id() {
+            if let Some(count) = pointers.get_mut(ptr) {
+                *count += 1;
+            } else {
+                pointers.insert(ptr.clone(), 1);
+            }
         }
     }
 
     // Now, for each parameter that is a pointer
     // check if its count is more than 1
     for param in parameters.iter_mut().rev() {
-        if let Some(count) = pointers.get_mut(&param.id()) {
+        if let Some(count) = param.id().and_then(|ptr| pointers.get_mut(ptr)) {
             if *count > 1 {
                 // Clone the parameter to make it owned
-                *param = param.to_owned(heap)?;
+                let owned = param.to_owned(heap)?;
+                *param = owned;
                 *count -= 1;
             }
         }
@@ -302,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_no_duplicated_params_all_owned() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // All parameters are owned - no duplicates possible
         let mut params = vec![
             StackValue::from(Primitive::Integer(PrimitiveInteger::U64(100))),
@@ -321,11 +447,11 @@ mod tests {
 
     #[test]
     fn test_no_duplicated_params_different_pointers() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Different pointers - no duplicates
-        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
-        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200)))).unwrap();
-        let ptr3 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(300)))).unwrap();
+        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200))));
+        let ptr3 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(300))));
 
         let mut params = vec![
             StackValue::from(ptr1),
@@ -350,9 +476,9 @@ mod tests {
 
     #[test]
     fn test_duplicated_params_same_pointer_twice() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Same pointer used twice - should clone one
-        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -369,9 +495,9 @@ mod tests {
 
     #[test]
     fn test_duplicated_params_same_pointer_three_times() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Same pointer used three times - should clone two of them
-        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -398,9 +524,9 @@ mod tests {
 
     #[test]
     fn test_mixed_owned_and_duplicated_pointers() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Mix of owned values and duplicated pointers
-        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(Primitive::Integer(PrimitiveInteger::U64(999))), // Owned
@@ -423,10 +549,10 @@ mod tests {
 
     #[test]
     fn test_multiple_different_duplicated_pointers() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Multiple sets of duplicated pointers
-        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
-        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200)))).unwrap();
+        let ptr1 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
+        let ptr2 = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(200))));
         
         let mut params = vec![
             StackValue::from(ptr1.clone()),
@@ -447,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_empty_params() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Empty parameter list should work fine
         let mut params: Vec<StackValue> = vec![];
         
@@ -458,9 +584,9 @@ mod tests {
 
     #[test]
     fn test_single_param_pointer() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Single pointer parameter - no duplicates possible
-        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![StackValue::from(ptr)];
 
@@ -473,13 +599,13 @@ mod tests {
 
     #[test]
     fn test_complex_value_duplication() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Test with complex values (arrays/objects)
         let complex_value = RuntimeValue::Object(vec![
-            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(1)))).unwrap(),
-            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(2)))).unwrap(),
+            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(1)))),
+            heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(2)))),
         ]);
-        let ptr = heap.insert(complex_value).unwrap();
+        let ptr = heap.insert(complex_value);
         
         let mut params = vec![
             StackValue::from(ptr.clone()),
@@ -496,10 +622,10 @@ mod tests {
 
     #[test]
     fn test_reverse_processing_order() {
-        let mut heap = Heap::new();
+        let mut heap = unsafe { Heap::new() };
         // Verify that processing happens in reverse order
         // (last occurrences keep the pointer, earlier ones are cloned)
-        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100)))).unwrap();
+        let ptr = heap.insert(RuntimeValue::from(Primitive::Integer(PrimitiveInteger::U64(100))));
         
         let mut params = vec![
             StackValue::from(ptr.clone()), // Should be cloned (index 0)

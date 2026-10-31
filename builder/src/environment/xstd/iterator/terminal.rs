@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use silex_types::RuntimeOpaqueWrapper;
+use std::{collections::VecDeque, mem};
 
 use silex_environment::{
     CallbackState,
@@ -13,11 +14,8 @@ use silex_types::{
     Primitive,
     StackValue,
     RuntimeValue,
-    ValueError,
     ValuePointer,
     Heap,
-    HeapError,
-    OpaqueWrapper,
 };
 
 use super::iter::{BaseSource, PipeStep, XIterator};
@@ -124,53 +122,87 @@ impl TerminalOp {
     /// Used by the `Unfold` path to stop generating items early.
     /// Returns `None` when the limit cannot be determined statically (e.g. after a `Filter`).
     fn take_limit(&self) -> Option<usize> {
-        match self {
-            TerminalOp::Next(_) => Some(1),
-            TerminalOp::Aggregated { steps, then } => {
-                // Walk the steps looking for an early-termination hint.
-                let base = then.take_limit();
-                let mut limit = base;
-                // Accumulate extra items needed for Skip steps (in reverse).
-                for step in steps.iter().rev() {
-                    match step {
-                        AggStep::Take(n) => limit = Some(*n),
-                        AggStep::Skip(n) => {
-                            limit = limit.and_then(|l| l.checked_add(*n));
-                        }
-                        _ => {}
-                    }
-                }
-                limit
-            }
-            _ => None,
+        let mut current = self;
+        let mut layers = Vec::new();
+        while let TerminalOp::Aggregated { steps, then } = current {
+            layers.push(steps);
+            current = then;
         }
+        let mut limit = if matches!(current, TerminalOp::Next(_)) { Some(1) } else { None };
+        for steps in layers.into_iter().rev() {
+            for step in steps.iter().rev() {
+                match step {
+                    AggStep::Take(n) => limit = Some(*n),
+                    AggStep::Skip(n) => limit = limit.and_then(|limit| limit.checked_add(*n)),
+                    _ => {}
+                }
+            }
+        }
+        limit
     }
 
     /// Consume the fully-collected `items` and produce the syscall result.
-    pub(crate) fn finish<M: 'static>(self, mut items: VecDeque<ValuePointer>, max_depth: usize, heap: &mut Heap) -> FnReturnType<M> {
-        match self {
-            TerminalOp::Collect => Ok(SysCallResult::Return(RuntimeValue::Object(items.into()).into())),
-            TerminalOp::Count => Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(items.len() as u32)).into())),
-            TerminalOp::Sum => Ok(SysCallResult::Return(sum_items(items, heap)?)),
-            TerminalOp::ForEach(f) => apply_items_none(items, f, 0, heap),
-            TerminalOp::Find(pred) => apply_items_find(items, pred, 0, heap),
-            TerminalOp::Any(pred) => apply_items_any(items, pred, 0, heap),
-            TerminalOp::All(pred) => apply_items_all(items, pred, 0, heap),
-            TerminalOp::Position(pred) => apply_items_position(items, pred, 0, heap),
-            TerminalOp::Fold { init, closure } => apply_items_fold(items, closure, init, 0, heap),
-            TerminalOp::Next(write_back) => {
-                let head = items.pop_front();
-                // Write remaining items back as a fresh Dequeue iterator.
-                write_back_iter(*write_back, XIterator::from_dequeue(items), heap)?;
-                Ok(SysCallResult::Return(match head {
-                    Some(ptr) => ptr.to_owned(heap)?.into(),
-                    None => Primitive::Null.into(),
-                }))
+    pub(crate) fn finish<M: 'static>(self, items: VecDeque<ValuePointer>, heap: &mut Heap) -> FnReturnType<M> {
+        drive(Collection::Finish { items, op: self }, heap)
+    }
+
+}
+
+enum Collection<M> {
+    Finish {
+        items: VecDeque<ValuePointer>,
+        op: TerminalOp,
+    },
+    Collect {
+        iter: XIterator,
+        items: VecDeque<ValuePointer>,
+        op: TerminalOp,
+    },
+    Steps {
+        items: VecDeque<ValuePointer>,
+        steps: VecDeque<AggStep>,
+        then: TerminalOp,
+    },
+    Flatten {
+        containers: VecDeque<ValuePointer>,
+        flat: VecDeque<ValuePointer>,
+        then: TerminalOp,
+    },
+    Result(SysCallResult<M>),
+}
+
+fn drive<M: 'static>(mut next: Collection<M>, heap: &mut Heap) -> FnReturnType<M> {
+    loop {
+        next = match next {
+            Collection::Result(result) => return Ok(result),
+            Collection::Collect { mut iter, items, op } => collect_work(&mut iter, items, op, heap)?,
+            Collection::Steps { items, steps, then } => finish_aggregated(items, steps, then, heap)?,
+            Collection::Flatten { containers, flat, then } => flatten_finish(containers, flat, then, heap)?,
+            Collection::Finish { mut items, op } => match op {
+                TerminalOp::Collect => return Ok(SysCallResult::Return(RuntimeValue::Object(items.into()).into())),
+                TerminalOp::Count => {
+                    let len = items.len() as u32;
+                    return Ok(SysCallResult::Return(PrimitiveInteger::U32(len).into()));
+                }
+                TerminalOp::Sum => return Ok(SysCallResult::Return(sum_items(items, heap)?)),
+                TerminalOp::ForEach(f) => return apply_items_none(items, f, 0, heap),
+                TerminalOp::Find(pred) => return apply_items_find(items, pred, 0, heap),
+                TerminalOp::Any(pred) => return apply_items_any(items, pred, 0, heap),
+                TerminalOp::All(pred) => return apply_items_all(items, pred, 0, heap),
+                TerminalOp::Position(pred) => return apply_items_position(items, pred, 0, heap),
+                TerminalOp::Fold { init, closure } => return apply_items_fold(items, closure, init, 0, heap),
+                TerminalOp::Next(write_back) => {
+                    let head = items.pop_front();
+                    write_back_iter(*write_back, XIterator::from_dequeue(items), heap)?;
+                    return Ok(SysCallResult::Return(match head {
+                        Some(ptr) => heap.take(ptr).into(),
+                        None => Primitive::Null.into(),
+                    }));
+                }
+                TerminalOp::Aggregated { steps, then } => Collection::Steps { items, steps, then: *then },
             }
-            TerminalOp::Aggregated { steps, then } => {
-                finish_aggregated(items, steps, *then, max_depth, heap)
-            }
-        }
+
+        };
     }
 }
 
@@ -184,9 +216,8 @@ fn finish_aggregated<M: 'static>(
     mut items: VecDeque<ValuePointer>,
     mut steps: VecDeque<AggStep>,
     then: TerminalOp,
-    max_depth: usize,
     heap: &mut Heap,
-) -> FnReturnType<M> {
+) -> Result<Collection<M>, EnvironmentError> {
     while let Some(step) = steps.pop_front() {
         match step {
             AggStep::Skip(n) => {
@@ -198,11 +229,11 @@ fn finish_aggregated<M: 'static>(
             AggStep::Enumerate(counter) => {
                 let enumerated: VecDeque<ValuePointer> = items.into_iter().enumerate().map(|(i, item)| {
                     let pair = RuntimeValue::Object(vec![
-                        heap.insert(Primitive::Integer(PrimitiveInteger::U32(counter + i as u32)).into())?,
+                        heap.insert(Primitive::Integer(PrimitiveInteger::U32(counter + i as u32)).into()),
                         item,
                     ]);
                     heap.insert(pair)
-                }).collect::<Result<_, HeapError>>()?;
+                }).collect();
                 items = enumerated;
             }
             AggStep::Prepend(prefix) => {
@@ -211,42 +242,52 @@ fn finish_aggregated<M: 'static>(
                 items = combined;
             }
             AggStep::ZipMerge(left) => {
+                let mut left = left;
+                let len = left.len().min(items.len());
+                left.truncate(len);
+                items.truncate(len);
                 let zipped: VecDeque<ValuePointer> = left.into_iter().zip(items).map(|(l, r)| {
                     heap.insert(RuntimeValue::Object(vec![l, r]))
-                }).collect::<Result<_, HeapError>>()?;
+                }).collect();
                 items = zipped;
             }
             AggStep::Map(closure) => {
                 // Need per-item VM callbacks; package remaining steps + then as continuation.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return apply_items_map(items, closure, VecDeque::new(), cont, max_depth, heap);
+                if items.is_empty() {
+                    return Ok(Collection::Finish { items, op: cont });
+                }
+                return Ok(Collection::Result(apply_items_map(items, closure, VecDeque::new(), cont, heap)?));
             }
             AggStep::Filter(closure) => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return apply_items_filter(items, closure, VecDeque::new(), cont, max_depth, heap);
+                if items.is_empty() {
+                    return Ok(Collection::Finish { items, op: cont });
+                }
+                return Ok(Collection::Result(apply_items_filter(items, closure, VecDeque::new(), cont, heap)?));
             }
-            AggStep::Chain(mut remaining) => {
+            AggStep::Chain(remaining) => {
                 // Collect `remaining` into a *fresh* accumulator so that any pipe
                 // steps inside `remaining` (Map, Filter, …) only apply to its own
                 // items, not to the already-collected first-part `items`.
                 // `AggStep::Prepend` splices the first-part items back at the front.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) }
                     .push_step(AggStep::Prepend(items));
-                return lazy_collect(&mut remaining, VecDeque::new(), cont, max_depth, heap);
+                return Ok(Collection::Collect { iter: remaining, items: VecDeque::new(), op: cont });
             }
-            AggStep::Zip(mut right) => {
+            AggStep::Zip(right) => {
                 // `items` is the left side; collect the right side then merge.
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) }
                     .push_step(AggStep::ZipMerge(items));
-                return lazy_collect(&mut right, VecDeque::new(), cont, max_depth, heap);
+                return Ok(Collection::Collect { iter: right, items: VecDeque::new(), op: cont });
             }
             AggStep::Flatten => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return flatten_finish(items, VecDeque::new(), cont, max_depth, heap);
+                return Ok(Collection::Flatten { containers: items, flat: VecDeque::new(), then: cont });
             }
             AggStep::FlattenContinue(containers) => {
                 let cont = TerminalOp::Aggregated { steps, then: Box::new(then) };
-                return flatten_finish(containers, items, cont, max_depth, heap);
+                return Ok(Collection::Flatten { containers, flat: items, then: cont });
             }
             AggStep::Rev => {
                 // Reverse the accumulated items in-place.
@@ -257,7 +298,7 @@ fn finish_aggregated<M: 'static>(
             }
         }
     }
-    then.finish(items, max_depth, heap)
+    Ok(Collection::Finish { items, op: then })
 }
 
 /// Expand `containers` (each an array or Iterator) into `flat`, then run `then`.
@@ -267,29 +308,28 @@ fn flatten_finish<M: 'static>(
     mut containers: VecDeque<ValuePointer>,
     mut flat: VecDeque<ValuePointer>,
     then: TerminalOp,
-    max_depth: usize,
     heap: &mut Heap,
-) -> FnReturnType<M> {
+) -> Result<Collection<M>, EnvironmentError> {
     while let Some(ptr) = containers.pop_front() {
         match ptr.into_owned(heap)? {
             RuntimeValue::Object(v) => flat.extend(v),
             RuntimeValue::Opaque(w) => {
-                let mut inner = w.into_inner::<XIterator>()
+                let inner = w.into_inner::<XIterator>()
                     .map_err(|_| EnvironmentError::Static("flatten: expected Iterator or array"))?;
                 if inner.needs_callback() {
                     // Collect this sub-iterator via callbacks; resume the remaining containers
                     // afterwards through AggStep::FlattenContinue.
-                    return lazy_collect(&mut inner, flat, then.push_step(AggStep::FlattenContinue(containers)), max_depth, heap);
+                    return Ok(Collection::Collect { iter: inner, items: flat, op: then.push_step(AggStep::FlattenContinue(containers)) });
                 }
                 let mut it = inner;
-                while let Some(item) = it.next_sync(max_depth, heap)? {
+                while let Some(item) = it.next_sync(heap)? {
                     flat.push_back(item);
                 }
             }
             _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
         }
     }
-    then.finish(flat, max_depth, heap)
+    Ok(Collection::Finish { items: flat, op: then })
 }
 
 /// Collect all items from `iter` into `acc`, then run `op` on the result.
@@ -302,15 +342,17 @@ fn flatten_finish<M: 'static>(
 /// - Sync leaf (Dequeue, Once, Empty): drained in a tight inner loop, O(1) stack.
 /// - Unfold: one `ExecuteAndCallback` per generated item; O(1) Rust stack per item.
 /// - Map / Filter pipe steps invoke `apply_items_*` via `AggStep`.
-/// The depth budget is retained across callbacks and passed to synchronous
-/// descendants; collection never supplies an unlimited fallback.
-pub(crate) fn lazy_collect<M: 'static>(
+pub(crate) fn lazy_collect<M: 'static>(iter: &mut XIterator, acc: VecDeque<ValuePointer>, op: TerminalOp, heap: &mut Heap) -> FnReturnType<M> {
+    let work = collect_work(iter, acc, op, heap)?;
+    drive(work, heap)
+}
+
+fn collect_work<M: 'static>(
     iter: &mut XIterator,
     mut acc: VecDeque<ValuePointer>,
     mut op: TerminalOp,
-    max_depth: usize,
     heap: &mut Heap,
-) -> FnReturnType<M> {
+) -> Result<Collection<M>, EnvironmentError> {
     // Convert each PipeStep into an AggStep. `push_step` prepends, so we
     // iterate the pipe back-to-front: the first pipe step ends up first
     // in the resulting AggStep queue.
@@ -333,19 +375,19 @@ pub(crate) fn lazy_collect<M: 'static>(
     match &mut iter.source {
         BaseSource::Dequeue(d) => {
             acc.extend(d.drain(..));
-            op.finish(acc, max_depth, heap)
+            Ok(Collection::Finish { items: acc, op })
         }
         BaseSource::Once(slot) => {
             if let Some(ptr) = slot.take() {
                 acc.push_back(ptr);
             }
-            op.finish(acc, max_depth, heap)
+            Ok(Collection::Finish { items: acc, op })
         }
-        BaseSource::Empty => op.finish(acc, max_depth, heap),
+        BaseSource::Empty => Ok(Collection::Finish { items: acc, op }),
         BaseSource::Unfold { closure, state } => {
             let seed = match state {
                 Some(s) => s,
-                None => return op.finish(acc, max_depth, heap),
+                None => return Ok(Collection::Finish { items: acc, op }),
             };
 
             let take_limit = op.take_limit();
@@ -355,7 +397,6 @@ pub(crate) fn lazy_collect<M: 'static>(
                 acc: VecDeque<ValuePointer>,
                 op: TerminalOp,
                 take_limit: Option<usize>,
-                max_depth: usize,
             }
 
             fn callback<M: 'static>(
@@ -366,24 +407,27 @@ pub(crate) fn lazy_collect<M: 'static>(
                 let mut s = state.downcast::<LocalState>()
                     .map_err(|_| EnvironmentError::InvalidCallbackState)?;
 
-                let value = params.into_iter()
-                    .next()
-                    .ok_or(EnvironmentError::InvalidCallbackParameters)?.into_owned(heap)?;
+                let value = params.first_mut().map(StackValue::take)
+                    .ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.into_owned(heap)?;
 
                 match value {
-                    RuntimeValue::Primitive(Primitive::Null) => s.op.finish(s.acc, s.max_depth, heap),
+                    RuntimeValue::Primitive(Primitive::Null) => {
+                        s.op.finish(s.acc, heap)
+                    },
                     RuntimeValue::Object(tuple) => {
                         if tuple.len() != 2 {
                             return Err(EnvironmentError::Static("unfold: expected (item, next_state)"));
                         }
-                        s.acc.push_back(tuple[0].clone());
+                        let mut fields = tuple.into_iter();
+                        s.acc.push_back(fields.next().expect("unfold item"));
+                        let seed = fields.next().expect("unfold seed");
                         if s.take_limit.map_or(false, |lim| s.acc.len() >= lim) {
-                            return s.op.finish(s.acc, s.max_depth, heap);
+                            return s.op.finish(s.acc, heap);
                         }
-                        let next_seed: StackValue = tuple[1].to_owned(heap)?.into();
+                        let next_seed: StackValue = heap.take(seed).into();
                         Ok(SysCallResult::ExecuteAndCallback {
                             ptr: s.closure.clone(),
-                            params: vec![next_seed].into(),
+                            params: vec![next_seed],
                             state: s,
                             callback_params_len: 1,
                             callback: CallbackType::Sync(callback::<M>),
@@ -392,13 +436,13 @@ pub(crate) fn lazy_collect<M: 'static>(
                     _ => Err(EnvironmentError::Static("unfold: expected optional tuple")),
                 }
             }
-            Ok(SysCallResult::ExecuteAndCallback {
+            Ok(Collection::Result(SysCallResult::ExecuteAndCallback {
                 ptr: closure.clone(),
-                params: vec![seed.reference(heap)?].into(),
-                state: Box::new(LocalState { closure: closure.reference(heap)?, acc, op, take_limit, max_depth }),
+                params: vec![seed.reference(heap)],
+                state: Box::new(LocalState { closure: closure.reference(heap), acc, op, take_limit }),
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
-            })
+            }))
         }
     }
 }
@@ -410,11 +454,10 @@ pub(crate) fn apply_items_map<M: 'static>(
     closure: StackValue,
     mapped: VecDeque<ValuePointer>,
     then: TerminalOp,
-    max_depth: usize,
     heap: &mut Heap,
 ) -> FnReturnType<M> {
     let Some(item) = items.pop_front() else {
-        return then.finish(mapped, max_depth, heap);
+        return then.finish(mapped, heap);
     };
 
     struct LocalState {
@@ -422,7 +465,6 @@ pub(crate) fn apply_items_map<M: 'static>(
         closure: StackValue,
         mapped: VecDeque<ValuePointer>,
         then: TerminalOp,
-        max_depth: usize,
     }
 
     fn callback<M: 'static>(
@@ -431,25 +473,24 @@ pub(crate) fn apply_items_map<M: 'static>(
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let result = params.into_iter().next().ok_or(EnvironmentError::InvalidCallbackParameters)?.into_owned(heap)?;
-        s.mapped.push_back(heap.insert(result)?);
+        let result = params.first_mut().map(StackValue::take).ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.into_owned(heap)?;
+        s.mapped.push_back(heap.insert(result));
 
         if let Some(next) = s.items.pop_front() {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.closure.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![heap.take(next).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
-        s.then.finish(s.mapped, s.max_depth, heap)
+        s.then.finish(s.mapped, heap)
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
-        state: Box::new(LocalState { items, closure, mapped, then, max_depth }),
+        params: vec![heap.take(item).into()],
+        state: Box::new(LocalState { items, closure, mapped, then }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
     })
@@ -462,11 +503,10 @@ pub(crate) fn apply_items_filter<M: 'static>(
     closure: StackValue,
     kept: VecDeque<ValuePointer>,
     then: TerminalOp,
-    max_depth: usize,
     heap: &mut Heap,
 ) -> FnReturnType<M> {
     let Some(current) = items.pop_front() else {
-        return then.finish(kept, max_depth, heap);
+        return then.finish(kept, heap);
     };
 
     struct LocalState {
@@ -475,7 +515,6 @@ pub(crate) fn apply_items_filter<M: 'static>(
         closure: StackValue,
         kept: VecDeque<ValuePointer>,
         then: TerminalOp,
-        max_depth: usize,
     }
 
     fn callback<M: 'static>(
@@ -486,30 +525,29 @@ pub(crate) fn apply_items_filter<M: 'static>(
         let mut s = state.downcast::<LocalState>()
             .map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let keep = params.first()
-            .ok_or(EnvironmentError::InvalidCallbackParameters)?
+            .ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?
             .as_bool(heap)?;
 
         if keep {
-            s.kept.push_back(s.current.clone());
+            s.kept.push_back(s.current);
         }
 
         if let Some(next) = s.items.pop_front() {
-            s.current = next.clone();
+            s.current = next;
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.closure.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![s.current.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
-        s.then.finish(s.kept, s.max_depth, heap)
+        s.then.finish(s.kept, heap)
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure.clone(),
-        params: vec![current.to_owned(heap)?.into()].into(),
-        state: Box::new(LocalState { items, current, closure, kept, then, max_depth }),
+        params: vec![current.clone_value(heap).into()],
+        state: Box::new(LocalState { items, current, closure, kept, then }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
     })
@@ -536,18 +574,17 @@ pub(crate) fn apply_items_none<M: 'static>(items: VecDeque<ValuePointer>, f: Sta
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.f.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 0,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::None)
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: f.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
+        params: vec![item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, f }),
         callback_params_len: 0,
         callback: CallbackType::Sync(callback::<M>),
@@ -570,27 +607,27 @@ pub(crate) fn apply_items_find<M: 'static>(items: VecDeque<ValuePointer>, pred: 
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
+        let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
         if matched {
-            return Ok(SysCallResult::Return(s.items[s.index].to_owned(heap)?.into()));
+            let result = s.items[s.index].clone_value(heap).into();
+            return Ok(SysCallResult::Return(result));
         }
 
         s.index += 1;
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.pred.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: pred.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
+        params: vec![item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, pred }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -613,27 +650,27 @@ pub(crate) fn apply_items_any<M: 'static>(items: VecDeque<ValuePointer>, pred: S
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
+        let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
         if matched {
-            return Ok(SysCallResult::Return(Primitive::Boolean(true).into()));
+            let result = Primitive::Boolean(true).into();
+            return Ok(SysCallResult::Return(result));
         }
 
         s.index += 1;
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.pred.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::Return(Primitive::Boolean(false).into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: pred.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
+        params: vec![item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, pred }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -656,27 +693,27 @@ pub(crate) fn apply_items_all<M: 'static>(items: VecDeque<ValuePointer>, pred: S
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
+        let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
         if !matched {
-            return Ok(SysCallResult::Return(Primitive::Boolean(false).into()));
+            let result = Primitive::Boolean(false).into();
+            return Ok(SysCallResult::Return(result));
         }
 
         s.index += 1;
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.pred.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::Return(Primitive::Boolean(true).into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: pred.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
+        params: vec![item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, pred }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -699,27 +736,27 @@ pub(crate) fn apply_items_position<M: 'static>(items: VecDeque<ValuePointer>, pr
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let matched = params.first().ok_or(EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
+        let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
         if matched {
-            return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(s.index as u32)).into()));
+            let result = Primitive::Integer(PrimitiveInteger::U32(s.index as u32)).into();
+            return Ok(SysCallResult::Return(result));
         }
 
         s.index += 1;
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.pred.clone(),
-                params: vec![next.to_owned(heap)?.into()].into(),
+                params: vec![next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::Return(Primitive::Null.into()))
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: pred.clone(),
-        params: vec![item.to_owned(heap)?.into()].into(),
+        params: vec![item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, pred }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -737,7 +774,7 @@ pub(crate) fn apply_items_fold<M: 'static>(
     let Some(item) = items.get(index) else {
         return Ok(SysCallResult::Return(acc));
     };
-    let state_acc = acc.reference(heap)?;
+    let state_acc = acc.reference(heap);
     struct LocalState {
         items: VecDeque<ValuePointer>,
         index: usize,
@@ -750,25 +787,24 @@ pub(crate) fn apply_items_fold<M: 'static>(
         heap: &mut Heap,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-        let new_acc = params.into_iter().next().ok_or(EnvironmentError::InvalidCallbackParameters)?;
+        let new_acc = params.first_mut().map(StackValue::take).ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?;
         s.acc = new_acc;
         s.index += 1;
 
         if let Some(next) = s.items.get(s.index) {
             return Ok(SysCallResult::ExecuteAndCallback {
                 ptr: s.closure.clone(),
-                params: vec![s.acc.reference(heap)?, next.to_owned(heap)?.into()].into(),
+                params: vec![s.acc.reference(heap), next.clone_value(heap).into()],
                 state: s,
                 callback_params_len: 1,
                 callback: CallbackType::Sync(callback::<M>),
             });
         }
-
         Ok(SysCallResult::Return(s.acc))
     }
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure.clone(),
-        params: vec![acc, item.to_owned(heap)?.into()].into(),
+        params: vec![acc, item.clone_value(heap).into()],
         state: Box::new(LocalState { items, index, closure, acc: state_acc }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -801,26 +837,23 @@ pub(crate) fn sum_items(items: VecDeque<ValuePointer>, heap: &mut Heap) -> Resul
             _ => return Err(EnvironmentError::Static("sum: only numeric types are supported")),
         }
     }
-
-    Ok(acc.unwrap_or(Primitive::Integer(PrimitiveInteger::U64(0))).into())
+    Ok(acc.unwrap_or_else(|| Primitive::Integer(PrimitiveInteger::U64(0))).into())
 }
 
-/// Retain the remaining depth budget across callback continuations.
+/// Retain the destination slot across callback continuations.
 #[derive(Debug, Clone)]
 pub(crate) struct IteratorWriteBack {
     slot: StackValue,
-    max_depth: usize,
 }
 
-/// Check callback-generated state before restoring the iterator to its VM slot.
+/// Restore detached callback-generated state to its VM slot.
 fn write_back_iter(
     mut write_back: IteratorWriteBack,
     new_iter: XIterator,
     heap: &mut Heap,
 ) -> Result<(), EnvironmentError> {
-    let value = RuntimeValue::Opaque(OpaqueWrapper::new(new_iter));
-    value.calculate_depth(heap, write_back.max_depth)?;
-    *write_back.slot.as_opaque_type_mut::<XIterator>(heap)? = value.into_opaque_type::<XIterator>()?;
+    let value = RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(new_iter));
+    heap.replace_stack(&mut write_back.slot, value);
     Ok(())
 }
 
@@ -843,11 +876,10 @@ fn promote_chain_to_source(iter: &mut XIterator) -> bool {
         let mut chain = *chain;
         let after: VecDeque<PipeStep> = iter.pipe.drain(pos..).collect();
         // New pipe = chain's own steps + outer steps that followed Chain.
-        let mut new_pipe = std::mem::take(&mut chain.pipe);
+        let mut new_pipe = mem::take(&mut chain.pipe);
         new_pipe.extend(after);
-        iter.source = std::mem::take(&mut chain.source);
-        iter.depth = chain.depth;
-        iter.pipe = new_pipe;
+        let replacement = XIterator { source: mem::take(&mut chain.source), pipe: new_pipe };
+        *iter = replacement;
     }
 
     true
@@ -859,25 +891,19 @@ fn promote_chain_to_source(iter: &mut XIterator) -> bool {
 fn prepend_item_to_source(
     iter: &mut XIterator,
     item: ValuePointer,
-    max_depth: usize,
-    heap: &mut Heap,
 ) -> Result<(), EnvironmentError> {
-    let budget = max_depth
-        .checked_sub(1)
-        .ok_or(ValueError::MaxDepthReached)?;
-    item.as_ref(heap).calculate_depth(heap, budget)?;
     match &mut iter.source {
         BaseSource::Dequeue(d) => d.push_front(item),
         BaseSource::Once(slot) if slot.is_none() => *slot = Some(item),
         _ => {
             // General case: wrap everything in a new Dequeue.
-            let old = std::mem::replace(&mut iter.source, BaseSource::Empty);
+            let old = mem::replace(&mut iter.source, BaseSource::Empty);
             let mut d = VecDeque::new();
             d.push_back(item);
             match old {
                 BaseSource::Dequeue(rest) => d.extend(rest),
                 BaseSource::Once(Some(v)) => d.push_back(v),
-                _ => {}
+                _ => {},
             }
             iter.source = BaseSource::Dequeue(d);
         }
@@ -915,20 +941,22 @@ fn lazy_next_pull<M: 'static>(
 
 /// Pull the next item from a sync source (Dequeue / Once / Empty), handling
 /// chain promotion on exhaustion.  Returns `None` if everything is exhausted,
-/// `Err(true)` if the source is `Unfold` (needs callbacks).
-fn pull_sync_source(iter: &mut XIterator, _heap: &mut Heap) -> Result<Option<ValuePointer>, bool> {
+/// `NeedsCallback` if the source is `Unfold`.
+enum SourcePull { Item(Option<ValuePointer>), NeedsCallback }
+
+fn pull_sync_source(iter: &mut XIterator) -> SourcePull {
     loop {
         let raw = match &mut iter.source {
             BaseSource::Dequeue(d) => d.pop_front(),
             BaseSource::Once(slot) => slot.take(),
             BaseSource::Empty => None,
-            BaseSource::Unfold { .. } => return Err(true),
+            BaseSource::Unfold { .. } => return SourcePull::NeedsCallback,
         };
         match raw {
-            Some(item) => return Ok(Some(item)),
+            Some(item) => return SourcePull::Item(Some(item)),
             None => {
                 if !promote_chain_to_source(iter) {
-                    return Ok(None);
+                    return SourcePull::Item(None);
                 }
                 // Loop: pull from the newly-promoted source.
             }
@@ -956,7 +984,7 @@ fn lazy_next_pipe<M: 'static>(
         if idx >= iter.pipe.len() {
             // Item passed every step — yield it and write back the iterator state.
             write_back_iter(write_back, iter, heap)?;
-            return Ok(SysCallResult::Return(current.to_owned(heap)?.into()));
+            return Ok(SysCallResult::Return(heap.take(current).into()));
         }
 
         // Handle Flatten with pending inner elements before the borrow in the main match.
@@ -969,7 +997,7 @@ fn lazy_next_pipe<M: 'static>(
                 None
             };
         if let Some(inner_item) = pending_front {
-            prepend_item_to_source(&mut iter, current, write_back.max_depth, heap)?;
+            prepend_item_to_source(&mut iter, current)?;
             current = inner_item;
             idx += 1;
             continue;
@@ -977,13 +1005,11 @@ fn lazy_next_pipe<M: 'static>(
 
         // Lazy Zip: if the right side requires no callbacks, advance one item from each
         // side without collecting the full sequence on either side.
-        // (The borrow of right_box ends after `next_sync(budget)`: NLL lets us reborrow `iter`
+        // (The borrow of right_box ends after `next_sync(heap)`: NLL lets us reborrow `iter`
         //  in the main match below when this early-return path is not taken.)
         if let PipeStep::Zip(right_box) = &mut iter.pipe[idx] {
             if !right_box.needs_callback() {
-                let budget = write_back.max_depth.checked_sub(1)
-                    .ok_or(ValueError::MaxDepthReached)?;
-                let r = right_box.next_sync(budget, heap)?;
+                let r = right_box.next_sync(heap)?;
                 // right_box borrow ends here (NLL: last use above)
                 match r {
                     None => {
@@ -992,7 +1018,7 @@ fn lazy_next_pipe<M: 'static>(
                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                     }
                     Some(r_val) => {
-                        current = heap.insert(RuntimeValue::Object(vec![current, r_val]))?;
+                        current = heap.insert(RuntimeValue::Object(vec![current, r_val]));
                         idx += 1;
                         continue;
                     }
@@ -1006,17 +1032,17 @@ fn lazy_next_pipe<M: 'static>(
                     *n -= 1;
                     // Item consumed by skip; fetch the next one iteratively
                     // for sync sources to avoid O(n) stack growth.
-                    match pull_sync_source(&mut iter, heap) {
-                        Ok(Some(item)) => {
+                    match pull_sync_source(&mut iter) {
+                        SourcePull::Item(Some(item)) => {
                             current = item;
                             idx = 0;
                             continue;
                         }
-                        Ok(None) => {
+                        SourcePull::Item(None) => {
                             write_back_iter(write_back, XIterator::empty(), heap)?;
                             return Ok(SysCallResult::Return(Primitive::Null.into()));
                         }
-                        Err(_) => {
+                        SourcePull::NeedsCallback => {
                             // Unfold source: fall back to callback path (bounded
                             // by the callback roundtrip, so no stack overflow).
                             return lazy_next_pull(iter, write_back, heap);
@@ -1036,11 +1062,11 @@ fn lazy_next_pipe<M: 'static>(
             PipeStep::Enumerate(counter) => {
                 let c = *counter;
                 *counter += 1;
-                let counter = heap.insert(Primitive::Integer(PrimitiveInteger::U32(c)).into())?;
+                let counter = heap.insert(Primitive::Integer(PrimitiveInteger::U32(c)).into());
                 current = heap.insert(RuntimeValue::Object(vec![
                     counter,
                     current,
-                ]))?;
+                ]));
                 idx += 1;
             }
             // Chain is a secondary source activated only when the primary
@@ -1065,16 +1091,16 @@ fn lazy_next_pipe<M: 'static>(
                         .downcast::<LocalState>()
                         .map_err(|_| EnvironmentError::InvalidCallbackState)?;
                     let mapped = params
-                        .into_iter()
+                        .drain(..)
                         .next()
-                        .ok_or(EnvironmentError::InvalidCallbackParameters)?;
+                        .ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?;
                     let mapped = mapped.into_owned(heap)?;
-                    let ptr = heap.insert(mapped)?;
+                    let ptr = heap.insert(mapped);
                     lazy_next_pipe(s.iter, ptr, s.pipe_idx + 1, s.write_back, heap)
                 }
                 return Ok(SysCallResult::ExecuteAndCallback {
                     ptr: closure,
-                    params: vec![current.to_owned(heap)?.into()].into(),
+                    params: vec![heap.take(current).into()],
                     state: Box::new(LocalState { iter, pipe_idx: idx, write_back }),
                     callback_params_len: 1,
                     callback: CallbackType::Sync(callback::<M>),
@@ -1098,7 +1124,7 @@ fn lazy_next_pipe<M: 'static>(
                         .map_err(|_| EnvironmentError::InvalidCallbackState)?;
                     let keep = params
                         .first()
-                        .ok_or(EnvironmentError::InvalidCallbackParameters)?
+                        .ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?
                         .as_bool(heap)?;
                     if keep {
                         lazy_next_pipe(s.iter, s.current, s.pipe_idx + 1, s.write_back, heap)
@@ -1109,7 +1135,7 @@ fn lazy_next_pipe<M: 'static>(
                 }
                 return Ok(SysCallResult::ExecuteAndCallback {
                     ptr: closure,
-                    params: vec![current.to_owned(heap)?.into()].into(),
+                    params: vec![current.clone_value(heap).into()],
                     state: Box::new(LocalState { iter, current, pipe_idx: idx, write_back }),
                     callback_params_len: 1,
                     callback: CallbackType::Sync(callback::<M>),
@@ -1119,14 +1145,13 @@ fn lazy_next_pipe<M: 'static>(
             // in-place and never pushes PipeStep::Rev).
             // Zip with an async right side (needs_callback() == true) also falls back here.
             PipeStep::Rev | PipeStep::Zip(_) => {
-                prepend_item_to_source(&mut iter, current, write_back.max_depth, heap)?;
-                let budget = write_back.max_depth;
+                prepend_item_to_source(&mut iter, current)?;
                 return lazy_collect(
                     &mut iter,
                     VecDeque::new(),
                     TerminalOp::Next(Box::new(write_back)),
-                    budget,
-                 heap);
+                    heap,
+                );
             }
             // Flatten is fully lazy: `pending` holds remaining inner elements from the
             // current expansion.  When pending is non-empty, the item was already emitted
@@ -1141,20 +1166,23 @@ fn lazy_next_pipe<M: 'static>(
                         let first = d.pop_front();
                         *pending = d;
                         match first {
-                            Some(f) => { current = f; idx += 1; }
+                            Some(f) => {
+                                current = f;
+                                idx += 1;
+                            }
                             // Empty inner array: skip to next outer item iteratively.
                             None => {
-                                match pull_sync_source(&mut iter, heap) {
-                                    Ok(Some(item)) => {
+                                match pull_sync_source(&mut iter) {
+                                    SourcePull::Item(Some(item)) => {
                                         current = item;
                                         idx = 0;
                                         continue;
                                     }
-                                    Ok(None) => {
+                                    SourcePull::Item(None) => {
                                         write_back_iter(write_back, XIterator::empty(), heap)?;
                                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                                     }
-                                    Err(_) => return lazy_next_pull(iter, write_back, heap),
+                                    SourcePull::NeedsCallback => return lazy_next_pull(iter, write_back, heap),
                                 }
                             }
                         }
@@ -1169,25 +1197,28 @@ fn lazy_next_pipe<M: 'static>(
                         }
                         let mut it = inner;
                         let mut d = VecDeque::new();
-                        while let Some(item) = it.next_sync(write_back.max_depth, heap)? {
+                        while let Some(item) = it.next_sync(heap)? {
                             d.push_back(item);
                         }
                         let first = d.pop_front();
                         *pending = d;
                         match first {
-                            Some(f) => { current = f; idx += 1; }
+                            Some(f) => {
+                                current = f;
+                                idx += 1;
+                            }
                             None => {
-                                match pull_sync_source(&mut iter, heap) {
-                                    Ok(Some(item)) => {
+                                match pull_sync_source(&mut iter) {
+                                    SourcePull::Item(Some(item)) => {
                                         current = item;
                                         idx = 0;
                                         continue;
                                     }
-                                    Ok(None) => {
+                                    SourcePull::Item(None) => {
                                         write_back_iter(write_back, XIterator::empty(), heap)?;
                                         return Ok(SysCallResult::Return(Primitive::Null.into()));
                                     }
-                                    Err(_) => return lazy_next_pull(iter, write_back, heap),
+                                    SourcePull::NeedsCallback => return lazy_next_pull(iter, write_back, heap),
                                 }
                             }
                         }
@@ -1209,7 +1240,7 @@ fn lazy_next_unfold<M: 'static>(
 ) -> FnReturnType<M> {
     let (closure, seed) = match &mut iter.source {
         BaseSource::Unfold { closure, state: Some(s) } => {
-            (closure.clone(), s.reference(heap)?)
+            (closure.clone(), s.reference(heap))
         }
         BaseSource::Unfold { state: None, .. } => {
             iter.source = BaseSource::Empty;
@@ -1235,9 +1266,9 @@ fn lazy_next_unfold<M: 'static>(
             .downcast::<LocalState>()
             .map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let result = params
-            .into_iter()
+            .drain(..)
             .next()
-            .ok_or(EnvironmentError::InvalidCallbackParameters)?
+            .ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?
             .into_owned(heap)?;
 
         match result {
@@ -1250,11 +1281,9 @@ fn lazy_next_unfold<M: 'static>(
                 Ok(SysCallResult::Return(Primitive::Null.into()))
             }
             RuntimeValue::Object(tuple) if tuple.len() == 2 => {
-                let item_ptr = tuple[0].clone();
-                let next_state: StackValue = tuple[1].to_owned(heap)?.into();
-                let budget = s.write_back.max_depth.checked_sub(1)
-                    .ok_or(ValueError::MaxDepthReached)?;
-                next_state.as_ref(heap).calculate_depth(heap, budget)?;
+                let mut fields = tuple.into_iter();
+                let item_ptr = fields.next().expect("unfold item");
+                let next_state: StackValue = heap.take(fields.next().expect("unfold state")).into();
                 if let BaseSource::Unfold { state, .. } = &mut s.iter.source {
                     *state = Some(next_state);
                 }
@@ -1266,7 +1295,7 @@ fn lazy_next_unfold<M: 'static>(
 
     Ok(SysCallResult::ExecuteAndCallback {
         ptr: closure,
-        params: vec![seed].into(),
+        params: vec![seed],
         state: Box::new(LocalState { iter, write_back }),
         callback_params_len: 1,
         callback: CallbackType::Sync(callback::<M>),
@@ -1282,10 +1311,9 @@ fn lazy_next_unfold<M: 'static>(
 pub(crate) fn lazy_next<M: 'static>(
     iter: XIterator,
     write_back: StackValue,
-    max_depth: usize,
     heap: &mut Heap,
 ) -> FnReturnType<M> {
-    lazy_next_pull(iter, IteratorWriteBack { slot: write_back, max_depth }, heap)
+    lazy_next_pull(iter, IteratorWriteBack { slot: write_back }, heap)
 }
 
 #[cfg(test)]
@@ -1304,12 +1332,12 @@ mod tests {
     }
 
     fn inner_value(nesting: usize, heap: &mut Heap) -> RuntimeValue {
-        RuntimeValue::Opaque(OpaqueWrapper::new(inner_iter(nesting, heap))).into()
+        RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(inner_iter(nesting, heap))).into()
     }
 
     fn inner_id(nesting: usize, heap: &mut Heap) -> ValuePointer {
         let value = inner_value(nesting, heap);
-        heap.insert(value).unwrap()
+        heap.insert(value)
     }
 
     fn resume(result: SysCallResult<()>, value: RuntimeValue, heap: &mut Heap) -> FnReturnType<()> {
@@ -1321,90 +1349,57 @@ mod tests {
         else {
             panic!("expected a synchronous callback continuation");
         };
-        callback(state, vec![value.into()], heap)
+        let mut params = vec![value.into()];
+        callback(state, &mut params, heap)
+    }
+
+    fn assert_count(result: SysCallResult<()>, heap: &Heap) {
+        let SysCallResult::Return(count) = result else {
+            panic!("expected count");
+        };
+        assert_eq!(count.as_u32(heap).unwrap(), 2);
     }
 
     #[test]
-    fn eager_flatten_obeys_the_explicit_depth_budget() {
-        let mut heap = Heap::new();
-        for (nesting, limit, allowed) in
-            [(3, 3, true), (4, 3, false), (4, 4, true), (17, 16, false)]
-        {
+    fn eager_flatten_accepts_deep_transformed_items() {
+        let mut heap = unsafe { Heap::new() };
+        for nesting in [4, 17, 64] {
             let input = inner_id(nesting, &mut heap);
-            let result = flatten_finish::<()>(
-                VecDeque::from([input]),
-                VecDeque::new(),
-                TerminalOp::Count,
-                limit,
-                &mut heap,
-            );
-            if allowed {
-                let SysCallResult::Return(count) = result.unwrap() else {
-                    panic!("expected count");
-                };
-                assert_eq!(count.as_u32(&heap).unwrap(), 2);
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-                ));
-            }
+            let work = flatten_finish::<()>(VecDeque::from([input]), VecDeque::new(), TerminalOp::Count, &mut heap).unwrap();
+            assert_count(drive(work, &mut heap).unwrap(), &heap);
         }
     }
 
     #[test]
-    fn map_callback_preserves_the_collection_budget() {
-        let mut heap = Heap::new();
-        let result = apply_items_map::<()>(
-            VecDeque::from([heap.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap()]),
-            Primitive::Null.into(),
-            VecDeque::new(),
-            TerminalOp::Count.push_step(AggStep::Flatten),
-            3,
-            &mut heap,
-        )
-        .unwrap();
-        assert!(matches!(
-            { let value = inner_value(4, &mut heap); resume(result, value, &mut heap) },
-            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-        ));
+    fn map_callback_accepts_deep_transformed_items() {
+        let mut heap = unsafe { Heap::new() };
+        let item = heap.insert(PrimitiveInteger::U64(1).into());
+        let result = apply_items_map::<()>(VecDeque::from([item]), Primitive::Null.into(), VecDeque::new(), TerminalOp::Count.push_step(AggStep::Flatten), &mut heap).unwrap();
+        let value = inner_value(64, &mut heap);
+        assert_count(resume(result, value, &mut heap).unwrap(), &heap);
     }
 
     #[test]
-    fn filter_callback_preserves_the_collection_budget() {
-        let mut heap = Heap::new();
-        let result = apply_items_filter::<()>(
-            VecDeque::from([inner_id(4, &mut heap)]),
-            Primitive::Null.into(),
-            VecDeque::new(),
-            TerminalOp::Count.push_step(AggStep::Flatten),
-            3,
-            &mut heap,
-        )
-        .unwrap();
-        assert!(matches!(
-            resume(result, Primitive::Boolean(true).into(), &mut heap),
-            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-        ));
+    fn filter_callback_accepts_deep_transformed_items() {
+        let mut heap = unsafe { Heap::new() };
+        let item = inner_id(64, &mut heap);
+        let result = apply_items_filter::<()>(VecDeque::from([item]), Primitive::Null.into(), VecDeque::new(), TerminalOp::Count.push_step(AggStep::Flatten), &mut heap).unwrap();
+        assert_count(resume(result, Primitive::Boolean(true).into(), &mut heap).unwrap(), &heap);
     }
 
     #[test]
-    fn unfold_callback_preserves_the_collection_budget() {
-        let mut heap = Heap::new();
+    fn unfold_callback_accepts_deep_transformed_items() {
+        let mut heap = unsafe { Heap::new() };
         let mut iter = XIterator::empty();
         iter.source = BaseSource::Unfold {
             closure: Primitive::Null.into(),
-            state: Some(Primitive::Integer(PrimitiveInteger::U64(1)).into()),
+            state: Some(PrimitiveInteger::U64(1).into()),
         };
         iter.push_step(PipeStep::Take(1)).unwrap();
         iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-        let result = lazy_collect::<()>(&mut iter, VecDeque::new(), TerminalOp::Count, 3, &mut heap).unwrap();
-        let inner = inner_id(4, &mut heap);
-        let two = heap.insert(Primitive::Integer(PrimitiveInteger::U64(2)).into()).unwrap();
-        let tuple = RuntimeValue::Object(vec![inner, two]);
-        assert!(matches!(
-            resume(result, tuple, &mut heap),
-            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-        ));
+        let result = lazy_collect::<()>(&mut iter, VecDeque::new(), TerminalOp::Count, &mut heap).unwrap();
+        let inner = inner_id(64, &mut heap);
+        let state = heap.insert(PrimitiveInteger::U64(2).into());
+        assert_count(resume(result, RuntimeValue::Object(vec![inner, state]), &mut heap).unwrap(), &heap);
     }
 }

@@ -53,7 +53,7 @@ fn execute(module: &Module, env: &EnvironmentBuilder<()>, entry: usize) -> Primi
         metadata: (&()).into(),
     })
     .unwrap();
-    vm.context_mut().resources_mut().set_gas_limit(1_000_000);
+    vm.context_mut().set_gas_limit(1_000_000);
     vm.invoke_chunk_id_unchecked(entry).unwrap();
     vm.run_blocking().unwrap().into_value().unwrap()
 }
@@ -142,13 +142,13 @@ fn folded_constants_and_escaping() {
 #[test]
 fn custom_environment_resolves_ids_without_default_std() {
     use silex_environment::{FunctionHandler, SysCallResult};
-    use silex_types::{Constant, Type};
+    use silex_types::{OwnedValue, Type};
     let mut env = EnvironmentBuilder::new();
     env.register_native_function(
         "host_value",
         None,
         vec![],
-        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(42)).into()))),
+        unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(42)).into()))) },
         1,
         Some(Type::U64),
     );
@@ -156,18 +156,18 @@ fn custom_environment_resolves_ids_without_default_std() {
         "scaled",
         Some(Type::U64),
         vec![("scale", Type::U64)],
-        FunctionHandler::Sync(|v, args, _, context| {
+        unsafe { FunctionHandler::sync_unchecked(|v, args, _, _context, heap| {
             Ok(SysCallResult::Return(
-                Primitive::Integer(PrimitiveInteger::U64(v?.as_u64(context.heap())? * args[0].as_u64(context.heap())?)).into(),
+                Primitive::Integer(PrimitiveInteger::U64(v?.as_u64(&*heap)? * args[0].as_u64(&*heap)?)).into(),
             ))
-        }),
+        }) },
         1,
         Some(Type::U64),
     );
     env.register_constant(
         Type::U64,
         "ANSWER",
-        Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
+        OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42))),
         Type::U64,
     );
     let module = compile(
@@ -348,7 +348,7 @@ fn discarded_expressions_still_trap() {
             metadata: (&()).into(),
         })
         .unwrap();
-        vm.context_mut().resources_mut().set_gas_limit(1_000_000);
+        vm.context_mut().set_gas_limit(1_000_000);
         vm.invoke_chunk_id_unchecked(0).unwrap();
         assert!(vm.run_blocking().is_err(), "{recovered}");
     }
@@ -364,7 +364,7 @@ fn voidable_syscalls_follow_standalone_and_value_contexts() {
         "maybe_value",
         None,
         vec![],
-        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(7)).into()))),
+        unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(7)).into()))) },
         0,
         Some(Type::Voidable(Box::new(Type::U64))),
     );
@@ -372,7 +372,7 @@ fn voidable_syscalls_follow_standalone_and_value_contexts() {
         "maybe_none",
         None,
         vec![],
-        FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+        unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) },
         0,
         Some(Type::Voidable(Box::new(Type::U64))),
     );

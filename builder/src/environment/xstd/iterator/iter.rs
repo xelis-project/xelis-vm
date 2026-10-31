@@ -1,15 +1,17 @@
-use std::collections::VecDeque;
+use silex_types::RuntimeOpaqueWrapper;
+#[cfg(test)]
+use silex_types::OpaqueWrapper;
+use std::{collections::VecDeque, fmt::{Debug, Display, Formatter, Result as FmtResult}, mem};
 
 use silex_environment::{EnvironmentError};
 use silex_types::{
     PrimitiveInteger,
     Opaque,
     OpaqueChild,
-    OpaqueWrapper,
+    OpaqueChildMut,
     Primitive,
     StackValue,
     RuntimeValue,
-    ValueError,
     ValuePointer,
     Heap,
     HeapError,
@@ -63,7 +65,7 @@ pub enum PipeStep {
 
 /// Maximum number of pipe steps an iterator can have.
 /// Prevents abuse from scripts building extremely long adapter chains
-pub const MAX_PIPE_DEPTH: usize = 128;
+pub const MAX_PIPE_STEPS: usize = 128;
 
 /// Flat lazy iterator.
 ///
@@ -72,119 +74,132 @@ pub const MAX_PIPE_DEPTH: usize = 128;
 /// onto `pipe` — O(1), no allocation of `Box<XIterator>`.
 ///
 /// Ordinary `Clone` preserves shared payload pointers. Opaque ownership
-/// conversion uses `detached_clone` to copy those payloads independently.
-/// Chain/Zip nesting is bounded by the VM, and Drop drains it iteratively.
-#[derive(Debug, Clone, Opaque)]
-#[opaque(name = "Iterator", display, children = self.children(), deep_clone_in = self.detached_clone(heap)?)]
+/// conversion uses the heap walker to detach those payloads independently.
+/// Clone and Drop drain nested iterators iteratively.
+#[derive(Default, Opaque)]
+#[opaque(runtime, name = "Iterator", display, children = self.children(), children_mut = self.visit_runtime_children(visitor), deep_clone_in = {
+    let value = heap.detach(RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(self.clone())))?;
+    value.into_opaque_type::<Self>().map_err(|_| HeapError::InvalidChildren)?
+})]
 pub struct XIterator {
     pub(crate) source: BaseSource,
     pub(crate) pipe: VecDeque<PipeStep>,
-    /// Maximum nesting depth of Chain/Zip children reachable from this iterator.
-    /// Tracked at construction time for O(1) depth checks.
-    pub(crate) depth: usize,
 }
 
-impl std::fmt::Display for XIterator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for XIterator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let source = match &self.source {
+            BaseSource::Dequeue(_) => "Dequeue",
+            BaseSource::Once(_) => "Once",
+            BaseSource::Empty => "Empty",
+            BaseSource::Unfold { .. } => "Unfold",
+        };
+        f.debug_struct("XIterator").field("source", &source).field("steps", &self.pipe.len()).finish()
+    }
+}
+
+impl Display for XIterator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Iterator")
     }
 }
 
 impl XIterator {
-    pub(crate) fn detached_clone(&self, heap: &mut Heap) -> Result<Self, HeapError> {
-        fn clone_values(items: &VecDeque<ValuePointer>, heap: &mut Heap) -> Result<VecDeque<ValuePointer>, HeapError> {
-            items.iter().map(|id| {
-                let value = id.to_owned(heap)?;
-                let value = heap.detach(value)?;
-                heap.insert(value)
-            }).collect()
-        }
-        let source = match &self.source {
-            BaseSource::Dequeue(items) => BaseSource::Dequeue(clone_values(items, heap)?),
-            BaseSource::Once(value) => BaseSource::Once(value.map(|id| {
-                let value = id.to_owned(heap)?;
-                let value = heap.detach(value)?;
-                heap.insert(value)
-            }).transpose()?),
-            BaseSource::Empty => BaseSource::Empty,
-            BaseSource::Unfold { closure, state } => BaseSource::Unfold {
-                closure: closure.to_owned(heap)?,
-                state: state.as_ref().map(|value| value.to_owned(heap)).transpose()?,
-            },
+    fn children(&self) -> impl Iterator<Item = OpaqueChild<'_>> {
+        let items = match &self.source {
+            BaseSource::Dequeue(items) => Some(items),
+            _ => None,
         };
-        let pipe = self.pipe.iter().map(|step| Ok(match step {
-            PipeStep::Map(closure) => PipeStep::Map(closure.to_owned(heap)?),
-            PipeStep::Filter(closure) => PipeStep::Filter(closure.to_owned(heap)?),
-            PipeStep::Chain(child) => PipeStep::Chain(Box::new(child.detached_clone(heap)?)),
-            PipeStep::Zip(child) => PipeStep::Zip(Box::new(child.detached_clone(heap)?)),
-            PipeStep::Flatten(items) => PipeStep::Flatten(clone_values(items, heap)?),
-            step => step.clone(),
-        })).collect::<Result<_, HeapError>>()?;
-        Ok(Self { source, pipe, depth: self.depth })
+        let source = match &self.source {
+            BaseSource::Once(item) => [item.as_ref().map(OpaqueChild::Pointer), None],
+            BaseSource::Unfold { closure, state } => [Some(closure.into()), state.as_ref().map(OpaqueChild::from)],
+            _ => [None, None],
+        };
+        let pipe = self.pipe.iter().flat_map(|step| {
+            let (value, items) = match step {
+                PipeStep::Map(value) | PipeStep::Filter(value) => (Some(value.into()), None),
+                PipeStep::Chain(value) | PipeStep::Zip(value) => (Some(OpaqueChild::Opaque(&**value)), None),
+                PipeStep::Flatten(items) => (None, Some(items)),
+                _ => (None, None),
+            };
+            value.into_iter().chain(items.into_iter().flat_map(|items| items.iter().map(OpaqueChild::Pointer)))
+        });
+        items.into_iter().flat_map(|items| items.iter().map(OpaqueChild::Pointer))
+            .chain(source.into_iter().flatten()).chain(pipe)
     }
 
-    fn children(&self) -> std::vec::IntoIter<OpaqueChild<'_>> {
-        let mut children = Vec::new();
-        match &self.source {
-            BaseSource::Dequeue(items) => children.extend(items.iter().map(|id| OpaqueChild::Pointer(*id))),
-            BaseSource::Once(item) => children.extend(item.iter().map(|id| OpaqueChild::Pointer(*id))),
-            BaseSource::Unfold { closure, state } => {
-                children.push(closure.into());
-                children.extend(state.iter().map(OpaqueChild::from));
-            }
-            BaseSource::Empty => {}
+    fn visit_runtime_children(&mut self, visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<(), HeapError> {
+        enum Child<'a> {
+            Iterator(&'a mut XIterator),
+            Value(OpaqueChildMut<'a>),
         }
-        for step in &self.pipe {
-            match step {
-                PipeStep::Map(value) | PipeStep::Filter(value) => children.push(value.into()),
-                PipeStep::Chain(value) | PipeStep::Zip(value) => children.push(OpaqueChild::Opaque(&**value)),
-                PipeStep::Flatten(items) => children.extend(items.iter().map(|id| OpaqueChild::Pointer(*id))),
-                _ => {}
+        fn children(iter: &mut XIterator) -> impl Iterator<Item = Child<'_>> {
+            let (items, source) = match &mut iter.source {
+                BaseSource::Dequeue(items) => (Some(items), [None, None]),
+                BaseSource::Once(item) => (None, [item.as_mut().map(|id| Child::Value(OpaqueChildMut::Pointer(id))), None]),
+                BaseSource::Unfold { closure, state } => (None, [
+                    Some(Child::Value(OpaqueChildMut::Stack(closure))),
+                    state.as_mut().map(|value| Child::Value(OpaqueChildMut::Stack(value))),
+                ]),
+                BaseSource::Empty => (None, [None, None]),
+            };
+            let pipe = iter.pipe.iter_mut().flat_map(|step| {
+                let (child, items) = match step {
+                    PipeStep::Map(value) | PipeStep::Filter(value) => (Some(Child::Value(OpaqueChildMut::Stack(value))), None),
+                    PipeStep::Chain(child) | PipeStep::Zip(child) => (Some(Child::Iterator(&mut **child)), None),
+                    PipeStep::Flatten(items) => (None, Some(items)),
+                    _ => (None, None),
+                };
+                child.into_iter().chain(items.into_iter().flat_map(|items| items.iter_mut().map(|id| Child::Value(OpaqueChildMut::Pointer(id)))))
+            });
+            items.into_iter().flat_map(|items| items.iter_mut().map(|id| Child::Value(OpaqueChildMut::Pointer(id))))
+                .chain(source.into_iter().flatten()).chain(pipe)
+        }
+        let mut current = children(self);
+        let mut parents = Vec::new();
+        loop {
+            match current.next() {
+                Some(Child::Value(child)) => visitor(child)?,
+                Some(Child::Iterator(iter)) => parents.push(mem::replace(&mut current, children(iter))),
+                None => match parents.pop() {
+                    Some(parent) => current = parent,
+                    None => return Ok(()),
+                },
             }
         }
-        children.into_iter()
     }
 
     #[inline(always)]
     pub fn from_dequeue(items: VecDeque<ValuePointer>) -> Self {
-        Self { source: BaseSource::Dequeue(items), pipe: VecDeque::new(), depth: 0 }
+        Self { source: BaseSource::Dequeue(items), pipe: VecDeque::new() }
     }
 
     #[inline(always)]
     pub fn once(value: RuntimeValue, heap: &mut Heap) -> Result<Self, HeapError> {
-        Ok(Self { source: BaseSource::Once(Some(heap.insert(value)?)), pipe: VecDeque::new(), depth: 0 })
+        Ok(Self { source: BaseSource::Once(Some(heap.insert(value))), pipe: VecDeque::new() })
     }
 
     #[inline(always)]
     pub fn empty() -> Self {
-        Self { source: BaseSource::Empty, pipe: VecDeque::new(), depth: 0 }
+        Self { source: BaseSource::Empty, pipe: VecDeque::new() }
     }
 
     /// Push a pipe step, enforcing the maximum pipeline depth.
     #[inline]
     pub(crate) fn push_step(&mut self, step: PipeStep) -> Result<(), EnvironmentError> {
-        if self.pipe.len() >= MAX_PIPE_DEPTH {
+        if self.pipe.len() >= MAX_PIPE_STEPS {
             return Err(EnvironmentError::Static("iterator pipeline too deep"));
         }
         self.pipe.push_back(step);
         Ok(())
     }
 
-    /// Push a Chain or Zip step, enforcing both pipeline depth and nesting depth.
-    pub(crate) fn push_nested_step(&mut self, step: PipeStep, child_depth: usize, max_depth: usize) -> Result<(), EnvironmentError> {
-        if child_depth >= max_depth {
-            return Err(EnvironmentError::Static("iterator nesting too deep"));
-        }
-        self.push_step(step)?;
-        self.depth = self.depth.max(child_depth + 1);
-        Ok(())
-    }
-
     /// Returns true if advancing this iterator requires executing a VM closure.
     /// Iterative: walks the entire tree of nested Chain/Zip iterators without recursion.
     pub fn needs_callback(&self) -> bool {
-        let mut to_check: Vec<&XIterator> = vec![self];
-        while let Some(iter) = to_check.pop() {
+        let mut to_check = Vec::new();
+        let mut iter = self;
+        loop {
             if matches!(iter.source, BaseSource::Unfold { .. }) {
                 return true;
             }
@@ -197,37 +212,11 @@ impl XIterator {
                     _ => {}
                 }
             }
+            match to_check.pop() {
+                Some(next) => iter = next,
+                None => return false,
+            }
         }
-        false
-    }
-
-    fn check_retained_depth(
-        value: &RuntimeValue,
-        max_depth: usize,
-        nesting: usize,
-        heap: &Heap,
-    ) -> Result<(), EnvironmentError> {
-        let budget = max_depth
-            .checked_sub(nesting)
-            .and_then(|depth| depth.checked_sub(1))
-            .ok_or(ValueError::MaxDepthReached)?;
-
-        value.calculate_depth(heap, budget)?;
-
-        Ok(())
-    }
-
-    fn check_pending_depth(
-        values: &VecDeque<ValuePointer>,
-        max_depth: usize,
-        nesting: usize,
-        heap: &Heap,
-    ) -> Result<(), EnvironmentError> {
-        for value in values {
-            Self::check_retained_depth(value.as_ref(heap), max_depth, nesting, heap)?;
-        }
-
-        Ok(())
     }
 
     /// Advance a fully-sync iterator (no closures anywhere in the pipe) without VM callbacks.
@@ -237,43 +226,25 @@ impl XIterator {
     /// pending buffer inline (consistent with the array path).
     ///
     /// Mutates `self` in-place. Returns `Err` if any step requires a callback.
-    /// New payloads are checked against the caller's remaining depth budget.
-    /// Existing validated data is not rescanned.
-    pub fn next_sync(&mut self, max_depth: usize, heap: &mut Heap) -> Result<Option<ValuePointer>, EnvironmentError> {
-        /// How to resume the parent iterator after completing a nested descent.
+    pub fn next_sync(&mut self, heap: &mut Heap) -> Result<Option<ValuePointer>, EnvironmentError> {
         enum ResumeKind {
-            /// Chain: use the nested result as `current`, continue from `pipe_idx + 1`.
             Chain,
-            /// Zip: pair the saved left value with the nested result.
             ZipRight(ValuePointer),
+            Flatten,
         }
-
-        /// One level on the explicit call stack.
         struct Frame {
-            /// Raw pointer to the parent `XIterator`.
-            iter_ptr: *mut XIterator,
-            /// The pipe index where we paused (the Chain/Zip step).
+            iter: XIterator,
             pipe_idx: usize,
-            /// How to incorporate the nested result.
             kind: ResumeKind,
         }
+        enum Step {
+            Descend { child: XIterator, pipe_idx: usize, kind: ResumeKind },
+            Yield(Option<ValuePointer>),
+        }
 
-        let mut stack: Vec<Frame> = Vec::new();
-        let mut cur: *mut XIterator = self;
-        // When `Some`, we are resuming a parent frame: skip pulling from source
-        // and continue its pipe from the given `(pipe_idx, current)`.
-        let mut resume: Option<(usize, Option<ValuePointer>)> = None;
-
-        'descend: loop {
-            // SAFETY: `cur` points to one of:
-            //   - `self` (the root, valid for the entire call),
-            //   - a `Box<XIterator>` inside a `PipeStep::Chain`/`Zip` of an ancestor
-            //     on `stack` (valid because the ancestor is not mutated while we descend).
-            // Only ONE `&mut XIterator` reference is live at any time.
-            let iter: &mut XIterator = unsafe { &mut *cur };
-
+        fn advance(iter: &mut XIterator, mut resume: Option<(usize, Option<ValuePointer>)>, heap: &mut Heap) -> Result<Step, EnvironmentError> {
             // Process this iterator level until it produces a result.
-            let result: Option<ValuePointer> = 'outer: loop {
+            'outer: loop {
                 let (mut pipe_idx, mut current) = if let Some(r) = resume.take() {
                     r
                 } else {
@@ -299,7 +270,6 @@ impl XIterator {
 
                     if let Some(inner_item) = pending_front {
                         if let Some(outer_item) = current.take() {
-                            Self::check_retained_depth(outer_item.as_ref(heap), max_depth, stack.len(), heap)?;
                             match &mut iter.source {
                                 BaseSource::Dequeue(d) => d.push_front(outer_item),
                                 BaseSource::Once(slot) if slot.is_none() => *slot = Some(outer_item),
@@ -307,8 +277,9 @@ impl XIterator {
                                     let old = std::mem::replace(&mut iter.source, BaseSource::Empty);
                                     let mut d = VecDeque::new();
                                     d.push_front(outer_item);
-                                    if let BaseSource::Dequeue(rest) = old {
-                                        d.extend(rest);
+                                    match old {
+                                        BaseSource::Dequeue(rest) => d.extend(rest),
+                                        _ => {},
                                     }
                                     iter.source = BaseSource::Dequeue(d);
                                 }
@@ -341,24 +312,16 @@ impl XIterator {
                                 let idx = *counter;
                                 *counter += 1;
                                 let pair = RuntimeValue::Object(vec![
-                                    heap.insert(Primitive::Integer(PrimitiveInteger::U32(idx)).into())?,
+                                    heap.insert(Primitive::Integer(PrimitiveInteger::U32(idx)).into()),
                                     item,
                                 ]);
-                                current = Some(heap.insert(pair)?);
+                                current = Some(heap.insert(pair));
                             }
                         }
                         PipeStep::Chain(next_iter) => {
                             if current.is_none() {
-                                // Descend into the chained iterator instead of recursing.
-                                let nested_ptr: *mut XIterator = &mut **next_iter;
-                                stack.push(Frame {
-                                    iter_ptr: cur,
-                                    pipe_idx,
-                                    kind: ResumeKind::Chain,
-                                });
-                                cur = nested_ptr;
-                                resume = None;
-                                continue 'descend;
+                                let child = mem::take(&mut **next_iter);
+                                return Ok(Step::Descend { child, pipe_idx, kind: ResumeKind::Chain });
                             }
                         }
                         PipeStep::Zip(right) => {
@@ -367,27 +330,18 @@ impl XIterator {
                                     // Left exhausted → zip produces None.
                                 }
                                 Some(l) => {
-                                    // Descend into the right iterator instead of recursing.
-                                    let nested_ptr: *mut XIterator = &mut **right;
-                                    stack.push(Frame {
-                                        iter_ptr: cur,
-                                        pipe_idx,
-                                        kind: ResumeKind::ZipRight(l),
-                                    });
-                                    cur = nested_ptr;
-                                    resume = None;
-                                    continue 'descend;
+                                    let child = mem::take(&mut **right);
+                                    return Ok(Step::Descend { child, pipe_idx, kind: ResumeKind::ZipRight(l) });
                                 }
                             }
                         }
                         PipeStep::Flatten(pending) => {
                             // pending is empty here (non-empty case handled above).
                             if let Some(ptr) = current.take() {
-                                match ptr.to_owned(heap)? {
+                                match heap.take(ptr) {
                                     RuntimeValue::Object(elements) => {
                                         *pending = elements.into();
                                         current = pending.pop_front();
-                                        Self::check_pending_depth(&pending, max_depth, stack.len(), heap)?;
                                     }
                                     RuntimeValue::Opaque(w) => {
                                         // Drain all items from the inner iterator into
@@ -395,16 +349,10 @@ impl XIterator {
                                         // The inner iterator is a separate owned value
                                         // (extracted via into_inner), so calling next_sync
                                         // on it doesn't alias the outer iterator.
-                                        let mut inner = w.into_inner::<XIterator>()
+                                        let inner = w.into_inner::<XIterator>()
                                             .map_err(|_| EnvironmentError::Static("flatten: expected array or Iterator"))?;
-                                        let budget = max_depth.checked_sub(stack.len())
-                                            .ok_or(ValueError::MaxDepthReached)?;
                                         pending.clear();
-                                        while let Some(item) = inner.next_sync(budget, heap)? {
-                                            pending.push_back(item);
-                                        }
-                                        current = pending.pop_front();
-                                        Self::check_pending_depth(&pending, max_depth, stack.len(), heap)?;
+                                        return Ok(Step::Descend { child: inner, pipe_idx, kind: ResumeKind::Flatten });
                                     }
                                     _ => return Err(EnvironmentError::Static("flatten: expected array or Iterator")),
                                 }
@@ -422,97 +370,110 @@ impl XIterator {
                     pipe_idx += 1;
                 }
 
-                break current;
-            };
-
-            // `result` is the value produced by this iterator level.
-            // Unwind one frame or return to the caller.
-            match stack.pop() {
-                None => return Ok(result),
-                Some(frame) => {
-                    cur = frame.iter_ptr;
-                    match frame.kind {
-                        ResumeKind::Chain => {
-                            resume = Some((frame.pipe_idx + 1, result));
-                        }
-                        ResumeKind::ZipRight(left) => {
-                            let zipped = match result {
-                                None => None,
-                                Some(r) => Some(heap.insert(RuntimeValue::Object(vec![left, r]))?),
-                            };
-                            resume = Some((frame.pipe_idx + 1, zipped));
-                        }
-                    }
-                    continue 'descend;
-                }
+                return Ok(Step::Yield(current));
             }
         }
+
+        fn restore_child(parent: &mut XIterator, pipe_idx: usize, child: &mut XIterator) {
+            match &mut parent.pipe[pipe_idx] {
+                PipeStep::Chain(target) | PipeStep::Zip(target) => **target = mem::take(child),
+                _ => unreachable!("nested iterator continuation"),
+            }
+        }
+
+        let mut current = mem::take(self);
+        let mut stack: Vec<Frame> = Vec::new();
+        let mut resume = None;
+        let result = (|| {
+            loop {
+                match advance(&mut current, resume.take(), heap)? {
+                    Step::Descend { child, pipe_idx, kind } => {
+                        let parent = mem::replace(&mut current, child);
+                        stack.push(Frame { iter: parent, pipe_idx, kind });
+                    }
+                    Step::Yield(result) => {
+                        let Some(mut frame) = stack.pop() else {
+                            return Ok(result);
+                        };
+                        match frame.kind {
+                            ResumeKind::Chain => {
+                                restore_child(&mut frame.iter, frame.pipe_idx, &mut current);
+                                current = frame.iter;
+                                resume = Some((frame.pipe_idx + 1, result));
+                            }
+                            ResumeKind::ZipRight(left) => {
+                                restore_child(&mut frame.iter, frame.pipe_idx, &mut current);
+                                current = frame.iter;
+                                let result = match result {
+                                    Some(right) => Some(heap.insert(RuntimeValue::Object(vec![left, right]))),
+                                    None => None,
+                                };
+                                resume = Some((frame.pipe_idx + 1, result));
+                            }
+                            ResumeKind::Flatten => {
+                                let PipeStep::Flatten(pending) = &mut frame.iter.pipe[frame.pipe_idx] else {
+                                    unreachable!("flatten continuation");
+                                };
+                                if let Some(item) = result {
+                                    pending.push_back(item);
+                                    stack.push(frame);
+                                } else {
+                                    let item = pending.pop_front();
+                                    current = frame.iter;
+                                    resume = item.map(|item| (frame.pipe_idx + 1, Some(item)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })();
+
+        // Restore ordinary error state as well as successful traversal. A
+        // consumed flatten source is dropped; borrowed chain/zip children go
+        // back into their original parent boxes.
+        while let Some(mut frame) = stack.pop() {
+            if matches!(frame.kind, ResumeKind::Chain | ResumeKind::ZipRight(_)) {
+                restore_child(&mut frame.iter, frame.pipe_idx, &mut current);
+            }
+            current = frame.iter;
+        }
+        *self = current;
+        result
     }
+
 }
 
 /// Wraps an `XIterator` into an opaque `StackValue` suitable for VM storage.
 #[inline(always)]
 pub(crate) fn wrap_iter(iter: XIterator) -> StackValue {
-    RuntimeValue::Opaque(OpaqueWrapper::new(iter)).into()
-}
-
-/// Custom `Drop` to iteratively drain nested `Chain`/`Zip` iterators.
-/// Without this, deeply nested iterators (e.g. from repeated `[1].iter().chain(it)`)
-/// would cause recursive drops that overflow the stack.
-impl Drop for XIterator {
-    fn drop(&mut self) {
-        // Fast path: nothing nested.
-        if self.depth == 0 {
-            return;
-        }
-
-        let mut to_drain: Vec<XIterator> = Vec::new();
-
-        // Collect nested iterators from our own pipe.
-        for step in self.pipe.drain(..) {
-            match step {
-                PipeStep::Chain(inner) | PipeStep::Zip(inner) => {
-                    to_drain.push(*inner);
-                }
-                // Other variants are dropped normally (no deep recursion).
-                _ => {}
-            }
-        }
-
-        // Iteratively drain all nested iterators.
-        while let Some(mut iter) = to_drain.pop() {
-            for step in iter.pipe.drain(..) {
-                match step {
-                    PipeStep::Chain(inner) | PipeStep::Zip(inner) => {
-                        to_drain.push(*inner);
-                    }
-                    _ => {}
-                }
-            }
-            // `iter.source` and remaining fields drop here (shallow).
-        }
-    }
+    RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(iter)).into()
 }
 
 #[cfg(test)]
-mod depth_tests {
+mod tests {
     use super::*;
     use silex_environment::VMContext;
-    fn retains_id(root: &RuntimeValue, expected: ValuePointer, heap: &Heap) -> bool {
+    fn retains_id(root: &RuntimeValue, expected: &ValuePointer, heap: &Heap) -> bool {
         let mut work = vec![OpaqueChild::Value(root)];
         while let Some(child) = work.pop() {
             let cell = match child {
                 OpaqueChild::Pointer(id) => {
-                    if id == expected { return true; }
+                    if id == expected {
+                        return true;
+                    }
                     id.as_ref(heap)
                 }
                 OpaqueChild::Value(value) => value,
-                OpaqueChild::Opaque(value) => { value.visit_children(&mut |child| work.push(child)); continue; }
+                OpaqueChild::Opaque(value) => {
+                    value.visit_children(&mut |child| work.push(child));
+                    continue;
+                }
                 OpaqueChild::Owned(_) => continue,
             };
             match cell {
-                RuntimeValue::Object(children) => work.extend(children.iter().map(|id| OpaqueChild::Pointer(*id))),
-                RuntimeValue::Map(children) => work.extend(children.values().map(|id| OpaqueChild::Pointer(*id))),
+                RuntimeValue::Object(children) => work.extend(children.iter().map(|id| OpaqueChild::Pointer(id))),
+                RuntimeValue::Map(children) => work.extend(children.values().map(|id| OpaqueChild::Pointer(id))),
                 RuntimeValue::Opaque(value) => work.push(OpaqueChild::Opaque(value.inner())),
                 _ => {}
             }
@@ -523,31 +484,32 @@ mod depth_tests {
 
     #[test]
     fn owned_iterators_detach_their_source_slots() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        let slot = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
+        let mut runtime_heap = unsafe { Heap::new() };
+        let heap = &mut runtime_heap;
+        let values = &mut *heap;
+        let slot = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into());
         let iter = XIterator::from_dequeue(VecDeque::from([slot.clone()]));
-        let value = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
-        let detached = values.detach(value.clone_ref()).unwrap();
+        let value = RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(iter));
+        let copy = value.clone();
+        let detached = values.detach(copy).unwrap();
         // No payload references are live while replacing the original slot.
         *slot.as_mut(values) = detached;
-        assert_eq!(slot.as_ref(values).calculate_depth(values, 16).unwrap(), 1);
-        assert_eq!(value.calculate_depth(values, 16).unwrap(), 2);
+        assert!(!retains_id(slot.as_ref(values), &slot, values));
         drop(value);
-        assert_eq!(slot.as_ref(values).calculate_depth(values, 16).unwrap(), 1);
     }
 
     #[test]
     fn deep_clone_detaches_every_retained_payload_and_nested_iterator() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
+        let mut runtime_heap = unsafe { Heap::new() };
+        let heap = &mut runtime_heap;
+        let values = &mut *heap;
         for position in 0..10 {
-            let original = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
+            let original = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into());
             let payload = RuntimeValue::Object(vec![original.clone()]);
             let mut iter = XIterator::empty();
             match position {
-                0 => iter.source = BaseSource::Dequeue(VecDeque::from([values.insert(payload).unwrap()])),
-                1 => iter.source = BaseSource::Once(Some(values.insert(payload).unwrap())),
+                0 => iter.source = BaseSource::Dequeue(VecDeque::from([values.insert(payload)])),
+                1 => iter.source = BaseSource::Once(Some(values.insert(payload))),
                 2 => {
                     iter.source = BaseSource::Unfold {
                         closure: payload.into(),
@@ -564,10 +526,9 @@ mod depth_tests {
                 5 => iter.pipe.push_back(PipeStep::Filter(payload.into())),
                 6 => iter
                     .pipe
-                    .push_back(PipeStep::Flatten(VecDeque::from([values.insert(payload).unwrap()]))),
+                    .push_back(PipeStep::Flatten(VecDeque::from([values.insert(payload)]))),
                 7 | 8 => {
                     let child = Box::new(XIterator::once(payload, values).unwrap());
-                    iter.depth = 1;
                     iter.pipe.push_back(if position == 7 {
                         PipeStep::Chain(child)
                     } else {
@@ -576,164 +537,35 @@ mod depth_tests {
                 }
                 9 => {
                     let inner = XIterator::once(payload, values).unwrap();
-                    iter = XIterator::once(RuntimeValue::Opaque(OpaqueWrapper::new(inner)), values).unwrap()
+                    iter = XIterator::once(RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(inner)), values).unwrap()
                 }
                 _ => unreachable!(),
             }
-            let source = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
-            let snapshot = values.detach(source.clone_ref()).unwrap();
+            let source = RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(iter));
+            let copy = source.clone();
+            let snapshot = values.detach(copy).unwrap();
             drop(source);
-            assert!(!retains_id(&snapshot, original, values), "retained source slot at position {position}");
-            snapshot.calculate_depth(values, 16).unwrap();
-        }
-    }
-
-    fn payload(depth: usize, heap: &mut Heap) -> RuntimeValue {
-        let mut value = RuntimeValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(42)));
-        for _ in 0..depth {
-            value = RuntimeValue::Object(vec![heap.insert(value).unwrap()]);
-        }
-        value
-    }
-    fn depth(iter: XIterator, heap: &Heap) -> Result<usize, ValueError> {
-        RuntimeValue::Opaque(OpaqueWrapper::new(iter)).calculate_depth(heap, 16)
-    }
-    #[test]
-    fn stored_payloads_obey_the_depth_boundary() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        for position in 0..7 {
-            for nesting in [15, 16] {
-                let value = payload(nesting, values);
-                let mut iter = XIterator::empty();
-                match position {
-                    0 => iter.source = BaseSource::Once(Some(values.insert(value).unwrap())),
-                    1 => iter.source = BaseSource::Dequeue(VecDeque::from([values.insert(value).unwrap()])),
-                    2 => {
-                        iter.source = BaseSource::Unfold {
-                            closure: value.into(),
-                            state: None,
-                        }
-                    }
-                    3 => {
-                        iter.source = BaseSource::Unfold {
-                            closure: Primitive::Integer(PrimitiveInteger::U64(1)).into(),
-                            state: Some(value.into()),
-                        }
-                    }
-                    4 => iter.pipe.push_back(PipeStep::Map(value.into())),
-                    5 => iter.pipe.push_back(PipeStep::Filter(value.into())),
-                    6 => iter
-                        .pipe
-                        .push_back(PipeStep::Flatten(VecDeque::from([values.insert(value).unwrap()]))),
-                    _ => unreachable!(),
-                }
-                if nesting == 15 {
-                    assert_eq!(depth(iter, values).unwrap(), 16);
-                } else {
-                    assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
-                }
-            }
-        }
-    }
-    #[test]
-    fn chain_and_zip_include_nested_payload_depth() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        for zip in [false, true] {
-            for nesting in [14, 15] {
-                let mut iter = XIterator::empty();
-                let value = payload(nesting, values);
-                let child = Box::new(XIterator::once(value, values).unwrap());
-                iter.depth = 1;
-                iter.pipe.push_back(if zip {
-                    PipeStep::Zip(child)
-                } else {
-                    PipeStep::Chain(child)
-                });
-                if nesting == 14 {
-                    assert_eq!(depth(iter, values).unwrap(), 16);
-                } else {
-                    assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
-                }
-            }
-        }
-    }
-    #[test]
-    fn deeply_nested_empty_iterators_are_bounded_without_recursion() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        let mut iter = XIterator::empty();
-        for nesting in 1..=1000 {
-            let mut parent = XIterator::empty();
-            parent.depth = nesting;
-            parent.pipe.push_back(PipeStep::Chain(Box::new(iter)));
-            iter = parent;
-        }
-        assert!(matches!(depth(iter, values), Err(ValueError::MaxDepthReached)));
-    }
-    #[test]
-    fn cyclic_payloads_are_bounded_without_consuming_the_iterator() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        let pointer = values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
-        let mut iter = XIterator::empty();
-        iter.source = BaseSource::Once(Some(pointer.clone()));
-        let value = RuntimeValue::Opaque(OpaqueWrapper::new(iter));
-        // SAFETY: no payload references are live during these mutations.
-        *pointer.as_mut(values) = RuntimeValue::Object(vec![pointer.clone()]);
-        let result = value.calculate_depth(values, 16);
-        *pointer.as_mut(values) = Primitive::Integer(PrimitiveInteger::U64(1)).into();
-        assert!(matches!(result, Err(ValueError::MaxDepthReached)));
-        assert_eq!(value.calculate_depth(values, 16).unwrap(), 1);
-    }
-
-    #[test]
-    fn flatten_checks_only_newly_retained_payloads() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        for nesting in [16, 17] {
-            let mut iter = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into(), values).unwrap();
-            for _ in 0..nesting {
-                iter.push_step(PipeStep::Enumerate(0)).unwrap();
-            }
-            iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-            let result = iter.next_sync(16, values);
-            if nesting == 16 {
-                assert_eq!(result.unwrap().unwrap().as_ref(values).as_u32().unwrap(), 0);
-                assert_eq!(depth(iter, values).unwrap(), 16);
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-                ));
-            }
+            assert!(!retains_id(&snapshot, &original, values), "retained source slot at position {position}");
         }
     }
 
     #[test]
-    fn flatten_pending_budget_includes_nested_iterator_position() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
-        let mut child = XIterator::once(Primitive::Integer(PrimitiveInteger::U64(1)).into(), values).unwrap();
-        for _ in 0..16 {
-            child.push_step(PipeStep::Enumerate(0)).unwrap();
+    fn flatten_retains_deep_transformed_payloads() {
+        let mut heap = unsafe { Heap::new() };
+        let mut iter = XIterator::once(PrimitiveInteger::U64(1).into(), &mut heap).unwrap();
+        for _ in 0..64 {
+            iter.push_step(PipeStep::Enumerate(0)).unwrap();
         }
-        child.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-        let mut parent = XIterator::empty();
-        parent
-            .push_nested_step(PipeStep::Chain(Box::new(child)), 0, 16)
-            .unwrap();
-        assert!(matches!(
-            parent.next_sync(16, values),
-            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-        ));
+        iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
+        assert_eq!(iter.next_sync(&mut heap).unwrap().unwrap().as_ref(&heap).as_u32().unwrap(), 0);
     }
 
     #[test]
     fn next_does_not_scan_unconsumed_payloads() {
         let mut context = VMContext::default();
-        let values = context.heap_mut();
+        let mut runtime_heap = unsafe { Heap::new() };
+        let heap = &mut runtime_heap;
+        let values = &mut *heap;
         use std::sync::{
             atomic::{AtomicUsize, Ordering},
             Arc,
@@ -749,13 +581,12 @@ mod depth_tests {
         }
         let calls = Arc::new(AtomicUsize::new(0));
         let iter = XIterator::from_dequeue(VecDeque::from([
-            values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap(),
-            values.insert(RuntimeValue::Opaque(OpaqueWrapper::new(Probe(calls.clone())))).unwrap(),
+            values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()),
+            values.insert(RuntimeValue::Opaque(OpaqueWrapper::new(Probe(calls.clone())).into())),
         ]));
-        let instance: StackValue =
-            RuntimeValue::Opaque(OpaqueWrapper::new(iter)).into();
-        instance.as_ref(values).calculate_depth(values, 16).unwrap();
-        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        let mut instance: StackValue =
+            RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(iter)).into();
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
         calls.store(0, Ordering::Relaxed);
         let module = silex_bytecode::Module::new();
         let environment = crate::EnvironmentBuilder::<()>::default().build();
@@ -765,35 +596,39 @@ mod depth_tests {
             metadata: (&()).into(),
         };
         let result = super::super::fns::iter_next(
-            Ok(instance),
-            vec![],
+            Ok(&mut instance),
+            &mut vec![],
             &metadata,
             &mut context,
+            heap,
         )
         .unwrap();
         let silex_environment::SysCallResult::Return(value) = result else {
             panic!("expected an item");
         };
-        assert_eq!(value.as_u64(context.heap()).unwrap(), 1);
+        assert_eq!(value.as_u64(&*heap).unwrap(), 1);
         assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
-    fn flatten_checks_transformed_items_reinserted_into_the_source() {
-        let mut context = VMContext::default();
-        let values = context.heap_mut();
+    fn flatten_reinserts_deep_transformed_items_without_a_depth_limit() {
+        let mut heap = unsafe { Heap::new() };
         let mut iter = XIterator::from_dequeue(VecDeque::from([
-            values.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap(),
-            values.insert(Primitive::Integer(PrimitiveInteger::U64(2)).into()).unwrap(),
+            heap.insert(PrimitiveInteger::U64(1).into()),
+            heap.insert(PrimitiveInteger::U64(2).into()),
         ]));
-        for _ in 0..16 {
+        for _ in 0..64 {
             iter.push_step(PipeStep::Enumerate(0)).unwrap();
         }
         iter.push_step(PipeStep::Flatten(VecDeque::new())).unwrap();
-        assert!(iter.next_sync(16, values).unwrap().is_some());
-        assert!(matches!(
-            iter.next_sync(16, values),
-            Err(EnvironmentError::ValueError(ValueError::MaxDepthReached))
-        ));
+        assert!(iter.next_sync(&mut heap).unwrap().is_some());
+        assert!(iter.next_sync(&mut heap).unwrap().is_some());
+    }
+
+}
+
+impl From<XIterator> for StackValue {
+    fn from(value: XIterator) -> Self {
+        RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(value)).into()
     }
 }

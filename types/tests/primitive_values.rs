@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use matriochka::ResultExt as _;
 use serde_json::{json, Value};
 use silex_types::{
-    traits::JSON_REGISTRY, Constant, Opaque, OpaqueWrapper, Primitive,
+    traits::JSON_REGISTRY, Opaque, OpaqueWrapper, Primitive,
     PrimitiveInteger, PrimitiveRange, Type, OwnedValue, ValueError, U256,
 };
 
@@ -40,9 +40,6 @@ fn integers_and_ranges_serialize_current_variants_and_keep_costs() {
             let owned = OwnedValue::Primitive(primitive.clone());
             assert_eq!(serde_json::to_value(&owned).unwrap(), integer_json);
             assert_eq!(serde_json::from_value::<OwnedValue>(integer_json.clone()).unwrap(), owned);
-            let constant = Constant::Primitive(primitive.clone());
-            assert_eq!(serde_json::to_value(&constant).unwrap(), integer_json);
-            assert_eq!(serde_json::from_value::<Constant>(integer_json).unwrap(), constant);
             let mut expected_hash = HashBytes::default();
             ($tag as u8).hash(&mut expected_hash);
             start.hash(&mut expected_hash);
@@ -99,8 +96,7 @@ fn invalid_ranges_are_rejected_at_construction_and_deserialization() {
     ] {
         let invalid = json!({"type":"range", "value":[{"type":"u64", "value":"0"}, endpoint]});
         assert!(serde_json::from_value::<Primitive>(invalid.clone()).is_err());
-        assert!(serde_json::from_value::<Constant>(invalid.clone()).is_err());
-        assert!(serde_json::from_value::<OwnedValue>(invalid).is_err());
+        assert!(serde_json::from_value::<OwnedValue>(invalid.clone()).is_err());
     }
     for (start, end) in [(0, 0), (3, 1)] {
         assert!(
@@ -126,31 +122,19 @@ fn opaques_serialize_as_owned_variants_without_changing_costs() {
     let opaque = OpaqueWrapper::new(Fixture(42));
     let expected = json!({"type":"opaque", "value":{"type":"PrimitiveSplitFixture", "value":42}});
     let cell = OwnedValue::Opaque(opaque.clone());
-    let constant = Constant::Opaque(opaque.clone());
     assert_eq!(serde_json::to_value(&cell).unwrap(), expected);
-    assert_eq!(serde_json::to_value(&constant).unwrap(), expected);
     assert_eq!(
         serde_json::from_value::<OwnedValue>(expected.clone()).unwrap(),
         cell
-    );
-    assert_eq!(
-        serde_json::from_value::<Constant>(expected.clone()).unwrap(),
-        constant
     );
     assert!(serde_json::from_value::<Primitive>(expected.clone()).is_err());
     let mut expected_hash = HashBytes::default();
     10u8.hash(&mut expected_hash);
     opaque.hash(&mut expected_hash);
     assert_eq!(hash_bytes(&cell), expected_hash.0);
-    assert_eq!(hash_bytes(&constant), expected_hash.0);
     assert_eq!(cell.calculate_memory_usage(100).unwrap(), 8);
     let nested = OwnedValue::Object(vec![cell.into()]);
     assert_eq!(nested.calculate_memory_usage(100).unwrap(), 41);
-    assert_eq!(
-        nested.calculate_depth(0).unwrap_err().to_string(),
-        "max depth reached"
-    );
-    assert_eq!(nested.calculate_depth(1).unwrap(), 1);
     let schema = serde_json::to_value(schemars::schema_for!(OwnedValue)).unwrap();
     assert_eq!(schema["title"], "OwnedValue");
     assert!(schema.to_string().contains("opaque"));
@@ -175,16 +159,10 @@ fn range_casts_keep_endpoint_width_and_overflow_checks() {
         expected
     );
     assert_eq!(
-        Constant::Primitive(source.clone())
+        OwnedValue::Primitive(source.clone())
             .checked_cast_to_primitive_type(&target)
             .unwrap(),
-        Constant::Primitive(expected.clone())
-    );
-    assert_eq!(
-        OwnedValue::Primitive(source)
-            .checked_cast_to_primitive_type(&target)
-            .unwrap(),
-        OwnedValue::Primitive(expected)
+        OwnedValue::Primitive(expected.clone())
     );
     let overflow = Primitive::Range(Box::new(PrimitiveRange::U64(0..256)));
     assert!(matches!(
@@ -200,21 +178,16 @@ fn range_casts_keep_endpoint_width_and_overflow_checks() {
 
 #[test]
 fn maps_and_bytes_serialize_without_proxy_value_types() {
-    let value = Constant::Map(IndexMap::from_iter([
-        (Constant::Array(vec![PrimitiveInteger::U8(1).into()]), Constant::Bytes(vec![0, 255])),
+    let value = OwnedValue::Map(IndexMap::from_iter([
+        (OwnedValue::Object(vec![PrimitiveInteger::U8(1).into()]), OwnedValue::Bytes(vec![0, 255])),
     ]));
     let encoded = serde_json::to_value(&value).unwrap();
     assert_eq!(encoded, json!({"type":"map", "value":[[
-        {"type":"array", "value":[{"type":"u8", "value":1}]},
+        {"type":"object", "value":[{"type":"u8", "value":1}]},
         {"type":"bytes", "value":[0, 255]}
     ]]}));
-    assert_eq!(serde_json::from_value::<Constant>(encoded).unwrap(), value);
-
-    let value = OwnedValue::from(value);
-    let encoded = serde_json::to_value(&value).unwrap();
-    assert_eq!(encoded["value"][0][0]["type"], "object");
-    assert_eq!(encoded["value"][0][1], json!({"type":"bytes", "value":[0, 255]}));
     assert_eq!(serde_json::from_value::<OwnedValue>(encoded).unwrap(), value);
+
 }
 
 #[test]
@@ -239,9 +212,6 @@ fn all_scalar_owned_values_use_the_primitive_tags() {
         let owned = OwnedValue::Primitive(value.clone());
         assert_eq!(serde_json::to_value(&owned).unwrap(), encoded);
         assert_eq!(serde_json::from_value::<OwnedValue>(encoded.clone()).unwrap(), owned);
-        let constant = Constant::Primitive(value);
-        assert_eq!(serde_json::to_value(&constant).unwrap(), encoded);
-        assert_eq!(serde_json::from_value::<Constant>(encoded).unwrap(), constant);
     }
 }
 

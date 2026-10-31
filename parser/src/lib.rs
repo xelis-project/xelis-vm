@@ -984,19 +984,21 @@ impl<'a, M> Parser<'a, M> {
                     }
                 }
             },
-            // we have to clone everything due to this
-            Expression::Constant(ref val) => match Type::from_value_type(val) {
-                Some(v) => Cow::Owned(v),
-                None => return match val {
-                    Constant::Opaque(wrapper) => {
-                        if let Some(ty) = self.environment.get_opaque_manager().get_by_type_id(&wrapper.get_type_id()) {
-                            Ok(Some(Cow::Owned(Type::Opaque(ty.clone()))))
-                        } else {
-                            return Ok(None)
-                        }
+            Expression::Constant(constant) => match &constant.value_type {
+                Some(value_type) => Cow::Borrowed(value_type),
+                None => match Type::from_value_type(&constant.value) {
+                    Some(value_type) => Cow::Owned(value_type),
+                    None => return match &constant.value {
+                        OwnedValue::Opaque(wrapper) => {
+                            if let Some(ty) = self.environment.get_opaque_manager().get_by_type_id(&wrapper.get_type_id()) {
+                                Ok(Some(Cow::Owned(Type::Opaque(ty.clone()))))
+                            } else {
+                                Ok(None)
+                            }
+                        },
+                        _ => Ok(None),
                     },
-                    _ => return Ok(None)
-                }
+                },
             },
             Expression::ArrayCall(path, _) => {
                 trace!("Array call on path: {:?}", path);
@@ -1363,8 +1365,11 @@ impl<'a, M> Parser<'a, M> {
 
         if !is_valid {
             match expr {
-                Expression::Constant(v) if _type.is_castable_to(expected_type) => v.mut_checked_cast_to_primitive_type(expected_type)
-                    .map_err(|e| err!(self, e.into()))?,
+                Expression::Constant(constant) if _type.is_castable_to(expected_type) => {
+                    constant.value.mut_checked_cast_to_primitive_type(expected_type)
+                        .map_err(|e| err!(self, e.into()))?;
+                    constant.value_type = Some(expected_type.clone());
+                }
                 _ => return Err(err!(self, ParserErrorKind::InvalidValueType(_type.clone(), expected_type.clone())))
             }
         }
@@ -1740,19 +1745,23 @@ impl<'a, M> Parser<'a, M> {
         // check if its a constant value
         if let Some((constant, ty)) = self.environment.get_constant_by_name(&_type, &constant_name)
             .cloned() {
-            Ok(Expression::ForceType(Box::new(Expression::Constant(constant)), ty))
+            Ok(Expression::ForceType(Box::new(Expression::Constant(constant.into())), ty))
         // Check if its a preprocessor constant function
         } else if let Some(const_fn) = self.environment.get_const_fn(&_type, constant_name) {
-            let (mut parameters, _) = self.read_function_params(context, constant_name, Some(&_type), None)?;
+            let (mut parameters, _) = self.read_function_params(context, constant_name, None, None)?;
             let mut constants = Vec::with_capacity(parameters.len());
             for param in parameters.iter_mut() {
-                let constant = self.try_convert_expr_to_value(param)?
+                let value_type = self.get_type_from_expression(None, param, context)?.into_owned();
+                let constant = self.try_convert_expr_to_value(param, context)?
                     .ok_or_else(|| err!(self, ParserErrorKind::ConstantNotFound(_type.clone(), constant_name)))?;
-                constants.push(constant);
+                constants.push((constant, value_type));
             }
 
             const_fn.call(constants)
-                .map(|v| Expression::Constant(v))
+                .map(|value| Expression::Constant(ConstantValue {
+                    value_type: const_fn.return_type.clone().or_else(|| Type::from_value_type(&value)),
+                    value,
+                }))
                 .map_err(|e| err!(self, e.into()))
         // If its an enum with parenthesis, check if it's a tuple-style variant constructor
         } else if let Type::Enum(ref enum_type) = _type {
@@ -2017,25 +2026,43 @@ impl<'a, M> Parser<'a, M> {
     // If it can't fully convert the expression to a value, it will still try to change some parts of the expression to a value
     // Example: 5 + 5 = 10 -> we only write 10
     // if we have a if true { 5 } else { 10 } -> we write 5
-    fn try_convert_expr_to_value(&self, expr: &mut Expression) -> Result<Option<Constant>, ParserError<'a>> {
+    fn try_convert_expr_to_value(&self, expr: &mut Expression, context: &Context<'a>) -> Result<Option<OwnedValue>, ParserError<'a>> {
+        if let Expression::Constant(constant) = expr {
+            return Ok(Some(constant.value.clone()));
+        }
+
+        let value_type = self.get_type_from_expression(None, expr, context)
+            .ok()
+            .map(Cow::into_owned);
+        let value = self.try_convert_expr_to_value_inner(expr, context)?;
+        if let Some(value) = &value {
+            *expr = Expression::Constant(ConstantValue {
+                value: value.clone(),
+                value_type,
+            });
+        }
+        Ok(value)
+    }
+
+    fn try_convert_expr_to_value_inner(&self, expr: &mut Expression, context: &Context<'a>) -> Result<Option<OwnedValue>, ParserError<'a>> {
         if self.disable_const_upgrading {
             match expr {
-                Expression::Constant(v) => return Ok(Some(v.clone())),
+                Expression::Constant(constant) => return Ok(Some(constant.value.clone())),
                 _ => return Ok(None)
             }
         }
 
         Ok(Some(match expr {
-            Expression::Constant(v) => v.clone(),
+            Expression::Constant(constant) => constant.value.clone(),
             Expression::ForceType(inner, ty) => {
                 if ty.is_primitive() || ty.is_optional() {
-                    let v = ok_none!(self.try_convert_expr_to_value(inner)?)
+                    let v = ok_none!(self.try_convert_expr_to_value(inner, context)?)
                             .checked_cast_to_primitive_type(ty)
                             .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
     
                     // In case its a optional type, we need to keep the ForceType expression
                     if ty.is_optional() {
-                        *expr = Expression::ForceType(Box::new(Expression::Constant(v)), ty.clone());
+                        *expr = Expression::ForceType(Box::new(Expression::Constant(v.into())), ty.clone());
     
                         return Ok(None)
                     } else {
@@ -2049,8 +2076,7 @@ impl<'a, M> Parser<'a, M> {
                 let len = values.len();
                 let mut new_values = Vec::with_capacity(len);
                 for value in values {
-                    if let Some(v) = self.try_convert_expr_to_value(value)? {
-                        *value = Expression::Constant(v.clone());
+                    if let Some(v) = self.try_convert_expr_to_value(value, context)? {
                         new_values.push(v);
                     }
                 }
@@ -2060,36 +2086,25 @@ impl<'a, M> Parser<'a, M> {
                     return Ok(None)
                 }
 
-                Constant::Array(new_values)
+                OwnedValue::Object(new_values)
             },
             Expression::RangeConstructor(min, max) => {
-                let min_value = self.try_convert_expr_to_value(min)?;
-                let max_value = self.try_convert_expr_to_value(max)?;
-
-                if min_value.is_none() || max_value.is_none() {
-                    if let Some(v) = &min_value {
-                        *min.as_mut() = Expression::Constant(v.clone());
-                    }
-
-                    if let Some(v) = &max_value {
-                        *max.as_mut() = Expression::Constant(v.clone());
-                    }
-                }
+                let min_value = self.try_convert_expr_to_value(min, context)?;
+                let max_value = self.try_convert_expr_to_value(max, context)?;
 
                 let min = ok_none!(min_value).into_value()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
                 let max = ok_none!(max_value).into_value()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
 
-                Constant::Primitive(Primitive::new_range(min, max)
+                OwnedValue::Primitive(Primitive::new_range(min, max)
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?)
             },
-            Expression::StructConstructor(fields, struct_type) => {
+            Expression::StructConstructor(fields, _) => {
                 let len = fields.len();
                 let mut new_fields = Vec::with_capacity(len);
                 for field in fields {
-                    if let Some(v) = self.try_convert_expr_to_value(field)? {
-                        *field = Expression::Constant(v.clone());
+                    if let Some(v) = self.try_convert_expr_to_value(field, context)? {
                         new_fields.push(v);
                     }
                 }
@@ -2098,51 +2113,35 @@ impl<'a, M> Parser<'a, M> {
                     return Ok(None)
                 }
 
-                Constant::Typed(new_fields, DefinedType::Struct(struct_type.clone()))
+                OwnedValue::Object(new_fields)
             },
             Expression::EnumConstructor(fields, enum_type) => {
                 let mut new_fields = Vec::with_capacity(fields.len());
                 for field in fields {
-                    let v = ok_none!(self.try_convert_expr_to_value(field)?);
-                    *field = Expression::Constant(v.clone());
+                    let v = ok_none!(self.try_convert_expr_to_value(field, context)?);
                     new_fields.push(v);
                 }
-                Constant::Typed(new_fields, DefinedType::Enum(enum_type.clone()))
+                new_fields.insert(0, OwnedValue::from(enum_type.variant_id()));
+                OwnedValue::Object(new_fields)
             },
             Expression::MapConstructor(entries, _, _) => {
                 let mut new_entries = IndexMap::with_capacity(entries.len());
                 for (key, value) in entries {
-                    let k = self.try_convert_expr_to_value(key)?;
-                    let v = self.try_convert_expr_to_value(value)?;
-
-                    if let Some(k) = &k {
-                        *key = Expression::Constant(k.clone());
-                    }
-
-                    if let Some(v) = &v {
-                        *value = Expression::Constant(v.clone());
-                    }
+                    let k = self.try_convert_expr_to_value(key, context)?;
+                    let v = self.try_convert_expr_to_value(value, context)?;
 
                     new_entries.insert(ok_none!(k), ok_none!(v));
                 }
-                Constant::Map(new_entries)
+                OwnedValue::Map(new_entries)
             },
             Expression::Cast(expr, _type) => {
-                let v = ok_none!(self.try_convert_expr_to_value(expr)?);
+                let mut v = ok_none!(self.try_convert_expr_to_value(expr, context)?);
                 v.checked_cast_to_primitive_type(_type)
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?
             },
             Expression::ArrayCall(array_expr, value) => {
-                let array = self.try_convert_expr_to_value(array_expr)?;
-                let index = self.try_convert_expr_to_value(value)?;
-
-                if let Some(array) = &array {
-                    *array_expr.as_mut() = Expression::Constant(array.clone());
-                }
-
-                if let Some(index) = &index {
-                    *value.as_mut() = Expression::Constant(index.clone());
-                }
+                let array = self.try_convert_expr_to_value(array_expr, context)?;
+                let index = self.try_convert_expr_to_value(value, context)?;
 
                 let index = ok_none!(index).checked_cast_to_u32()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
@@ -2156,22 +2155,14 @@ impl<'a, M> Parser<'a, M> {
                     .ok_or_else(|| err!(self, ParserErrorKind::IndexOutOfBounds(index, values.len() as u32)))?
             },
             Expression::IsNot(expr) => {
-                let v = ok_none!(self.try_convert_expr_to_value(expr)?)
+                let v = ok_none!(self.try_convert_expr_to_value(expr, context)?)
                     .to_bool()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
-                Constant::Primitive(Primitive::Boolean(!v))
+                OwnedValue::Primitive(Primitive::Boolean(!v))
             },
             Expression::Operator(op, left, right) => {
-                let l = self.try_convert_expr_to_value(left)?;
-                let r = self.try_convert_expr_to_value(right)?;
-            
-                if let Some(l) = &l {
-                    *left.as_mut() = Expression::Constant(l.clone());
-                }
-
-                if let Some(r) = &r {
-                    *right.as_mut() = Expression::Constant(r.clone());
-                }
+                let l = self.try_convert_expr_to_value(left, context)?;
+                let r = self.try_convert_expr_to_value(right, context)?;
 
                 let left = ok_none!(l);
                 let left = left.as_value()
@@ -2182,26 +2173,14 @@ impl<'a, M> Parser<'a, M> {
 
                 let res = ok_none!(self.execute_operator(op, left, right)?);
 
-                Constant::Primitive(res)
+                OwnedValue::Primitive(res)
             },
-            Expression::SubExpression(expr) => ok_none!(self.try_convert_expr_to_value(expr)?),
+            Expression::SubExpression(expr) => ok_none!(self.try_convert_expr_to_value(expr, context)?),
             Expression::Ternary(condition, left, right) => {
-                let c = self.try_convert_expr_to_value(condition)?;
+                let c = self.try_convert_expr_to_value(condition, context)?;
 
-                if let Some(c) = &c {
-                    *condition.as_mut() = Expression::Constant(c.clone());
-                }
-
-                let l = self.try_convert_expr_to_value(left)?;
-                let r = self.try_convert_expr_to_value(right)?;
-
-                if let Some(l) = &l {
-                    *left.as_mut() = Expression::Constant(l.clone());
-                }
-
-                if let Some(r) = &r {
-                    *right.as_mut() = Expression::Constant(r.clone());
-                }
+                let l = self.try_convert_expr_to_value(left, context)?;
+                let r = self.try_convert_expr_to_value(right, context)?;
 
                 let tmp = ok_none!(c).to_bool()
                     .map_err(|e| err!(self, ParserErrorKind::ValueError(e)))?;
@@ -2212,16 +2191,8 @@ impl<'a, M> Parser<'a, M> {
                 }
             },
             Expression::Path(left, right) => {
-                let l = self.try_convert_expr_to_value(left)?;
-                let r = self.try_convert_expr_to_value(right)?;
-
-                if let Some(l) = &l {
-                    *left.as_mut() = Expression::Constant(l.clone());
-                }
-
-                if let Some(r) = &r {
-                    *right.as_mut() = Expression::Constant(r.clone());
-                }
+                self.try_convert_expr_to_value(left, context)?;
+                self.try_convert_expr_to_value(right, context)?;
 
                 // TODO: find a way to get the value of the path
                 return Ok(None)
@@ -2461,12 +2432,10 @@ impl<'a, M> Parser<'a, M> {
                     if self.peek_is(Token::ParenthesisClose) {
                         trace!("empty tuple");
                         self.expect_token(Token::ParenthesisClose)?;
-                        Expression::Constant(
-                            Constant::Typed(
-                                Vec::new(),
-                                DefinedType::Tuples(Vec::new())
-                            )
-                        )
+                        Expression::Constant(ConstantValue {
+                            value: OwnedValue::Object(Vec::new()),
+                            value_type: Some(Type::Tuples(Vec::new())),
+                        })
                     } else {
                         trace!("read parenthesis");
                         match expected_type {
@@ -2540,7 +2509,7 @@ impl<'a, M> Parser<'a, M> {
                             _ => Primitive::Integer(PrimitiveInteger::U64(n))
                         }.into(),
                         Literal::String(s) => Primitive::String(s.into_owned()).into(),
-                        Literal::Bytes(b) => Expression::Constant(Constant::Bytes(b.into_owned())),
+                        Literal::Bytes(b) => Expression::Constant(OwnedValue::Bytes(b.into_owned()).into()),
                         Literal::Bool(b) => Primitive::Boolean(b).into(),
                         Literal::Null => Primitive::Null.into()
                     }
@@ -2771,9 +2740,8 @@ impl<'a, M> Parser<'a, M> {
             self.advance()?;
         };
 
-        Ok(self.try_convert_expr_to_value(&mut collapsed_expr)?
-            .map(|constant| Expression::Constant(constant))
-            .unwrap_or(collapsed_expr))
+        self.try_convert_expr_to_value(&mut collapsed_expr, context)?;
+        Ok(collapsed_expr)
     }
 
     fn try_map_expr_to_type(&self, expr: &mut Expression, expected_type: &Type) -> Result<bool, ParserError<'a>> {
@@ -2781,10 +2749,11 @@ impl<'a, M> Parser<'a, M> {
             return Ok(true)
         }
 
-        if let Expression::Constant(v) = expr {
-            let taken = mem::take(v); 
-            *v = taken.checked_cast_to_primitive_type(expected_type)
+        if let Expression::Constant(constant) = expr {
+            let mut taken = mem::take(&mut constant.value);
+            constant.value = taken.checked_cast_to_primitive_type(expected_type)
                 .map_err(|e| err!(self, e.into()))?;
+            constant.value_type = Some(expected_type.clone());
 
             Ok(true)
         } else {
@@ -2854,7 +2823,10 @@ impl<'a, M> Parser<'a, M> {
                         if let Some(num_id) = context.get_variable_id(id) {
                             Expression::Variable(num_id)
                         } else if let Some(constant) = self.constants.get(id) {
-                            Expression::Constant(constant.value.clone())
+                            Expression::Constant(ConstantValue {
+                                value: constant.value.clone(),
+                                value_type: Some(constant.value_type.clone()),
+                            })
                         } else if let Ok(builder) = self.global_mapper.structs().get_by_name(&id) {
                             // Check if we have an expected type that's a specialized version
                             let struct_type = if let Some(Type::Struct(expected_struct)) = expected_type {
@@ -3108,7 +3080,7 @@ impl<'a, M> Parser<'a, M> {
 
                 expr
             } else if value_type.is_optional() {
-                Expression::Constant(Constant::Primitive(Primitive::Null))
+                Expression::Constant(OwnedValue::Primitive(Primitive::Null).into())
             } else {
                 return Err(err!(self, ParserErrorKind::NoValueForVariable(name)))
             };
@@ -3273,7 +3245,7 @@ impl<'a, M> Parser<'a, M> {
     fn read_const(&mut self, context: &mut Context<'a>) -> Result<(), ParserError<'a>> {
         let (name, value_type, mut value, _) = self.read_variable_internal(context, true)?;
 
-        let const_value = self.try_convert_expr_to_value(&mut value)?
+        let const_value = self.try_convert_expr_to_value(&mut value, context)?
                 .ok_or(err!(self, ParserErrorKind::InvalidConstantValue))?;
 
         self.constants.insert(name, ConstantDeclaration {
@@ -3635,8 +3607,8 @@ impl<'a, M> Parser<'a, M> {
                         } else if expr_ty == Type::Bool {
                             // For booleans, we can check exhaustiveness:
                             // both true and false must be present
-                            let has_true = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(true))));
-                            let has_false = seen_cond_exprs.contains(&Expression::Constant(Constant::Primitive(Primitive::Boolean(false))));
+                            let has_true = seen_cond_exprs.contains(&Expression::Constant(OwnedValue::Primitive(Primitive::Boolean(true)).into()));
+                            let has_false = seen_cond_exprs.contains(&Expression::Constant(OwnedValue::Primitive(Primitive::Boolean(false)).into()));
                             if !has_true || !has_false {
                                 return Err(err!(self, ParserErrorKind::NonExhaustiveMatch))
                             }
@@ -4270,7 +4242,7 @@ mod tests {
         };
         assert_eq!(
             *value,
-            Expression::Constant(Constant::Array(vec![Primitive::Integer(PrimitiveInteger::U64(1)).into(), Primitive::Integer(PrimitiveInteger::U64(2)).into()]))
+            Expression::Constant(OwnedValue::Object(vec![Primitive::Integer(PrimitiveInteger::U64(1)).into(), Primitive::Integer(PrimitiveInteger::U64(2)).into()]).into())
         )
     }
 
@@ -4320,7 +4292,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25))))
+            Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(25))).into())
         );
 
         // Compare the parsed AST to the expected AST
@@ -4355,7 +4327,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25 - 8))))
+            Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(25 - 8))).into())
         );
 
         // Compare the parsed AST to the expected AST
@@ -4411,7 +4383,7 @@ mod tests {
     
         // Build the expected AST
         let expected_ast = Statement::Expression(
-            Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(25+255))))
+            Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(25+255))).into())
         );
 
         // Compare the parsed AST to the expected AST
@@ -4570,7 +4542,7 @@ mod tests {
         let mut env = EnvironmentBuilder::new();
         let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", false));
 
-        env.register_constant(ty.clone(), "MAX", Constant::Opaque(Foo.into()).into(), ty.clone());
+        env.register_constant(ty.clone(), "MAX", OwnedValue::Opaque(Foo.into()).into(), ty.clone());
 
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
@@ -4582,7 +4554,7 @@ mod tests {
                     id: Some(0),
                     value_type: ty.clone(),
                     value: Expression::ForceType(
-                        Box::new(Expression::Constant(Constant::Opaque(Foo.into()).into())),
+                        Box::new(Expression::Constant(OwnedValue::Opaque(Foo.into()).into())),
                         ty.clone()
                     )
                 }
@@ -4680,7 +4652,10 @@ mod tests {
                 DeclarationStatement {
                     id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::Constant(Constant::Map(IndexMap::new()))
+                    value: Expression::Constant(ConstantValue {
+                        value: OwnedValue::Map(IndexMap::new()),
+                        value_type: Some(Type::Map(Box::new(Type::U64), Box::new(Type::String))),
+                    })
                 }
             )
         );
@@ -4718,7 +4693,7 @@ mod tests {
                 DeclarationStatement {
                     id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::String)),
-                    value: Expression::Constant(Constant::Map(map))
+                    value: Expression::Constant(OwnedValue::Map(map).into())
                 }
             )
         );
@@ -4785,7 +4760,10 @@ mod tests {
                 DeclarationStatement {
                     id: Some(0),
                     value_type: Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String)))),
-                    value: Expression::Constant(Constant::Map(IndexMap::new()))
+                    value: Expression::Constant(ConstantValue {
+                        value: OwnedValue::Map(IndexMap::new()),
+                        value_type: Some(Type::Map(Box::new(Type::U64), Box::new(Type::Map(Box::new(Type::U64), Box::new(Type::String))))),
+                    })
                 }
             )
         );
@@ -4818,7 +4796,10 @@ mod tests {
                 DeclarationStatement {
                     id: Some(0),
                     value_type: Type::Map(Box::new(Type::String), Box::new(Type::Array(Box::new(Type::U64)))),
-                    value: Expression::Constant(Constant::Map(IndexMap::new()))
+                    value: Expression::Constant(ConstantValue {
+                        value: OwnedValue::Map(IndexMap::new()),
+                        value_type: Some(Type::Map(Box::new(Type::String), Box::new(Type::Array(Box::new(Type::U64))))),
+                    })
                 }
             )
         );
@@ -4917,13 +4898,13 @@ mod tests {
                     id: Some(0),
                     value_type: Type::Array(Box::new(Type::U64)),
                     value: Expression::Constant(
-                        Constant::Array(
+                        OwnedValue::Object(
                             vec![
                                 Primitive::Integer(PrimitiveInteger::U64(1)).into(),
                                 Primitive::Integer(PrimitiveInteger::U64(2)).into(),
                                 Primitive::Integer(PrimitiveInteger::U64(3)).into()
                             ]
-                        )
+                        ).into()
                     )
                 }
             ),
@@ -5311,7 +5292,10 @@ mod tests {
 
     #[test]
     fn test_ends_with_return() {
-        const RETURN: Statement = Statement::Return(Some(Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U64(0))))));
+        const RETURN: Statement = Statement::Return(Some(Expression::Constant(ConstantValue {
+            value: OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U64(0))),
+            value_type: Some(Type::U64),
+        })));
         let statements = vec![RETURN];
         assert!(Parser::<()>::ends_with_return(&statements).unwrap());
 
@@ -5748,7 +5732,7 @@ mod tests {
     fn test_const_fn_call() {
         let mut env = EnvironmentBuilder::new();
         env.register_const_function("test", Type::String, vec![("name", Type::String)], |params| {
-            Ok(Constant::Primitive(Primitive::String(format!("hello {}", params[0].as_string()?))))
+            Ok(OwnedValue::Primitive(Primitive::String(format!("hello {}", params[0].as_string()?))))
         });
 
         // let name: string = String::test("world");
@@ -5780,7 +5764,7 @@ mod tests {
     #[test]
     fn test_optional_fn_param() {
         let mut env = EnvironmentBuilder::<()>::new();
-        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+        env.register_native_function("test", None, vec![("input", Type::Optional(Box::new(Type::U8)))], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) }, 0, None);
 
         // test(null)
         let tokens = vec![
@@ -5843,13 +5827,13 @@ mod tests {
         let fields: [(&str, Type); 0] = [];
         let ty = Type::Struct(env.register_structure::<0>("Foo", fields));
         // register a static function on it
-        env.register_static_function("bar", ty, Vec::new(), FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::U64));
+        env.register_static_function("bar", ty, Vec::new(), unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| todo!()) }, 0, Some(Type::U64));
 
         // Try also on a enum type
         let fields: [(&str, EnumVariant); 0] = [];
         let ty = Type::Enum(env.register_enum("Bar", fields));
         // register a static function on it
-        env.register_static_function("foo", ty, Vec::new(), FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::U64));
+        env.register_static_function("foo", ty, Vec::new(), unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| todo!()) }, 0, Some(Type::U64));
 
         // Foo::bar()
         let tokens = vec![
@@ -5899,7 +5883,7 @@ mod tests {
     #[test]
     fn test_assign_optional_to_type() {
         let mut env = EnvironmentBuilder::<()>::default();
-        env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| todo!()), 0, Some(Type::Optional(Box::new(Type::Bool))));
+        env.register_native_function("test", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| todo!()) }, 0, Some(Type::Optional(Box::new(Type::Bool))));
 
         // let _: bool = test();
         let tokens = vec![
@@ -5962,7 +5946,7 @@ mod tests {
         ];
 
         let mut env = EnvironmentBuilder::<()>::new();
-        env.register_native_function("foo", None, vec![("a", Type::U64)], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+        env.register_native_function("foo", None, vec![("a", Type::U64)], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) }, 0, None);
         let mut parser = Parser::new(VecDeque::from(tokens), &env);
         let mut context = Context::new();
         context.begin_scope();
@@ -5974,7 +5958,7 @@ mod tests {
     fn test_any_args() {
         // fn foo(args: any[]) {}
         let mut env = EnvironmentBuilder::<()>::new();
-        env.register_native_function("foo", None, vec![("args", Type::Array(Box::new(Type::Any)))], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+        env.register_native_function("foo", None, vec![("args", Type::Array(Box::new(Type::Any)))], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) }, 0, None);
 
         // foo([]);
         let tokens = vec![
@@ -6054,7 +6038,7 @@ mod tests {
     fn test_tuples_any_fn() {
         // fn foo(args any) {}
         let mut env = EnvironmentBuilder::<()>::new();
-        env.register_native_function("foo", None, vec![("args", Type::Any)], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, None);
+        env.register_native_function("foo", None, vec![("args", Type::Any)], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) }, 0, None);
 
         // foo((1, "hello", true));
         let tokens = vec![
@@ -6092,10 +6076,10 @@ mod tests {
             assert_eq!(id, &Some(0));
             assert_eq!(*value_type, Type::Bytes);
             
-            // Verify it generates a Constant::Bytes
+            // Verify it generates a OwnedValue::Bytes
             assert_eq!(
                 *value,
-                Expression::Constant(Constant::Bytes(b"hello".to_vec()))
+                Expression::Constant(OwnedValue::Bytes(b"hello".to_vec()).into())
             );
         } else {
             panic!("Expected Variable declaration");
@@ -6173,7 +6157,7 @@ mod tests {
         let statements = test_parser_statement_with(tokens, Vec::new(), &None, &env);
         assert_eq!(statements.len(), 1);
 
-        let statement = Statement::Expression(Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(127)))));
+        let statement = Statement::Expression(Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(127))).into()));
         assert_eq!(statements[0], statement);
 
         // (u8::MAX / 2).to_be_bytes()
@@ -6203,7 +6187,7 @@ mod tests {
             Expression::FunctionCall(
                 Some(Box::new(
                     Expression::SubExpression(Box::new(
-                        Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(127))))
+                        Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(127))).into())
                     ))
                 )),
                 id,
@@ -6244,7 +6228,7 @@ mod tests {
             "foo",
             None,
             vec![],
-            FunctionHandler::Sync(|_, _, _, _| todo!()),
+            unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| todo!()) },
             0,
             Some(Type::Optional(Box::new(Type::Any)))
         );
@@ -7453,7 +7437,7 @@ mod tests {
             "transform",
             None,
             vec![("f", Type::Closure(ClosureType::new(vec![Type::U64], Some(Type::T(Some(1))))))],
-            FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+            unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) },
             0,
             None,
         );
@@ -7481,4 +7465,37 @@ mod tests {
         let statements = test_parser_statement_with(tokens, vec![], &None, &env);
         assert_eq!(statements.len(), 1);
     }
+
+    #[test]
+    fn constant_type_metadata_tracks_numeric_casts() {
+        let environment = EnvironmentBuilder::<()>::default();
+        let parser = Parser::with(iter::empty(), &environment);
+        let context = Context::new();
+        let mut expression = Expression::Constant(OwnedValue::from(7u64).into());
+        assert!(parser.try_map_expr_to_type(&mut expression, &Type::U8).unwrap());
+        assert_eq!(expression, Expression::Constant(ConstantValue {
+            value: OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(7))),
+            value_type: Some(Type::U8),
+        }));
+        assert_eq!(
+            parser.get_type_from_expression(None, &expression, &context).unwrap().as_ref(),
+            &Type::U8,
+        );
+    }
+
+    #[test]
+    fn constants_without_type_metadata_infer_their_value_type() {
+        let environment = EnvironmentBuilder::<()>::default();
+        let parser = Parser::with(iter::empty(), &environment);
+        let context = Context::new();
+        let expression = Expression::Constant(ConstantValue {
+            value: OwnedValue::from(7u64),
+            value_type: None,
+        });
+        assert_eq!(
+            parser.get_type_from_expression(None, &expression, &context).unwrap().as_ref(),
+            &Type::U64,
+        );
+    }
+
 }

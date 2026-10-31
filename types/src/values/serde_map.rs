@@ -1,11 +1,6 @@
 use std::{fmt, hash::Hash, marker::PhantomData};
 use indexmap::IndexMap;
-use serde::{de::{SeqAccess, Visitor}, Deserialize, Deserializer, Serialize, Serializer};
-
-// Encode entries as pairs so JSON maps can contain arbitrary value keys.
-pub fn serialize<K: Serialize, V: Serialize, S: Serializer>(map: &IndexMap<K, V>, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.collect_seq(map.iter())
-}
+use serde::{de::{SeqAccess, Visitor}, Deserialize, Deserializer};
 
 pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<IndexMap<K, V>, D::Error>
 where

@@ -2,7 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use indexmap::IndexMap;
 use schemars::Schema;
 use serde_json::json;
-use crate::{Heap, OwnedValue, Primitive, PrimitiveInteger, RuntimeValue, ValueError};
+use crate::{Heap, OwnedValue, Primitive, PrimitiveInteger, RuntimeValue};
 
 #[test]
 fn test_clone() {
@@ -27,8 +27,8 @@ fn test_into_runtime_value() {
         OwnedValue::from(1u8),
         OwnedValue::from(2u8),
     ]);
-    let mut heap = Heap::new();
-    let vc = cell.to_runtime_value(&mut heap).unwrap();
+    let mut heap = unsafe { Heap::new() };
+    let vc = cell.to_runtime_value(&mut heap);
     match vc {
         RuntimeValue::Object(arr) => {
             assert_eq!(arr[0].as_ref(&heap).as_u8().unwrap(), 1);
@@ -99,19 +99,6 @@ fn test_drop_and_clone() {
 
     drop(v.clone());
     drop(v);
-}
-
-#[test]
-fn test_max_depth() {
-    let mut map = OwnedValue::Map(IndexMap::new());
-    for _ in 0..MAX_ITERS {
-        let mut inner_map = IndexMap::new();
-        inner_map.insert(OwnedValue::from(10u8), map);
-        map = OwnedValue::Map(inner_map);
-    }
-
-    assert!(matches!(map.calculate_depth(MAX_ITERS), Ok(MAX_ITERS)));
-    assert!(matches!(map.calculate_depth(MAX_ITERS - 1), Err(ValueError::MaxDepthReached)));
 }
 
 #[test]
@@ -235,4 +222,15 @@ fn test_hashing_types() {
     let hash2 = hasher.finish();
 
     assert_ne!(hash, hash2);
+}
+
+#[test]
+fn deeply_nested_owned_values_format_iteratively_and_stop_at_the_serializer_boundary() {
+    let mut value = OwnedValue::from(42u64);
+    for _ in 0..4096 {
+        value = OwnedValue::Object(vec![value]);
+    }
+    assert_eq!(format!("{value:?}").matches("Object([").count(), 4096);
+    let error = serde_json::to_string(&value).unwrap_err();
+    assert!(error.to_string().contains("serializer nesting limit"));
 }

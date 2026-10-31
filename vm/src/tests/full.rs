@@ -1,3 +1,5 @@
+use futures::future::LocalBoxFuture;
+use silex_types::OpaqueValue;
 use matriochka::{Error, ResultExt};
 use silex_compiler::Compiler;
 use silex_environment::{Environment, EnvironmentError};
@@ -23,10 +25,16 @@ impl DynType for NonHashableOpaque {
 impl JSONHelper for NonHashableOpaque {}
 
 impl Opaque for NonHashableOpaque {
-    fn as_eq(&self) -> Option<&dyn DynEq> { Some(self) }
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
+}
+
+impl OpaqueValue for NonHashableOpaque {
+    fn as_eq(&self) -> Option<&dyn DynEq> {
+        Some(self)
+    }
+
 }
 
 #[track_caller]
@@ -141,7 +149,7 @@ fn test_max_gas() {
         metadata: (&()).into(),
     }).expect("module");
     vm.invoke_entry_chunk(0).expect("valid entry chunk");
-    vm.context_mut().resources_mut().set_gas_limit(1000);
+    vm.context_mut().set_gas_limit(1000);
 
     assert!(matches!(vm.run_blocking(), Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))));
 }
@@ -1650,13 +1658,13 @@ fn test_opaque_fn_call() {
     let mut env = EnvironmentBuilder::default();
     let ty = Type::Opaque(env.register_opaque::<Foo>("Foo", true));
 
-    env.register_native_function("foo", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+    env.register_native_function("foo", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| {
         Ok(SysCallResult::Return(RuntimeValue::Opaque(Foo.into()).into()))
-    }), 0, Some(ty.clone()));
+    }) }, 0, Some(ty.clone()));
 
-    env.register_native_function("call", Some(ty), vec![], FunctionHandler::Sync(|_, _, _, _| {
+    env.register_native_function("call", Some(ty), vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| {
         Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(0)).into()))
-    }), 0, Some(Type::U64));
+    }) }, 0, Some(Type::U64));
 
     let code = r#"
         entry main() {
@@ -1678,9 +1686,9 @@ fn test_map_constructor_rejects_non_hashable_opaque_key() {
     let mut env = EnvironmentBuilder::default();
     let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
 
-    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+    env.register_native_function("non_hashable", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| {
         Ok(SysCallResult::Return(RuntimeValue::Opaque(NonHashableOpaque.into()).into()))
-    }), 0, Some(ty));
+    }) }, 0, Some(ty));
 
     let code = r#"
         entry main() {
@@ -1700,9 +1708,9 @@ fn test_map_insert_rejects_non_hashable_opaque_key() {
     let mut env = EnvironmentBuilder::default();
     let ty = Type::Opaque(env.register_opaque::<NonHashableOpaque>("NonHashableOpaque", true));
 
-    env.register_native_function("non_hashable", None, vec![], FunctionHandler::Sync(|_, _, _, _| {
+    env.register_native_function("non_hashable", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| {
         Ok(SysCallResult::Return(RuntimeValue::Opaque(NonHashableOpaque.into()).into()))
-    }), 0, Some(ty));
+    }) }, 0, Some(ty));
 
     let code = r#"
         entry main() {
@@ -1807,9 +1815,9 @@ fn test_types_compatibility() {
 
     let mut env = EnvironmentBuilder::default();
     let ty  = Type::Opaque(env.register_opaque::<DummyOpaque>("Dummy", true));
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(RuntimeValue::Opaque(OpaqueWrapper::new(DummyOpaque)).into()))), 0, Some(Type::Any));
-    env.register_native_function("a", Some(ty), vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(0)).into()))), 0, Some(Type::Any));
-    env.register_static_function("static", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Optional(Box::new(Type::Bool))));
+    env.register_native_function("test", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(RuntimeValue::Opaque(OpaqueWrapper::new(DummyOpaque).into()).into()))) }, 0, Some(Type::Any));
+    env.register_native_function("a", Some(ty), vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(0)).into()))) }, 0, Some(Type::Any));
+    env.register_static_function("static", Type::Bool, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Null.into()))) }, 0, Some(Type::Optional(Box::new(Type::Bool))));
 
     let (module, env) = prepare_module_with("
     struct Foo {
@@ -3479,7 +3487,7 @@ fn test_max_array_depth() {
     "#;
     assert!(try_run_code(code, 0).is_err());
 
-    // 17, cannot work because default max depth is 16
+    // Source expression nesting is still bounded by the parser.
     let code = r#"
         entry main() {
             let a: u64[][][][][][][][][][][][][][][][][] = [[[[[[[[[[[[[[[[[42]]]]]]]]]]]]]]]]];
@@ -3488,7 +3496,7 @@ fn test_max_array_depth() {
     "#;
     assert!(try_run_code(code, 0).is_err());
 
-    // 17, cannot work because default max depth is 16
+    // Runtime nesting may exceed the parser/constant input limits.
     let code = r#"
         entry main() {
             let a: any = [42];
@@ -3504,7 +3512,7 @@ fn test_max_array_depth() {
             return (a as u64[][][][][][][][][][][][][][][][][])[0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0][0];
         }
     "#;
-    assert!(try_run_code(code, 0).is_err());
+    assert_eq!(try_run_code(code, 0).unwrap(), PrimitiveInteger::U64(50).into());
 }
 
 #[test]
@@ -3771,7 +3779,7 @@ fn test_voidable_type_no_return() {
     "#;
 
     let mut env = EnvironmentBuilder::default();
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)), 0, Some(Type::Voidable(Box::new(Type::U64))));
+    env.register_native_function("test", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) }, 0, Some(Type::Voidable(Box::new(Type::U64))));
 
     let (module, env) = prepare_module_with(code, env);
     assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
@@ -3787,7 +3795,7 @@ fn test_voidable_type() {
     "#;
 
     let mut env = EnvironmentBuilder::default();
-    env.register_native_function("test", None, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(100)).into()))), 0, Some(Type::Voidable(Box::new(Type::U64))));
+    env.register_native_function("test", None, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U64(100)).into()))) }, 0, Some(Type::Voidable(Box::new(Type::U64))));
 
     let (module, env) = prepare_module_with(code, env);
     assert_eq!(run_internal(module, &env, 0).unwrap(), Primitive::Integer(PrimitiveInteger::U64(100 * 100)));
@@ -4219,7 +4227,6 @@ fn test_enum_matching() {
 
 #[test]
 fn test_async_callback_with_two_params() {
-    use futures::future::BoxFuture;
     use futures::FutureExt;
 
     // Define state for async callback
@@ -4233,9 +4240,9 @@ fn test_async_callback_with_two_params() {
     // Async callback function that receives element and index as parameters
     fn async_map_callback<'a, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'a>,
         heap: &'a mut Heap,
-    ) -> BoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>> {
+    ) -> LocalBoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>> {
         async move {
             let mut state = state
                 .downcast::<AsyncMapState>()
@@ -4249,7 +4256,7 @@ fn test_async_callback_with_two_params() {
 
 
             let mapped = mapped_value.into_owned(heap).unwrap();
-            let mapped = heap.insert(mapped).unwrap();
+            let mapped = heap.insert(mapped);
             let tmp = state.tmp.as_mut_vec(heap)?;
             tmp.push(mapped);
 
@@ -4264,9 +4271,9 @@ fn test_async_callback_with_two_params() {
                 Ok(SysCallResult::ExecuteAndCallback {
                     ptr: state.closure_ptr.clone(),
                     params: vec![
-                        next_element.into(),
+                        next_element.clone().into(),
                         Primitive::Integer(PrimitiveInteger::U32(state.index as u32)).into()
-                    ].into(),
+                    ],
                     state: Box::new(*state),
                     callback_params_len: 1,
                     callback: CallbackType::Async(async_map_callback),
@@ -4274,24 +4281,24 @@ fn test_async_callback_with_two_params() {
             } else {
                 Ok(SysCallResult::Return(state.tmp))
             }
-        }.boxed()
+        }.boxed_local()
     }
 
     // Native function that uses async callback
     fn async_map_indexed<'a, 'ty, 'r, M: 'static>(
         zelf: FnInstance<'a>,
-        mut parameters: FnParams,
+        parameters: FnParams<'a>,
         _: &'a ModuleMetadata<'_, M>,
-        context: &'a mut VMContext<'ty, 'r>
-    ) -> BoxFuture<'a, FnReturnType<M>> {
+        context: &'a mut VMContext<'ty, 'r>, heap: &'a mut Heap
+    ) -> LocalBoxFuture<'a, FnReturnType<M>> {
         async move {
             let closure_ptr = parameters.remove(0);
             let zelf = zelf?;
             
-            let len = zelf.as_vec(context.heap())?.len();
-            let vec = zelf.as_vec(context.heap())?;
+            let len = zelf.as_vec(&*heap)?.len();
+            let vec = zelf.as_vec(&*heap)?;
             let first = vec.first().cloned();
-            context.resources_mut().increase_gas_usage(len as u64 * 10)?;
+            context.increase_gas_usage(len as u64 * 10)?;
 
             let Some(first) = first else {
                 return Ok(SysCallResult::Return(RuntimeValue::Object(Vec::new()).into()))
@@ -4300,19 +4307,19 @@ fn test_async_callback_with_two_params() {
             Ok(SysCallResult::ExecuteAndCallback {
                 ptr: closure_ptr.clone(),
                 params: vec![
-                    first.into(),
+                    first.clone().into(),
                     Primitive::Integer(PrimitiveInteger::U32(0)).into()
-                ].into(),
+                ],
                 state: Box::new(AsyncMapState {
                     closure_ptr,
                     index: 0,
-                    ptr: zelf,
+                    ptr: zelf.take(),
                     tmp: RuntimeValue::Object(Vec::new()).into(),
                 }),
                 callback_params_len: 1,
                 callback: CallbackType::Async(async_map_callback),
             })
-        }.boxed()
+        }.boxed_local()
     }
 
     let code = r#"
@@ -4342,7 +4349,7 @@ fn test_async_callback_with_two_params() {
                 Some(Type::T(Some(0)))
             )))
         ],
-        FunctionHandler::Async(async_map_indexed),
+        unsafe { FunctionHandler::async_unchecked(async_map_indexed) },
         10,
         Some(Type::Array(Box::new(Type::T(Some(0))))),
     );
@@ -4356,7 +4363,7 @@ fn test_async_callback_with_two_params() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     vm.invoke_chunk_id_unchecked(0).expect("valid entry chunk");
     
     let result = vm.run_blocking().expect("run failed");
@@ -4397,7 +4404,7 @@ fn test_entry_params_order_single_param() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct type
     vm.invoke_chunk_with_args(0, [Primitive::Integer(PrimitiveInteger::U64(42))].into_iter()).expect("valid call");
@@ -4424,7 +4431,7 @@ fn test_entry_params_order_multiple_params() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct types in correct order
     vm.invoke_chunk_with_args(0, [
@@ -4453,7 +4460,7 @@ fn test_entry_params_wrong_type_first() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // First param is wrong type (u32 instead of u64)
     let result = vm.invoke_chunk_with_args(0, [
@@ -4480,7 +4487,7 @@ fn test_entry_params_wrong_type_second() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Second param is wrong type (u64 instead of u32)
     let result = vm.invoke_chunk_with_args(0, [
@@ -4507,7 +4514,7 @@ fn test_entry_params_wrong_count() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Too few params
     let result = vm.invoke_chunk_with_args(0, [
@@ -4533,7 +4540,7 @@ fn test_entry_params_wrong_count_too_many() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Too many params
     let result = vm.invoke_chunk_with_args(0, [
@@ -4560,7 +4567,7 @@ fn test_entry_params_string() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with correct string type
     vm.invoke_chunk_with_args(0, [
@@ -4587,7 +4594,7 @@ fn test_entry_params_string_wrong_type() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with wrong type (u64 instead of string)
     let result = vm.invoke_chunk_with_args(0, [
@@ -4616,7 +4623,7 @@ fn test_entry_params_bool() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     vm.invoke_chunk_with_args(0, [
         Primitive::Boolean(true),
@@ -4645,7 +4652,7 @@ fn test_entry_params_bool_wrong_type() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Call with wrong type (u64 instead of bool)
     let result = vm.invoke_chunk_with_args(0, [
@@ -4673,7 +4680,7 @@ fn test_entry_params_optional() {
             environment: (&environment).into(),
             metadata: (&()).into(),
         }).expect("module");
-        vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
         
         vm.invoke_chunk_with_args(0, [
             Primitive::Integer(PrimitiveInteger::U64(42)),
@@ -4691,7 +4698,7 @@ fn test_entry_params_optional() {
             environment: (&environment).into(),
             metadata: (&()).into(),
         }).expect("module");
-        vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+        vm.context_mut().set_gas_limit(10u64.pow(8u32));
         
         vm.invoke_chunk_with_args(0, [
             Primitive::Null,
@@ -4718,7 +4725,7 @@ fn test_entry_params_all_number_types() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     vm.invoke_chunk_with_args(0, [
         Primitive::Integer(PrimitiveInteger::U8(1)),
@@ -4748,7 +4755,7 @@ fn test_entry_params_mixed_wrong_order() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Pass params in wrong order (u32, u16, u8 instead of u8, u16, u32)
     let result = vm.invoke_chunk_with_args(0, [
@@ -4779,7 +4786,7 @@ fn test_entry_without_enforced_params_accepts_any() {
         environment: (&environment).into(),
         metadata: (&()).into(),
     }).expect("module");
-    vm.context_mut().resources_mut().set_gas_limit(10u64.pow(8u32));
+    vm.context_mut().set_gas_limit(10u64.pow(8u32));
     
     // Even with "wrong" types, it should still accept the call
     // (though it may fail at runtime if types don't match the operations)
@@ -4791,4 +4798,46 @@ fn test_entry_without_enforced_params_accepts_any() {
     
     let result = vm.run_blocking().expect("run failed");
     assert_eq!(result.as_u64().unwrap(), 150);
+}
+
+#[test]
+fn owned_constants_preserve_nested_structs_and_enum_tags() {
+    test_code_expect_return(r#"
+        struct Record { value: u64 }
+        enum Choice { Empty, Value(u64) }
+        const RECORDS: Record[] = [Record { value: 7 }, Record { value: 11 }];
+        const CHOICE: Choice = Choice::Value(13);
+        entry main() {
+            let result: u64 = RECORDS[1].value;
+            match CHOICE {
+                Choice::Empty => return 0,
+                Choice::Value(value) => return result + value,
+            }
+            return 0;
+        }
+    "#, Primitive::Integer(PrimitiveInteger::U64(24)));
+}
+
+#[test]
+fn constant_functions_preserve_struct_argument_and_return_types() {
+    let mut builder = EnvironmentBuilder::<()>::default();
+    let record = builder.register_structure("Record", [("value", Type::U64)]);
+    builder.register_structure("Other", [("value", Type::U64)]);
+    builder.register_const_function_with_return_type(
+        "copy_record",
+        Type::U64,
+        vec![("record", Type::Struct(record.clone()))],
+        Type::Struct(record),
+        |mut values| Ok(values.remove(0)),
+    );
+    let invalid = "entry main() { return u64::copy_record(Other { value: 7 }).value }";
+    assert!(try_parse_code_with(invalid, &builder).is_err());
+    let (module, environment) = prepare_module_with(
+        "entry main() { return u64::copy_record(Record { value: 7 }).value }",
+        builder,
+    );
+    assert_eq!(
+        run_internal(module, &environment, 0).unwrap(),
+        Primitive::Integer(PrimitiveInteger::U64(7)),
+    );
 }

@@ -1,10 +1,11 @@
+use crate::environment::xstd::native;
+use silex_types::Heap;
 use silex_environment::{
     FnInstance,
     FnParams,
     FnReturnType,
     VMContext,
     SysCallResult,
-    FunctionHandler,
     ModuleMetadata
 };
 use silex_types::{PrimitiveInteger, Type, Primitive, U256 as u256};
@@ -16,8 +17,8 @@ macro_rules! sqrt_fn {
     ($env: expr, $t: ident, $f: ident) => {
         paste! {
             // Square root implementation using a simple binary search method
-            fn [<sqrt_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-                let n = zelf?.[<as_ $f>](context.heap())?;
+            fn [<sqrt_ $f>]<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+                let n = zelf?.[<as_ $f>](heap)?;
                 let one = $f::from(1u8);
 
                 // Binary search for the square root
@@ -57,7 +58,7 @@ macro_rules! sqrt_fn {
                 "sqrt",
                 Some(Type::$t),
                 vec![],
-                FunctionHandler::Sync([<sqrt_ $f>]),
+                native([<sqrt_ $f>]),
                 10,
                 Some(Type::$t),
                 concat!("Returns the integer square root of this ", stringify!($t), " value.")

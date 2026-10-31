@@ -122,20 +122,20 @@ impl ChunkManager {
     // Pop an iterator from the stack
     #[inline(always)]
     pub fn pop_iterator(&mut self) -> Result<ValueIterator, VMError> {
-        self.iterators.pop().ok_or(VMError::EmptyIterator)
+        self.iterators.pop().ok_or_else(|| VMError::EmptyIterator)
     }
 
     // Get the next value from the iterators stack
     #[inline(always)]
-    pub fn next_iterator(&mut self, heap: &Heap) -> Result<Option<StackValue>, VMError> {
+    pub fn next_iterator(&mut self, heap: &mut Heap) -> Result<Option<StackValue>, VMError> {
         self.iterators.last_mut()
-            .ok_or(VMError::EmptyIterator)
+            .ok_or_else(|| VMError::EmptyIterator)
             .and_then(|v| v.next(heap).map_err(VMError::from))
     }
 
     // Push/set a new value into the registers
     #[inline]
-    pub fn set_register(&mut self, index: usize, mut value: StackValue) -> Result<Option<StackValue>, VMError> {
+    pub fn set_register(&mut self, index: usize, value: StackValue) -> Result<Option<StackValue>, VMError> {
         trace!("Setting register at index {}: {:?}, current {}", index, value, self.registers.len());
         if index >= REGISTERS_SIZE {
             return Err(VMError::RegisterMaxSize);
@@ -148,8 +148,7 @@ impl ChunkManager {
                 Ok(None)
             },
             Ordering::Greater => {
-                mem::swap(&mut self.registers[index], &mut value);
-                Ok(Some(value))
+                Ok(Some(mem::replace(&mut self.registers[index], value)))
             },
             Ordering::Less => Err(VMError::RegisterOverflow)
         }
@@ -158,14 +157,14 @@ impl ChunkManager {
     // Get a value from the registers
     #[inline(always)]
     pub fn from_register(&mut self, index: usize) -> Result<&mut StackValue, VMError> {
-        self.registers.get_mut(index).ok_or(VMError::RegisterNotFound(index))
+        self.registers.get_mut(index).ok_or_else(|| VMError::RegisterNotFound(index))
     }
 
     // Pop a value from the registers
     #[inline(always)]
     pub fn pop_register(&mut self) -> Result<StackValue, VMError> {
         trace!("Popping register, current {}", self.registers.len());
-        self.registers.pop().ok_or(VMError::EmptyRegister)
+        self.registers.pop().ok_or_else(|| VMError::EmptyRegister)
     }
 
     // Make owned the stack value at the registers index

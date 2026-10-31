@@ -1,5 +1,5 @@
 use silex_types::{
-    Constant,
+    OwnedValue,
     EnumValueType,
     IdentifierType,
     Primitive,
@@ -21,7 +21,7 @@ pub enum Expression {
     MapConstructor(Vec<(Expression, Expression)>, Type, Type),
     EnumConstructor(Vec<Expression>, EnumValueType),
     Variable(IdentifierType), // variable name
-    Constant(Constant), // hardcoded value
+    Constant(ConstantValue), // hardcoded value and optional type metadata
     Operator(Operator, Box<Expression>, Box<Expression>),
     SubExpression(Box<Expression>), // ( ... )
     Path(Box<Expression>, Box<Expression>), // struct.value
@@ -83,12 +83,35 @@ pub struct DeclarationStatement {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct ConstantDeclaration {
-    pub value: Constant,
+    pub value: OwnedValue,
     pub value_type: Type,
 }
 
 impl From<Primitive> for Expression {
     fn from(value: Primitive) -> Self {
-        Expression::Constant(Constant::Primitive(value))
+        Expression::Constant(value.into())
+    }
+}
+
+/// Constant data and its optional resolved type, stored only in the AST.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ConstantValue {
+    pub value: OwnedValue,
+    pub value_type: Option<Type>,
+}
+
+impl From<OwnedValue> for ConstantValue {
+    fn from(value: OwnedValue) -> Self {
+        let value_type = Type::from_value_type(&value);
+        Self {
+            value,
+            value_type,
+        }
+    }
+}
+
+impl From<Primitive> for ConstantValue {
+    fn from(value: Primitive) -> Self {
+        OwnedValue::Primitive(value).into()
     }
 }

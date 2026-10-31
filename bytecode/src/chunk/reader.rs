@@ -64,12 +64,14 @@ impl<'a> ChunkReader<'a> {
     // Get the op code at the given index
     #[inline]
     pub fn read_op_code(&mut self) -> Result<OpCode, ChunkReaderError> {
-        let byte = self.read_u8()?;
-        OpCode::from_byte(byte).ok_or(ChunkReaderError::InvalidOpCode)
+        self.read_u8()
+            .and_then(|b| OpCode::from_byte(b)
+                .ok_or(ChunkReaderError::InvalidOpCode)
+            )
     }
 
     // Read a bool from the instructions
-    #[inline]
+    #[inline(always)]
     pub fn read_bool(&mut self) -> Result<bool, ChunkReaderError> {
         self.read_u8().map(|v| v == 1)
     }
@@ -85,6 +87,7 @@ impl<'a> ChunkReader<'a> {
         }
     }
 
+    #[inline(always)]
     pub fn has_next(&self) -> bool {
         self.ip <= self.chunk.last_index()
     }
@@ -113,22 +116,25 @@ impl<'a> ChunkReader<'a> {
     // Read a u16 from the instructions
     #[inline]
     pub fn read_u16(&mut self) -> Result<u16, ChunkReaderError> {
-        let bytes = self.read_bytes(2)?;
-        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+        self.read_bytes(2)
+            .and_then(|bytes| Ok(u16::from_le_bytes([bytes[0], bytes[1]])))
     }
 
     // Read a u32 from the instructions
     #[inline]
     pub fn read_u32(&mut self) -> Result<u32, ChunkReaderError> {
-        let bytes = self.read_bytes(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        self.read_bytes(4)
+            .and_then(|bytes| Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])))
     }
 
     // Read a primitive type from the instructions
     #[inline]
     pub fn read_type(&mut self) -> Result<Type, ChunkReaderError> {
-        let type_id = self.read_u8()?;
-        Type::primitive_type_from_byte(type_id).ok_or(ChunkReaderError::InvalidPrimitiveType)
+        self.read_u8()
+            .and_then(|type_id| 
+                Type::primitive_type_from_byte(type_id)
+                    .ok_or(ChunkReaderError::InvalidPrimitiveType)
+            )
     }
 
     // Check if we have another instruction to execute

@@ -50,6 +50,8 @@ impl PrimitiveInteger {
             Self::U256(..) => Type::U256,
         }
     }
+
+    #[inline]
     pub fn get_memory_usage(&self) -> usize {
         match self {
             Self::U8(..) => 1,

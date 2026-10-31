@@ -16,7 +16,8 @@ impl ValueIterator {
         Ok(ValueIterator { inner, index })
     }
 
-    pub fn next(&mut self, heap: &Heap) -> Result<Option<StackValue>, ValueError> {
+    #[inline(always)]
+    pub fn next(&mut self, heap: &mut Heap) -> Result<Option<StackValue>, ValueError> {
         let index = self.index;
         self.index.increment();
 
@@ -24,8 +25,8 @@ impl ValueIterator {
         Ok(match value {
             RuntimeValue::Object(v) => {
                 let index = index.to_u32()? as usize;
-                v.get(index)
-                .map(|v| v.clone().into())
+                let id = v.get(index);
+                id.cloned().map(Into::into)
             },
             RuntimeValue::Bytes(v) => {
                 let index = index.to_u32()? as usize;

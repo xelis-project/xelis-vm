@@ -41,41 +41,93 @@ JSON bytecode output is still available with `--format json` when a human-readab
 
 ## Runtime heap
 
-Each `VMContext` owns a `Heap`. `RuntimeValue` arrays and maps contain four-byte
-`ValueId` slot indices (`ValuePointer` is the same type). Moving or copying a
-handle preserves reference identity within its heap without cloning the value.
-Slots are not reused until the heap is cleared. Logical reference accounting
-remains eight bytes to preserve the existing gas computation.
+Each `VM::run()` owns a local `Heap`. Runtime values use automatic reference
+counting: `ValuePointer` owns an `Rc` handle to a stable slot
+(eight bytes on x86-64). Each slot holds a weak storage reference. Heap payload
+borrows also borrow an owning handle, so its last owner cannot be dropped while
+a payload reference is live. Only the unique heap can mutate live payloads.
 
-Reading a cell borrows the heap; writing it requires a mutable heap borrow.
-The Rust borrow checker therefore enforces exclusivity across every handle,
-including aliases passed to native functions. No `UnsafeCell`, manual `Send`/`Sync`
-implementation, or per-cell lock is required.
+`Clone` retains a handle; ordinary Rust `Drop` releases it. Zero-owner payloads
+are reclaimed through an iterative release queue, without tracing the heap.
+Slots are tracked in a `HashSet` and removed when their last handle is dropped.
+The slot allocation and its payload are then freed; there is no free-slot pool.
+Ownership uses `Rc`'s count directly, excluding storage's own slot owner.
+Reclamation uses a local pending vector and a reentrancy guard, without atomic
+counters, a concurrent queue, or a mutex. `Heap::len()` counts registered slots;
+the hash table and pending vector retain capacity until clear or teardown.
+
+`Heap::new` is an unsafe constructor. `VM::run` and `VM::run_blocking` are
+ordinary methods that create their heap internally. The VM trusts host-provided
+native and opaque code to honor the confinement contract; it does not enforce
+that contract for escaped aliases. The host must serialize every heap/handle
+operation, including cloning,
+dropping, native calls, opaque payload access, cancellation, and teardown.
+Related handles must not be used independently on other threads. The complete
+execution can migrate between async executor threads when all aliases remain
+confined and inactive elsewhere, with a synchronized ownership handoff.
+`Send + Sync` implementations rely on this
+caller guarantee; they do not provide synchronization. The same obligation
+covers any runtime handles retained in opaque results after completion.
+Independent executions must not share runtime handles.
+
+Native handlers and opaque destructors must not panic. The heap does not
+attempt panic recovery.
+
+Payload borrows still require both an owning handle and the appropriate heap
+borrow. Weak storage references keep later sequential handle teardown valid
+after heap destruction; those handles retain only empty slot allocations.
+`Heap::get()` and `get_mut()` return references directly. Callers must use only
+live handles from the originating heap. `Heap` has no safe `Default` constructor
+that could bypass the confinement contract.
+
+Ordinary `clone()`, assignment, collection cleanup, and `Drop` account for
+owners automatically, including ordinary error paths.
+Cycles and forgotten handles can retain payloads until the heap is cleared or
+dropped. VM insertion and assignment still
+detach values to preserve an acyclic graph. Logical gas and memory accounting
+keeps the original eight-byte reference size, independently of physical layout.
 
 ```rust
 use silex_types::{Heap, PrimitiveInteger, ValueError};
 
-let mut heap = Heap::new();
-let id = heap.insert(PrimitiveInteger::U64(1).into())?;
-let alias = id;
-let previous = heap.get(alias)?.as_u64()?;
-*heap.get_mut(id)? = PrimitiveInteger::U64(previous + 1).into();
-assert_eq!(heap.get(alias)?.as_u64()?, 2);
-# Ok::<(), ValueError>(())
+pub fn main() -> Result<(), ValueError> {
+    // SAFETY: this heap and all its handles stay local and are used sequentially.
+    let mut heap = unsafe { Heap::new() };
+    let id = heap.insert(PrimitiveInteger::U64(1).into());
+    let alias = id.clone();
+    let previous = heap.get(&alias).as_u64()?;
+    *heap.get_mut(&id) = PrimitiveInteger::U64(previous + 1).into();
+    assert_eq!(heap.get(&alias).as_u64()?, 2);
+    drop(id);
+    drop(alias);
+    assert!(heap.is_empty());
+    Ok(())
+}
 ```
 
-Native functions use `context.heap()` and `context.heap_mut()` to resolve
-`StackValue`s. `context.resources()` and `context.resources_mut()` expose
-`VMResources` for gas and memory accounting. `context.split_heap()` provides
-disjoint access to the heap and
-the existing gas/memory accounting fields when an operation needs both. Callback
-functions receive `&mut Heap` as their third argument; async callback futures
-borrow it for the duration of the callback. Heap lookups and insertions return
-`HeapError`, which is propagated as `VMError::HeapError` during execution.
+Native functions receive a separate `&mut Heap` argument to resolve
+`StackValue`s. `Heap::with_value` temporarily extracts a stack value and restores
+it when the operation returns, including ordinary errors. Instances are borrowed
+(`FnInstance` contains `&mut StackValue`) and `FnParams` borrows a mutable argument
+vector. The caller releases arguments
+left in that vector and the remaining instance after the call. Use
+`instance.take()` or `parameters.remove(index)` to transfer an owner out.
+Read-only arguments can stay in the vector. Callback states own their retained values and release them when
+dropped. Async functions and callbacks borrow their arguments, context, and heap for the duration of their future.
+
+`VMContext` directly exposes gas and memory accounting methods. The heap is a
+local variable of each `VM::run()`. Queued inputs remain owned until execution starts; every completion, failure, or cancellation
+discards the execution's stack, frames, callbacks, and heap. This also
+frees remaining values and cycles at run exit. Heap errors propagate as
+`VMError::HeapError`. Logical gas and memory accounting is preserved.
 
 Module constants, entry arguments, and returned container trees use `OwnedValue`.
+Parser expressions keep struct, enum, and tuple type metadata separately from
+that owned data. Compile-time functions receive and return `OwnedValue`; use
+`register_const_function_with_return_type` when their result needs a declared
+struct, enum, or tuple type.
 Import them with `heap.import(&owned)` and export runtime containers with
-`heap.snapshot(&cell)?`. Maps store owned, immutable keys. Runtime cells themselves
+`heap.snapshot(&cell)?` (or `heap.snapshot_stack(&value)?`). Maps store owned, immutable keys. Runtime cells themselves
 no longer implement standalone Serde, `Hash`, or equality without a heap; use
 owned snapshots or `cell.equals(&other, &heap)` as appropriate.
 
@@ -85,28 +137,246 @@ option `#[opaque(deep_clone_in = expression)]` makes that heap available as
 `heap`; the expression can use `?` to propagate `HeapError`. Opaque payloads retaining runtime handles remain tied to that heap,
 including when their wrapper is held in an owned container. Portable opaque
 payloads should contain owned data instead.
-
-Heap storage is retained until `Heap::clear()` or drop. The caller must use each
-handle only with its originating heap and discard every retained handle before
-clearing or replacing the heap, including handles in stack values, registers,
-iterators, callbacks, and opaque payloads. Handles carry no heap identity or
-generation; lookups check bounds only, and cleared indices can be reused.
-`VMResources::reset_usage()` resets accounting only. The logical memory sizes and gas
-formulas remain independent of the heap's allocation layout.
+Use each handle only with its originating heap. Clearing or replacing that heap
+invalidates remaining handles, including those in stack values, registers,
+iterators, callbacks, and opaque payloads. Dropping expired handles is safe.
+Ordinary Rust drops release runtime owners automatically. Opaque child visitors
+borrow handles (`&ValuePointer`) rather than copying them. `VMContext::reset_usage()`
+resets accounting only. Logical memory sizes and gas formulas are independent of
+reference counters and slot layout.
 
 ## Serialization
 
-Scalar values serialize with flat tags in `Primitive`, `OwnedValue`, and
-`Constant`. An owned `u64` value is:
+Portable `OwnedValue` data uses tagged JSON objects. The `type` field identifies
+the value's representation, and `value` contains its payload when present.
+Scalar values use the same JSON format in `Primitive` and `OwnedValue`.
+Runtime values must be exported or snapshotted through their heap before
+serialization. The examples below show the JSON representation of each value.
+
+**Scalar**
+
+A 64-bit unsigned integer uses the `u64` tag and a decimal string payload.
 
 ```json
-{"type":"u64","value":"42"}
+{
+  "type": "u64",
+  "value": "42"
+}
 ```
 
-Opaque values use their own `opaque` variant. Byte buffers serialize as arrays of
-numbers. Maps serialize as lists of `[key, value]` pairs so keys can be structured
-values. Integer widths remain explicit, with `u64`, `u128`, and `u256` payloads
-encoded as strings to avoid JSON precision loss.
+**Primitives**
+
+Null, booleans, strings, and every integer width. `u8`, `u16`, and `u32` use JSON numbers; `u64`, `u128`, and `u256` use decimal strings to preserve precision. Null has no `value` field.
+
+```json
+{
+  "type": "object",
+  "value": [
+    {
+      "type": "null"
+    },
+    {
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "type": "string",
+      "value": "hello"
+    },
+    {
+      "type": "u8",
+      "value": 255
+    },
+    {
+      "type": "u16",
+      "value": 65535
+    },
+    {
+      "type": "u32",
+      "value": 4294967295
+    },
+    {
+      "type": "u64",
+      "value": "18446744073709551615"
+    },
+    {
+      "type": "u128",
+      "value": "340282366920938463463374607431768211455"
+    },
+    {
+      "type": "u256",
+      "value": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    }
+  ]
+}
+```
+
+**Bytes**
+
+Byte buffers use the `bytes` tag and an array of numbers from 0 to 255.
+
+```json
+{
+  "type": "bytes",
+  "value": [
+    0,
+    127,
+    255
+  ]
+}
+```
+
+**Nested arrays**
+
+Arrays use the `object` tag, with each element encoded as another tagged value.
+This example represents `[[1, 2], [3, 4]]` with 64-bit unsigned integers. Tuples,
+structs, and enum representations also use objects; their Silex type metadata
+is kept separately.
+
+```json
+{
+  "type": "object",
+  "value": [
+    {
+      "type": "object",
+      "value": [
+        {
+          "type": "u64",
+          "value": "1"
+        },
+        {
+          "type": "u64",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "value": [
+        {
+          "type": "u64",
+          "value": "3"
+        },
+        {
+          "type": "u64",
+          "value": "4"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Map**
+
+Maps use ordered lists of `[key, value]` pairs, even when the keys are strings.
+Each key and value has its own type tag. This map associates `alice` with `10`
+and `bob` with `20`.
+
+```json
+{
+  "type": "map",
+  "value": [
+    [
+      {
+        "type": "string",
+        "value": "alice"
+      },
+      {
+        "type": "u64",
+        "value": "10"
+      }
+    ],
+    [
+      {
+        "type": "string",
+        "value": "bob"
+      },
+      {
+        "type": "u64",
+        "value": "20"
+      }
+    ]
+  ]
+}
+```
+
+**Structured map key**
+
+A map key can itself be an array. Here, the key is `[1, 2]` with 8-bit unsigned
+integers, and its value is the byte buffer `[0, 255]`. Encoding entries as pairs
+avoids JSON object-key restrictions.
+
+```json
+{
+  "type": "map",
+  "value": [
+    [
+      {
+        "type": "object",
+        "value": [
+          {
+            "type": "u8",
+            "value": 1
+          },
+          {
+            "type": "u8",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "bytes",
+        "value": [
+          0,
+          255
+        ]
+      }
+    ]
+  ]
+}
+```
+
+**Range**
+
+Ranges encode their two endpoints with matching integer-width tags. This range
+starts at `0` and ends before `10`.
+
+```json
+{
+  "type": "range",
+  "value": [
+    {
+      "type": "u64",
+      "value": "0"
+    },
+    {
+      "type": "u64",
+      "value": "10"
+    }
+  ]
+}
+```
+
+**Opaque**
+
+Portable opaque values have an outer `opaque` tag. The nested `type` identifies
+the registered host type, and its `value` contains that type's JSON payload.
+Here, `ReadmePoint` contains coordinates `x = 3` and `y = 4`. Deserialization
+requires a JSON decoder registered under the name `ReadmePoint`.
+
+```json
+{
+  "type": "opaque",
+  "value": {
+    "type": "ReadmePoint",
+    "value": {
+      "x": 3,
+      "y": 4
+    }
+  }
+}
+```
 
 ## Types
 

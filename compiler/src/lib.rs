@@ -16,7 +16,7 @@ use silex_environment::Environment;
 use silex_bytecode::{Chunk, Module, OpCode};
 
 pub use error::CompilerError;
-use silex_types::{PrimitiveInteger, Constant, Primitive};
+use silex_types::{PrimitiveInteger, OwnedValue, Primitive};
 
 // Temporary invalid address to patch jumps
 const INVALID_ADDR: u32 = 0xDEADBEEF;
@@ -174,7 +174,7 @@ impl<'a, M> Compiler<'a, M> {
         match expr {
             Expression::Constant(v) => {
                 // Compile the value
-                let index = self.module.add_constant(v.clone());
+                let index = self.module.add_constant(v.value.clone());
                 chunk.emit_opcode(OpCode::Constant);
                 chunk.write_u16(index as u16);
 
@@ -234,7 +234,7 @@ impl<'a, M> Compiler<'a, M> {
             },
             Expression::EnumConstructor(exprs, ty) => {
                 // Inject the variant id
-                self.compile_expr(chunk, chunk_id, &Expression::Constant(Constant::Primitive(Primitive::Integer(PrimitiveInteger::U8(ty.variant_id())))), false)?;
+                self.compile_expr(chunk, chunk_id, &Expression::Constant(OwnedValue::Primitive(Primitive::Integer(PrimitiveInteger::U8(ty.variant_id()))).into()), false)?;
 
                 for expr in exprs {
                     self.compile_expr(chunk, chunk_id, expr, false)?;
@@ -356,12 +356,12 @@ impl<'a, M> Compiler<'a, M> {
 
                     let syscall = Primitive::Boolean(is_syscall).into();
                     let from = Primitive::Integer(PrimitiveInteger::U16(chunk_id)).into();
-                    Constant::Array(vec![id, syscall, from])
+                    OwnedValue::Object(vec![id, syscall, from])
                 } else {
                     id.into()
                 };
 
-                self.compile_expr(chunk, chunk_id, &Expression::Constant(value), false)?;
+                self.compile_expr(chunk, chunk_id, &Expression::Constant(value.into()), false)?;
             },
             Expression::DynamicCall(id, params, return_type) => {
                 for param in params {
@@ -1146,7 +1146,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::Integer(PrimitiveInteger::U64(3)).into())
+            Some(&Primitive::Integer(PrimitiveInteger::U64(3)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1179,7 +1179,7 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::Integer(PrimitiveInteger::U64(0)).into())
+            Some(&Primitive::Integer(PrimitiveInteger::U64(0)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1207,12 +1207,12 @@ mod tests {
 
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::Integer(PrimitiveInteger::U64(1)).into())
+            Some(&Primitive::Integer(PrimitiveInteger::U64(1)).into())
         );
 
         assert_eq!(
             module.get_constant_at(1),
-            Some(Primitive::Integer(PrimitiveInteger::U64(2)).into())
+            Some(&Primitive::Integer(PrimitiveInteger::U64(2)).into())
         );
 
         let chunk = module.get_chunk_at(0).unwrap();
@@ -1467,7 +1467,7 @@ mod tests {
     #[test]
     fn test_static_function_call() {
         let mut env = EnvironmentBuilder::new();
-        env.register_static_function("test", Type::Bool, vec![], FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::Return(Primitive::Null.into()))), 0, Some(Type::Bool));
+        env.register_static_function("test", Type::Bool, vec![], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::Return(Primitive::Null.into()))) }, 0, Some(Type::Bool));
 
         let module = prepare_program_with_env("fn main() -> bool { return bool::test() }", &env);
 
@@ -1580,7 +1580,7 @@ mod tests {
         assert_eq!(module.constants().len(), 1);
         assert_eq!(
             module.get_constant_at(0),
-            Some(Primitive::Integer(PrimitiveInteger::U64(0)).into())
+            Some(&Primitive::Integer(PrimitiveInteger::U64(0)).into())
         );
     }
 
@@ -1594,7 +1594,7 @@ mod tests {
         "#;
 
         let mut env = EnvironmentBuilder::new();
-        env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], FunctionHandler::Sync(|_, _, _, _| { todo!() }), 0, Some(Type::U64));
+        env.register_native_function("foo", None, vec![("b", Type::String), ("bar", Type::U8)], unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| { todo!() }) }, 0, Some(Type::U64));
         let module = prepare_program_with_env(code, &env);
 
         assert_eq!(

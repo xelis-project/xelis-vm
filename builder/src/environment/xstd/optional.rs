@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use crate::environment::xstd::native;
+use silex_types::Heap;
 
 use silex_types::{ClosureType, Primitive, Type, ValueError};
 use silex_environment::{
@@ -7,7 +8,6 @@ use silex_environment::{
     FnInstance,
     FnParams,
     FnReturnType,
-    FunctionHandler,
     SysCallResult,
     ModuleMetadata
 };
@@ -17,64 +17,64 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // callback function
     let f = ClosureType::new(vec![], Some(Type::T(Some(0))));
 
-    env.register_native_function_with_comment("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_none), 1, Some(Type::Bool), "Returns true when the optional value is null.");
-    env.register_native_function_with_comment("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(is_some), 1, Some(Type::Bool), "Returns true when the optional value contains a value.");
-    env.register_native_function_with_comment("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], FunctionHandler::Sync(unwrap), 1, Some(Type::T(Some(0))), "Returns the contained value or fails if it is null.");
-    env.register_native_function_with_comment("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], FunctionHandler::Sync(unwrap_or), 1, Some(Type::T(Some(0))), "Returns the contained value or the provided default when it is null.");
-    env.register_native_function_with_comment("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("message", Type::String)], FunctionHandler::Sync(expect), 1, Some(Type::T(Some(0))), "Returns the contained value or fails with the provided message when it is null.");
-    env.register_native_function_with_comment("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], FunctionHandler::Sync(unwrap_or_else), 2, Some(Type::T(Some(0))), "Returns the contained value or calls the fallback closure when it is null.");
+    env.register_native_function_with_comment("is_none", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], native(is_none), 1, Some(Type::Bool), "Returns true when the optional value is null.");
+    env.register_native_function_with_comment("is_some", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], native(is_some), 1, Some(Type::Bool), "Returns true when the optional value contains a value.");
+    env.register_native_function_with_comment("unwrap", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![], native(unwrap), 1, Some(Type::T(Some(0))), "Returns the contained value or fails if it is null.");
+    env.register_native_function_with_comment("unwrap_or", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("default", Type::T(Some(0)))], native(unwrap_or), 1, Some(Type::T(Some(0))), "Returns the contained value or the provided default when it is null.");
+    env.register_native_function_with_comment("expect", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("message", Type::String)], native(expect), 1, Some(Type::T(Some(0))), "Returns the contained value or fails with the provided message when it is null.");
+    env.register_native_function_with_comment("unwrap_or_else", Some(Type::Optional(Box::new(Type::T(Some(0))))), vec![("fn", Type::Closure(f))], native(unwrap_or_else), 2, Some(Type::T(Some(0))), "Returns the contained value or calls the fallback closure when it is null.");
 }
 
-fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    Ok(SysCallResult::Return(Primitive::Boolean(zelf?.is_null(context.heap())).into()))
+fn is_none<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    Ok(SysCallResult::Return(Primitive::Boolean(zelf?.is_null(heap)).into()))
 }
 
-fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    Ok(SysCallResult::Return(Primitive::Boolean(!zelf?.is_null(context.heap())).into()))
+fn is_some<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    Ok(SysCallResult::Return(Primitive::Boolean(!zelf?.is_null(heap)).into()))
 }
 
-fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn unwrap<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
-    if zelf.is_null(context.heap()) {
+    if zelf.is_null(heap) {
         return Err(ValueError::OptionalIsNull.into());
     }
 
-    Ok(SysCallResult::Return(zelf))
+    Ok(SysCallResult::Return(zelf.take()))
 }
 
-fn unwrap_or<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn unwrap_or<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let zelf = zelf?;
 
-    Ok(SysCallResult::Return(if zelf.is_null(context.heap()) {
+    Ok(SysCallResult::Return(if zelf.is_null(heap) {
         default
     } else {
-       zelf
+        zelf.take()
     }))
 }
 
-fn unwrap_or_else<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn unwrap_or_else<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let default = parameters.remove(0);
     let zelf = zelf?;
-    Ok(if zelf.is_null(context.heap()) {
+    Ok(if zelf.is_null(heap) {
         SysCallResult::DynamicCall {
             ptr: default,
-            params: VecDeque::new()
+            params: Vec::new()
         }
     } else {
-        SysCallResult::Return(zelf)
+        SysCallResult::Return(zelf.take())
     })
 }
 
-fn expect<M>(zelf: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn expect<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let mut param = parameters.remove(0)
-        .into_owned(context.heap_mut())?;
+        .into_owned(heap)?;
     let msg = param.into_string()?;
 
     let zelf = zelf?;
-    if zelf.is_null(context.heap()) {
+    if zelf.is_null(heap) {
         return Err(EnvironmentError::Expect(msg));
     }
 
-    Ok(SysCallResult::Return(zelf))
+    Ok(SysCallResult::Return(zelf.take()))
 }

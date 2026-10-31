@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use silex_ast::{Expression, Signature, SignatureId};
+use silex_ast::{ConstantValue, Expression, Signature, SignatureId};
 use silex_types::{IdentifierType, NoHashMap, Type};
 use log::trace;
 
@@ -225,10 +225,13 @@ impl<'a> FunctionMapper<'a> {
             if let Some(a) = inner_type {
                 // We can only cast hardcoded values
                 if let Expression::Constant(value) = &expressions[i] {
-                    let cloned = value.clone();
+                    let mut cloned = value.value.clone();
                     match cloned.checked_cast_to_primitive_type(a) {
                         Ok(v) => {
-                            updated_expressions.push((i, Expression::Constant(v)));
+                            updated_expressions.push((i, Expression::Constant(ConstantValue {
+                                value: v,
+                                value_type: Some(a.clone()),
+                            })));
                         },
                         Err(e) => {
                             trace!("Parameter {} failed to cast: {:?}", i, e);

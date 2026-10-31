@@ -1,9 +1,10 @@
+use silex_types::OpaqueValue;
 // Comprehensive test suite for all standard library (xstd) functions
 use silex_compiler::Compiler;
 use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::{Primitive, PrimitiveInteger, ValueError, RuntimeValue};
+use silex_types::{Primitive, PrimitiveInteger, RuntimeValue};
 use super::*;
 
 #[track_caller]
@@ -69,15 +70,15 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         let mut complete = HashSet::new();
         while let Some((node, leaving)) = pending.pop() {
             let node = match node {
-                OpaqueChild::Pointer(id) => OpaqueChild::Value(heap.get(id)?),
-                OpaqueChild::Owned(value) => { value.calculate_depth(16)?; continue; }
+                OpaqueChild::Pointer(id) => OpaqueChild::Value(heap.get(&id)),
+                OpaqueChild::Owned(_) => continue,
                 node => node,
             };
             let id = match node {
                 OpaqueChild::Pointer(_) | OpaqueChild::Owned(_) => unreachable!(),
                 OpaqueChild::Value(value) => (false, value as *const RuntimeValue as usize),
                 OpaqueChild::Opaque(value) => {
-                    (true, value as *const dyn Opaque as *const () as usize)
+                    (true, value as *const dyn OpaqueValue as *const () as usize)
                 }
             };
             if leaving {
@@ -125,12 +126,19 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         _: FnInstance,
         params: FnParams,
         metadata: &ModuleMetadata<'_, Probes>,
-        context: &mut VMContext,
+        _context: &mut VMContext, heap: &mut Heap,
     ) -> FnReturnType<Probes> {
-        let value = params.into_iter().next().unwrap();
-        check_graph(value.as_ref(context.heap()), context.heap())?;
+        let value = params.first_mut().map(StackValue::take).unwrap();
+        check_graph(value.as_ref(&*heap), &*heap)?;
         assert!(!value.is_owned(), "probe must retain the original VM slot");
         metadata.metadata.lock().unwrap().push(value);
+        Ok(SysCallResult::None)
+    }
+
+    fn finish_probes(_: FnInstance, _: FnParams, metadata: &ModuleMetadata<'_, Probes>, _: &mut VMContext, heap: &mut Heap) -> FnReturnType<Probes> {
+        let mut retained = metadata.metadata.lock().unwrap();
+        for value in retained.iter() { check_graph(value.as_ref(heap), heap)?; }
+        retained.clear();
         Ok(SysCallResult::None)
     }
 
@@ -149,10 +157,13 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         "let a: any[] = [0u64, 1u64]; let left = a.iter().map(|x: any| { a[0] = a.iter(); return x }); let right = a.iter().map(|x: any| { return x }); let it = left.zip(right); probe(a); probe(it); it.next(); probe(a); probe(it);",
         "let first: any[] = [0u64]; let second: any[] = [1u64]; let a = [first, second]; let it = a.iter().map(|x: any[]| { a[0][0] = a.iter(); return x }).flatten(); probe(a); probe(it); it.next(); probe(a); probe(it);",
         "let a: any[] = [0u64, 1u64]; let it = a.iter(); let initial: any[] = [0u64]; probe(a); probe(it); probe(initial); let result = it.fold(initial, |acc: any[], x: any| { acc.push(a.iter()); a[0] = acc; return acc }); probe(a); probe(it); probe(result);",
+        "let captured: u64 = 1; let a: u64[] = []; probe(a); let mapped = a.map(|x: u64| { return x + captured }); probe(mapped);",
+        "let captured: u64 = 1; let a: u64[] = []; probe(a); a.sort_by_key(|x: u64| { return x + captured }, true); probe(a);",
     ] {
-        let code = format!("entry main() {{ {body} return 0u64 }}");
+        let code = format!("entry main() {{ {body} finish_probes(); return 0u64 }}");
         let mut builder = EnvironmentBuilder::<Probes>::default();
-        builder.register_native_function("probe", None, vec![("value", Type::Any)], FunctionHandler::Sync(probe), 0, None);
+        builder.register_native_function("probe", None, vec![("value", Type::Any)], unsafe { FunctionHandler::sync_unchecked(probe) }, 0, None);
+        builder.register_native_function("finish_probes", None, vec![], unsafe { FunctionHandler::sync_unchecked(finish_probes) }, 0, None);
         let tokens = Lexer::new(&code).into_iter().collect::<Result<Vec<_>, _>>().unwrap();
         let (program, _) = Parser::with(tokens.into_iter(), &builder).parse().unwrap_or_else(|error| panic!("{body}: {error:?}"));
         let environment = builder.build();
@@ -160,13 +171,13 @@ fn test_builtin_views_and_callbacks_keep_original_graphs_acyclic() {
         ModuleValidator::new(&module, &environment).verify().unwrap();
         let probes = Probes::default();
         let mut vm = VM::default();
-        vm.context_mut().resources_mut().set_gas_limit(100_000_000);
+        vm.context_mut().set_gas_limit(100_000_000);
         vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&probes).into() }).unwrap();
         vm.invoke_entry_chunk(0).unwrap();
         let result = vm.run_blocking().unwrap_or_else(|error| panic!("{body}: {error:?}"));
         assert_eq!(result.as_u64().unwrap(), 0, "{body}");
         drop(result);
-        for value in probes.lock().unwrap().iter() { check_graph(value.as_ref(vm.context().heap()), vm.context().heap()).unwrap(); }
+        assert!(probes.lock().unwrap().is_empty());
         drop(vm);
     }
 }
@@ -3053,124 +3064,33 @@ fn test_iter_flatten_lazy_with_filter() {
 }
 
 #[test]
-fn test_iterator_depth_native_return_boundary() {
-    for nesting in [16, 17] {
-        let mut declarations = "let value0 = 0u64;".to_owned();
-        for level in 1..=nesting {
-            declarations.push_str(&format!(
-                "let value{level} = Iterator::once(value{});",
-                level - 1
-            ));
-        }
-        let code = format!("entry main() {{ {declarations} return 0u64 }}");
-        if nesting == 16 {
-            assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(0)));
-        } else {
-            assert!(matches!(
-                run_code_result(&code),
-                Err(VMError::ValueError(
-                    ValueError::MaxDepthReached
-                ))
-            ));
-        }
+fn test_runtime_values_and_iterators_have_no_depth_limit() {
+    for body in [
+        "let value:any=0u64; for i:u64=0; i<128; i+=1 { value=[value]; } return 1u64",
+        "let value:any=0u64; for i:u64=0; i<128; i+=1 { value=Iterator::once(value); } return 1u64",
+        "let value=[1u64].iter(); for i:u64=0; i<128; i+=1 { value=[1u64].iter().chain(value); } return value.count() as u64",
+    ] {
+        let code = format!("entry main() {{ {body} }}");
+        let expected = if body.contains("chain") { 129 } else { 1 };
+        assert_eq!(run_code(&code), PrimitiveInteger::U64(expected).into());
     }
 }
 
 #[test]
-fn test_iterator_depth_chain_and_zip_runtime_boundary() {
-    for adapter in ["chain", "zip"] {
-        for nesting in [15, 16] {
-            let mut declarations = "let value0 = [1u64].iter();".to_owned();
-            for level in 1..=nesting {
-                declarations.push_str(&format!(
-                    "let value{level} = [1u64].iter().{adapter}(value{});",
-                    level - 1
-                ));
-            }
-            let code =
-                format!("entry main() {{ {declarations} return value{nesting}.count() as u64 }}");
-            if nesting == 15 {
-                assert_eq!(
-                    run_code(&code),
-                    Primitive::Integer(PrimitiveInteger::U64(if adapter == "chain" { 16 } else { 1 }))
-                );
-            } else {
-                assert!(matches!(
-                    run_code_result(&code),
-                    Err(VMError::ValueError(
-                        ValueError::MaxDepthReached
-                    ))
-                ));
-            }
+fn test_deep_unfold_state_survives_iterator_writeback() {
+    let code = r#"
+        entry main() {
+            let seed:any=0u64;
+            let it:Iterator<u64> = Iterator::unfold(seed, |s:any| {
+                let state:any=s;
+                for i:u64=0; i<64; i+=1 { state=[state]; }
+                return (1u64, state)
+            });
+            let holder=[it];
+            return holder[0].next().unwrap()
         }
-    }
-}
-
-#[test]
-fn test_iterator_depth_unfold_writeback_respects_destination_depth() {
-    for nesting in [14, 15] {
-        let code = format!(
-            r#"
-            entry main() {{
-                let seed: any = 0u64;
-                let it: Iterator<u64> = Iterator::unfold(seed, |s: any| {{
-                    let state: any = s;
-                    for i: u64 = 0; i < {nesting}; i += 1 {{ state = [state]; }}
-                    return (1u64, state)
-                }});
-                let holder = [it];
-                return holder[0].next().unwrap()
-            }}
-        "#
-        );
-        if nesting == 14 {
-            assert_eq!(run_code(&code), Primitive::Integer(PrimitiveInteger::U64(1)));
-        } else {
-            assert!(matches!(
-                run_code_result(&code),
-                Err(VMError::EnvironmentError(
-                    silex_environment::EnvironmentError::ValueError(
-                        ValueError::MaxDepthReached
-                    )
-                ))
-            ));
-        }
-    }
-}
-
-#[test]
-fn test_iterator_depth_uses_the_configured_limit() {
-    for nesting in [4, 5] {
-        let mut declarations = "let value0 = 0u64;".to_owned();
-        for level in 1..=nesting {
-            declarations.push_str(&format!(
-                "let value{level} = Iterator::once(value{});",
-                level - 1
-            ));
-        }
-        let code = format!("entry main() {{ {declarations} return 0u64 }}");
-        let (module, environment) = prepare_module(&code);
-        let mut vm = VM::default();
-        vm.context_mut().resources_mut().set_max_value_depth(4);
-        vm.append_module(ModuleMetadata {
-            module: (&module).into(),
-            environment: (&environment).into(),
-            metadata: (&()).into(),
-        })
-        .unwrap();
-        vm.invoke_chunk_id_unchecked(0).unwrap();
-        let result = vm.run_blocking();
-        if nesting == 4 {
-            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::Integer(PrimitiveInteger::U64(0)));
-        } else {
-            assert!(matches!(
-                result,
-                Err(VMError::ValueError(
-                    ValueError::MaxDepthReached
-                ))
-            ));
-        }
-    }
+    "#;
+    assert_eq!(run_code(code), PrimitiveInteger::U64(1).into());
 }
 
 #[test]
@@ -3196,47 +3116,14 @@ fn test_iterator_next_unfold_owns_its_initial_seed() {
 }
 
 #[test]
-fn test_iterator_eager_flatten_count_uses_configured_depth_budget() {
-    for nesting in [4, 5] {
-        let mut declarations = "let value0 = [1u64].iter();".to_owned();
-        for level in 1..=nesting {
-            declarations.push_str(&format!(
-                "let value{level} = value{}.enumerate();",
-                level - 1
-            ));
+fn test_iterator_eager_flatten_count_accepts_deep_payloads() {
+    let code = r#"
+        entry main() {
+            let value:any=[1u64].iter();
+            for i:u64=0; i<64; i+=1 { value=(value as Iterator<u64>).enumerate(); }
+            let inner=(value as Iterator<u64[]>).flatten();
+            return Iterator::once(inner).flatten().count() as u64
         }
-        let code = format!(
-            r#"
-            entry main() {{
-                {declarations}
-                let erased: any = value{nesting};
-                let inner = (erased as Iterator<u64[]>).flatten();
-                return Iterator::once(inner).flatten().count() as u64
-            }}
-        "#
-        );
-        let (module, environment) = prepare_module(&code);
-        let mut vm = VM::default();
-        vm.context_mut().resources_mut().set_max_value_depth(4);
-        vm.append_module(ModuleMetadata {
-            module: (&module).into(),
-            environment: (&environment).into(),
-            metadata: (&()).into(),
-        })
-        .unwrap();
-        vm.invoke_chunk_id_unchecked(0).unwrap();
-        let result = vm.run_blocking();
-        if nesting == 4 {
-            assert_eq!(result.unwrap().into_value().unwrap(), Primitive::Integer(PrimitiveInteger::U64(2)));
-        } else {
-            assert!(matches!(
-                result,
-                Err(VMError::EnvironmentError(
-                    silex_environment::EnvironmentError::ValueError(
-                        ValueError::MaxDepthReached
-                    )
-                ))
-            ));
-        }
-    }
+    "#;
+    assert_eq!(run_code(code), PrimitiveInteger::U64(2).into());
 }

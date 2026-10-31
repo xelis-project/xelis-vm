@@ -5,7 +5,7 @@ use log::{debug, trace};
 pub use opcode::OpCodeWithArgs;
 
 use thiserror::Error;
-use silex_types::Constant;
+use silex_types::OwnedValue;
 use silex_bytecode::{Access, Chunk, Module};
 
 pub use disassembler::*;
@@ -46,7 +46,7 @@ impl<'a> Assembler<'a> {
     }
 
     // Add a constant to the module and return its index
-    pub fn add_constant(&mut self, value: Constant) -> usize {
+    pub fn add_constant(&mut self, value: OwnedValue) -> usize {
         trace!("Adding constant: {:?}", value);
         self.module.add_constant(value)
     }

@@ -8,39 +8,38 @@ use crate::{
     VMContext,
     VMError
 };
-use silex_types::{Primitive, PrimitiveInteger};
+use silex_types::{Heap, Primitive, PrimitiveInteger};
 
 use super::InstructionResult;
 
-pub fn iterable_length<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterable_length<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterable length");
 
     let value = stack.pop_stack()?;
-    let len = Primitive::Integer(PrimitiveInteger::U32(value.as_ref(context.heap()).as_vec()?.len() as u32));
+    let len = Primitive::Integer(PrimitiveInteger::U32(value.as_ref(heap).as_vec()?.len() as u32));
 
     let memory_usage = len.get_memory_usage();
-    context.resources_mut().increase_memory_usage(memory_usage)?;
-
+    context.increase_memory_usage(memory_usage)?;
     stack.push_stack_unchecked(len.into());
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_begin<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_begin<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator begin");
 
     let value = stack.pop_stack()?;
-    let iterator = ValueIterator::new(value, context.heap())?;
+    let iterator = ValueIterator::new(value, heap)?;
     manager.add_iterator(iterator)?;
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_next<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_next<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator next");
 
     let addr = reader.read_u32()?;
-    if let Some(value) = manager.next_iterator(context.heap())? {
-        let memory_usage = value.estimate_memory_usage(context.heap(), context.resources().memory_left())?;
-        context.resources_mut().increase_memory_usage_unchecked(memory_usage)?;
+    if let Some(value) = manager.next_iterator(heap)? {
+        let memory_usage = value.estimate_memory_usage(heap, context.memory_left())?;
+        context.increase_memory_usage_unchecked(memory_usage)?;
 
         stack.push_stack(value)?;
     } else {
@@ -49,7 +48,7 @@ pub fn iterator_next<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack:
     Ok(InstructionResult::Nothing)
 }
 
-pub fn iterator_end<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn iterator_end<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, manager: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("iterator end");
 
     manager.pop_iterator()?;

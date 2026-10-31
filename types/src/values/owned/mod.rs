@@ -1,3 +1,8 @@
+#[cfg(test)]
+mod tests;
+
+mod serialization;
+
 use std::{
     borrow::Cow,
     fmt,
@@ -7,12 +12,12 @@ use std::{
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::{Opaque, OpaqueChild, Type, PrimitiveRange, Either, OpaqueWrapper, PrimitiveInteger, Constant, DefinedType, U256, ValueError, Primitive};
+use crate::{Opaque, Type, PrimitiveRange, Either, OpaqueWrapper, PrimitiveInteger, U256, ValueError, Primitive};
 
-use super::{RuntimeValue, ValuePointer, Heap, HeapError};
-use super::super::serde_map;
+use crate::{RuntimeValue, ValuePointer, Heap};
+use super::serde_map;
 
 /// An owned value for constants, inputs, and outputs.
 ///
@@ -20,13 +25,13 @@ use super::super::serde_map;
 /// `Clone`, `Drop`, `PartialEq`, and `Hash` are all iterative to prevent stack
 /// overflow for deeply nested structures. Opaque payloads supply their own
 /// implementations of these operations.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum OwnedValue {
     Opaque(OpaqueWrapper),
     Bytes(Vec<u8>),
     Object(Vec<OwnedValue>),
-    #[serde(with = "serde_map")]
+    #[serde(deserialize_with = "serde_map::deserialize")]
     #[schemars(with = "Vec<(OwnedValue, OwnedValue)>")]
     Map(IndexMap<OwnedValue, OwnedValue>),
     #[serde(untagged)]
@@ -40,6 +45,12 @@ impl PartialEq for OwnedValue {
         // fast check:
         if mem::discriminant(self) != mem::discriminant(other) {
             return false;
+        }
+
+        match (self, other) {
+            (Self::Primitive(a), Self::Primitive(b)) => return a == b,
+            (Self::Bytes(a), Self::Bytes(b)) => return a == b,
+            _ => {}
         }
 
         let mut stack = vec![(self, other)];
@@ -87,6 +98,15 @@ impl PartialEq for OwnedValue {
 
 impl Hash for OwnedValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Primitive(value) => return value.hash(state),
+            Self::Bytes(value) => {
+                12u8.hash(state);
+                return value.hash(state);
+            }
+            _ => {}
+        }
+
         let mut stack = vec![self];
         while let Some(cell) = stack.pop() {
             match cell {
@@ -123,14 +143,19 @@ impl OwnedValue {
     }
 
     /// Copy this value into runtime nodes, allocating descendants in the heap.
-    pub fn to_runtime_value(&self, heap: &mut Heap) -> Result<RuntimeValue, HeapError> {
+    #[inline]
+    pub fn to_runtime_value(&self, heap: &mut Heap) -> RuntimeValue {
         match self {
-            Self::Primitive(p) => return Ok(RuntimeValue::Primitive(p.clone())),
-            Self::Opaque(p) => return Ok(RuntimeValue::Opaque(p.deep_clone_in(heap)?)),
-            Self::Bytes(b) => return Ok(RuntimeValue::Bytes(b.clone())),
+            Self::Primitive(p) => return RuntimeValue::Primitive(p.clone()),
+            Self::Opaque(p) => return RuntimeValue::Opaque(p.deep_clone().into()),
+            Self::Bytes(b) => return RuntimeValue::Bytes(b.clone()),
             _ => {}
         }
 
+        self.to_nested_runtime_value(heap)
+    }
+
+    fn to_nested_runtime_value(&self, heap: &mut Heap) -> RuntimeValue {
         enum Work<'a> {
             Visit(&'a OwnedValue),
             BuildArray(usize),
@@ -144,18 +169,18 @@ impl OwnedValue {
             match item {
                 Work::BuildArray(len) => {
                     let start = results.len() - len;
-                    let values: Vec<ValuePointer> = results.drain(start..).map(|value| heap.insert(value)).collect::<Result<_, _>>()?;
+                    let values: Vec<ValuePointer> = results.drain(start..).map(|value| heap.insert(value)).collect();
                     results.push(RuntimeValue::Object(values));
                 }
                 Work::BuildMap(keys) => {
                     let start = results.len() - keys.len();
-                    let entries = keys.into_iter().zip(results.drain(start..)).map(|(key, value)| Ok((key, heap.insert(value)?)))
-                        .collect::<Result<_, HeapError>>()?;
+                    let entries = keys.into_iter().zip(results.drain(start..)).map(|(key, value)| (key, heap.insert(value)))
+                        .collect();
                     results.push(RuntimeValue::Map(Box::new(entries)));
                 }
                 Work::Visit(cell) => match cell {
                     Self::Primitive(p) => results.push(RuntimeValue::Primitive(p.clone())),
-                    Self::Opaque(p) => results.push(RuntimeValue::Opaque(p.deep_clone_in(heap)?)),
+                    Self::Opaque(p) => results.push(RuntimeValue::Opaque(p.deep_clone().into())),
                     Self::Bytes(b) => results.push(RuntimeValue::Bytes(b.clone())),
                     Self::Object(values) => {
                         work.push(Work::BuildArray(values.len()));
@@ -170,7 +195,7 @@ impl OwnedValue {
         }
 
         debug_assert_eq!(results.len(), 1);
-        Ok(results.pop().expect("runtime value root"))
+        results.pop().expect("runtime value root")
     }
 
     // Calculate logical VM memory usage iteratively.
@@ -318,72 +343,6 @@ impl From<Primitive> for OwnedValue {
     }
 }
 
-// Convert from the compiler/AST Constant type into OwnedValue.
-impl From<Constant> for OwnedValue {
-    fn from(c: Constant) -> Self {
-        // Iterative conversion to avoid stack overflow
-        enum Work {
-            Visit(Constant),
-            BuildArray(usize),
-            BuildMap(usize),
-            BuildTyped(usize, Option<u8>),
-        }
-
-        let mut work: Vec<Work> = vec![Work::Visit(c)];
-        let mut results: Vec<OwnedValue> = Vec::new();
-
-        while let Some(item) = work.pop() {
-            match item {
-                Work::Visit(c) => match c {
-                    Constant::Primitive(p) => results.push(Self::Primitive(p)),
-                    Constant::Opaque(p) => results.push(Self::Opaque(p)),
-                    Constant::Bytes(b) => results.push(Self::Bytes(b)),
-                    Constant::Array(values) => {
-                        let len = values.len();
-                        work.push(Work::BuildArray(len));
-                        work.extend(values.into_iter().rev().map(Work::Visit));
-                    }
-                    Constant::Map(map) => {
-                        let len = map.len();
-                        work.push(Work::BuildMap(len));
-                        for (k, v) in map.into_iter().rev() {
-                            work.push(Work::Visit(v));
-                            work.push(Work::Visit(k));
-                        }
-                    }
-                    Constant::Typed(fields, ty) => {
-                        let variant = match ty {
-                            DefinedType::Enum(variant) => Some(variant.variant_id()),
-                            _ => None,
-                        };
-                        work.push(Work::BuildTyped(fields.len(), variant));
-                        work.extend(fields.into_iter().rev().map(Work::Visit));
-                    }
-                },
-                Work::BuildArray(len) => {
-                    let start = results.len() - len;
-                    let values = results.split_off(start);
-                    results.push(Self::Object(values));
-                }
-                Work::BuildMap(len) => {
-                    let map = Self::take_map(&mut results, len);
-                    results.push(Self::Map(map));
-                }
-                Work::BuildTyped(len, variant) => {
-                    let mut values = results.split_off(results.len() - len);
-                    if let Some(variant) = variant {
-                        values.insert(0, Self::from(variant));
-                    }
-                    results.push(Self::Object(values));
-                }
-            }
-        }
-
-        debug_assert_eq!(results.len(), 1);
-        results.pop().expect("owned value root")
-    }
-}
-
 impl fmt::Display for OwnedValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         enum Item<'a> {
@@ -404,7 +363,9 @@ impl fmt::Display for OwnedValue {
                         work.push(Item::Text("]"));
                         for (index, value) in values.iter().enumerate().rev() {
                             work.push(Item::Value(value));
-                            if index > 0 { work.push(Item::Text(", ")); }
+                            if index > 0 {
+                                work.push(Item::Text(", "));
+                            }
                         }
                     }
                     Self::Map(map) => {
@@ -414,7 +375,9 @@ impl fmt::Display for OwnedValue {
                             work.push(Item::Value(value));
                             work.push(Item::Text(": "));
                             work.push(Item::Value(key));
-                            if index > 0 { work.push(Item::Text(", ")); }
+                            if index > 0 {
+                                work.push(Item::Text(", "));
+                            }
                         }
                     }
                 }
@@ -456,11 +419,15 @@ impl From<String> for OwnedValue {
 }
 
 impl From<PrimitiveInteger> for OwnedValue {
-    fn from(value: PrimitiveInteger) -> Self { Primitive::Integer(value).into() }
+    fn from(value: PrimitiveInteger) -> Self {
+        Primitive::Integer(value).into()
+    }
 }
 
 impl From<bool> for OwnedValue {
-    fn from(value: bool) -> Self { Self::Primitive(Primitive::Boolean(value)) }
+    fn from(value: bool) -> Self {
+        Self::Primitive(Primitive::Boolean(value))
+    }
 }
 
 
@@ -744,7 +711,7 @@ impl OwnedValue {
     pub fn as_enum(&self) -> Result<(u8, &[OwnedValue]), ValueError> {
         // the enum variant id is injected as first element
         let (variant, fields) = self.as_vec()?.split_first()
-            .ok_or(ValueError::ExpectedEnumWithVariantId)?;
+            .ok_or_else(|| ValueError::ExpectedEnumWithVariantId)?;
         Ok((variant.as_u8()?, fields))
     }
 
@@ -752,7 +719,7 @@ impl OwnedValue {
     pub fn as_mut_enum(&mut self) -> Result<(u8, &mut [OwnedValue]), ValueError> {
         // the enum variant id is injected as first element
         let (variant, fields) = self.as_mut_vec()?.split_first_mut()
-            .ok_or(ValueError::ExpectedEnumWithVariantId)?;
+            .ok_or_else(|| ValueError::ExpectedEnumWithVariantId)?;
         Ok((variant.as_u8()?, fields))
     }
 
@@ -948,6 +915,9 @@ impl OwnedValue {
 
 
     pub fn is_hashable(&self) -> bool {
+        if matches!(self, Self::Primitive(_) | Self::Bytes(_)) {
+            return true;
+        }
         let mut work = vec![self];
         while let Some(value) = work.pop() {
             match value {
@@ -959,45 +929,15 @@ impl OwnedValue {
         }
         true
     }
-    pub fn calculate_depth(&self, max: usize) -> Result<usize, ValueError> {
-        let mut biggest = 0;
-        let mut work = vec![(OpaqueChild::Owned(self), 0)];
-        while let Some((child, depth)) = work.pop() {
-            if depth > max { return Err(ValueError::MaxDepthReached); }
-            biggest = biggest.max(depth);
-            let value = match child {
-                OpaqueChild::Owned(value) => value,
-                OpaqueChild::Opaque(value) => {
-                    value.visit_children(&mut |child| work.push((child, depth + 1)));
-                    continue;
-                }
-                OpaqueChild::Value(value) => {
-                    match value {
-                        RuntimeValue::Primitive(_) | RuntimeValue::Bytes(_) => {}
-                        RuntimeValue::Opaque(value) => work.push((OpaqueChild::Opaque(value.inner()), depth)),
-                        _ => return Err(HeapError::InvalidPointer.into()),
-                    }
-                    continue;
-                }
-                OpaqueChild::Pointer(_) => return Err(HeapError::InvalidPointer.into()),
-            };
-            match value {
-                Self::Object(children) => work.extend(children.iter().map(|v| (OpaqueChild::Owned(v), depth + 1))),
-                Self::Map(children) => work.extend(children.iter().flat_map(|(k, v)| [(OpaqueChild::Owned(k), depth + 1), (OpaqueChild::Owned(v), depth + 1)])),
-                Self::Opaque(value) => work.push((OpaqueChild::Opaque(value.inner()), depth)),
-                _ => {}
-            }
-        }
-        Ok(biggest)
-    }
+
 }
 impl From<OpaqueWrapper> for OwnedValue {
-    fn from(value: OpaqueWrapper) -> Self { Self::Opaque(value) }
+    fn from(value: OpaqueWrapper) -> Self {
+        Self::Opaque(value)
+    }
 }
 impl<T: Opaque> From<T> for OwnedValue {
-    fn from(value: T) -> Self { Self::Opaque(value.into()) }
+    fn from(value: T) -> Self {
+        Self::Opaque(value.into())
+    }
 }
-
-
-#[cfg(test)]
-mod tests;

@@ -50,11 +50,10 @@ pub enum BuilderError {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
 
     use silex_bytecode::Module;
     use silex_environment::{VMContext, FnInstance, FnParams, FnReturnType, FunctionHandler, ModuleMetadata, SysCallResult, tid};
-    use silex_types::Reference;
+    use silex_types::{Reference, Heap};
     use crate::EnvironmentBuilder;
 
     trait Foo: Send + Sync {}
@@ -68,7 +67,7 @@ mod tests {
 
     tid! { impl<'a, F: 'static> TidAble<'a> for FooWrapper<F> where F: Foo }
 
-    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &ModuleMetadata<'_, M>, context: &'a mut VMContext<'ty, 'r>) -> FnReturnType<M> {
+    fn bar<'a, 'ty, 'r, M, F: Foo + 'static>(_: FnInstance<'a>, _: FnParams, _: &ModuleMetadata<'_, M>, context: &'a mut VMContext<'ty, 'r>, _heap: &'a mut Heap) -> FnReturnType<M> {
         let _: &FooWrapper<F> = context.get().unwrap();
         Ok(SysCallResult::None)
     }
@@ -79,7 +78,7 @@ mod tests {
             "bar",
             None,
             vec![],
-            FunctionHandler::Sync(bar::<(), F>),
+            unsafe { FunctionHandler::sync_unchecked(bar::<(), F>) },
             1000,
             None
         );
@@ -97,10 +96,10 @@ mod tests {
         let mut context = VMContext::new();
         context.insert(FooWrapper(FooImpl));
 
-        assert!((f.call_function(VecDeque::new(), &ModuleMetadata {
+        assert!((f.call_function(Vec::new(), &ModuleMetadata {
             module: Reference::Borrowed(&Module::new()),
             metadata: Reference::Borrowed(&()),
             environment: Reference::Borrowed(env.environment()),
-        }, &mut context)).unwrap().is_none());
+        }, &mut context, &mut unsafe { Heap::new() })).unwrap().is_none());
     }
 }

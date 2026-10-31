@@ -1,4 +1,6 @@
 pub mod traits;
+mod runtime;
+pub use runtime::RuntimeOpaqueWrapper;
 
 use std::{
     any::TypeId,
@@ -213,8 +215,8 @@ impl<'a> Deserialize<'a> for OpaqueType {
 pub enum OpaqueChild<'a> {
     Value(&'a RuntimeValue),
     Owned(&'a OwnedValue),
-    Pointer(ValuePointer),
-    Opaque(&'a dyn Opaque),
+    Pointer(&'a ValuePointer),
+    Opaque(&'a dyn OpaqueValue),
 }
 
 impl<'a> From<&'a OwnedValue> for OpaqueChild<'a> {
@@ -227,8 +229,8 @@ impl<'a> From<&'a RuntimeValue> for OpaqueChild<'a> {
     }
 }
 
-impl<'a> From<&'a dyn Opaque> for OpaqueChild<'a> {
-    fn from(value: &'a dyn Opaque) -> Self {
+impl<'a> From<&'a dyn OpaqueValue> for OpaqueChild<'a> {
+    fn from(value: &'a dyn OpaqueValue) -> Self {
         Self::Opaque(value)
     }
 }
@@ -237,34 +239,26 @@ impl<'a> From<&'a StackValue> for OpaqueChild<'a> {
     fn from(value: &'a StackValue) -> Self {
         match value {
             StackValue::Owned(value) => Self::Value(value),
-            StackValue::Pointer { ptr, .. } => Self::Pointer(*ptr),
+            StackValue::Pointer { ptr, .. } => Self::Pointer(ptr),
         }
     }
 }
 
-impl From<ValuePointer> for OpaqueChild<'_> {
-    fn from(value: ValuePointer) -> Self {
+impl<'a> From<&'a ValuePointer> for OpaqueChild<'a> {
+    fn from(value: &'a ValuePointer) -> Self {
         Self::Pointer(value)
     }
 }
 
-pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
-    fn clone_box(&self) -> Box<dyn Opaque>;
+/// Runtime edges rewritten by the heap's iterative detachment walker.
+pub enum OpaqueChildMut<'a> {
+    Value(&'a mut RuntimeValue),
+    Pointer(&'a mut ValuePointer),
+    Stack(&'a mut StackValue),
+}
 
-    /// Clone with every retained VM value detached from its original slots.
-    /// Container implementations must deeply clone their payloads, including
-    /// nested opaque objects. Scalar implementations may use `clone_box`.
-    fn deep_clone(&self) -> Box<dyn Opaque> {
-        // By default, fallback on clone_box
-        self.clone_box()
-    }
-
-    /// Detach runtime handles into fresh slots in the supplied heap.
-    /// Types retaining handles must override this and expose them as children.
-    fn deep_clone_in(&self, _: &mut Heap) -> Result<Box<dyn Opaque>, HeapError> {
-        Ok(self.deep_clone())
-    }
-
+/// Shared inspection capabilities. This trait exposes no heap access.
+pub trait OpaqueValue: AsAny + DynType + JSONHelper + fmt::Debug {
     /// Return the binary serialization capability when supported.
     fn as_serializable(&self) -> Option<&dyn DynSerializable> { None }
 
@@ -292,6 +286,44 @@ pub trait Opaque: AsAny + DynType + JSONHelper + fmt::Debug + Sync + Send {
     /// Containers must expose every contained value; scalar opaque types leave
     /// this empty. Visit direct children only; walkers handle their descendants.
     fn visit_children<'a>(&'a self, _: &mut dyn FnMut(OpaqueChild<'a>)) {}
+}
+
+/// Portable host data. It cannot contain non-Send runtime handles.
+///
+/// ```compile_fail
+/// use silex_types::{Opaque, OwnedValue, ValuePointer};
+/// #[derive(Debug, Clone, Opaque)]
+/// #[opaque(runtime)]
+/// struct Local(ValuePointer);
+/// fn export(pointer: ValuePointer) -> OwnedValue {
+///     OwnedValue::from(Local(pointer))
+/// }
+/// ```
+pub trait Opaque: OpaqueValue + Send + Sync {
+    fn clone_box(&self) -> Box<dyn Opaque>;
+
+    fn deep_clone(&self) -> Box<dyn Opaque> {
+        self.clone_box()
+    }
+}
+
+/// Runtime-only data retained by one execution.
+pub trait RuntimeOpaque: OpaqueValue {
+    fn clone_runtime(&self) -> Box<dyn RuntimeOpaque>;
+
+    /// Opt into iterative detachment by exposing every direct runtime edge.
+    /// Both visits must enumerate the same fields in the same order, including
+    /// fields temporarily emptied by the first visit. Visitors must not resolve
+    /// emptied handles. Inline structural opaque children may be traversed
+    /// iteratively by the visitor.
+    /// Return false without invoking the visitor when using deep_clone_in instead.
+    fn visit_children_mut(&mut self, _visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<bool, HeapError> {
+        Ok(false)
+    }
+
+    fn deep_clone_in(&self, _heap: &mut Heap) -> Result<Box<dyn RuntimeOpaque>, HeapError> {
+        Ok(self.clone_runtime())
+    }
 }
 
 impl Hash for dyn Opaque {
@@ -358,14 +390,14 @@ impl OpaqueWrapper {
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
         (*self.inner).as_any()
             .downcast_ref::<T>()
-            .ok_or(ValueError::InvalidOpaqueTypeMismatch)
+            .ok_or_else(|| ValueError::InvalidOpaqueTypeMismatch)
     }
 
     // Downcast the OpaqueWrapper to a specific type
     pub fn as_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
         (*self.inner).as_any_mut()
             .downcast_mut::<T>()
-            .ok_or(ValueError::InvalidOpaqueTypeMismatch)
+            .ok_or_else(|| ValueError::InvalidOpaqueTypeMismatch)
     }
 
     // Downcast the OpaqueWrapper to a specific type
@@ -413,7 +445,7 @@ impl OpaqueWrapper {
     }
 
     #[inline]
-    pub fn inner(&self) -> &dyn Opaque {
+    pub fn inner(&self) -> &dyn OpaqueValue {
         self.inner.as_ref()
     }
 
@@ -458,7 +490,7 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
             .map_err(serde::de::Error::custom)?;
 
         let deserialize_fn = registry.get(&type_name.as_str())
-            .ok_or(serde::de::Error::custom(format!("Unknown type '{}' for registry", type_name)))?;
+            .ok_or_else(|| serde::de::Error::custom(format!("Unknown type '{}' for registry", type_name)))?;
 
         deserialize_fn(value)
             .with_context(|| format!("deserializing opaque value of type {type_name}"))
@@ -475,10 +507,6 @@ impl Clone for OpaqueWrapper {
 }
 
 impl OpaqueWrapper {
-    pub fn deep_clone_in(&self, heap: &mut Heap) -> Result<Self, HeapError> {
-        Ok(Self { inner: self.inner.deep_clone_in(heap)? })
-    }
-
     pub fn deep_clone(&self) -> Self {
         Self { inner: self.inner.deep_clone() }
     }
@@ -527,7 +555,11 @@ mod tests {
 
         impl JSONHelper for BinaryOpaque {}
         impl Opaque for BinaryOpaque {
-            fn clone_box(&self) -> Box<dyn Opaque> { Box::new(self.clone()) }
+    fn clone_box(&self) -> Box<dyn Opaque> { Box::new(self.clone()) }
+}
+
+impl OpaqueValue for BinaryOpaque {
+
             fn as_serializable(&self) -> Option<&dyn DynSerializable> { Some(&self.0) }
         }
 

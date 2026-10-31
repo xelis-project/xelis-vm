@@ -1,6 +1,8 @@
 mod error;
 mod function;
 mod context;
+mod scope;
+pub use scope::{NativeScope, ValueView, NativeState, NativeCallback};
 mod identity_hasher;
 
 use std::any::TypeId;

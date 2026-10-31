@@ -52,7 +52,7 @@ fn test_pop_constant() {
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(module.add_constant(Primitive::Integer(PrimitiveInteger::U8(0))) as u16);
 
-    // Constant to be poped
+    // OwnedValue to be poped
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -146,7 +146,7 @@ fn test_multi_depth_array_call() {
     ].into_iter().map(|v| v.into()).collect();
 
     // Push element 1
-    let index = module.add_constant(Constant::Array(values));
+    let index = module.add_constant(OwnedValue::Object(values));
     chunk.emit_opcode(OpCode::Constant);
     chunk.write_u16(index as u16);
 
@@ -313,7 +313,7 @@ fn test_function_call_on_value() {
     // Main function
     let mut main = Chunk::new();
     // Create a struct
-    let index = module.add_constant(Constant::Array(vec![
+    let index = module.add_constant(OwnedValue::Object(vec![
         Primitive::Integer(PrimitiveInteger::U64(10)).into()
     ]));
 
@@ -496,7 +496,7 @@ fn test_safe_sub_value_pointer() {
     let mut chunk = Chunk::new();
 
     // Push element 1
-    module.add_constant(Constant::Array(vec![Primitive::Integer(PrimitiveInteger::U64(10)).into()]));
+    module.add_constant(OwnedValue::Object(vec![Primitive::Integer(PrimitiveInteger::U64(10)).into()]));
     module.add_constant(Primitive::Integer(PrimitiveInteger::U32(0)));
 
     chunk.emit_opcode(OpCode::Constant);
@@ -536,7 +536,7 @@ fn test_safe_sub_intermediate_value_pointer() {
     let mut chunk = Chunk::new();
 
     // Push element 1
-    module.add_constant(Constant::Array(vec![Constant::Array(vec![Primitive::Integer(PrimitiveInteger::U64(10)).into()])]));
+    module.add_constant(OwnedValue::Object(vec![OwnedValue::Object(vec![Primitive::Integer(PrimitiveInteger::U64(10)).into()])]));
     module.add_constant(Primitive::Integer(PrimitiveInteger::U32(0)));
 
     chunk.emit_opcode(OpCode::Constant);
@@ -589,7 +589,7 @@ fn test_for_each_iterator() {
     let mut module = Module::new();
     let mut chunk = Chunk::new();
 
-    let index = module.add_constant(Constant::Array(vec![
+    let index = module.add_constant(OwnedValue::Object(vec![
         Primitive::Integer(PrimitiveInteger::U8(10)).into(),
         Primitive::Integer(PrimitiveInteger::U8(20)).into(),
         Primitive::Integer(PrimitiveInteger::U8(30)).into(),

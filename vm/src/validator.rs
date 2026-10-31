@@ -1,8 +1,9 @@
+use silex_types::OpaqueValue;
 use std::collections::HashSet;
 
 use thiserror::Error;
 use silex_environment::Environment;
-use silex_types::{Opaque, OpaqueChild, Primitive, OwnedValue, ValueError};
+use silex_types::{OpaqueChild, Primitive, OwnedValue, ValueError};
 use silex_bytecode::{Access, Module, OpCode};
 
 use crate::ChunkReader;
@@ -79,7 +80,7 @@ impl<'a, M> ModuleValidator<'a, M> {
     pub fn verify_constant(&self, constant: &OwnedValue) -> Result<(), ValidatorError> {
         enum Node<'a> {
             Value(&'a OwnedValue),
-            Opaque(&'a dyn Opaque),
+            Opaque(&'a dyn OpaqueValue),
             Runtime,
         }
         let mut stack = vec![(Node::Value(constant), 0, false)];
@@ -179,7 +180,7 @@ impl<'a, M> ModuleValidator<'a, M> {
     // Returns an error if the parameters are invalid
     pub fn verify_invoke_chunk<'b, I: Iterator<Item = &'b OwnedValue> + ExactSizeIterator>(&self, chunk_id: usize, params: I) -> Result<(), ValidatorError> {
         let chunk = self.module.get_chunk_at(chunk_id)
-            .ok_or(ValidatorError::InvalidEntryId(chunk_id))?;
+            .ok_or_else(|| ValidatorError::InvalidEntryId(chunk_id))?;
 
         match &chunk.access {
             Access::Entry { parameters } | Access::All { parameters } => {
@@ -264,7 +265,7 @@ impl<'a, M> ModuleValidator<'a, M> {
             while let Some(instruction) = reader.next_u8() {
                 instruction_starts.insert(reader.index() - 1);
                 let op = OpCode::from_byte(instruction)
-                    .ok_or(ValidatorError::InvalidOpCode)?;
+                    .ok_or_else(|| ValidatorError::InvalidOpCode)?;
 
                 // How many bytes args available
                 let mut count = op.arguments_bytes();

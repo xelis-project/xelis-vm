@@ -21,8 +21,10 @@ macro_rules! bench {
                 }).expect("module");
 
                 vm.invoke_entry_chunk($id).expect("entry");
+                // Each iteration completes before the next one starts;
+                // all runtime handles stay inside this sequential execution.
                 vm.run_blocking().expect("run");
-                vm.context_mut().resources_mut().reset_usage();
+                vm.context_mut().reset_usage();
             });
         });
     };

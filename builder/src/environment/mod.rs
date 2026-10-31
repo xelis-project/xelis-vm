@@ -1,7 +1,8 @@
+use silex_types::OpaqueValue;
 pub mod xstd;
 
 use std::{any::TypeId, borrow::Cow, collections::HashMap};
-use silex_types::{Constant, EnumType, EnumVariant, Opaque, OpaqueType, OpaqueTypeTrait, StructType, Type};
+use silex_types::{OwnedValue, EnumType, EnumVariant, OpaqueType, OpaqueTypeTrait, StructType, Type};
 use silex_environment::{Environment, FunctionHandler, NativeFunction};
 use crate::{
     BuilderError,
@@ -19,19 +20,19 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ConstantInfo<'a> {
-    value: (Constant, Type),
+    value: (OwnedValue, Type),
     comment: Option<&'a str>,
 }
 
 impl<'a> ConstantInfo<'a> {
-    pub fn new(value: Constant, value_type: Type, comment: Option<&'a str>) -> Self {
+    pub fn new(value: OwnedValue, value_type: Type, comment: Option<&'a str>) -> Self {
         Self {
             value: (value, value_type),
             comment,
         }
     }
 
-    pub fn value(&self) -> &Constant {
+    pub fn value(&self) -> &OwnedValue {
         &self.value.0
     }
 
@@ -39,7 +40,7 @@ impl<'a> ConstantInfo<'a> {
         &self.value.1
     }
 
-    pub fn as_tuple(&self) -> &(Constant, Type) {
+    pub fn as_tuple(&self) -> &(OwnedValue, Type) {
         &self.value
     }
 
@@ -138,6 +139,18 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
         self.types_constants_functions.register_with_comment(name, for_type, parameters, on_call, Some(comment)).unwrap();
     }
 
+    pub fn register_const_function_with_return_type(
+        &mut self,
+        name: &'a str,
+        for_type: Type,
+        parameters: Vec<(&'a str, Type)>,
+        return_type: Type,
+        on_call: ConstFnCall,
+    ) {
+        self.types_constants_functions.register_with_return_type(name, for_type, parameters, return_type, on_call)
+            .expect("failed to register constant function");
+    }
+
     // Set a documentation comment for a registered native or static function
     pub fn set_function_comment(&mut self, name: &str, on_type: Option<Type>, comment: &'a str) -> Result<(), BuilderError> {
         self.functions_mapper.set_comment(name, on_type.as_ref(), comment)
@@ -183,7 +196,7 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
 
     // Register an opaque type in the environment
     // Panic if the opaque name is already used
-    pub fn register_opaque<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool) -> OpaqueType {
+    pub fn register_opaque<T: OpaqueValue>(&mut self, name: &'static str, allow_external_input: bool) -> OpaqueType {
         let ty = TypeId::of::<T>();
         let opaque = self.opaque_manager.build::<T>(name, allow_external_input)
             .expect("Unique opaque name");
@@ -193,13 +206,13 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
 
     // Register a generic opaque type (accepts type parameters, e.g. Iterator<T>)
     // Panic if the opaque name is already used
-    pub fn register_generic_opaque<T: Opaque>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> OpaqueType {
+    pub fn register_generic_opaque<T: OpaqueValue>(&mut self, name: &'static str, allow_external_input: bool, generics_count: u8) -> OpaqueType {
         self.register_generic_opaque_with_traits::<T>(name, allow_external_input, generics_count, &[])
     }
 
     /// Register a generic opaque type with the given type-level trait markers.
     /// Panic if the opaque name is already used.
-    pub fn register_generic_opaque_with_traits<T: Opaque>(
+    pub fn register_generic_opaque_with_traits<T: OpaqueValue>(
         &mut self,
         name: &'static str,
         allow_external_input: bool,
@@ -226,23 +239,23 @@ impl<'a, M> EnvironmentBuilder<'a, M> {
 
     // Register a constant in the environment
     // Panic if the constant name is already used
-    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type) {
+    pub fn register_constant(&mut self, _type: Type, name: &'a str, value: OwnedValue, value_type: Type) {
         self.register_constant_internal(_type, name, value, value_type, None);
     }
 
     // Register a constant in the environment with a documentation comment
     // Panic if the constant name is already used
-    pub fn register_constant_with_comment(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type, comment: &'a str) {
+    pub fn register_constant_with_comment(&mut self, _type: Type, name: &'a str, value: OwnedValue, value_type: Type, comment: &'a str) {
         self.register_constant_internal(_type, name, value, value_type, Some(comment));
     }
 
-    fn register_constant_internal(&mut self, _type: Type, name: &'a str, value: Constant, value_type: Type, comment: Option<&'a str>) {
+    fn register_constant_internal(&mut self, _type: Type, name: &'a str, value: OwnedValue, value_type: Type, comment: Option<&'a str>) {
         let constants = self.types_constants.entry(_type.clone()).or_insert_with(HashMap::new);
         constants.insert(name, ConstantInfo::new(value, value_type, comment));
     }
 
     // Get a constant by name
-    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&(Constant, Type)> {
+    pub fn get_constant_by_name(&self, _type: &Type, name: &str) -> Option<&(OwnedValue, Type)> {
         self.get_constant_info_by_name(_type, name)
             .map(ConstantInfo::as_tuple)
     }
@@ -353,7 +366,7 @@ impl<'a, M: 'static> Default for EnvironmentBuilder<'a, M> {
 mod tests {
     use super::*;
     use silex_environment::{FunctionHandler, SysCallResult};
-    use silex_types::{Constant, Primitive, PrimitiveInteger};
+    use silex_types::{OwnedValue, Primitive, PrimitiveInteger};
 
     #[test]
     pub fn test_add_enum() {
@@ -429,7 +442,7 @@ mod tests {
             "foo",
             None,
             vec![],
-            FunctionHandler::Sync(|_, _, _, _| Ok(SysCallResult::None)),
+            unsafe { FunctionHandler::sync_unchecked(|_, _, _, _, _heap| Ok(SysCallResult::None)) },
             0,
             None,
             "Runs foo.",
@@ -461,7 +474,7 @@ mod tests {
             "new",
             Type::Bytes,
             vec![],
-            |_| Ok(Constant::Bytes(Vec::new())),
+            |_| Ok(OwnedValue::Bytes(Vec::new())),
             "Creates empty bytes.",
         );
         assert_eq!(

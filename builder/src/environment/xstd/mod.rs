@@ -1,3 +1,4 @@
+use silex_types::Heap;
 // All modules are public
 // So anyone can re-use them in their own environment if they want to
 pub mod array;
@@ -20,6 +21,7 @@ use silex_environment::{
     FnParams,
     FnReturnType,
     FunctionHandler,
+    OnCallSyncFn,
     SysCallResult,
     ModuleMetadata,
 };
@@ -42,39 +44,39 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
 
 // Register default functions available in the environment, like println, debug, panic, assert, etc.
 pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
-    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], FunctionHandler::Sync(println), 1, None, "Prints a value to standard output using its display representation.");
-    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], FunctionHandler::Sync(debug), 1, None, "Prints a value to standard output using its debug representation.");
-    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], FunctionHandler::Sync(panic), 1, Some(Type::Any), "Stops execution with the provided panic message.");
-    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], FunctionHandler::Sync(assert), 1, None, "Fails execution if the condition is false.");
-    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], FunctionHandler::Sync(is_same_ptr), 5, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
-    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], FunctionHandler::Sync(require), 1, None, "Fails execution with the message if the condition is false.");
-    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], FunctionHandler::Sync(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
+    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], native(println), 1, None, "Prints a value to standard output using its display representation.");
+    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], native(debug), 1, None, "Prints a value to standard output using its debug representation.");
+    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], native(panic), 1, Some(Type::Any), "Stops execution with the provided panic message.");
+    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], native(assert), 1, None, "Fails execution if the condition is false.");
+    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], native(is_same_ptr), 5, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
+    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], native(require), 1, None, "Fails execution with the message if the condition is false.");
+    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], native(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
 }
 
-fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let param = &parameters[0];
-    println!("{}", param.as_ref(context.heap()).display(context.heap()));
+    println!("{}", param.as_ref(heap).display(heap));
 
     Ok(SysCallResult::None)
 }
 
-fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext) -> FnReturnType<M> {
+fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, _heap: &mut Heap) -> FnReturnType<M> {
     let param = &parameters[0];
     println!("{:?}", param);
 
     Ok(SysCallResult::None)
 }
 
-fn panic<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn panic<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let value = param.into_owned(context.heap_mut())?;
+    let value = param.into_owned(heap)?;
 
-    Err(EnvironmentError::Panic(format!("{:#}", value.display(context.heap()))))
+    Err(EnvironmentError::Panic(format!("{:#}", value.display(heap))))
 }
 
-fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let param = &parameters[0];
-    let value = param.as_bool(context.heap())?;
+    let value = param.as_bool(heap)?;
 
     if value {
         Ok(SysCallResult::None)
@@ -83,21 +85,21 @@ fn assert<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, con
     }
 }
 
-fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
-    let left = parameters[0].as_ref(context.heap());
-    let right = parameters[1].as_ref(context.heap());
+fn is_same_ptr<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+    let left = parameters[0].as_ref(heap);
+    let right = parameters[1].as_ref(heap);
     let same = ptr::from_ref(left) == ptr::from_ref(right);
 
     Ok(SysCallResult::Return(Primitive::Boolean(same).into()))
 }
 
-fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn require<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let msg = parameters.remove(1)
-        .into_owned(context.heap_mut())?
+        .into_owned(heap)?
         .into_string()?;
 
     let param = &parameters[0];
-    let value = param.as_bool(context.heap())?;
+    let value = param.as_bool(heap)?;
 
     if value {
         Ok(SysCallResult::None)
@@ -106,12 +108,19 @@ fn require<M>(_: FnInstance, mut parameters: FnParams, _: &ModuleMetadata<'_, M>
     }
 }
 
-fn clone<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext) -> FnReturnType<M> {
+fn clone<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
 
-    let memory = zelf.as_ref(context.heap()).calculate_memory_usage(context.heap(), context.resources().memory_left())?;
+    let memory = zelf.as_ref(heap).calculate_memory_usage(heap, context.memory_left())?;
     // Double cost: computation for cloning and memory allocation?
-    context.resources_mut().increase_memory_usage_unchecked(memory)?;
+    context.increase_memory_usage_unchecked(memory)?;
 
-    Ok(SysCallResult::Return(zelf.to_owned(context.heap_mut())?))
+    Ok(SysCallResult::Return(zelf.to_owned(heap)?))
+}
+
+// This private constructor is used only by the standard library below this
+// module. Its handlers retain runtime owners exclusively in engine-managed
+// values and callback state; no host callback receives those owners.
+fn native<M>(handler: OnCallSyncFn<M>) -> FunctionHandler<M> {
+    unsafe { FunctionHandler::sync_unchecked(handler) }
 }

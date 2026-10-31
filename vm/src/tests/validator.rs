@@ -1,7 +1,8 @@
+use silex_types::OpaqueValue;
 use indexmap::IndexMap;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Chunk, Module};
-use silex_types::{DynType, PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynEq, DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, OwnedValue, RuntimeValue, OpaqueChild, Heap};
+use silex_types::{DynType, PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynEq, DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, OwnedValue, OpaqueChild};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_compiler::Compiler;
@@ -25,10 +26,14 @@ impl DynType for NonHashableOpaque {
 impl JSONHelper for NonHashableOpaque {}
 
 impl Opaque for NonHashableOpaque {
-    fn as_eq(&self) -> Option<&dyn DynEq> { Some(self) }
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
+}
+
+impl OpaqueValue for NonHashableOpaque {
+    fn as_eq(&self) -> Option<&dyn DynEq> { Some(self) }
+
 }
 
 fn create_environment() -> silex_environment::Environment<()> {
@@ -73,7 +78,7 @@ fn test_control_flow_targets_must_be_instruction_boundaries() {
         if matches!(op, OpCode::Match) {
             chunk.write_u8(0);
         }
-        chunk.write_u32(1); // middle of Constant's u16 operand
+        chunk.write_u32(1); // middle of OwnedValue's u16 operand
         chunk.emit_opcode(OpCode::Return);
         module.add_entry_chunk(chunk, None);
 
@@ -1017,12 +1022,17 @@ fn test_map_key_and_value_depth_boundaries() {
 }
 
 #[test]
-fn test_cyclic_runtime_values_cannot_be_exported_as_constants() {
-    let mut heap = Heap::new();
-    let id = heap.insert(RuntimeValue::Primitive(Primitive::Null)).unwrap();
-    *heap.get_mut(id).unwrap() = RuntimeValue::Object(vec![id]);
-    let value = RuntimeValue::Object(vec![id]);
-    assert!(matches!(heap.snapshot(&value), Err(ValueError::CyclicError)));
+fn test_cyclic_host_opaque_children_remain_invalid_at_the_constant_boundary() {
+    #[derive(Debug, Clone, Opaque)]
+    #[opaque(children = std::iter::once(self as &dyn OpaqueValue))]
+    struct Cyclic;
+    let mut builder = EnvironmentBuilder::<()>::default();
+    builder.register_opaque::<Cyclic>("Cyclic", true);
+    let environment = builder.build();
+    let module = create_module_with_entry_chunk(Some(vec![TypePacked::Any]));
+    let validator = ModuleValidator::new(&module, &environment);
+    let value = OwnedValue::from(Cyclic);
+    assert!(matches!(validator.verify_constant(&value), Err(ValidatorError::ConstantTooDeep)));
 }
 
 #[test]
@@ -1087,10 +1097,6 @@ fn test_mixed_opaque_children_share_depth_and_validation_checks() {
             .into();
             if too_deep {
                 assert!(matches!(
-                    value.calculate_depth(16),
-                    Err(ValueError::MaxDepthReached)
-                ));
-                assert!(matches!(
                     validator.verify_constant(&value),
                     Err(ValidatorError::ConstantTooDeep)
                 ));
@@ -1099,7 +1105,6 @@ fn test_mixed_opaque_children_share_depth_and_validation_checks() {
                     Err(ValidatorError::ConstantTooDeep)
                 ));
             } else {
-                assert_eq!(value.calculate_depth(16).unwrap(), 16);
                 assert!(validator.verify_constant(&value).is_ok());
                 assert!(validator
                     .verify_invoke_chunk(0, std::iter::once(&value))
@@ -1171,7 +1176,6 @@ fn test_opaque_children_participate_in_depth_and_value_validation() {
             assert!(validator
                 .verify_invoke_chunk(0, std::iter::once(&value))
                 .is_ok());
-            assert_eq!(value.calculate_depth(16).unwrap(), 16);
         } else {
             assert!(matches!(
                 validator.verify_constant(&value),
@@ -1180,10 +1184,6 @@ fn test_opaque_children_participate_in_depth_and_value_validation() {
             assert!(matches!(
                 validator.verify_invoke_chunk(0, std::iter::once(&value)),
                 Err(ValidatorError::ConstantTooDeep)
-            ));
-            assert!(matches!(
-                value.calculate_depth(16),
-                Err(ValueError::MaxDepthReached)
             ));
         }
     }
@@ -1289,9 +1289,13 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
     }
     impl JSONHelper for ValidatedContainer {}
     impl Opaque for ValidatedContainer {
-        fn clone_box(&self) -> Box<dyn Opaque> {
+    fn clone_box(&self) -> Box<dyn Opaque> {
             Box::new(self.clone())
         }
+}
+
+impl OpaqueValue for ValidatedContainer {
+
         fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(OpaqueChild<'a>)) {
             visitor((&self.value).into());
         }

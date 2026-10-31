@@ -4,6 +4,7 @@ pub use silex_types_macros::{DynType, Opaque};
 
 mod types;
 mod values;
+mod heap;
 mod u256;
 mod reference;
 
@@ -17,6 +18,7 @@ use std::{
 
 pub use types::*;
 pub use values::*;
+pub use heap::*;
 pub use types::opaque::*;
 pub use u256::U256;
 pub use reference::*;

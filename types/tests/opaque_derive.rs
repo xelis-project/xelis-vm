@@ -1,7 +1,9 @@
+use silex_types::RuntimeOpaqueWrapper;
+use silex_types::OpaqueValue;
 use silex_types::{
     DynType, PrimitiveInteger, register_opaque_json,
     traits::{DynType, JSONHelper, JSON_REGISTRY},
-    Constant, OwnedValue, Opaque, OpaqueWrapper, Primitive, StackValue, RuntimeValue, ValueError, ValuePointer, Heap, HeapError,
+    OwnedValue, Opaque, OpaqueWrapper, Primitive, StackValue, RuntimeValue, ValueError, ValuePointer, Heap, HeapError,
 };
 
 #[derive(Debug, Clone, Opaque)]
@@ -10,42 +12,47 @@ struct Plain;
 #[test]
 fn opaque_heap_errors_propagate_through_import_clone_and_export() {
     #[derive(Debug, Clone, Opaque)]
-    #[opaque(deep_clone_in = Err::<Self, HeapError>(HeapError::CapacityExceeded)?)]
+    #[opaque(runtime, deep_clone_in = Err::<Self, HeapError>(HeapError::CapacityExceeded)?)]
     struct FailingClone;
 
-    let mut heap = Heap::new();
-    let value = RuntimeValue::Opaque(OpaqueWrapper::new(FailingClone));
-    assert!(matches!(heap.detach(value.clone_ref()), Err(HeapError::CapacityExceeded)));
-    let owned = OwnedValue::Object(vec![OwnedValue::Opaque(OpaqueWrapper::new(FailingClone))]);
-    assert!(matches!(heap.import(&owned), Err(HeapError::CapacityExceeded)));
-    assert!(matches!(heap.export(value.into()), Err(ValueError::HeapError(HeapError::CapacityExceeded))));
+    let mut heap = unsafe { Heap::new() };
+    let value = RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(FailingClone));
+    let copy = value.clone();
+    assert!(matches!(heap.detach(copy), Err(HeapError::CapacityExceeded)));
+    assert!(matches!(heap.export(value.into()), Err(ValueError::HeapError(HeapError::NonPortableValue))));
     assert!(heap.is_empty());
 }
 
 #[derive(Debug, Clone, Opaque)]
 #[opaque(
-    children = std::iter::once(self.0),
-    deep_clone_in = { let cell = self.0.to_owned(heap)?; let cell = heap.detach(cell)?; Self(heap.insert(cell)?) }
+    runtime,
+    children = std::iter::once(&self.0),
+    deep_clone_in = { let cell = self.0.clone_value(heap); let cell = heap.detach(cell)?; Self(heap.insert(cell)) }
 )]
 struct RetainedValue(ValuePointer);
 
 #[test]
 fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
-    let mut heap = Heap::new();
+    let mut heap = unsafe { Heap::new() };
     for nested in [false, true] {
         for mode in 0..4 {
-            let original = heap.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into()).unwrap();
-            let mut value = RuntimeValue::Opaque(OpaqueWrapper::new(
+            let original = heap.insert(Primitive::Integer(PrimitiveInteger::U64(1)).into());
+            let mut value = RuntimeValue::Opaque(RuntimeOpaqueWrapper::local(
                 RetainedValue(original.clone()),
             ));
             if nested {
-                value = RuntimeValue::Object(vec![heap.insert(value).unwrap()]);
+                value = RuntimeValue::Object(vec![heap.insert(value)]);
             }
             let snapshot = match mode {
-                0 => heap.detach(value.clone_ref()).unwrap(),
+                0 => {
+                    let copy = value.clone();
+                    let detached = heap.detach(copy).unwrap();
+                    drop(value);
+                    detached
+                },
                 1 => heap.detach(value).unwrap(),
                 2 => StackValue::Owned(value).into_owned(&mut heap).unwrap(),
-                3 => StackValue::from(heap.insert(value).unwrap()).into_owned(&mut heap).unwrap(),
+                3 => StackValue::from(heap.insert(value)).into_owned(&mut heap).unwrap(),
                 _ => unreachable!(),
             };
             let retained = if nested {
@@ -54,28 +61,29 @@ fn ownership_conversion_detaches_opaque_payloads_at_every_level() {
                 &snapshot
             }
             .as_opaque_type::<RetainedValue>()
-            .unwrap().0;
-            assert!(!retained.ptr_eq(original));
+            .unwrap().0.clone();
+            assert!(!retained.ptr_eq(&original));
             // No payload references are live during this mutation.
             *original.as_mut(&mut heap) = Primitive::Integer(PrimitiveInteger::U64(2)).into();
             assert_eq!(retained.as_ref(&heap).as_u64().unwrap(), 1);
+            drop(retained);
+            drop(snapshot);
+            drop(original);
+            assert!(heap.is_empty());
         }
     }
 }
 
 #[derive(Debug, Clone, Opaque)]
-#[opaque(children = std::iter::once(&self.0 as &dyn Opaque))]
+#[opaque(children = std::iter::once(&self.0 as &dyn OpaqueValue))]
 struct OpaqueParent(Plain);
 
 #[test]
 fn direct_opaque_children_use_the_same_derive_option() {
-    let heap = Heap::new();
-    let value = RuntimeValue::Opaque(OpaqueWrapper::new(OpaqueParent(Plain)));
-    assert_eq!(value.calculate_depth(&heap, 1).unwrap(), 1);
-    assert!(matches!(
-        value.calculate_depth(&heap, 0),
-        Err(ValueError::MaxDepthReached)
-    ));
+    let value = OpaqueParent(Plain);
+    let mut children = 0;
+    value.visit_children(&mut |_| children += 1);
+    assert_eq!(children, 1);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, Opaque)]
@@ -133,6 +141,10 @@ impl Opaque for Manual {
     fn clone_box(&self) -> Box<dyn Opaque> {
         Box::new(self.clone())
     }
+}
+
+impl OpaqueValue for Manual {
+
     fn get_size(&self) -> usize {
         123
     }
@@ -284,20 +296,11 @@ fn custom_implementations_are_preserved() {
 }
 
 #[test]
-fn constant_opaque_conversion_detaches_retained_values() {
-    let mut heap = Heap::new();
-    for nested in [false, true] {
-        for clone_first in [false, true] {
-            let original = heap.insert(PrimitiveInteger::U64(1).into()).unwrap();
-            let value = Constant::Opaque(OpaqueWrapper::new(RetainedValue(original.clone())));
-            let constant = OwnedValue::from(if nested { Constant::Array(vec![value]) } else { value });
-            let snapshot = if clone_first { constant.clone().to_runtime_value(&mut heap).unwrap() } else { constant.to_runtime_value(&mut heap).unwrap() };
-            let retained = if nested { snapshot.as_vec().unwrap()[0].as_ref(&heap) } else { &snapshot }
-                .as_opaque_type::<RetainedValue>().unwrap();
-            assert!(!retained.0.ptr_eq(original));
-            drop(snapshot);
-            drop(constant);
-            assert_eq!(original.as_ref(&heap).as_u64().unwrap(), 1);
-        }
-    }
+fn constant_opaque_conversion_preserves_portable_values() {
+    let mut heap = unsafe { Heap::new() };
+    let constant = OwnedValue::Opaque(OpaqueWrapper::new(Record(7u64)));
+    let value = constant.to_runtime_value(&mut heap);
+    assert_eq!(value.as_opaque_type::<Record<u64>>().unwrap().0, 7);
+    let output = heap.export(value.into()).unwrap();
+    assert_eq!(output.as_opaque_type::<Record<u64>>().unwrap().0, 7);
 }

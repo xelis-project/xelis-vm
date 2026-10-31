@@ -9,7 +9,7 @@ pub mod opaque;
 use std::{borrow::Cow, fmt, hash::Hash};
 use serde::{Deserialize, Serialize};
 
-use crate::{values::Primitive, Constant};
+use crate::{values::Primitive, OwnedValue};
 use opaque::OpaqueType;
 
 pub use r#struct::*;
@@ -60,13 +60,6 @@ pub enum Type {
     // it means the returned value may be absent and the
     // compiler will not count it on the stack
     Voidable(Box<Type>),
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DefinedType {
-    Struct(StructType),
-    Enum(EnumValueType),
-    Tuples(Vec<Type>),
 }
 
 impl Type {
@@ -201,15 +194,15 @@ impl Type {
     }
 
     // Get a type from a value type
-    pub fn from_value_type(value_type: &Constant) -> Option<Self> {
+    pub fn from_value_type(value_type: &OwnedValue) -> Option<Self> {
         Some(match value_type {
-            Constant::Primitive(v) => Self::from_value(v)?,
-            Constant::Opaque(_) => return None,
-            Constant::Array(values) => Type::Array(Box::new(values.first()
+            OwnedValue::Primitive(v) => Self::from_value(v)?,
+            OwnedValue::Opaque(_) => return None,
+            OwnedValue::Object(values) => Type::Array(Box::new(values.first()
                 .and_then(Type::from_value_type)
                 .unwrap_or(Type::Any)
             )),
-            Constant::Map(map) => {
+            OwnedValue::Map(map) => {
                 let (key, value) = map.iter()
                     .next()
                     .and_then(|(k, v)| {
@@ -221,12 +214,8 @@ impl Type {
 
                 Type::Map(Box::new(key), Box::new(value))
             },
-            Constant::Bytes(_) => Type::Bytes,
-            Constant::Typed(_, ty) => match ty {
-                DefinedType::Enum(ty) => Type::Enum(ty.enum_type().clone()),
-                DefinedType::Struct(ty) => Type::Struct(ty.clone()),
-                DefinedType::Tuples(ty) => Type::Tuples(ty.clone()),
-            }
+            OwnedValue::Bytes(_) => Type::Bytes,
+
         })
     }
 
