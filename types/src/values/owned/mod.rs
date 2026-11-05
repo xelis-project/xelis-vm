@@ -913,6 +913,46 @@ impl OwnedValue {
         }
     }
 
+    /// Whether every opaque payload exposes binary serialization support.
+    /// Built-in values are supported; objects and maps check all descendants,
+    /// including map keys. This checks capabilities without running serializers.
+    pub fn is_serializable(&self) -> bool {
+        self.all_opaques_satisfy(OpaqueWrapper::is_serializable)
+    }
+
+    /// Whether every opaque payload exposes JSON serialization support.
+    /// Built-in values are supported; objects and maps check all descendants,
+    /// including map keys. This does not run serializers, check their nesting
+    /// limits, or require that opaque JSON decoders have been registered.
+    pub fn is_json_serializable(&self) -> bool {
+        self.all_opaques_satisfy(OpaqueWrapper::is_json_serializable)
+    }
+
+    fn all_opaques_satisfy(&self, supports: fn(&OpaqueWrapper) -> bool) -> bool {
+        let mut work = Vec::new();
+        let mut current = self;
+        loop {
+            match current {
+                Self::Primitive(_) | Self::Bytes(_) => {},
+                Self::Opaque(value) => {
+                    if !supports(value) {
+                        return false;
+                    }
+                },
+                Self::Object(children) => work.extend(children),
+                Self::Map(children) => {
+                    for (key, value) in children.iter() {
+                        work.push(key);
+                        work.push(value);
+                    }
+                },
+            }
+            match work.pop() {
+                Some(value) => current = value,
+                None => return true,
+            }
+        }
+    }
 
     pub fn is_hashable(&self) -> bool {
         if matches!(self, Self::Primitive(_) | Self::Bytes(_)) {

@@ -180,6 +180,16 @@ impl<'call, M: 'static> NativeScope<'call, M> {
         Ok(self.roots[view.index].as_opaque_type_mut::<T>(self.heap)?)
     }
 
+    /// Check binary serialization capabilities without copying runtime values.
+    pub fn is_serializable(&self, view: ValueView<'call>) -> bool {
+        self.value(view).is_serializable(self.heap)
+    }
+
+    /// Check JSON serialization capabilities without copying runtime values.
+    pub fn is_json_serializable(&self, view: ValueView<'call>) -> bool {
+        self.value(view).is_json_serializable(self.heap)
+    }
+
     pub fn snapshot(&self, view: ValueView<'call>) -> Result<OwnedValue, EnvironmentError> {
         Ok(self.heap.snapshot(self.value(view))?)
     }

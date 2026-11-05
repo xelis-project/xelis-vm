@@ -589,6 +589,53 @@ enum Node<'a> {
 }
 
 impl RuntimeValue {
+    /// Check binary serialization capabilities directly in the runtime graph.
+    /// Objects and maps include every descendant and map key. No owned snapshot
+    /// is created and no serializer is invoked.
+    pub fn is_serializable(&self, heap: &Heap) -> bool {
+        self.all_opaques_satisfy(heap, RuntimeOpaqueWrapper::is_serializable, OwnedValue::is_serializable)
+    }
+
+    /// Check JSON serialization capabilities directly in the runtime graph.
+    /// This does not run serializers, enforce their nesting limits, or check
+    /// whether opaque JSON decoders are registered.
+    pub fn is_json_serializable(&self, heap: &Heap) -> bool {
+        self.all_opaques_satisfy(heap, RuntimeOpaqueWrapper::is_json_serializable, OwnedValue::is_json_serializable)
+    }
+
+    fn all_opaques_satisfy(
+        &self,
+        heap: &Heap,
+        supports_runtime: fn(&RuntimeOpaqueWrapper) -> bool,
+        supports_owned: fn(&OwnedValue) -> bool,
+    ) -> bool {
+        let mut work = Vec::new();
+        let mut current = self;
+        loop {
+            match current {
+                Self::Primitive(_) | Self::Bytes(_) => {},
+                Self::Opaque(value) => {
+                    if !supports_runtime(value) {
+                        return false;
+                    }
+                },
+                Self::Object(children) => work.extend(children.iter().map(|id| id.as_ref(heap))),
+                Self::Map(children) => {
+                    for (key, value) in children.iter() {
+                        if !supports_owned(key) {
+                            return false;
+                        }
+                        work.push(value.as_ref(heap));
+                    }
+                },
+            }
+            match work.pop() {
+                Some(value) => current = value,
+                None => return true,
+            }
+        }
+    }
+
     pub fn equals(&self, other: &Self, heap: &Heap) -> bool {
         match (self, other) {
             (Self::Primitive(left), Self::Primitive(right)) => return left == right,

@@ -48,8 +48,9 @@ pub fn new_map<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut 
     let mut map = IndexMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
-        let key = stack.pop_stack()?.into_owned(heap)?;
-        let key = heap.export(key.into())?;
+        // Export directly to immutable key data without detaching an
+        // intermediate runtime graph first.
+        let key = heap.export(stack.pop_stack()?)?;
         if !key.is_hashable() {
             return Err(EnvironmentError::InvalidKeyType.into());
         }

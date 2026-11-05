@@ -62,10 +62,9 @@ fn get<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _co
 }
 
 fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
-    let param = parameters.remove(0);
-    // Key is deep cloned here
-    let key = param.into_owned(heap)?;
-    let key = heap.export(key.into())?;
+    // Export directly to immutable owned key data; no detached runtime copy
+    // is needed before crossing this boundary.
+    let key = heap.export(parameters.remove(0))?;
     if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
     }
@@ -90,10 +89,8 @@ fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
 }
 
 fn shift_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
-    // We make it owned in case the key contains our only reference to itself
-    let key = parameters.remove(0)
-        .into_owned(heap)?;
-    let key = heap.export(key.into())?;
+    // Export consumes the argument while preserving any remaining aliases.
+    let key = heap.export(parameters.remove(0))?;
 
     if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
@@ -114,10 +111,8 @@ fn shift_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_
 }
 
 fn swap_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
-    // We make it owned in case the key contains our only reference to itself
-    let key = parameters.remove(0)
-        .into_owned(heap)?;
-    let key = heap.export(key.into())?;
+    // Export consumes the argument while preserving any remaining aliases.
+    let key = heap.export(parameters.remove(0))?;
 
     if !key.is_hashable() {
         return Err(EnvironmentError::InvalidKeyType);
@@ -144,17 +139,17 @@ fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &
 }
 
 fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
-    let zelf = zelf?;
-    let map = zelf.as_ref(heap).as_map()?;
-
-    // we need to go through all elements, thus we increase the gas usage
-    context.increase_gas_usage((map.len() as u64) * 8)?;
-
-    let keys: Vec<_> = map.keys().cloned().collect();
-    let keys = keys.iter().map(|key| {
-        let key = heap.import(key);
-        heap.insert(key)
-    }).collect();
+    // Temporarily move the runtime map out so its keys can be borrowed while
+    // allocating runtime copies, without first cloning an OwnedValue tree.
+    let keys = heap.with_value(zelf?, |value, heap| -> Result<_, EnvironmentError> {
+        let map = value.as_map()?;
+        context.increase_gas_usage((map.len() as u64) * 8)?;
+        let keys = map.keys().map(|key| {
+            let key = heap.import(key);
+            heap.insert(key)
+        }).collect();
+        Ok(keys)
+    })?;
 
     Ok(SysCallResult::Return(RuntimeValue::Object(keys).into()))
 }
@@ -174,18 +169,16 @@ fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: 
 }
 
 fn entries<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
-    let zelf = zelf?;
-    let map = zelf.as_ref(heap).as_map()?;
-
-    // we need to go through all elements, thus we increase the gas usage
-    context.increase_gas_usage((map.len() as u64) * 10)?;
-
-    let pairs: Vec<_> = map.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
-    let entries = pairs.into_iter().map(|(key, value)| {
-        let key = heap.import(&key);
-        let key = heap.insert(key);
-        heap.insert(RuntimeValue::Object(vec![key, value]))
-    }).collect();
+    let entries = heap.with_value(zelf?, |value, heap| -> Result<_, EnvironmentError> {
+        let map = value.as_map()?;
+        context.increase_gas_usage((map.len() as u64) * 10)?;
+        let entries = map.iter().map(|(key, value)| {
+            let key = heap.import(key);
+            let key = heap.insert(key);
+            heap.insert(RuntimeValue::Object(vec![key, value.clone()]))
+        }).collect();
+        Ok(entries)
+    })?;
 
     Ok(SysCallResult::Return(RuntimeValue::Object(entries).into()))
 }

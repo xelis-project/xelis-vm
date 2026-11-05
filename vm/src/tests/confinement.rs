@@ -89,6 +89,173 @@ fn scoped_io_resumes_with_retained_runtime_values_on_another_thread() {
 }
 
 #[derive(Debug, Clone, Opaque)]
+#[opaque(hash, eq, deep_clone = {
+    self.copies.fetch_add(1, Ordering::Relaxed);
+    self.clone()
+})]
+struct NativeKey {
+    value: u64,
+    copies: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl PartialEq for NativeKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl std::hash::Hash for NativeKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.value, state);
+    }
+}
+
+#[test]
+fn map_construction_exports_keys_without_a_detached_runtime_copy() {
+    let (module, environment) = compile(
+        "entry main(key: any) { let values: map<any, u64> = { key: 42u64 }; return values.len() as u64 }",
+        EnvironmentBuilder::<()>::default(),
+    );
+    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let key = OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) });
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+    vm.invoke_chunk_with_args(0, vec![key].into_iter()).unwrap();
+    assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 1);
+    // One copy imports the argument; one exports the map's immutable key.
+    assert_eq!(copies.load(Ordering::Relaxed), 2);
+    assert!(vm.is_idle());
+}
+
+#[test]
+fn map_construction_keeps_structured_keys_independent() {
+    let (module, environment) = compile(r#"
+        entry main() {
+            let key: u64[] = [1, 2]
+            let values: map<u64[], u64> = { key: 42u64 }
+            key[0] = 9
+            return values.get([1u64, 2u64]).unwrap()
+        }
+    "#, EnvironmentBuilder::<()>::default());
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+    vm.invoke_entry_chunk(0).unwrap();
+    assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 42);
+    assert!(vm.is_idle());
+}
+
+#[test]
+fn native_panic_formats_runtime_values_without_copying_payloads() {
+    let (module, environment) = compile(
+        "entry main(value: any) { panic(value); return 0u64 }",
+        EnvironmentBuilder::<()>::default(),
+    );
+    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let value = OwnedValue::Object(vec![OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) })]);
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+    vm.invoke_chunk_with_args(0, vec![value].into_iter()).unwrap();
+    let error = vm.run_blocking().unwrap_err();
+    assert!(matches!(error, VMError::EnvironmentError(EnvironmentError::Panic(message)) if message == "[Opaque(NativeKey)]"));
+    // Only the initial input import copies this opaque; formatting borrows it.
+    assert_eq!(copies.load(Ordering::Relaxed), 1);
+    assert!(vm.is_idle());
+}
+
+#[test]
+fn native_map_keys_and_entries_copy_keys_only_once() {
+    for method in ["keys", "entries"] {
+        let (module, environment) = compile(
+            &format!("entry main(values: map<any, u64>) {{ let result = values.{method}(); return result.len() as u64 }}"),
+            EnvironmentBuilder::<()>::default(),
+        );
+        let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let key = OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) });
+        let input = OwnedValue::Map([(key, OwnedValue::from(42u64))].into_iter().collect());
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+        vm.invoke_chunk_with_args(0, vec![input].into_iter()).unwrap();
+        assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 1);
+        assert_eq!(copies.load(Ordering::Relaxed), 1, "map.{method}() must not copy keys through an intermediate OwnedValue");
+        assert!(vm.is_idle());
+    }
+}
+
+#[test]
+fn native_map_writes_export_keys_without_a_detached_runtime_copy() {
+    for (operation, expected) in [("insert(key, 99u64)", 1), ("shift_remove(key)", 0), ("swap_remove(key)", 0)] {
+        let (module, environment) = compile(
+            &format!("entry main(values: map<any, u64>, key: any) {{ values.{operation}; return values.len() as u64 }}"),
+            EnvironmentBuilder::<()>::default(),
+        );
+        let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let map_key = OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) });
+        let input = OwnedValue::Map([(map_key, OwnedValue::from(42u64))].into_iter().collect());
+        let key = OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) });
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+        vm.invoke_chunk_with_args(0, vec![input, key].into_iter()).unwrap();
+        assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), expected);
+        // One copy imports the standalone opaque argument; one exports its key.
+        assert_eq!(copies.load(Ordering::Relaxed), 2, "map.{operation} must not detach a runtime key before exporting it");
+        assert!(vm.is_idle());
+    }
+}
+
+#[test]
+fn optimized_map_natives_preserve_structured_key_independence() {
+    let (module, environment) = compile(r#"
+        entry main() {
+            let key: u64[] = [1, 2]
+            let values: map<u64[], u64> = {}
+            values.insert(key, 42)
+            key[0] = 9
+            let keys = values.keys()
+            keys[0][0] = 8
+            let entries = values.entries()
+            let entry = entries[0]
+            let entry_key = entry.0
+            entry_key[0] = 7
+            assert(values.get([1u64, 2u64]).unwrap() == 42)
+            let removed = values.shift_remove([1u64, 2u64]).unwrap()
+            values.insert([3u64, 4u64], removed)
+            return values.swap_remove([3u64, 4u64]).unwrap()
+        }
+    "#, EnvironmentBuilder::<()>::default());
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&()).into() }).unwrap();
+    vm.invoke_entry_chunk(0).unwrap();
+    assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 42);
+    assert!(vm.is_idle());
+}
+
+fn check_runtime_capabilities(scope: &mut NativeScope<'_, Arc<std::sync::atomic::AtomicUsize>>, metadata: &ModuleMetadata<'_, Arc<std::sync::atomic::AtomicUsize>>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+    let value = scope.argument(0)?;
+    let before = metadata.metadata.load(Ordering::Relaxed);
+    assert!(!scope.is_serializable(value));
+    assert!(!scope.is_json_serializable(value));
+    assert_eq!(metadata.metadata.load(Ordering::Relaxed), before);
+    scope.return_value(value);
+    Ok(())
+}
+
+#[test]
+fn scoped_capability_checks_borrow_runtime_values_without_copying() {
+    let mut builder = EnvironmentBuilder::<Arc<std::sync::atomic::AtomicUsize>>::default();
+    builder.register_native_function("check_capabilities", None, vec![("value", Type::Any)], FunctionHandler::Sync(check_runtime_capabilities), 0, Some(Type::Any));
+    let (module, environment) = compile("entry main(value: any) { let retained = check_capabilities(value); return 42u64 }", builder);
+    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let key = OwnedValue::from(NativeKey { value: 7, copies: Arc::clone(&copies) });
+    let input = OwnedValue::Map([(key, OwnedValue::from(42u64))].into_iter().collect());
+    let mut vm = VM::default();
+    vm.append_module(ModuleMetadata { module: (&module).into(), environment: (&environment).into(), metadata: (&copies).into() }).unwrap();
+    vm.invoke_chunk_with_args(0, vec![input].into_iter()).unwrap();
+    assert_eq!(block_on(vm.run()).unwrap().as_u64().unwrap(), 42);
+    assert_eq!(copies.load(Ordering::Relaxed), 0);
+    assert!(vm.is_idle());
+}
+
+#[derive(Debug, Clone, Opaque)]
 struct Tracked(Arc<()>);
 
 fn hold(scope: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {

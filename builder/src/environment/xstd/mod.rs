@@ -69,7 +69,7 @@ fn debug<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _con
 
 fn panic<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let param = parameters.remove(0);
-    let value = param.into_owned(heap)?;
+    let value = param.as_ref(heap);
 
     Err(EnvironmentError::Panic(format!("{:#}", value.display(heap))))
 }
