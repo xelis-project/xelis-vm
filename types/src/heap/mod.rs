@@ -66,7 +66,8 @@ pub struct Heap {
 
 
 impl Heap {
-    /// Create a heap for one sequential execution.
+    /// Create a heap for sequential runtime access. It may be reused across
+    /// executions, provided related handles stay with this heap.
     ///
     /// # Safety
     /// The caller must serialize all access to this heap and every related

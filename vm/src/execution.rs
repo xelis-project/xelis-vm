@@ -173,9 +173,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
         None
     }
 
-    pub(super) async fn run(&mut self) -> Result<OwnedValue, VMError> {
-        // No heap or owning runtime handle can escape through a safe extension.
-        let mut heap = unsafe { Heap::new() };
+    pub(super) async fn run(&mut self, heap: &mut Heap) -> Result<OwnedValue, VMError> {
         for value in mem::take(&mut self.pending_values) {
             let value = heap.import_owned(value);
             self.stack.push_stack(value.into())?;
@@ -184,7 +182,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
         // Clone module metadata while executing each queued module.
         'modules: while let Some(m) = self.backend.modules.last().cloned() {
             'call_stack: while let Some(call_stack) = self.call_stack.pop() {
-                debug!("Processing call stack: {:?} with stack [{}]", call_stack, self.stack.get_inner().iter().map(|v| format!("{}", v.as_ref(&heap).display(&heap))).collect::<Vec<_>>().join(", "));
+                debug!("Processing call stack: {:?} with stack [{}]", call_stack, self.stack.get_inner().iter().map(|v| format!("{}", v.as_ref(heap).display(heap))).collect::<Vec<_>>().join(", "));
                 match call_stack {
                     CallStack::Chunk(mut manager) => {
                         // Retrieve the required chunk
@@ -199,7 +197,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                             &mut manager,
                             &mut reader,
                             self.context,
-                            &mut heap,
+                            heap,
                         ) {
                             // Native calls can return another async call to process.
                             loop {
@@ -213,17 +211,17 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                                 CallbackType::Sync(f) => f(
                                                     callback.state,
                                                     &mut params,
-                                                    &mut heap,
+                                                    heap,
                                                 ),
                                                 CallbackType::Async(f) => f(
                                                     callback.state,
                                                     &mut params,
-                                                    &mut heap,
+                                                    heap,
                                                 ).await,
                                             };
                                             let res = res?;
 
-                                            result = complete_syscall(self.backend, &mut self.stack, self.context, res, &m, &mut heap);
+                                            result = complete_syscall(self.backend, &mut self.stack, self.context, res, &m, heap);
                                             // If the callback's result is Nothing, the closure that
                                             // triggered the Return has finished. Break out of the
                                             // opcodes loop to avoid executing dead code that may
@@ -290,7 +288,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                                 *new.get_registers_mut() = previous
                                                     .get_registers_mut()
                                                     .iter_mut()
-                                                    .map(|value| value.reference(&mut heap))
+                                                    .map(|value| value.reference(heap))
                                                     .collect();
                                                 previous.set_context(ChunkContext::Used);
                                             } else {
@@ -320,7 +318,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                                 }
                                                 let instance = params.remove(0);
 
-                                                verify_instance_against_parameters(&instance, &mut params, &mut heap)?;
+                                                verify_instance_against_parameters(&instance, &mut params, heap)?;
 
                                                 Some(instance)
                                             } else {
@@ -331,8 +329,8 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                             let mut arguments = params;
                                             let instance = on_value.as_mut()
                                                 .ok_or_else(|| EnvironmentError::FnExpectedInstance);
-                                            let res = ptr.call(instance, &mut arguments, &m, self.context, &mut heap).await?;
-                                            result = complete_syscall(self.backend, &mut self.stack, self.context, res, &m, &mut heap);
+                                            let res = ptr.call(instance, &mut arguments, &m, self.context, heap).await?;
+                                            result = complete_syscall(self.backend, &mut self.stack, self.context, res, &m, heap);
                                         }
 
                                         // Skip the break at the end of the loop to handle
@@ -383,7 +381,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                             self.call_stack_size += 1;
                         } else {
                             for value in manager.get_registers() {
-                                let memory = value.estimate_memory_usage(&heap, self.context.max_memory_usage())?;
+                                let memory = value.estimate_memory_usage(heap, self.context.max_memory_usage())?;
                                 self.context.decrease_memory_usage(memory);
                             }
                         }

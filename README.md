@@ -68,7 +68,18 @@ confined and inactive elsewhere, with a synchronized ownership handoff.
 `Send + Sync` implementations rely on this
 caller guarantee; they do not provide synchronization. The same obligation
 covers any runtime handles retained in opaque results after completion.
-Independent executions must not share runtime handles.
+Concurrent executions must not share runtime handles.
+
+Use `VM::run_with_heap(&mut heap).await` or
+`VM::run_blocking_with_heap(&mut heap)` to execute with a caller-owned heap.
+These methods borrow the heap exclusively for execution and leave it intact
+after success, errors, cancellation, or unwinding. Existing values and handles
+retained by trusted extensions remain accessible through that same heap after
+execution; values without another owner are reclaimed normally. The caller
+controls when to clear or drop the heap and may reuse it across sequential runs.
+The borrowed-heap future is not `Send`, so external aliases stay on the same
+thread. The ordinary `run()` future continues to support thread migration with
+its private heap.
 
 Native handlers and opaque destructors must not panic. The heap does not
 attempt panic recovery.
@@ -115,10 +126,11 @@ left in that vector and the remaining instance after the call. Use
 Read-only arguments can stay in the vector. Callback states own their retained values and release them when
 dropped. Async functions and callbacks borrow their arguments, context, and heap for the duration of their future.
 
-`VMContext` directly exposes gas and memory accounting methods. The heap is a
-local variable of each `VM::run()`. Queued inputs remain owned until execution starts; every completion, failure, or cancellation
-discards the execution's stack, frames, callbacks, and heap. This also
-frees remaining values and cycles at run exit. Heap errors propagate as
+`VMContext` directly exposes gas and memory accounting methods. Queued inputs
+remain owned until execution starts; every completion, failure, or cancellation
+discards the execution's stack, frames, and callbacks. Internally owned heaps
+are also dropped, freeing remaining values and cycles at run exit. Caller-owned
+heaps remain available until the caller clears or drops them. Heap errors propagate as
 `VMError::HeapError`. Logical gas and memory accounting is preserved.
 
 Module constants, entry arguments, and returned container trees use `OwnedValue`.

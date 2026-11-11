@@ -200,6 +200,8 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> InstructionTable<'a, 'ty, 'r, M> {
     /// # Safety
     /// All runtime owners, callback state, and runtime opaque values must stay
     /// inside the execution. Foreign state retained across suspension must be Send.
+    /// Extensions used exclusively with caller-owned heap execution may retain
+    /// local handles with that heap, provided all access stays sequential.
     /// Heap mutations must preserve acyclicity by detaching inserted graphs.
     #[inline(always)]
     pub const unsafe fn set_instruction(&mut self, opcode: OpCode, ptr: OpCodeHandler<'a, 'ty, 'r, M>, cost: u64) {

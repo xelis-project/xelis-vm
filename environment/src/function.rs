@@ -186,16 +186,22 @@ impl<M> FunctionHandler<M> {
     /// # Safety
     /// The handler and every callback/opaque it creates must keep all runtime
     /// owners inside this execution, including across suspension and destruction.
+    /// Caller-owned heap execution may retain handles outside the execution;
+    /// those handles must stay local to that heap and be used sequentially.
+    /// Such a handler must not be used with movable or internally owned execution.
     /// Heap mutations must preserve acyclicity by detaching inserted graphs.
-    /// Any retained foreign state must be Send: moving the Rc family does not
-    /// make thread-affine host resources safe to move.
+    /// Movable execution additionally requires retained foreign state to be Send:
+    /// moving the Rc family does not make thread-affine host resources movable.
     pub unsafe fn sync_unchecked(handler: OnCallSyncFn<M>) -> Self {
         Self::Unchecked(UncheckedFunction(RawHandler::Sync(handler)))
     }
 
     /// # Safety
     /// The complete returned future and all retained runtime owners must remain
-    /// confined to this execution. Foreign captured data must be Send.
+    /// confined to this execution. Movable execution requires Send foreign captures.
+    /// Caller-owned heap execution may retain local handles with that heap,
+    /// provided they are never used concurrently or with another heap. Such a
+    /// handler must not be used with movable or internally owned execution.
     /// Heap mutations must preserve acyclicity by detaching inserted graphs.
     pub unsafe fn async_unchecked(handler: RawAsyncFn<M>) -> Self {
         Self::Unchecked(UncheckedFunction(RawHandler::Async(handler)))
