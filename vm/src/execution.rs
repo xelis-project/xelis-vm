@@ -3,8 +3,8 @@ use futures::future::LocalBoxFuture;
 use super::*;
 use crate::stack::Stack;
 
-/// No constructor accepts an arbitrary local future. Only VM::run constructs
-/// this wrapper around this engine, with Send foreign captures and scoped natives.
+/// No constructor accepts an arbitrary local future. VM::run and run_with_scope
+/// wrap this engine with Send foreign captures and confined runtime owners.
 pub(super) struct ConfinedRun<'run> {
     inner: LocalBoxFuture<'run, Result<OwnedValue, VMError>>,
 }
@@ -16,6 +16,24 @@ pub(super) struct ConfinedRun<'run> {
 unsafe impl Send for ConfinedRun<'_> {}
 
 impl<'run> ConfinedRun<'run> {
+    pub(super) fn new_with_scope<'a: 'r, 'ty: 'a, 'r, M, F>(vm: &'run mut VM<'a, 'ty, 'r, M>, finish: F) -> Self
+    where
+        M: Send + Sync + 'static,
+        F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMError>>) -> Result<(), VMError> + Send + 'run,
+    {
+        fn require_send<T: Send>(_: &T) {}
+        require_send(&vm.backend);
+        require_send(&vm.context);
+        require_send(&finish);
+        Self { inner: Box::pin(async move {
+            // SAFETY: the caller's scope contract confines all related owners.
+            let mut scope = HeapScope { vm, heap: unsafe { Heap::new() }, finish };
+            let result = scope.vm.run_with_heap(&mut scope.heap).await;
+            (scope.finish)(scope.vm.context_mut(), &scope.heap, Some(&result))?;
+            result
+        }) }
+    }
+
     pub(super) fn new<'a: 'r, 'ty: 'a, 'r, M: Send + Sync + 'static>(vm: &'run mut VM<'a, 'ty, 'r, M>) -> Self {
         // These foreign captures must be Send independently of the private Rc graph.
         fn require_send<T: Send>(_: &T) {}
@@ -33,6 +51,22 @@ impl Future for ConfinedRun<'_> {
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         self.inner.as_mut().poll(context)
+    }
+}
+
+// Release context-held aliases before the heap, including cancellation and
+// unwinding of an awaiting native. This guard is not a Send wrapper.
+struct HeapScope<'run, 'a: 'r, 'ty: 'a, 'r, M: 'static, F>
+where F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMError>>) -> Result<(), VMError> {
+    vm: &'run mut VM<'a, 'ty, 'r, M>,
+    heap: Heap,
+    finish: F,
+}
+
+impl<'a: 'r, 'ty: 'a, 'r, M: 'static, F> Drop for HeapScope<'_, 'a, 'ty, 'r, M, F>
+where F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMError>>) -> Result<(), VMError> {
+    fn drop(&mut self) {
+        let _ = (self.finish)(self.vm.context_mut(), &self.heap, None);
     }
 }
 

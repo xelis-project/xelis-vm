@@ -304,39 +304,42 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> VM<'a, 'ty, 'r, M> {
         execution.run(&mut heap).await
     }
 
-    /// Execute on the current thread using a caller-owned heap.
-    /// Existing heap values and externally retained handles survive the run.
-    pub fn run_blocking_with_heap(&mut self, heap: &mut Heap) -> Result<OwnedValue, VMError> {
-        futures::executor::block_on(self.run_with_heap(heap))
-    }
-
-    /// Execute using a caller-owned heap, borrowing it exclusively until the
-    /// future completes or is dropped. The heap is never cleared by the VM.
-    /// Runtime values without another owner are reclaimed normally on success,
-    /// error, or cancellation. Retained handles remain valid in the same heap.
-    ///
-    /// This future is not Send: callers may hold other handles into the heap,
-    /// which must remain on the same thread as execution.
-    ///
-    /// ```compile_fail
-    /// use xelis_vm::{Heap, VM};
-    /// fn require_send<T: Send>(_: T) {}
-    /// let mut vm = VM::<()>::default();
-    /// let mut heap = unsafe { Heap::new() };
-    /// require_send(vm.run_with_heap(&mut heap));
-    /// ```
-    ///
-    /// ```compile_fail
-    /// use xelis_vm::{Heap, VM};
-    /// let mut vm = VM::<()>::default();
-    /// let mut heap = unsafe { Heap::new() };
-    /// let execution = vm.run_with_heap(&mut heap);
-    /// heap.clear();
-    /// drop(execution);
-    /// ```
-    pub async fn run_with_heap(&mut self, heap: &mut Heap) -> Result<OwnedValue, VMError> {
+    async fn run_with_heap(&mut self, heap: &mut Heap) -> Result<OwnedValue, VMError> {
         let mut execution = Execution::new(self);
         execution.run(heap).await
+    }
+
+    /// Run with a fresh confined heap and a final storage export step.
+    /// The callback receives Some(result) after execution and None on scope exit,
+    /// including cancellation. None must release all retained runtime handles;
+    /// its returned error is ignored. Dropping an unpolled future leaves queued
+    /// work intact and does not invoke the callback.
+    ///
+    /// # Safety
+    /// All runtime aliases must remain inside this execution scope. The callback
+    /// must export/release every context-retained handle before heap destruction,
+    /// including when the result callback fails or panics. Scope cleanup must
+    /// release every handle even if it returns an error, and must not panic
+    /// while unwinding.
+    ///
+    /// ```compile_fail
+    /// use xelis_vm::VM;
+    /// let mut vm = VM::<()>::default();
+    /// vm.run_with_scope(|_, _, _| Ok(())); // Requires an unsafe call.
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use xelis_vm::{Heap, VM};
+    /// let mut vm = VM::<()>::default();
+    /// let mut heap = unsafe { Heap::new() };
+    /// vm.run_with_heap(&mut heap); // Caller-owned heap execution is private.
+    /// ```
+    pub unsafe fn run_with_scope<'run, F>(&'run mut self, finish: F) -> impl Future<Output = Result<OwnedValue, VMError>> + Send + 'run
+    where
+        M: Send + Sync,
+        F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMError>>) -> Result<(), VMError> + Send + 'run,
+    {
+        ConfinedRun::new_with_scope(self, finish)
     }
 
     /// Execute with all runtime owners confined to one movable, exclusive future.

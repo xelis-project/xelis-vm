@@ -186,9 +186,9 @@ impl<M> FunctionHandler<M> {
     /// # Safety
     /// The handler and every callback/opaque it creates must keep all runtime
     /// owners inside this execution, including across suspension and destruction.
-    /// Caller-owned heap execution may retain handles outside the execution;
-    /// those handles must stay local to that heap and be used sequentially.
-    /// Such a handler must not be used with movable or internally owned execution.
+    /// With VM::run_with_scope, context-held owners may survive native calls
+    /// until final scope export/cleanup, which must release them before heap
+    /// destruction. They must remain confined to that complete execution scope.
     /// Heap mutations must preserve acyclicity by detaching inserted graphs.
     /// Movable execution additionally requires retained foreign state to be Send:
     /// moving the Rc family does not make thread-affine host resources movable.
@@ -199,9 +199,8 @@ impl<M> FunctionHandler<M> {
     /// # Safety
     /// The complete returned future and all retained runtime owners must remain
     /// confined to this execution. Movable execution requires Send foreign captures.
-    /// Caller-owned heap execution may retain local handles with that heap,
-    /// provided they are never used concurrently or with another heap. Such a
-    /// handler must not be used with movable or internally owned execution.
+    /// With VM::run_with_scope, context-held owners must remain inside the scope
+    /// and be released by its final cleanup before heap destruction.
     /// Heap mutations must preserve acyclicity by detaching inserted graphs.
     pub unsafe fn async_unchecked(handler: RawAsyncFn<M>) -> Self {
         Self::Unchecked(UncheckedFunction(RawHandler::Async(handler)))

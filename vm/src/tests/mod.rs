@@ -9,7 +9,7 @@ use silex_types::OwnedValue;
 mod op_code;
 mod arena;
 mod confinement;
-mod custom_heap;
+mod scope;
 
 /// This module contains all the tests using the suite available
 /// (Lexer, Parser, Compiler) to produce a valid Module.

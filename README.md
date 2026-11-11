@@ -70,19 +70,21 @@ caller guarantee; they do not provide synchronization. The same obligation
 covers any runtime handles retained in opaque results after completion.
 Concurrent executions must not share runtime handles.
 
-Use `VM::run_with_heap(&mut heap).await` or
-`VM::run_blocking_with_heap(&mut heap)` to execute with a caller-owned heap.
-These methods borrow the heap exclusively for execution and leave it intact
-after success, errors, cancellation, or unwinding. Existing values and handles
-retained by trusted extensions remain accessible through that same heap after
-execution; values without another owner are reclaimed normally. The caller
-controls when to clear or drop the heap and may reuse it across sequential runs.
-The borrowed-heap future is not `Send`, so external aliases stay on the same
-thread. The ordinary `run()` future continues to support thread migration with
-its private heap.
+Use unsafe `VM::run_with_scope(finish)` when trusted extensions retain runtime
+handles in the VM context for a final storage export. It creates a fresh private
+heap and returns a `Send` future. The callback receives the mutable context,
+a read-only heap reference, and `Some(&result)` after execution completes or
+returns an error. Its error, if any, becomes the run's error.
 
-Native handlers and opaque destructors must not panic. The heap does not
-attempt panic recovery.
+The callback receives `None` on scope exit, including cancellation and unwinding,
+before the heap is destroyed. This cleanup must release every context-retained
+runtime handle, even when it returns an error; cleanup errors are ignored.
+The unsafe caller must confine all aliases to the execution scope throughout
+thread migration. Only portable exported data may remain afterward. An unpolled
+future creates no scope, invokes no callback, and leaves queued work intact.
+
+Native panics unwind through execution and scope cleanup. Opaque destructors
+and cleanup callbacks must not panic while unwinding.
 
 Payload borrows still require both an owning handle and the appropriate heap
 borrow. Weak storage references keep later sequential handle teardown valid
@@ -129,8 +131,9 @@ dropped. Async functions and callbacks borrow their arguments, context, and heap
 `VMContext` directly exposes gas and memory accounting methods. Queued inputs
 remain owned until execution starts; every completion, failure, or cancellation
 discards the execution's stack, frames, and callbacks. Internally owned heaps
-are also dropped, freeing remaining values and cycles at run exit. Caller-owned
-heaps remain available until the caller clears or drops them. Heap errors propagate as
+are also dropped, freeing remaining values and cycles at run exit. Scoped runs
+release context-held owners through their finish callback before heap teardown.
+Heap errors propagate as
 `VMError::HeapError`. Logical gas and memory accounting is preserved.
 
 Module constants, entry arguments, and returned container trees use `OwnedValue`.
