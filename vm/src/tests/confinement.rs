@@ -27,6 +27,64 @@ fn compile<M: 'static>(code: &str, builder: EnvironmentBuilder<'_, M>) -> (Modul
     (module, environment)
 }
 
+#[test]
+fn native_calls_charge_the_registered_cost_once() {
+    fn sync(
+        scope: &mut NativeScope<'_, ()>,
+        _: &ModuleMetadata<'_, ()>,
+        _: &mut VMContext,
+    ) -> Result<(), EnvironmentError> {
+        scope.return_owned(OwnedValue::from(0u64))
+    }
+
+    fn asynchronous<'a, 'ty, 'r>(
+        _: Option<OwnedValue>,
+        _: Vec<OwnedValue>,
+        _: &'a ModuleMetadata<'_, ()>,
+        _: &'a mut VMContext<'ty, 'r>,
+    ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>> {
+        Box::pin(async { Ok(OwnedValue::from(0u64)) })
+    }
+
+    for handler in [FunctionHandler::Sync(sync), FunctionHandler::Async(asynchronous)] {
+        for dynamic in [false, true] {
+            let run = |cost| {
+                let mut builder = EnvironmentBuilder::<()>::new();
+                builder.register_native_function("native", None, vec![], handler, cost, Some(Type::U64));
+                let environment = builder.build();
+                let mut module = Module::new();
+                let mut chunk = silex_bytecode::Chunk::new();
+                if dynamic {
+                    let ptr = module.add_constant(OwnedValue::Object(vec![
+                        OwnedValue::from(0u16),
+                        OwnedValue::from(true),
+                        OwnedValue::from(0u16),
+                    ]));
+                    chunk.emit_opcode(silex_bytecode::OpCode::Constant);
+                    chunk.write_u16(ptr as u16);
+                    chunk.emit_opcode(silex_bytecode::OpCode::DynamicCall);
+                    chunk.write_u8(0);
+                } else {
+                    chunk.emit_opcode(silex_bytecode::OpCode::SysCall);
+                    chunk.write_u16(0);
+                }
+                chunk.emit_opcode(silex_bytecode::OpCode::Return);
+                module.add_entry_chunk(chunk, None);
+                let mut vm = VM::default();
+                vm.append_module(ModuleMetadata {
+                    module: (&module).into(),
+                    environment: (&environment).into(),
+                    metadata: (&()).into(),
+                }).unwrap();
+                vm.invoke_entry_chunk(0).unwrap();
+                assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 0);
+                vm.context().current_gas_usage()
+            };
+            assert_eq!(run(17) - run(0), 17, "dynamic={dynamic}");
+        }
+    }
+}
+
 fn pop(
     scope: &mut NativeScope<'_, ()>,
     _: &ModuleMetadata<'_, ()>,
@@ -46,7 +104,7 @@ fn scoped_borrowed_returns_preserve_gas_and_memory_accounting() {
         Some(Type::Array(Box::new(Type::U64))),
         vec![],
         FunctionHandler::Sync(pop),
-        1,
+        2,
         Some(Type::Optional(Box::new(Type::U64))),
     );
     let mut results = Vec::new();

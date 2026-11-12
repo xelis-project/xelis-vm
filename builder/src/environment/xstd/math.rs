@@ -59,7 +59,7 @@ macro_rules! sqrt_fn {
                 Some(Type::$t),
                 vec![],
                 native([<sqrt_ $f>]),
-                10,
+                20,
                 Some(Type::$t),
                 concat!("Returns the integer square root of this ", stringify!($t), " value.")
             );

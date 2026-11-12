@@ -30,27 +30,27 @@ macro_rules! array_number_with_size {
 }
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
-    env.register_native_function_with_comment("len", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(len), 1, Some(Type::U32), "Returns the number of elements in the array.");
-    env.register_native_function_with_comment("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(push), 2, None, "Appends an element to the end of the array.");
-    env.register_native_function_with_comment("remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(remove), 5, Some(Type::T(Some(0))), "Removes and returns the element at the index, shifting later elements left.");
-    env.register_native_function_with_comment("swap_remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(swap_remove), 8, Some(Type::T(Some(0))), "Removes and returns the element at the index by swapping in the last element.");
-    env.register_native_function_with_comment("insert", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32), ("element", Type::T(Some(0)))], native(insert), 5, None, "Inserts an element at the index, shifting later elements right.");
-    env.register_native_function_with_comment("index_of", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(index_of), 5, Some(Type::Optional(Box::new(Type::U32))), "Returns the first index of the element, or null when absent.");
+    env.register_native_function_with_comment("len", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(len), 2, Some(Type::U32), "Returns the number of elements in the array.");
+    env.register_native_function_with_comment("push", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(push), 4, None, "Appends an element to the end of the array.");
+    env.register_native_function_with_comment("remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(remove), 10, Some(Type::T(Some(0))), "Removes and returns the element at the index, shifting later elements left.");
+    env.register_native_function_with_comment("swap_remove", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(swap_remove), 16, Some(Type::T(Some(0))), "Removes and returns the element at the index by swapping in the last element.");
+    env.register_native_function_with_comment("insert", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32), ("element", Type::T(Some(0)))], native(insert), 10, None, "Inserts an element at the index, shifting later elements right.");
+    env.register_native_function_with_comment("index_of", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(index_of), 10, Some(Type::Optional(Box::new(Type::U32))), "Returns the first index of the element, or null when absent.");
 
-    env.register_native_function_with_comment("pop", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(pop), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Removes and returns the last element, or null when empty.");
-    env.register_native_function_with_comment("slice", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("range", Type::Range(Box::new(Type::U32)))], native(slice), 5, Some(Type::Array(Box::new(Type::T(Some(0))))), "Returns a shallow slice of the array for the range.");
-    env.register_native_function_with_comment("contains", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(contains), 10, Some(Type::Bool), "Returns true when the array contains the element.");
-    env.register_native_function_with_comment("get", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(get), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the element at the index, or null if out of bounds.");
-    env.register_native_function_with_comment("first", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(first), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the first element, or null when empty.");
-    env.register_native_function_with_comment("last", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(last), 1, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the last element, or null when empty.");
+    env.register_native_function_with_comment("pop", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(pop), 2, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Removes and returns the last element, or null when empty.");
+    env.register_native_function_with_comment("slice", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("range", Type::Range(Box::new(Type::U32)))], native(slice), 10, Some(Type::Array(Box::new(Type::T(Some(0))))), "Returns a shallow slice of the array for the range.");
+    env.register_native_function_with_comment("contains", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("element", Type::T(Some(0)))], native(contains), 20, Some(Type::Bool), "Returns true when the array contains the element.");
+    env.register_native_function_with_comment("get", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(get), 2, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the element at the index, or null if out of bounds.");
+    env.register_native_function_with_comment("first", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(first), 2, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the first element, or null when empty.");
+    env.register_native_function_with_comment("last", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![], native(last), 2, Some(Type::Optional(Box::new(Type::T(Some(0))))), "Returns the last element, or null when empty.");
 
-    env.register_native_function_with_comment("extend", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("other", Type::Array(Box::new(Type::T(Some(0)))))], native(extend), 5, None, "Appends all elements from another array.");
-    env.register_native_function_with_comment("concat", Some(Type::Array(Box::new(Type::Array(Box::new(Type::T(Some(0))))))), vec![], native(concat), 5, Some(Type::Array(Box::new(Type::T(Some(0))))), "Flattens one level of nested arrays into a single array.");
-    env.register_native_function_with_comment("split_off", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(split_off), 5, Some(Type::Array(Box::new(Type::T(Some(0))))), "Splits the array at the index, keeping the first part and returning the second.");
-    env.register_native_function_with_comment("truncate", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("size", Type::U32)], native(truncate), 5, None, "Shortens the array to the requested size.");
+    env.register_native_function_with_comment("extend", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("other", Type::Array(Box::new(Type::T(Some(0)))))], native(extend), 10, None, "Appends all elements from another array.");
+    env.register_native_function_with_comment("concat", Some(Type::Array(Box::new(Type::Array(Box::new(Type::T(Some(0))))))), vec![], native(concat), 10, Some(Type::Array(Box::new(Type::T(Some(0))))), "Flattens one level of nested arrays into a single array.");
+    env.register_native_function_with_comment("split_off", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("index", Type::U32)], native(split_off), 10, Some(Type::Array(Box::new(Type::T(Some(0))))), "Splits the array at the index, keeping the first part and returning the second.");
+    env.register_native_function_with_comment("truncate", Some(Type::Array(Box::new(Type::T(Some(0))))), vec![("size", Type::U32)], native(truncate), 10, None, "Shortens the array to the requested size.");
 
     // Transform a Type::Array(U8) into bytes easily
-    env.register_native_function_with_comment("to_bytes", Some(Type::Array(Box::new(Type::U8))), vec![], native(to_bytes), 1, Some(Type::Bytes), "Converts an array of u8 values into bytes.");
+    env.register_native_function_with_comment("to_bytes", Some(Type::Array(Box::new(Type::U8))), vec![], native(to_bytes), 2, Some(Type::Bytes), "Converts an array of u8 values into bytes.");
 
     // OwnedValue function
     env.register_const_function_with_comment("with", Type::Array(Box::new(Type::T(Some(0)))), vec![("size", Type::U32), ("default", Type::T(Some(0)))], const_with, "Creates an array filled with the default value at compile time.");
@@ -62,7 +62,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         Some(Type::Array(Box::new(Type::T(Some(0))))),
         vec![("ascending", Type::Bool)],
         native(sort),
-        20,
+        40,
         None,
         "Sorts the array in ascending or descending order.",
     );
@@ -72,7 +72,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         Some(Type::Array(Box::new(Type::T(Some(0))))),
         vec![],
         native(reverse),
-        10,
+        20,
         None,
         "Reverses the array in place.",
     );
@@ -87,7 +87,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
             )))
         ],
         native(map),
-        10,
+        20,
         Some(Type::Array(Box::new(Type::Any))),
         "Calls the mapper for each element and returns the mapped values.",
     );
@@ -105,7 +105,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
             ("ascending", Type::Bool),
         ],
         native(sort_by_key),
-        30,
+        60,
         None,
         "Sorts the array by keys returned from the key function.",
     );

@@ -41,7 +41,7 @@ macro_rules! checked_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<checked_div_ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::Optional(Box::new(Type::$t))),
                 concat!("Returns the checked division result for ", stringify!($t), " as an optional value, failing on division by zero.")
             );
@@ -71,7 +71,7 @@ macro_rules! checked_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<checked_rem_ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::Optional(Box::new(Type::$t))),
                 concat!("Returns the checked remainder result for ", stringify!($t), " as an optional value, failing on division by zero.")
             );
@@ -99,7 +99,7 @@ macro_rules! checked_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<checked_ $op _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::Optional(Box::new(Type::$t))),
                 concat!("Returns the checked ", stringify!($op), " result for ", stringify!($t), " as an optional value.")
             );
@@ -152,7 +152,7 @@ macro_rules! wrapping_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<wrapping_div _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::$t),
                 concat!("Returns the wrapping division result for ", stringify!($t), ", failing on division by zero.")
             );
@@ -183,7 +183,7 @@ macro_rules! wrapping_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<wrapping_rem _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::$t),
                 concat!("Returns the wrapping remainder result for ", stringify!($t), ", failing on division by zero.")
             );
@@ -214,7 +214,7 @@ macro_rules! wrapping_fn {
                 // $param with uppercase first letter
                 vec![("other", Type::$param_ty)],
                 native([<$op _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::$t),
                 concat!("Returns the ", stringify!($op), " result for ", stringify!($t), ".")
             );
@@ -265,7 +265,7 @@ macro_rules! integer_param_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<saturating_div _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::$t),
                 concat!("Returns the saturating division result for ", stringify!($t), ", failing on division by zero.")
             );
@@ -292,7 +292,7 @@ macro_rules! integer_param_fn {
                 Some(Type::$t),
                 vec![("other", Type::$param_ty)],
                 native([<$op _ $f>]),
-                $cost,
+                $cost * 2,
                 Some(Type::$t),
                 concat!("Returns the ", stringify!($op), " result for ", stringify!($t), ".")
             );
@@ -327,7 +327,7 @@ macro_rules! to_endian_bytes {
                 Some(Type::$t),
                 vec![],
                 native([<to_ $endian _bytes_ $f>]),
-                10,
+                20,
                 Some(Type::Bytes),
                 concat!("Converts this ", stringify!($t), " value to its ", stringify!($endian), "-endian byte representation.")
             );
@@ -353,7 +353,7 @@ macro_rules! from_endian_bytes {
                 Type::$t,
                 vec![("bytes", Type::Bytes)],
                 native([<from_ $endian _bytes_ $f>]),
-                10,
+                20,
                 Some(Type::$t),
                 concat!("Builds a ", stringify!($t), " value from ", stringify!($endian), "-endian bytes.")
             );
@@ -374,7 +374,7 @@ macro_rules! integer_no_param_fn {
                 Some(Type::$t),
                 vec![],
                 native([<$f _ $func>]),
-                3,
+                6,
                 Some(Type::U32),
                 concat!("Returns ", stringify!($func), " for this ", stringify!($t), " value.")
             );
@@ -411,7 +411,7 @@ macro_rules! register_reverse_bits {
                 Some(Type::$t),
                 vec![],
                 native([<reverse_bits_ $f>]),
-                10,
+                20,
                 Some(Type::$t),
                 concat!("Returns this ", stringify!($t), " value with its bits reversed.")
             );
@@ -445,7 +445,7 @@ macro_rules! min {
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 native([<min_ $f>]),
-                1,
+                2,
                 Some(Type::$t),
                 concat!("Returns the smaller of this ", stringify!($t), " value and another.")
             );
@@ -469,7 +469,7 @@ macro_rules! max {
                 Some(Type::$t),
                 vec![("other", Type::$t)],
                 native([<max_ $f>]),
-                1,
+                2,
                 Some(Type::$t),
                 concat!("Returns the larger of this ", stringify!($t), " value and another.")
             );
@@ -554,7 +554,7 @@ macro_rules! to_string {
                 Some(Type::U256),
                 vec![("base", Type::U32)],
                 native(to_string_u256),
-                3,
+                6,
                 Some(Type::String),
                 "Converts this U256 value to a string in the requested base."
             );
@@ -625,7 +625,7 @@ macro_rules! to_string {
                 Some(Type::$t),
                 vec![("base", Type::U32)],
                 native([<to_string_ $f>]),
-                1,
+                2,
                 Some(Type::String),
                 concat!("Converts this ", stringify!($t), " value to a string in the requested base.")
             );

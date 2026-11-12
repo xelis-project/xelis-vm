@@ -22,7 +22,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Type::Opaque(iter_template.clone()),
         vec![("value", Type::T(Some(0)))],
         native(iter_once),
-        2,
+        4,
         Some(iter_t0()),
         "Creates an iterator that yields one value."
     );
@@ -32,7 +32,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Type::Opaque(iter_template.clone()),
         vec![],
         native(iter_empty),
-        1,
+        2,
         Some(iter_t0()),
         "Creates an iterator that yields no values."
     );
@@ -46,7 +46,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Type::Opaque(iter_template.clone()),
         vec![("seed", Type::T(Some(0))), ("f", unfold_closure)],
         native(iter_unfold),
-        10,
+        20,
         Some(Type::Opaque(iter_template.with_generics(vec![Type::T(Some(1))]))),
         "Creates an iterator by repeatedly calling a closure with evolving state."
     );
@@ -56,7 +56,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(Type::Array(Box::new(Type::T(Some(0))))),
         vec![],
         native(array_iter),
-        5,
+        10,
         Some(iter_t0()),
         "Creates an iterator over the array elements."
     );
@@ -66,7 +66,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_next),
-        2,
+        4,
         Some(Type::Optional(Box::new(Type::T(Some(0))))),
         "Advances the iterator and returns the next value, or null when exhausted."
     );
@@ -76,7 +76,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_count),
-        1,
+        2,
         Some(Type::U32),
         "Consumes the iterator and returns how many values it yields."
     );
@@ -86,7 +86,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("n", Type::U32)],
         native(iter_skip),
-        2,
+        4,
         Some(iter_t0()),
         "Returns an iterator that skips the first n values."
     );
@@ -96,7 +96,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("n", Type::U32)],
         native(iter_take),
-        2,
+        4,
         Some(iter_t0()),
         "Returns an iterator that yields at most n values."
     );
@@ -106,7 +106,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("other", iter_t0())],
         native(iter_chain),
-        5,
+        10,
         Some(iter_t0()),
         "Returns an iterator that yields this iterator followed by another."
     );
@@ -116,7 +116,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_enumerate),
-        5,
+        10,
         Some(Type::Opaque(iter_template.with_generics(vec![Type::Tuples(vec![Type::U32, Type::T(Some(0))])]))),
         "Returns an iterator of index-value pairs."
     );
@@ -126,7 +126,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_rev),
-        5,
+        10,
         Some(iter_t0()),
         "Returns an iterator that yields values in reverse order when supported."
     );
@@ -136,7 +136,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_collect),
-        5,
+        10,
         Some(Type::Array(Box::new(Type::T(Some(0))))),
         "Consumes the iterator and returns all yielded values as an array."
     );
@@ -146,7 +146,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("other", Type::Opaque(iter_template.with_generics(vec![Type::T(Some(1))])))],
         native(iter_zip),
-        5,
+        10,
         Some(Type::Opaque(iter_template.with_generics(vec![Type::Tuples(vec![Type::T(Some(0)), Type::T(Some(1))])]))),
         "Returns an iterator that pairs values from two iterators until either is exhausted."
     );
@@ -156,7 +156,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(Type::Opaque(iter_template.with_generics(vec![iter_t0()]))),
         vec![],
         native(iter_flatten),
-        10,
+        20,
         Some(iter_t0()),
         "Flattens an iterator of iterators into a single iterator."
     );
@@ -166,7 +166,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![],
         native(iter_sum),
-        10,
+        20,
         Some(Type::T(Some(0))),
         "Consumes the iterator and returns the sum of its values."
     );
@@ -177,7 +177,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("mapper", mapper_closure)],
         native(iter_map),
-        10,
+        20,
         Some(Type::Opaque(iter_template.with_generics(vec![Type::T(Some(1))]))),
         "Returns a lazy iterator that applies the mapper closure to each value."
     );
@@ -188,7 +188,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("predicate", predicate_closure.clone())],
         native(iter_filter),
-        10,
+        20,
         Some(iter_t0()),
         "Returns a lazy iterator that keeps values accepted by the predicate."
     );
@@ -199,7 +199,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("f", consumer_closure)],
         native(iter_for_each),
-        10,
+        20,
         None,
         "Consumes the iterator and calls the closure for each value."
     );
@@ -209,7 +209,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("predicate", predicate_closure.clone())],
         native(iter_find),
-        10,
+        20,
         Some(Type::Optional(Box::new(Type::T(Some(0))))),
         "Consumes the iterator until a value matches the predicate, returning it or null."
     );
@@ -219,7 +219,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("predicate", predicate_closure.clone())],
         native(iter_any),
-        10,
+        20,
         Some(Type::Bool),
         "Returns true when any yielded value matches the predicate."
     );
@@ -229,7 +229,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("predicate", predicate_closure.clone())],
         native(iter_all),
-        10,
+        20,
         Some(Type::Bool),
         "Returns true when every yielded value matches the predicate."
     );
@@ -243,7 +243,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("init", Type::T(Some(0))), ("f", fold_closure)],
         native(iter_fold),
-        10,
+        20,
         Some(Type::T(Some(0))),
         "Consumes the iterator and combines values with an accumulator closure."
     );
@@ -253,7 +253,7 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) -> OpaqueType {
         Some(iter_t0()),
         vec![("predicate", predicate_closure)],
         native(iter_position),
-        10,
+        20,
         Some(Type::Optional(Box::new(Type::U32))),
         "Returns the index of the first value matching the predicate, or null."
     );

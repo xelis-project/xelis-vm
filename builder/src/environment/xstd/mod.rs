@@ -28,6 +28,7 @@ use silex_environment::{
 use super::EnvironmentBuilder;
 
 // This module registers all the default functions and types available in the environment, like arrays, strings, integers, etc.
+// Registered costs include the legacy duplicate syscall charge, now charged once by the VM.
 pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
     array::register(env);
     bytes::register(env);
@@ -44,13 +45,13 @@ pub fn register<M: 'static>(env: &mut EnvironmentBuilder<M>) {
 
 // Register default functions available in the environment, like println, debug, panic, assert, etc.
 pub fn register_defaults<M>(env: &mut EnvironmentBuilder<M>) {
-    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], native(println), 1, None, "Prints a value to standard output using its display representation.");
-    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], native(debug), 1, None, "Prints a value to standard output using its debug representation.");
-    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], native(panic), 1, Some(Type::Any), "Stops execution with the provided panic message.");
-    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], native(assert), 1, None, "Fails execution if the condition is false.");
-    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], native(is_same_ptr), 5, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
-    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], native(require), 1, None, "Fails execution with the message if the condition is false.");
-    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], native(clone), 5, Some(Type::T(None)), "Returns a deep clone of the value.");
+    env.register_native_function_with_comment("println", None, vec![("message", Type::Any)], native(println), 2, None, "Prints a value to standard output using its display representation.");
+    env.register_native_function_with_comment("debug", None, vec![("message", Type::Any)], native(debug), 2, None, "Prints a value to standard output using its debug representation.");
+    env.register_native_function_with_comment("panic", None, vec![("message", Type::Any)], native(panic), 2, Some(Type::Any), "Stops execution with the provided panic message.");
+    env.register_native_function_with_comment("assert", None, vec![("condition", Type::Bool)], native(assert), 2, None, "Fails execution if the condition is false.");
+    env.register_native_function_with_comment("is_same_ptr", None, vec![("left", Type::Any), ("right", Type::Any)], native(is_same_ptr), 10, Some(Type::Bool), "Returns true when both values point to the same underlying value.");
+    env.register_native_function_with_comment("require", None, vec![("condition", Type::Bool), ("message", Type::String)], native(require), 2, None, "Fails execution with the message if the condition is false.");
+    env.register_native_function_with_comment("clone", Some(Type::T(None)), vec![], native(clone), 10, Some(Type::T(None)), "Returns a deep clone of the value.");
 }
 
 fn println<M>(_: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {

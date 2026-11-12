@@ -17,16 +17,16 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let key_type = Type::T(Some(0));
     let value_type = Type::T(Some(1));
     let _type = Type::Map(Box::new(key_type.clone()), Box::new(value_type.clone()));
-    env.register_native_function_with_comment("len", Some(_type.clone()), vec![], native(len), 1, Some(Type::U32), "Returns the number of entries in the map.");
-    env.register_native_function_with_comment("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], native(contains_key), 15, Some(Type::Bool), "Returns true when the map contains the key.");
-    env.register_native_function_with_comment("get", Some(_type.clone()), vec![("key", key_type.clone())], native(get), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Returns the value for the key, or null when absent.");
-    env.register_native_function_with_comment("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], native(insert), 30, Some(Type::Optional(Box::new(value_type.clone()))), "Inserts a key-value pair and returns the previous value, or null.");
-    env.register_native_function_with_comment("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], native(shift_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key while preserving map order and returns its value, or null.");
-    env.register_native_function_with_comment("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], native(swap_remove), 15, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key by swapping with the last entry and returns its value, or null.");
-    env.register_native_function_with_comment("clear", Some(_type.clone()), vec![], native(clear), 5, None, "Removes all entries from the map.");
-    env.register_native_function_with_comment("keys", Some(_type.clone()), vec![], native(keys), 20, Some(Type::Array(Box::new(key_type.clone()))), "Returns all keys in insertion order.");
-    env.register_native_function_with_comment("values", Some(_type.clone()), vec![], native(values), 20, Some(Type::Array(Box::new(value_type.clone()))), "Returns all values in insertion order.");
-    env.register_native_function_with_comment("entries", Some(_type.clone()), vec![], native(entries), 40, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))), "Returns all key-value pairs in insertion order.");
+    env.register_native_function_with_comment("len", Some(_type.clone()), vec![], native(len), 2, Some(Type::U32), "Returns the number of entries in the map.");
+    env.register_native_function_with_comment("contains_key", Some(_type.clone()), vec![("key", key_type.clone())], native(contains_key), 30, Some(Type::Bool), "Returns true when the map contains the key.");
+    env.register_native_function_with_comment("get", Some(_type.clone()), vec![("key", key_type.clone())], native(get), 30, Some(Type::Optional(Box::new(value_type.clone()))), "Returns the value for the key, or null when absent.");
+    env.register_native_function_with_comment("insert", Some(_type.clone()), vec![("key", key_type.clone()), ("value", value_type.clone())], native(insert), 60, Some(Type::Optional(Box::new(value_type.clone()))), "Inserts a key-value pair and returns the previous value, or null.");
+    env.register_native_function_with_comment("shift_remove", Some(_type.clone()), vec![("key", key_type.clone())], native(shift_remove), 30, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key while preserving map order and returns its value, or null.");
+    env.register_native_function_with_comment("swap_remove", Some(_type.clone()), vec![("key", key_type.clone())], native(swap_remove), 30, Some(Type::Optional(Box::new(value_type.clone()))), "Removes a key by swapping with the last entry and returns its value, or null.");
+    env.register_native_function_with_comment("clear", Some(_type.clone()), vec![], native(clear), 10, None, "Removes all entries from the map.");
+    env.register_native_function_with_comment("keys", Some(_type.clone()), vec![], native(keys), 40, Some(Type::Array(Box::new(key_type.clone()))), "Returns all keys in insertion order.");
+    env.register_native_function_with_comment("values", Some(_type.clone()), vec![], native(values), 40, Some(Type::Array(Box::new(value_type.clone()))), "Returns all values in insertion order.");
+    env.register_native_function_with_comment("entries", Some(_type.clone()), vec![], native(entries), 80, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))), "Returns all key-value pairs in insertion order.");
 }
 
 fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {

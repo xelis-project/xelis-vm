@@ -8,22 +8,22 @@ use crate::EnvironmentBuilder;
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // Bytes
-    env.register_native_function_with_comment("len", Some(Type::Bytes), vec![], native(len), 1, Some(Type::U32), "Returns the number of bytes.");
-    env.register_native_function_with_comment("push", Some(Type::Bytes), vec![("byte", Type::U8)], native(push), 2, None, "Appends one byte to the end.");
-    env.register_native_function_with_comment("remove", Some(Type::Bytes), vec![("index", Type::U32)], native(remove), 5, Some(Type::U8), "Removes and returns the byte at the index, shifting later bytes left.");
-    env.register_native_function_with_comment("pop", Some(Type::Bytes), vec![], native(pop), 1, Some(Type::Optional(Box::new(Type::U8))), "Removes and returns the last byte, or null when empty.");
-    env.register_native_function_with_comment("slice", Some(Type::Bytes), vec![("range", Type::Range(Box::new(Type::U32)))], native(slice), 5, Some(Type::Bytes), "Returns a copy of the bytes in the range.");
-    env.register_native_function_with_comment("contains", Some(Type::Bytes), vec![("byte", Type::U8)], native(contains), 10, Some(Type::Bool), "Returns true when the byte sequence contains the byte.");
-    env.register_native_function_with_comment("get", Some(Type::Bytes), vec![("index", Type::U32)], native(get), 1, Some(Type::Optional(Box::new(Type::U8))), "Returns the byte at the index, or null if out of bounds.");
-    env.register_native_function_with_comment("first", Some(Type::Bytes), vec![], native(first), 1, Some(Type::Optional(Box::new(Type::U8))), "Returns the first byte, or null when empty.");
-    env.register_native_function_with_comment("last", Some(Type::Bytes), vec![], native(last), 1, Some(Type::Optional(Box::new(Type::U8))), "Returns the last byte, or null when empty.");
-    env.register_native_function_with_comment("to_array", Some(Type::Bytes), vec![], native(to_array), 1, Some(Type::Array(Box::new(Type::U8))), "Converts the bytes to an array of u8 values.");
-    env.register_native_function_with_comment("split_off", Some(Type::Bytes), vec![("index", Type::U32)], native(split_off), 5, Some(Type::Bytes), "Splits the bytes at the index, keeping the first part and returning the second.");
-    env.register_native_function_with_comment("extend", Some(Type::Bytes), vec![("other", Type::Bytes)], native(extend), 5, None, "Appends another byte sequence to the end.");
-    env.register_native_function_with_comment("truncate", Some(Type::Bytes), vec![("size", Type::U32)], native(truncate), 5, None, "Shortens the byte sequence to the requested size.");
+    env.register_native_function_with_comment("len", Some(Type::Bytes), vec![], native(len), 2, Some(Type::U32), "Returns the number of bytes.");
+    env.register_native_function_with_comment("push", Some(Type::Bytes), vec![("byte", Type::U8)], native(push), 4, None, "Appends one byte to the end.");
+    env.register_native_function_with_comment("remove", Some(Type::Bytes), vec![("index", Type::U32)], native(remove), 10, Some(Type::U8), "Removes and returns the byte at the index, shifting later bytes left.");
+    env.register_native_function_with_comment("pop", Some(Type::Bytes), vec![], native(pop), 2, Some(Type::Optional(Box::new(Type::U8))), "Removes and returns the last byte, or null when empty.");
+    env.register_native_function_with_comment("slice", Some(Type::Bytes), vec![("range", Type::Range(Box::new(Type::U32)))], native(slice), 10, Some(Type::Bytes), "Returns a copy of the bytes in the range.");
+    env.register_native_function_with_comment("contains", Some(Type::Bytes), vec![("byte", Type::U8)], native(contains), 20, Some(Type::Bool), "Returns true when the byte sequence contains the byte.");
+    env.register_native_function_with_comment("get", Some(Type::Bytes), vec![("index", Type::U32)], native(get), 2, Some(Type::Optional(Box::new(Type::U8))), "Returns the byte at the index, or null if out of bounds.");
+    env.register_native_function_with_comment("first", Some(Type::Bytes), vec![], native(first), 2, Some(Type::Optional(Box::new(Type::U8))), "Returns the first byte, or null when empty.");
+    env.register_native_function_with_comment("last", Some(Type::Bytes), vec![], native(last), 2, Some(Type::Optional(Box::new(Type::U8))), "Returns the last byte, or null when empty.");
+    env.register_native_function_with_comment("to_array", Some(Type::Bytes), vec![], native(to_array), 2, Some(Type::Array(Box::new(Type::U8))), "Converts the bytes to an array of u8 values.");
+    env.register_native_function_with_comment("split_off", Some(Type::Bytes), vec![("index", Type::U32)], native(split_off), 10, Some(Type::Bytes), "Splits the bytes at the index, keeping the first part and returning the second.");
+    env.register_native_function_with_comment("extend", Some(Type::Bytes), vec![("other", Type::Bytes)], native(extend), 10, None, "Appends another byte sequence to the end.");
+    env.register_native_function_with_comment("truncate", Some(Type::Bytes), vec![("size", Type::U32)], native(truncate), 10, None, "Shortens the byte sequence to the requested size.");
 
-    env.register_native_function_with_comment("to_hex", Some(Type::Bytes), vec![], native(to_hex), 1, Some(Type::String), "Encodes the bytes as a lowercase hexadecimal string.");
-    env.register_static_function_with_comment("from_hex", Type::Bytes, vec![("hex_string", Type::String)], native(from_hex), 1, Some(Type::Bytes), "Decodes a hexadecimal string into bytes.");
+    env.register_native_function_with_comment("to_hex", Some(Type::Bytes), vec![], native(to_hex), 2, Some(Type::String), "Encodes the bytes as a lowercase hexadecimal string.");
+    env.register_static_function_with_comment("from_hex", Type::Bytes, vec![("hex_string", Type::String)], native(from_hex), 2, Some(Type::Bytes), "Decodes a hexadecimal string into bytes.");
 
     env.register_const_function_with_comment("new", Type::Bytes, vec![], |_| Ok(OwnedValue::Bytes(Vec::new())), "Creates an empty byte sequence at compile time.");
     env.register_const_function_with_comment("from", Type::Bytes, vec![("values", Type::Array(Box::new(Type::U8)))], |values| {

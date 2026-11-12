@@ -60,11 +60,11 @@ macro_rules! count {
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let _type = Type::Range(Box::new(Type::T(Some(0))));
-    env.register_native_function_with_comment("contains", Some(_type.clone()), vec![("element", Type::T(Some(0)))], native(contains), 5, Some(Type::Bool), "Returns true when the range contains the element.");
-    env.register_native_function_with_comment("collect", Some(_type.clone()), vec![], native(collect), 20, Some(Type::Array(Box::new(Type::T(Some(0))))), "Collects all values in the range into an array.");
-    env.register_native_function_with_comment("max", Some(_type.clone()), vec![], native(max), 1, Some(Type::T(Some(0))), "Returns the range upper bound.");
-    env.register_native_function_with_comment("min", Some(_type.clone()), vec![], native(min), 1, Some(Type::T(Some(0))), "Returns the range lower bound.");
-    env.register_native_function_with_comment("count", Some(_type.clone()), vec![], native(count), 5, Some(Type::T(Some(0))), "Returns the number of values in the range.");
+    env.register_native_function_with_comment("contains", Some(_type.clone()), vec![("element", Type::T(Some(0)))], native(contains), 10, Some(Type::Bool), "Returns true when the range contains the element.");
+    env.register_native_function_with_comment("collect", Some(_type.clone()), vec![], native(collect), 40, Some(Type::Array(Box::new(Type::T(Some(0))))), "Collects all values in the range into an array.");
+    env.register_native_function_with_comment("max", Some(_type.clone()), vec![], native(max), 2, Some(Type::T(Some(0))), "Returns the range upper bound.");
+    env.register_native_function_with_comment("min", Some(_type.clone()), vec![], native(min), 2, Some(Type::T(Some(0))), "Returns the range lower bound.");
+    env.register_native_function_with_comment("count", Some(_type.clone()), vec![], native(count), 10, Some(Type::T(Some(0))), "Returns the number of values in the range.");
 }
 
 fn contains<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {

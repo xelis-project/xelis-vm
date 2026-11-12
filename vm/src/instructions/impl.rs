@@ -189,8 +189,6 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M: 'static>(backend: &Backend<'a, 'ty, 
         .get(id as usize)
         .ok_or_else(|| VMError::UnknownSysCall(id))?;
 
-    context.increase_gas_usage(f.get_cost())?;
-
     let args = f.get_parameters().len() + f.is_on_instance() as usize;
     let arguments = stack.pop_arguments_with(args, |value| {
         let memory = value.estimate_memory_usage(heap, context.max_memory_usage())?;
@@ -198,8 +196,6 @@ fn internal_syscall<'a: 'r, 'ty: 'a, 'r, M: 'static>(backend: &Backend<'a, 'ty, 
         Ok(())
     })?;
 
-    // Preserve the invocation charge in addition to the charge before argument
-    // accounting above; both are part of the existing gas computation.
     let result = call_syscall(backend, id, arguments, context, heap)?;
     complete_syscall(backend, stack, context, result, current, heap)
 }

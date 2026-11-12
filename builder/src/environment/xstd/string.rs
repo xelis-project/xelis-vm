@@ -13,25 +13,25 @@ use super::{
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     // String
-    env.register_native_function_with_comment("len", Some(Type::String), vec![], native(len), 1, Some(Type::U32), "Returns the byte length of the string.");
-    env.register_native_function_with_comment("trim", Some(Type::String), vec![], native(trim), 1, Some(Type::String), "Returns a copy of the string without leading or trailing whitespace.");
-    env.register_native_function_with_comment("contains", Some(Type::String), vec![("substring", Type::String)], native(contains), 1, Some(Type::Bool), "Returns true when the string contains the substring.");
-    env.register_native_function_with_comment("contains_ignore_case", Some(Type::String), vec![("substring", Type::String)], native(contains_ignore_case), 1, Some(Type::Bool), "Returns true when the string contains the substring, ignoring case.");
-    env.register_native_function_with_comment("to_uppercase", Some(Type::String), vec![], native(to_uppercase), 1, Some(Type::String), "Returns an uppercase copy of the string.");
-    env.register_native_function_with_comment("to_lowercase", Some(Type::String), vec![], native(to_lowercase), 1, Some(Type::String), "Returns a lowercase copy of the string.");
-    env.register_native_function_with_comment("to_bytes", Some(Type::String), vec![], native(to_bytes), 5, Some(Type::Bytes), "Returns the UTF-8 bytes of the string.");
-    env.register_native_function_with_comment("index_of", Some(Type::String), vec![("substring", Type::String)], native(index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the first byte index of the substring, or null if it is absent.");
-    env.register_native_function_with_comment("last_index_of", Some(Type::String), vec![("substring", Type::String)], native(last_index_of), 3, Some(Type::Optional(Box::new(Type::U32))), "Returns the last byte index of the substring, or null if it is absent.");
-    env.register_native_function_with_comment("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], native(replace), 5, Some(Type::String), "Returns a copy with every occurrence of one substring replaced by another.");
-    env.register_native_function_with_comment("starts_with", Some(Type::String), vec![("prefix", Type::String)], native(starts_with), 3, Some(Type::Bool), "Returns true when the string starts with the prefix.");
-    env.register_native_function_with_comment("ends_with", Some(Type::String), vec![("suffix", Type::String)], native(ends_with), 3, Some(Type::Bool), "Returns true when the string ends with the suffix.");
-    env.register_native_function_with_comment("split", Some(Type::String), vec![("separator", Type::String)], native(split), 5, Some(Type::Array(Box::new(Type::String))), "Splits the string by the separator and returns the parts.");
-    env.register_native_function_with_comment("char_at", Some(Type::String), vec![("index", Type::U32)], native(char_at), 1, Some(Type::Optional(Box::new(Type::String))), "Returns the character at the character index as a one-character string, or null if out of bounds.");
+    env.register_native_function_with_comment("len", Some(Type::String), vec![], native(len), 2, Some(Type::U32), "Returns the byte length of the string.");
+    env.register_native_function_with_comment("trim", Some(Type::String), vec![], native(trim), 2, Some(Type::String), "Returns a copy of the string without leading or trailing whitespace.");
+    env.register_native_function_with_comment("contains", Some(Type::String), vec![("substring", Type::String)], native(contains), 2, Some(Type::Bool), "Returns true when the string contains the substring.");
+    env.register_native_function_with_comment("contains_ignore_case", Some(Type::String), vec![("substring", Type::String)], native(contains_ignore_case), 2, Some(Type::Bool), "Returns true when the string contains the substring, ignoring case.");
+    env.register_native_function_with_comment("to_uppercase", Some(Type::String), vec![], native(to_uppercase), 2, Some(Type::String), "Returns an uppercase copy of the string.");
+    env.register_native_function_with_comment("to_lowercase", Some(Type::String), vec![], native(to_lowercase), 2, Some(Type::String), "Returns a lowercase copy of the string.");
+    env.register_native_function_with_comment("to_bytes", Some(Type::String), vec![], native(to_bytes), 10, Some(Type::Bytes), "Returns the UTF-8 bytes of the string.");
+    env.register_native_function_with_comment("index_of", Some(Type::String), vec![("substring", Type::String)], native(index_of), 6, Some(Type::Optional(Box::new(Type::U32))), "Returns the first byte index of the substring, or null if it is absent.");
+    env.register_native_function_with_comment("last_index_of", Some(Type::String), vec![("substring", Type::String)], native(last_index_of), 6, Some(Type::Optional(Box::new(Type::U32))), "Returns the last byte index of the substring, or null if it is absent.");
+    env.register_native_function_with_comment("replace", Some(Type::String), vec![("from", Type::String), ("to", Type::String)], native(replace), 10, Some(Type::String), "Returns a copy with every occurrence of one substring replaced by another.");
+    env.register_native_function_with_comment("starts_with", Some(Type::String), vec![("prefix", Type::String)], native(starts_with), 6, Some(Type::Bool), "Returns true when the string starts with the prefix.");
+    env.register_native_function_with_comment("ends_with", Some(Type::String), vec![("suffix", Type::String)], native(ends_with), 6, Some(Type::Bool), "Returns true when the string ends with the suffix.");
+    env.register_native_function_with_comment("split", Some(Type::String), vec![("separator", Type::String)], native(split), 10, Some(Type::Array(Box::new(Type::String))), "Splits the string by the separator and returns the parts.");
+    env.register_native_function_with_comment("char_at", Some(Type::String), vec![("index", Type::U32)], native(char_at), 2, Some(Type::Optional(Box::new(Type::String))), "Returns the character at the character index as a one-character string, or null if out of bounds.");
 
-    env.register_native_function_with_comment("is_empty", Some(Type::String), vec![], native(is_empty), 1, Some(Type::Bool), "Returns true when the string has no bytes.");
-    env.register_native_function_with_comment("matches", Some(Type::String), vec![("pattern", Type::String)], native(string_matches), 50, Some(Type::Array(Box::new(Type::String))), "Returns all non-overlapping matches of the pattern.");
-    env.register_native_function_with_comment("substring", Some(Type::String), vec![("start", Type::U32)], native(string_substring), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring from the byte index to the end, or null if the index is invalid.");
-    env.register_native_function_with_comment("substring_range", Some(Type::String), vec![("start", Type::U32), ("end", Type::U32)], native(string_substring_range), 3, Some(Type::Optional(Box::new(Type::String))), "Returns the substring in the byte range, or null if the range is invalid.");
+    env.register_native_function_with_comment("is_empty", Some(Type::String), vec![], native(is_empty), 2, Some(Type::Bool), "Returns true when the string has no bytes.");
+    env.register_native_function_with_comment("matches", Some(Type::String), vec![("pattern", Type::String)], native(string_matches), 100, Some(Type::Array(Box::new(Type::String))), "Returns all non-overlapping matches of the pattern.");
+    env.register_native_function_with_comment("substring", Some(Type::String), vec![("start", Type::U32)], native(string_substring), 6, Some(Type::Optional(Box::new(Type::String))), "Returns the substring from the byte index to the end, or null if the index is invalid.");
+    env.register_native_function_with_comment("substring_range", Some(Type::String), vec![("start", Type::U32), ("end", Type::U32)], native(string_substring_range), 6, Some(Type::Optional(Box::new(Type::String))), "Returns the substring in the byte range, or null if the range is invalid.");
 
     // from utf8
     env.register_static_function_with_comment(
@@ -39,7 +39,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         Type::String,
         vec![("bytes", Type::Bytes)],
         native(string_from_utf8),
-        5,
+        10,
         Some(Type::Optional(Box::new(Type::String))),
         "Builds a string from UTF-8 bytes, returning null when the bytes are invalid."
     );
@@ -49,7 +49,7 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
         Type::String,
         vec![("bytes", Type::Bytes)],
         native(string_from_utf8_lossy),
-        5,
+        10,
         Some(Type::String),
         "Builds a string from bytes, replacing invalid UTF-8 sequences."
     );
