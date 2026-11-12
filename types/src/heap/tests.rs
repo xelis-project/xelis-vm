@@ -1,6 +1,10 @@
-use std::{collections::HashSet, mem, sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}}};
+use std::{
+    collections::HashSet,
+    mem,
+    sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex},
+};
 use indexmap::IndexMap;
-use crate::{RuntimeOpaqueWrapper,Opaque, OpaqueWrapper, OwnedValue, PrimitiveInteger, StackValue};
+use crate::{RuntimeOpaqueWrapper, Opaque, OpaqueWrapper, OwnedValue, PrimitiveInteger, StackValue};
 use super::*;
 
 #[derive(Debug, Clone, Opaque)]
@@ -192,7 +196,6 @@ fn replacing_an_object_releases_its_previous_children() {
     assert!(heap.is_empty());
 }
 
-
 #[test]
 fn sequential_clones_and_final_drops_reclaim_every_payload() {
     let mut heap = unsafe { Heap::new() };
@@ -221,7 +224,6 @@ fn heap_drop_before_sequential_handle_drops_releases_every_payload() {
     drop(handles);
     assert_eq!(drops.load(Ordering::Relaxed), 32);
 }
-
 
 #[test]
 fn cycles_are_freed_at_heap_drop_even_with_escaped_handles() {
@@ -342,7 +344,10 @@ struct MutableOpaqueChildren {
 }
 
 impl MutableOpaqueChildren {
-    fn visit(&mut self, visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<(), HeapError> {
+    fn visit(
+        &mut self,
+        visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+    ) -> Result<(), HeapError> {
         visitor(OpaqueChildMut::Value(&mut self.value))?;
         visitor(OpaqueChildMut::Pointer(&mut self.pointer))?;
         visitor(OpaqueChildMut::Stack(&mut self.stack))
@@ -377,7 +382,10 @@ struct UnstableOpaqueChildren {
 }
 
 impl UnstableOpaqueChildren {
-    fn visit(&mut self, visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<(), HeapError> {
+    fn visit(
+        &mut self,
+        visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+    ) -> Result<(), HeapError> {
         if !self.visited {
             self.visited = true;
             visitor(OpaqueChildMut::Pointer(&mut self.pointer))?;

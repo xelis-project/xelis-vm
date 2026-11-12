@@ -6,13 +6,15 @@ use std::{
     any::TypeId,
     borrow::Cow,
     fmt,
-    hash::{Hash, Hasher}
+    hash::{Hash, Hasher},
 };
 use schemars::*;
 use matriochka::{OptionExt, ResultExt as _};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
-use crate::{IdentifierType, RuntimeValue, ValueError, ValuePointer, StackValue, Heap, HeapError, OwnedValue};
+use crate::{
+    Heap, HeapError, IdentifierType, OwnedValue, RuntimeValue, StackValue, ValueError, ValuePointer,
+};
 use traits::*;
 use super::Type;
 
@@ -120,7 +122,12 @@ impl OpaqueType {
     }
 
     /// Create a generic template that accepts `generics_count` type parameters.
-    pub fn with_generics_count(id: IdentifierType, name: &'static str, allow_external_input: bool, generics_count: u8) -> Self {
+    pub fn with_generics_count(
+        id: IdentifierType,
+        name: &'static str,
+        allow_external_input: bool,
+        generics_count: u8,
+    ) -> Self {
         Self(OpaqueTypeInner {
             id,
             name: name.into(),
@@ -189,7 +196,9 @@ impl fmt::Display for OpaqueType {
         if !self.0.generics.is_empty() {
             write!(f, "<")?;
             for (i, g) in self.0.generics.iter().enumerate() {
-                if i > 0 { write!(f, ", ")?; }
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
                 write!(f, "{}", g)?;
             }
             write!(f, ">")?;
@@ -220,7 +229,9 @@ pub enum OpaqueChild<'a> {
 }
 
 impl<'a> From<&'a OwnedValue> for OpaqueChild<'a> {
-    fn from(value: &'a OwnedValue) -> Self { Self::Owned(value) }
+    fn from(value: &'a OwnedValue) -> Self {
+        Self::Owned(value)
+    }
 }
 
 impl<'a> From<&'a RuntimeValue> for OpaqueChild<'a> {
@@ -260,14 +271,20 @@ pub enum OpaqueChildMut<'a> {
 /// Shared inspection capabilities. This trait exposes no heap access.
 pub trait OpaqueValue: AsAny + DynType + JSONHelper + fmt::Debug {
     /// Return the binary serialization capability when supported.
-    fn as_serializable(&self) -> Option<&dyn DynSerializable> { None }
+    fn as_serializable(&self) -> Option<&dyn DynSerializable> {
+        None
+    }
 
     /// Return the hashing capability when supported.
-    fn as_hashable(&self) -> Option<&dyn DynHash> { None }
+    fn as_hashable(&self) -> Option<&dyn DynHash> {
+        None
+    }
 
     /// Return the value equality capability when supported.
     /// Without it, wrappers compare equal only when they are the same wrapper.
-    fn as_eq(&self) -> Option<&dyn DynEq> { None }
+    fn as_eq(&self) -> Option<&dyn DynEq> {
+        None
+    }
 
     /// Size used for value accounting, including non-serializable values.
     fn get_size(&self) -> Result<usize, matriochka::Error> {
@@ -319,7 +336,10 @@ pub trait RuntimeOpaque: OpaqueValue {
     /// emptied handles. Inline structural opaque children may be traversed
     /// iteratively by the visitor.
     /// Return false without invoking the visitor when using deep_clone_in instead.
-    fn visit_children_mut(&mut self, _visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<bool, HeapError> {
+    fn visit_children_mut(
+        &mut self,
+        _visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+    ) -> Result<bool, HeapError> {
         Ok(false)
     }
 
@@ -342,7 +362,7 @@ impl Hash for dyn Opaque {
 #[derive(Debug, JsonSchema)]
 pub struct OpaqueWrapper {
     #[schemars(skip)]
-    inner: Box<dyn Opaque>
+    inner: Box<dyn Opaque>,
 }
 
 impl PartialEq for OpaqueWrapper {
@@ -378,7 +398,7 @@ impl OpaqueWrapper {
     #[inline]
     pub fn new<T: Opaque>(value: T) -> Self {
         Self {
-            inner: Box::new(value)
+            inner: Box::new(value),
         }
     }
 
@@ -390,21 +410,24 @@ impl OpaqueWrapper {
 
     // Downcast the OpaqueWrapper to a specific type
     pub fn as_ref<T: Opaque>(&self) -> Result<&T, ValueError> {
-        (*self.inner).as_any()
+        (*self.inner)
+            .as_any()
             .downcast_ref::<T>()
             .ok_or_else(|| ValueError::InvalidOpaqueTypeMismatch)
     }
 
     // Downcast the OpaqueWrapper to a specific type
     pub fn as_mut<T: Opaque>(&mut self) -> Result<&mut T, ValueError> {
-        (*self.inner).as_any_mut()
+        (*self.inner)
+            .as_any_mut()
             .downcast_mut::<T>()
             .ok_or_else(|| ValueError::InvalidOpaqueTypeMismatch)
     }
 
     // Downcast the OpaqueWrapper to a specific type
     pub fn into_inner<T: Opaque>(self) -> Result<T, ValueError> {
-        self.inner.into_any()
+        self.inner
+            .into_any()
             .downcast::<T>()
             .map(|value| *value)
             .map_err(|_| ValueError::InvalidOpaqueTypeMismatch)
@@ -463,8 +486,12 @@ impl Serialize for OpaqueWrapper {
         structure.serialize_field("type", &self.inner.get_type_name())?;
 
         let value = if self.inner.is_json_supported() {
-            self.inner.serialize_json()
-                .with_context(|| format!("serializing opaque value of type {}", self.inner.get_type_name()))
+            self.inner
+                .serialize_json()
+                .with_context(|| format!(
+                    "serializing opaque value of type {}",
+                    self.inner.get_type_name(),
+                ))
                 .map_err(|error| serde::ser::Error::custom(format!("{error:#}")))?
         } else {
             Value::String("JSON not supported".to_owned())
@@ -488,11 +515,14 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
         let type_name = data.type_;
         let value = data.value;
 
-        let registry = JSON_REGISTRY.read()
-            .map_err(serde::de::Error::custom)?;
+        let registry = JSON_REGISTRY.read().map_err(serde::de::Error::custom)?;
 
-        let deserialize_fn = registry.get(&type_name.as_str())
-            .ok_or_else(|| serde::de::Error::custom(format!("Unknown type '{}' for registry", type_name)))?;
+        let deserialize_fn = registry
+            .get(&type_name.as_str())
+            .ok_or_else(|| serde::de::Error::custom(format!(
+                "Unknown type '{}' for registry",
+                type_name,
+            )))?;
 
         deserialize_fn(value)
             .with_context(|| format!("deserializing opaque value of type {type_name}"))
@@ -510,7 +540,9 @@ impl Clone for OpaqueWrapper {
 
 impl OpaqueWrapper {
     pub fn deep_clone(&self) -> Self {
-        Self { inner: self.inner.deep_clone() }
+        Self {
+            inner: self.inner.deep_clone(),
+        }
     }
 }
 
@@ -528,14 +560,13 @@ impl fmt::Display for OpaqueWrapper {
 
 #[cfg(test)]
 mod tests {
-    use std::{any::TypeId, hash::{DefaultHasher, Hasher}};
+    use std::{
+        any::TypeId,
+        hash::{DefaultHasher, Hasher},
+    };
     use indexmap::IndexMap;
 
-    use crate::{
-        register_opaque_json,
-        Primitive,
-        Type,
-    };
+    use crate::{register_opaque_json, Primitive, Type};
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, crate::Opaque)]
@@ -557,20 +588,29 @@ mod tests {
 
         impl JSONHelper for BinaryOpaque {}
         impl Opaque for BinaryOpaque {
-    fn clone_box(&self) -> Box<dyn Opaque> { Box::new(self.clone()) }
-}
+            fn clone_box(&self) -> Box<dyn Opaque> {
+                Box::new(self.clone())
+            }
+        }
 
-impl OpaqueValue for BinaryOpaque {
-
-            fn as_serializable(&self) -> Option<&dyn DynSerializable> { Some(&self.0) }
+        impl OpaqueValue for BinaryOpaque {
+            fn as_serializable(&self) -> Option<&dyn DynSerializable> {
+                Some(&self.0)
+            }
         }
 
         let opaque = OpaqueWrapper::new(BinaryOpaque(42));
         assert!(opaque.is_serializable());
         assert_eq!(opaque.get_size().unwrap(), 4);
         let mut bytes = vec![99];
-        assert_eq!(opaque.as_serializable().unwrap().serialize(&mut bytes).unwrap(), 4);
-        assert_eq!(&bytes[1..], octet::Serializable::to_bytes(&42u32).unwrap().as_ref());
+        assert_eq!(
+            opaque.as_serializable().unwrap().serialize(&mut bytes).unwrap(),
+            4,
+        );
+        assert_eq!(
+            &bytes[1..],
+            octet::Serializable::to_bytes(&42u32).unwrap().as_ref(),
+        );
         assert_eq!(bytes[0], 99);
 
         let unsupported = OpaqueWrapper::new(CustomOpaque { value: 42 });
@@ -619,7 +659,10 @@ impl OpaqueValue for BinaryOpaque {
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let json = serde_json::to_string(&opaque).unwrap();
-        assert_eq!(json, r#"{"type":"CustomOpaque","value":{"value":42}}"#);
+        assert_eq!(
+            json,
+            r#"{"type":"CustomOpaque","value":{"value":42}}"#,
+        );
 
         let opaque2: OpaqueWrapper = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque, opaque2);
@@ -629,7 +672,10 @@ impl OpaqueValue for BinaryOpaque {
     fn test_opaque_type_serde() {
         let opaque_type = OpaqueType::new(42, "Foo");
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}"#);
+        assert_eq!(
+            json,
+            r#"{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}"#,
+        );
 
         let opaque_type2: OpaqueType = serde_json::from_str(&json).unwrap();
         assert_eq!(opaque_type, opaque_type2);
@@ -641,7 +687,10 @@ impl OpaqueValue for BinaryOpaque {
 
         let opaque_type = Type::Opaque(OpaqueType::new(42, "Foo"));
         let json = serde_json::to_string(&opaque_type).unwrap();
-        assert_eq!(json, r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}}"#);
+        assert_eq!(
+            json,
+            r#"{"type":"opaque","value":{"id":42,"name":"Foo","allow_external_input":false,"generics_count":0,"generics":[]}}"#,
+        );
     }
 
     #[test]
@@ -661,8 +710,14 @@ impl OpaqueValue for BinaryOpaque {
 
         let opaque = OpaqueWrapper::new(CustomOpaque { value: 42 });
         let mut map = IndexMap::new();
-        map.insert(OwnedValue::Opaque(opaque), OwnedValue::Primitive(Primitive::String("hello world".to_owned())).into());
-        map.insert(OwnedValue::Primitive(Primitive::String("key test".to_owned())), OwnedValue::Primitive(Primitive::String("hello world 2".to_owned())).into());
+        map.insert(
+            OwnedValue::Opaque(opaque),
+            OwnedValue::Primitive(Primitive::String("hello world".to_owned())).into(),
+        );
+        map.insert(
+            OwnedValue::Primitive(Primitive::String("key test".to_owned())),
+            OwnedValue::Primitive(Primitive::String("hello world 2".to_owned())).into(),
+        );
 
         let map = OwnedValue::Map(map);
         let json = serde_json::to_string(&map).unwrap();
