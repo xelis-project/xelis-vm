@@ -3,15 +3,17 @@ use matriochka::ResultExt as _;
 /// Object-safe serialization capability for opaque values.
 /// Implemented automatically for types implementing Octet's `Serializable`.
 pub trait DynSerializable {
-    fn get_size(&self) -> usize;
+    /// Return the number of bytes required to encode the value.
+    fn get_size(&self) -> Result<usize, matriochka::Error>;
+
     /// Append the encoded value and return the number of bytes written.
     /// On failure the buffer may contain a partially encoded value.
     fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error>;
 }
 
 impl<T: octet::Serializable> DynSerializable for T {
-    fn get_size(&self) -> usize {
-        self.size()
+    fn get_size(&self) -> Result<usize, matriochka::Error> {
+        Ok(self.size())
     }
 
     fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error> {

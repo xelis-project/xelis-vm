@@ -211,7 +211,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
     });
     let size = options.size.map(|size| {
         quote! {
-            fn get_size(&self) -> usize { #size }
+            fn get_size(&self) -> Result<usize, matriochka::Error> { Ok(#size) }
         }
     });
     let deep_clone = options

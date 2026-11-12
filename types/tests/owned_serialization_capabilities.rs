@@ -12,7 +12,7 @@ struct JsonOnly;
 struct BinaryOnly(u32);
 
 impl DynSerializable for BinaryOnly {
-    fn get_size(&self) -> usize {
+    fn get_size(&self) -> Result<usize, matriochka::Error> {
         self.0.get_size()
     }
 
@@ -26,7 +26,7 @@ impl DynSerializable for BinaryOnly {
 struct Both(u32);
 
 impl DynSerializable for Both {
-    fn get_size(&self) -> usize {
+    fn get_size(&self) -> Result<usize, matriochka::Error> {
         self.0.get_size()
     }
 
@@ -150,8 +150,8 @@ fn capability_checks_do_not_run_serializers() {
     struct PanickingSerializers;
 
     impl DynSerializable for PanickingSerializers {
-        fn get_size(&self) -> usize {
-            panic!("capability checks must not calculate serialized size");
+        fn get_size(&self) -> Result<usize, matriochka::Error> {
+            panic!("capability checks must not run binary serialization");
         }
 
         fn serialize(&self, _: &mut Vec<u8>) -> Result<usize, matriochka::Error> {

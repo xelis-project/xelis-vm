@@ -83,7 +83,7 @@ impl RuntimeOpaqueWrapper {
     }
 
     #[inline]
-    pub fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> Result<usize, matriochka::Error> {
         self.inner().get_size()
     }
 

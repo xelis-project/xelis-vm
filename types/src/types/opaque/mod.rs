@@ -9,7 +9,7 @@ use std::{
     hash::{Hash, Hasher}
 };
 use schemars::*;
-use matriochka::ResultExt as _;
+use matriochka::{OptionExt, ResultExt as _};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use serde_json::Value;
 use crate::{IdentifierType, RuntimeValue, ValueError, ValuePointer, StackValue, Heap, HeapError, OwnedValue};
@@ -270,8 +270,10 @@ pub trait OpaqueValue: AsAny + DynType + JSONHelper + fmt::Debug {
     fn as_eq(&self) -> Option<&dyn DynEq> { None }
 
     /// Size used for value accounting, including non-serializable values.
-    fn get_size(&self) -> usize {
-        self.as_serializable().map_or(8, |v| v.get_size())
+    fn get_size(&self) -> Result<usize, matriochka::Error> {
+        self.as_serializable()
+            .context("opaque value does not support size accounting")
+            .and_then(DynSerializable::get_size)
     }
 
     fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -440,7 +442,7 @@ impl OpaqueWrapper {
     }
 
     #[inline]
-    pub fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> Result<usize, matriochka::Error> {
         self.inner.get_size()
     }
 
@@ -565,7 +567,7 @@ impl OpaqueValue for BinaryOpaque {
 
         let opaque = OpaqueWrapper::new(BinaryOpaque(42));
         assert!(opaque.is_serializable());
-        assert_eq!(opaque.get_size(), 4);
+        assert_eq!(opaque.get_size().unwrap(), 4);
         let mut bytes = vec![99];
         assert_eq!(opaque.as_serializable().unwrap().serialize(&mut bytes).unwrap(), 4);
         assert_eq!(&bytes[1..], octet::Serializable::to_bytes(&42u32).unwrap().as_ref());

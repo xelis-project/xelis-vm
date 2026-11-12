@@ -145,8 +145,8 @@ impl Opaque for Manual {
 
 impl OpaqueValue for Manual {
 
-    fn get_size(&self) -> usize {
-        123
+    fn get_size(&self) -> Result<usize, matriochka::Error> {
+        Ok(123)
     }
 }
 
@@ -216,7 +216,7 @@ fn selected_capabilities_on_generic_type() {
     assert_eq!(opaque.inner().get_type_name(), "Record");
     assert_eq!(opaque.get_type_id(), std::any::TypeId::of::<Record<u32>>());
     assert_eq!(opaque.to_string(), "record:42");
-    assert_eq!(opaque.get_size(), 4);
+    assert_eq!(opaque.get_size().unwrap(), 4);
     assert!(opaque.is_json_serializable());
     assert_eq!(
         opaque.inner().serialize_json().unwrap(),
@@ -280,7 +280,7 @@ fn binary_capability_uses_octet_adapter() {
         octet::Serializable::to_bytes(&42u32).unwrap().as_ref()
     );
     assert_eq!(bytes[0], 99);
-    assert_eq!(opaque.get_size(), 4);
+    assert_eq!(opaque.get_size().unwrap(), 4);
 }
 
 #[test]
@@ -291,7 +291,7 @@ fn custom_implementations_are_preserved() {
     );
     let opaque = OpaqueWrapper::new(Manual);
     assert_eq!(opaque.inner().get_type_name(), "Manual");
-    assert_eq!(opaque.get_size(), 123);
+    assert_eq!(opaque.get_size().unwrap(), 123);
     assert_eq!(Manual.get_type(), std::any::TypeId::of::<Manual>());
 }
 
