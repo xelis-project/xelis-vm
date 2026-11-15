@@ -2,6 +2,7 @@
 mod tests;
 
 mod serialization;
+mod backward_compatibility;
 
 use std::{
     borrow::Cow,
@@ -12,12 +13,10 @@ use std::{
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
-use serde::Deserialize;
 
 use crate::{Opaque, Type, PrimitiveRange, Either, OpaqueWrapper, PrimitiveInteger, U256, ValueError, Primitive};
 
 use crate::{RuntimeValue, ValuePointer, Heap};
-use super::serde_map;
 
 /// An owned value for constants, inputs, and outputs.
 ///
@@ -25,13 +24,12 @@ use super::serde_map;
 /// `Clone`, `Drop`, `PartialEq`, and `Hash` are all iterative to prevent stack
 /// overflow for deeply nested structures. Opaque payloads supply their own
 /// implementations of these operations.
-#[derive(Deserialize, JsonSchema)]
+#[derive(JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum OwnedValue {
     Opaque(OpaqueWrapper),
     Bytes(Vec<u8>),
     Object(Vec<OwnedValue>),
-    #[serde(deserialize_with = "serde_map::deserialize")]
     #[schemars(with = "Vec<(OwnedValue, OwnedValue)>")]
     Map(IndexMap<OwnedValue, OwnedValue>),
     #[serde(untagged)]
