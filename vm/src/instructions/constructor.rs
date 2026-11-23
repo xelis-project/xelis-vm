@@ -1,11 +1,22 @@
-use indexmap::IndexMap;
-use silex_environment::EnvironmentError;
-use silex_types::{Heap, Primitive, RuntimeValue};
+use silex_types::{
+    Heap,
+    Primitive,
+    RuntimeMap,
+    RuntimeValue,
+};
 
-use crate::{debug, stack::Stack, Backend, ChunkManager, ChunkReader, VMContext, VMError};
 use super::InstructionResult;
+use crate::{
+    debug,
+    stack::Stack,
+    Backend,
+    ChunkManager,
+    ChunkReader,
+    VMContext,
+    VMError,
+};
 
-pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn new_array<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let length = reader.read_u8()?;
     debug!("new array with length {}", length);
 
@@ -25,7 +36,7 @@ pub fn new_array<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_range<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn new_range<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     debug!("new range");
     let mut end = stack.pop_stack()?.into_owned(heap)?;
     let mut start = stack.pop_stack()?.into_owned(heap)?;
@@ -41,23 +52,19 @@ pub fn new_range<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     Ok(InstructionResult::Nothing)
 }
 
-pub fn new_map<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+pub fn new_map<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let len = reader.read_u8()?;
     debug!("new map with length {}", len);
 
-    let mut map = IndexMap::with_capacity(len as usize);
+    let mut map = RuntimeMap::with_capacity(len as usize);
     for _ in 0..len {
         let value = stack.pop_stack()?;
         // Export directly to immutable key data without detaching an
         // intermediate runtime graph first.
-        let key = heap.export(stack.pop_stack()?)?;
-        if !key.is_hashable() {
-            return Err(EnvironmentError::InvalidKeyType.into());
-        }
-
+        let key = heap.export_in(stack.pop_stack()?, context.gas_meter())?;
         let value = value.into_owned(heap)?;
         let value = heap.insert(value);
-        map.insert(key, value);
+        map.insert(key, value, context.gas_meter())?;
     }
 
     let map = RuntimeValue::Map(Box::new(map));

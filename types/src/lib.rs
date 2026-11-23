@@ -7,13 +7,11 @@ mod values;
 mod heap;
 mod u256;
 mod reference;
+mod gas;
 
 use std::{
     collections::HashMap,
-    hash::{
-        BuildHasherDefault,
-        Hasher
-    }
+    hash::{BuildHasherDefault, Hasher},
 };
 
 pub use types::*;
@@ -22,13 +20,13 @@ pub use heap::*;
 pub use types::opaque::*;
 pub use u256::U256;
 pub use reference::*;
+pub use gas::{GasError, GasMeter};
 
 // Variable identifier used in the parser and interpreter
 // This is used to optimize the memory usage by using a smaller type
 // to represent an identifier
 // A mapper is done to map a string name into an identifier
 pub type IdentifierType = u16;
-
 
 // Hasher that does nothing
 // Because we have u16 as the key, we don't need to hash it

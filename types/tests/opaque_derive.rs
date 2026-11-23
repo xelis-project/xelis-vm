@@ -1,9 +1,49 @@
-use silex_types::RuntimeOpaqueWrapper;
-use silex_types::OpaqueValue;
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    fmt::{Display, Formatter, Result as FmtResult},
+    hash::{DefaultHasher, Hasher},
+};
+
+use indexmap::IndexMap;
+use matriochka::Error as ContextError;
+use octet::{
+    Readable,
+    Reader,
+    Serializable,
+    Writable,
+    Writer,
+};
+use serde::{
+    ser::Error as SerializeError,
+    Deserialize,
+    Serialize,
+    Serializer,
+};
+use serde_json::{Error as JsonError, Value};
 use silex_types::{
-    DynType, PrimitiveInteger, register_opaque_json,
-    traits::{DynType, JSONHelper, JSON_REGISTRY},
-    OwnedValue, Opaque, OpaqueWrapper, Primitive, StackValue, RuntimeValue, ValueError, ValuePointer, Heap, HeapError,
+    register_opaque_json,
+    traits::{
+        DynEq,
+        DynHash,
+        DynType,
+        JSONHelper,
+        JSON_REGISTRY,
+    },
+    DynType,
+    Heap,
+    HeapError,
+    Opaque,
+    OpaqueValue,
+    OpaqueWrapper,
+    OwnedValue,
+    Primitive,
+    PrimitiveInteger,
+    RuntimeOpaqueWrapper,
+    RuntimeValue,
+    StackValue,
+    ValueError,
+    ValuePointer,
 };
 
 #[derive(Debug, Clone, Opaque)]
@@ -86,14 +126,14 @@ fn direct_opaque_children_use_the_same_derive_option() {
     assert_eq!(children, 1);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, Opaque)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Opaque)]
 #[opaque(name = "Record", display, json, hash, eq, size = 4)]
 struct Record<T>(T)
 where
     T: PartialEq;
 
-impl<T: std::fmt::Display + PartialEq> std::fmt::Display for Record<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: Display + PartialEq> Display for Record<T> {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         write!(f, "record:{}", self.0)
     }
 }
@@ -102,18 +142,20 @@ impl<T: std::fmt::Display + PartialEq> std::fmt::Display for Record<T> {
 #[opaque(serializable)]
 struct Binary(u32);
 
-impl octet::Serializable for Binary {
+impl Serializable for Binary {
     fn size(&self) -> usize {
-        octet::Serializable::size(&self.0)
+        Serializable::size(&self.0)
     }
-    fn write<W: octet::Writable>(
+
+    fn write<W: Writable>(
         &self,
-        writer: &mut octet::Writer<W>,
-    ) -> Result<(), matriochka::Error> {
-        octet::Serializable::write(&self.0, writer)
+        writer: &mut Writer<W>,
+    ) -> Result<(), ContextError> {
+        Serializable::write(&self.0, writer)
     }
-    fn read<R: octet::Readable>(reader: &mut octet::Reader<R>) -> Result<Self, matriochka::Error> {
-        octet::Serializable::read(reader).map(Self)
+
+    fn read<R: Readable>(reader: &mut Reader<R>) -> Result<Self, ContextError> {
+        Serializable::read(reader).map(Self)
     }
 }
 
@@ -127,7 +169,8 @@ impl JSONHelper for CustomJson {
     fn is_json_supported(&self) -> bool {
         true
     }
-    fn serialize_json(&self) -> Result<serde_json::Value, matriochka::Error> {
+
+    fn serialize_json(&self) -> Result<Value, ContextError> {
         Ok(serde_json::json!("custom"))
     }
 }
@@ -145,18 +188,18 @@ impl Opaque for Manual {
 
 impl OpaqueValue for Manual {
 
-    fn get_size(&self) -> Result<usize, matriochka::Error> {
+    fn get_size(&self) -> Result<usize, ContextError> {
         Ok(123)
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Opaque)]
+#[derive(Debug, Clone, Deserialize, Opaque)]
 #[opaque(json)]
 struct InvalidJson;
 
-impl serde::Serialize for InvalidJson {
-    fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
-        Err(serde::ser::Error::custom("fixture serialization failure"))
+impl Serialize for InvalidJson {
+    fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+        Err(SerializeError::custom("fixture serialization failure"))
     }
 }
 
@@ -164,7 +207,7 @@ impl serde::Serialize for InvalidJson {
 fn json_serialization_preserves_context_and_cause() {
     let error = InvalidJson.serialize_json().unwrap_err();
     assert!(error.to_string().contains("InvalidJson"));
-    assert!(error.downcast_ref::<serde_json::Error>().is_some());
+    assert!(error.downcast_ref::<JsonError>().is_some());
     assert!(format!("{error:#}").contains("fixture serialization failure"));
 
     let error = serde_json::to_value(OpaqueWrapper::new(InvalidJson)).unwrap_err();
@@ -184,7 +227,7 @@ fn json_deserialization_preserves_context_and_cause() {
         serde_json::json!(true),
     ).unwrap_err();
     assert!(error.to_string().contains("InvalidJson"));
-    assert!(error.downcast_ref::<serde_json::Error>().is_some());
+    assert!(error.downcast_ref::<JsonError>().is_some());
 
     let error = serde_json::from_value::<OpaqueWrapper>(serde_json::json!({
         "type": "InvalidJson",
@@ -199,7 +242,7 @@ fn json_deserialization_preserves_context_and_cause() {
 fn default_capabilities_and_identity() {
     let opaque = OpaqueWrapper::new(Plain);
     assert_eq!(opaque.inner().get_type_name(), "Plain");
-    assert_eq!(opaque.get_type_id(), std::any::TypeId::of::<Plain>());
+    assert_eq!(opaque.get_type_id(), TypeId::of::<Plain>());
     assert_eq!(opaque.to_string(), "Opaque(Plain)");
     assert!(!opaque.is_serializable());
     assert!(!opaque.is_json_serializable());
@@ -214,7 +257,7 @@ fn default_capabilities_and_identity() {
 fn selected_capabilities_on_generic_type() {
     let opaque = OpaqueWrapper::new(Record(42u32));
     assert_eq!(opaque.inner().get_type_name(), "Record");
-    assert_eq!(opaque.get_type_id(), std::any::TypeId::of::<Record<u32>>());
+    assert_eq!(opaque.get_type_id(), TypeId::of::<Record<u32>>());
     assert_eq!(opaque.to_string(), "record:42");
     assert_eq!(opaque.get_size().unwrap(), 4);
     assert!(opaque.is_json_serializable());
@@ -227,12 +270,12 @@ fn selected_capabilities_on_generic_type() {
     assert!(opaque.as_eq().is_some());
     use std::hash::{Hash, Hasher};
     let hash = |value: &OpaqueWrapper| {
-        let mut hasher = std::hash::DefaultHasher::new();
+        let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
     };
     assert_eq!(hash(&opaque), hash(&opaque.clone()));
-    let mut map = std::collections::HashMap::new();
+    let mut map = HashMap::new();
     map.insert(opaque, "value");
     assert_eq!(map.get(&OpaqueWrapper::new(Record(42u32))), Some(&"value"));
     assert_ne!(
@@ -263,6 +306,74 @@ fn map_keys_require_both_capabilities() {
     assert_eq!(eq_only, eq_only.clone());
 }
 
+#[derive(Debug, Clone, DynType)]
+struct ConditionalCapabilities {
+    hash: bool,
+    eq: bool,
+}
+
+impl JSONHelper for ConditionalCapabilities {}
+
+impl Opaque for ConditionalCapabilities {
+    fn clone_box(&self) -> Box<dyn Opaque> {
+        Box::new(self.clone())
+    }
+}
+
+impl OpaqueValue for ConditionalCapabilities {
+    fn as_hashable(&self) -> Option<&dyn DynHash> {
+        self.hash.then_some(self)
+    }
+
+    fn as_eq(&self) -> Option<&dyn DynEq> {
+        self.eq.then_some(self)
+    }
+}
+
+impl DynHash for ConditionalCapabilities {
+    fn dyn_hash(&self, _: &mut dyn Hasher) {
+        panic!("capability checks must not hash values")
+    }
+}
+
+impl DynEq for ConditionalCapabilities {
+    fn is_equal(&self, _: &dyn DynEq) -> bool {
+        panic!("capability checks must not compare values")
+    }
+}
+
+#[test]
+fn dynamic_capabilities_propagate_through_wrappers_and_collections() {
+    let mut heap = unsafe { Heap::new() };
+    for hash in [false, true] {
+        for eq in [false, true] {
+            let value = ConditionalCapabilities { hash, eq };
+            let opaque = OpaqueWrapper::new(value.clone());
+            assert_eq!(opaque.as_hashable().is_some(), hash);
+            assert_eq!(opaque.as_eq().is_some(), eq);
+            assert_eq!(opaque.is_hashable(), hash && eq);
+
+            let owned = OwnedValue::Object(vec![OwnedValue::Object(vec![opaque.into()])]);
+            assert_eq!(owned.is_equatable(), eq);
+            assert_eq!(owned.is_hashable(), hash && eq);
+            let runtime = owned.to_runtime_value(&mut heap);
+            assert_eq!(runtime.is_equatable(&heap), eq);
+
+            let runtime_opaque = RuntimeOpaqueWrapper::new(value);
+            assert_eq!(runtime_opaque.as_hashable().is_some(), hash);
+            assert_eq!(runtime_opaque.as_eq().is_some(), eq);
+            assert_eq!(runtime_opaque.is_hashable(), hash && eq);
+
+            let mut entries = IndexMap::new();
+            entries.insert(OwnedValue::from(PrimitiveInteger::U8(1)), owned);
+            let map = OwnedValue::Map(entries);
+            assert!(!map.is_hashable());
+            assert_eq!(map.is_equatable(), eq);
+            assert_eq!(map.to_runtime_value(&mut heap).is_equatable(&heap), eq);
+        }
+    }
+}
+
 #[test]
 fn binary_capability_uses_octet_adapter() {
     let opaque = OpaqueWrapper::new(Binary(42));
@@ -277,7 +388,7 @@ fn binary_capability_uses_octet_adapter() {
     );
     assert_eq!(
         &bytes[1..],
-        octet::Serializable::to_bytes(&42u32).unwrap().as_ref()
+        Serializable::to_bytes(&42u32).unwrap().as_ref()
     );
     assert_eq!(bytes[0], 99);
     assert_eq!(opaque.get_size().unwrap(), 4);
@@ -292,7 +403,7 @@ fn custom_implementations_are_preserved() {
     let opaque = OpaqueWrapper::new(Manual);
     assert_eq!(opaque.inner().get_type_name(), "Manual");
     assert_eq!(opaque.get_size().unwrap(), 123);
-    assert_eq!(Manual.get_type(), std::any::TypeId::of::<Manual>());
+    assert_eq!(Manual.get_type(), TypeId::of::<Manual>());
 }
 
 #[test]

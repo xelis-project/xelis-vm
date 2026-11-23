@@ -1,20 +1,28 @@
 use std::{
     borrow::Cow,
-    fmt,
-    mem
+    fmt::{Display, Formatter, Result as FmtResult},
+    mem,
 };
-use indexmap::IndexMap;
-use crate::{RuntimeOpaqueWrapper, OpaqueValue,
-    opaque::OpaqueWrapper,
-    Opaque,
-    Type,
-    U256,
-    Heap,
-    OwnedValue,
-    ValuePointer,
-};
-use super::{ Primitive, PrimitiveInteger, PrimitiveRange, ValueError};
 
+use super::{
+    Primitive,
+    PrimitiveInteger,
+    PrimitiveRange,
+    ValueError,
+};
+use crate::{
+    opaque::OpaqueWrapper,
+    GasMeter,
+    Heap,
+    Opaque,
+    OpaqueValue,
+    OwnedValue,
+    RuntimeMap,
+    RuntimeOpaqueWrapper,
+    Type,
+    ValuePointer,
+    U256,
+};
 
 pub enum Either<L, R> {
     Left(L),
@@ -30,7 +38,7 @@ pub enum RuntimeValue {
     Object(Vec<ValuePointer>),
     // Map cannot be used as a key in another map
     // Key must be immutable also!
-    Map(Box<IndexMap<OwnedValue, ValuePointer>>),
+    Map(Box<RuntimeMap>),
 }
 
 impl Default for RuntimeValue {
@@ -157,7 +165,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Result<&IndexMap<OwnedValue, ValuePointer>, ValueError> {
+    pub fn as_map(&self) -> Result<&RuntimeMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedMap)
@@ -165,7 +173,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn as_mut_map(&mut self) -> Result<&mut IndexMap<OwnedValue, ValuePointer>, ValueError> {
+    pub fn as_mut_map(&mut self) -> Result<&mut RuntimeMap, ValueError> {
         match self {
             Self::Map(map) => Ok(map),
             _ => Err(ValueError::ExpectedMap),
@@ -173,7 +181,7 @@ impl RuntimeValue {
     }
 
     #[inline]
-    pub fn to_map<'a>(&'a mut self) -> Result<IndexMap<OwnedValue, ValuePointer>, ValueError> {
+    pub fn to_map<'a>(&'a mut self) -> Result<RuntimeMap, ValueError> {
         match mem::take(self) {
             Self::Map(n) => Ok(*n),
             _ => Err(ValueError::ExpectedValueOfType(Type::Map(Box::new(Type::T(Some(0))), Box::new(Type::T(Some(1))))))
@@ -231,7 +239,6 @@ impl RuntimeValue {
             _ => Err(ValueError::ExpectedBytes)
         }
     }
-
 
     #[inline]
     pub fn as_bytes_mut<'a>(&'a mut self) -> Result<&'a mut Vec<u8>, ValueError> {
@@ -589,6 +596,12 @@ enum Node<'a> {
 }
 
 impl RuntimeValue {
+    /// Whether every contained value supports equality, including map entries.
+    /// Checks capabilities without comparing values or creating an owned copy.
+    pub fn is_equatable(&self, heap: &Heap) -> bool {
+        self.all_opaques_satisfy(heap, |value| value.as_eq().is_some(), OwnedValue::is_equatable)
+    }
+
     /// Check binary serialization capabilities directly in the runtime graph.
     /// Objects and maps include every descendant and map key. No owned snapshot
     /// is created and no serializer is invoked.
@@ -636,33 +649,35 @@ impl RuntimeValue {
         }
     }
 
-    pub fn equals(&self, other: &Self, heap: &Heap) -> bool {
+    pub fn equals(&self, other: &Self, heap: &Heap, gas: &mut GasMeter) -> Result<bool, ValueError> {
         match (self, other) {
-            (Self::Primitive(left), Self::Primitive(right)) => return left == right,
-            (Self::Bytes(left), Self::Bytes(right)) => return left == right,
+            (Self::Primitive(left), Self::Primitive(right)) => return Ok(left == right),
+            (Self::Bytes(left), Self::Bytes(right)) => return Ok(left == right),
             _ => {}
         }
         let mut work = vec![(self, other)];
         while let Some((left, right)) = work.pop() {
             match (left, right) {
                 (Self::Primitive(a), Self::Primitive(b)) if a == b => {}
-                (Self::Opaque(a), Self::Opaque(b)) if a == b => {}
+                (Self::Opaque(a), Self::Opaque(b)) => {
+                    if !a.equals(b, gas)? { return Ok(false); }
+                }
                 (Self::Bytes(a), Self::Bytes(b)) if a == b => {}
                 (Self::Object(a), Self::Object(b)) if a.len() == b.len() => {
                     work.extend(a.iter().zip(b).map(|(a, b)| (a.as_ref(heap), b.as_ref(heap))));
                 }
                 (Self::Map(a), Self::Map(b)) if a.len() == b.len() => {
                     for ((ak, av), (bk, bv)) in a.iter().zip(b.iter()) {
-                        if ak != bk {
-                            return false;
+                        if !ak.equals(bk, gas)? {
+                            return Ok(false);
                         }
                         work.push((av.as_ref(heap), bv.as_ref(heap)));
                     }
                 }
-                _ => return false,
+                _ => return Ok(false),
             }
         }
-        true
+        Ok(true)
     }
 
     #[inline]
@@ -708,10 +723,10 @@ impl RuntimeValue {
         Ok(memory)
     }
 
-    pub fn display<'a>(&'a self, heap: &'a Heap) -> impl fmt::Display + 'a {
-        struct Display<'a>(&'a RuntimeValue, &'a Heap);
-        impl fmt::Display for Display<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub fn display<'a>(&'a self, heap: &'a Heap) -> impl Display + 'a {
+        struct RuntimeDisplay<'a>(&'a RuntimeValue, &'a Heap);
+        impl<'value> Display for RuntimeDisplay<'value> {
+            fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
                 enum Item<'a> {
                     Value(&'a RuntimeValue),
                     Owned(&'a OwnedValue),
@@ -754,7 +769,7 @@ impl RuntimeValue {
                 Ok(())
             }
         }
-        Display(self, heap)
+        RuntimeDisplay(self, heap)
     }
 }
 
@@ -802,7 +817,7 @@ mod tests {
         let mut heap = unsafe { Heap::new() };
         let shared = heap.insert(RuntimeValue::Bytes(vec![1, 2, 3]));
         let map_child = shared.clone();
-        let map = RuntimeValue::Map(Box::new([(OwnedValue::from(7u8), map_child)].into_iter().collect()));
+        let map = RuntimeValue::Map(Box::new(RuntimeMap::from_entries([(OwnedValue::from(7u8), map_child)], &mut GasMeter::default()).unwrap()));
         let map = heap.insert(map);
         let first = shared.clone();
         let original = RuntimeValue::Object(vec![first, map]);

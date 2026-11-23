@@ -1,11 +1,18 @@
 use thiserror::Error;
 
-use crate::{HeapError, Type};
 use super::{OwnedValue, Primitive};
-
+use crate::{GasError, HeapError, Type};
 
 #[derive(Debug, Error)]
 pub enum ValueError {
+    #[error(transparent)]
+    Gas(#[from] GasError),
+    #[error("value does not support hashing")]
+    HashingNotSupported,
+    #[error("Invalid key type")]
+    InvalidMapKey,
+    #[error("value does not support equality")]
+    EqualityNotSupported,
     #[error("range endpoints must have the same integer type")]
     InvalidRange,
     #[error("expected enum with variant id")]

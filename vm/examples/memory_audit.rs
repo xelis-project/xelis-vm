@@ -4,12 +4,29 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll},
 };
+
 use futures::{executor::block_on, future::pending, task::noop_waker_ref};
 use silex_builder::EnvironmentBuilder;
 use silex_compiler::Compiler;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use xelis_vm::{Environment, EnvironmentError, FunctionHandler, Heap, Module, ModuleMetadata, NativeScope, NativeState, OwnedValue, RuntimeValue, Type, VM, VMContext};
+use silex_types::GasMeter;
+use xelis_vm::{
+    Environment,
+    EnvironmentError,
+    FunctionHandler,
+    Heap,
+    Module,
+    ModuleMetadata,
+    NativeScope,
+    NativeState,
+    OwnedValue,
+    RuntimeValue,
+    Type,
+    VMContext,
+    VM,
+};
+
 struct CountingAllocator;
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
@@ -69,11 +86,11 @@ fn prepare(code: &str, builder: EnvironmentBuilder<()>) -> (Module, Environment<
     (module, environment)
 }
 
-fn resume(_: NativeState, _: &mut NativeScope<'_, ()>) -> Result<(), EnvironmentError> {
+fn resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
     Ok(())
 }
 
-fn suspend(scope: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+fn suspend<'call, 'metadata>(scope: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     let value = scope.argument(0)?;
     scope.await_and_resume(Box::pin(pending()), &[value], Box::new(()), resume);
     Ok(())

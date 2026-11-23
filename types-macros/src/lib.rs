@@ -1,8 +1,19 @@
+use std::collections::HashSet;
+
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as Tokens;
+use proc_macro2::{Span, TokenStream as Tokens};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, parse_quote, DeriveInput, Expr, LitStr, Path};
+use syn::{
+    parse_macro_input,
+    parse_quote,
+    DeriveInput,
+    Error,
+    Expr,
+    LitStr,
+    Path,
+    Result as SynResult,
+};
 
 #[derive(Default)]
 struct Options {
@@ -22,9 +33,9 @@ struct Options {
     deep_clone_in: Option<Expr>,
 }
 
-fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
+fn options(input: &DeriveInput, type_only: bool) -> SynResult<Options> {
     let mut options = Options::default();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for attr in input
         .attrs
         .iter()
@@ -61,7 +72,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
         })?;
     }
     if options.json && options.skip_json {
-        return Err(syn::Error::new_spanned(
+        return Err(Error::new_spanned(
             input,
             "json and skip_json cannot be combined",
         ));
@@ -69,7 +80,7 @@ fn options(input: &DeriveInput, type_only: bool) -> syn::Result<Options> {
     Ok(options)
 }
 
-fn types_path(options: &Options) -> syn::Result<Tokens> {
+fn types_path(options: &Options) -> SynResult<Tokens> {
     if let Some(path) = &options.crate_path {
         return Ok(quote!(#path));
     }
@@ -79,7 +90,7 @@ fn types_path(options: &Options) -> syn::Result<Tokens> {
             let ident = format_ident!("{}", name);
             Ok(quote!(::#ident))
         }
-        Err(error) => Err(syn::Error::new(proc_macro2::Span::call_site(), error)),
+        Err(error) => Err(Error::new(Span::call_site(), error)),
     }
 }
 
@@ -96,14 +107,24 @@ fn dyn_type(input: &DeriveInput, options: &Options, path: &Tokens) -> Tokens {
         .push(parse_quote!(Self: 'static));
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     quote! {
-        impl #impl_generics #path::traits::DynType for #ident #type_generics #where_clause {
-            fn get_type_name(&self) -> &'static str { #name }
-            fn get_type(&self) -> ::std::any::TypeId { ::std::any::TypeId::of::<Self>() }
-        }
+        const _: () = {
+            use #path::traits::DynType as __SilexDynType;
+            use ::std::any::TypeId as __SilexTypeId;
+
+            impl #impl_generics __SilexDynType for #ident #type_generics #where_clause {
+                fn get_type_name(&self) -> &'static str {
+                    #name
+                }
+
+                fn get_type(&self) -> __SilexTypeId {
+                    __SilexTypeId::of::<Self>()
+                }
+            }
+        };
     }
 }
 
-fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
+fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
     let options = options(input, type_only)?;
     let path = types_path(&options)?;
     let type_impl = dyn_type(input, &options, &path);
@@ -114,48 +135,48 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
     let ident = &input.ident;
     let mut generics = input.generics.clone();
     generics.make_where_clause().predicates.push(parse_quote!(
-        Self: 'static + ::std::clone::Clone + ::std::fmt::Debug
+        Self: 'static + __SilexClone + __SilexDebug
     ));
     if !options.runtime {
         generics.make_where_clause().predicates.push(parse_quote!(
-            Self: ::std::marker::Send + ::std::marker::Sync
+            Self: __SilexSend + __SilexSync
         ));
     }
     if options.hash {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: #path::traits::DynHash));
+            .push(parse_quote!(Self: __SilexDynHash));
     }
     if options.eq {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: #path::traits::DynEq));
+            .push(parse_quote!(Self: __SilexDynEq));
     }
     if options.display {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: ::std::fmt::Display));
+            .push(parse_quote!(Self: __SilexDisplay));
     }
     if options.serializable {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: #path::traits::DynSerializable));
+            .push(parse_quote!(Self: __SilexDynSerializable));
     }
     if options.json {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: #path::__private::serde::Serialize));
+            .push(parse_quote!(Self: __SilexSerialize));
     }
     if options.skip_json {
         generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(Self: #path::traits::JSONHelper));
+            .push(parse_quote!(Self: __SilexJSONHelper));
     }
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
@@ -163,83 +184,84 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
         quote!()
     } else if options.json {
         quote! {
-            impl #impl_generics #path::traits::JSONHelper for #ident #type_generics #where_clause {
-                fn serialize_json(&self) -> ::std::result::Result<#path::__private::serde_json::Value, #path::__private::matriochka::Error> {
+            impl #impl_generics __SilexJSONHelper for #ident #type_generics #where_clause {
+                fn serialize_json(&self) -> __SilexResult<__SilexJsonValue, __SilexError> {
                     use #path::__private::matriochka::ResultExt as _;
 
                     #path::__private::serde_json::to_value(self)
                         .with_context(|| ::std::format!(
                             "serializing opaque type {} to JSON",
-                            #path::traits::DynType::get_type_name(self),
+                            __SilexDynType::get_type_name(self),
                         ))
                 }
+
                 fn is_json_supported(&self) -> bool { true }
             }
         }
     } else {
         quote! {
-            impl #impl_generics #path::traits::JSONHelper for #ident #type_generics #where_clause {}
+            impl #impl_generics __SilexJSONHelper for #ident #type_generics #where_clause {}
         }
     };
     let display = if options.display {
         quote! {
-            fn display(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn display<'fmt>(&self, f: &mut __SilexFormatter<'fmt>) -> __SilexFmtResult {
                 ::std::write!(f, "{}", self)
             }
         }
     } else {
         quote! {
-            fn display(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::std::write!(f, "Opaque({})", #path::traits::DynType::get_type_name(self))
+            fn display<'fmt>(&self, f: &mut __SilexFormatter<'fmt>) -> __SilexFmtResult {
+                ::std::write!(f, "Opaque({})", __SilexDynType::get_type_name(self))
             }
         }
     };
     let serializable = options.serializable.then(|| {
         quote! {
-            fn as_serializable(&self) -> Option<&dyn #path::traits::DynSerializable> { Some(self) }
+            fn as_serializable(&self) -> Option<&dyn __SilexDynSerializable> { Some(self) }
         }
     });
     let hash = options.hash.then(|| {
         quote! {
-            fn as_hashable(&self) -> Option<&dyn #path::traits::DynHash> { Some(self) }
+            fn as_hashable(&self) -> Option<&dyn __SilexDynHash> { Some(self) }
         }
     });
     let eq = options.eq.then(|| {
         quote! {
-            fn as_eq(&self) -> Option<&dyn #path::traits::DynEq> { Some(self) }
+            fn as_eq(&self) -> Option<&dyn __SilexDynEq> { Some(self) }
         }
     });
     let size = options.size.map(|size| {
         quote! {
-            fn get_size(&self) -> Result<usize, matriochka::Error> { Ok(#size) }
+            fn get_size(&self) -> Result<usize, __SilexError> { Ok(#size) }
         }
     });
     let deep_clone = options
         .deep_clone
-        .unwrap_or_else(|| parse_quote!(::std::clone::Clone::clone(self)));
+        .unwrap_or_else(|| parse_quote!(__SilexClone::clone(self)));
     let deep_clone_in = options.deep_clone_in.map(|expression| quote! {
-        fn deep_clone_in(&self, heap: &mut #path::Heap) -> ::std::result::Result<::std::boxed::Box<dyn #path::RuntimeOpaque>, #path::HeapError> {
-            Ok(::std::boxed::Box::new(#expression))
+        fn deep_clone_in(&self, heap: &mut __SilexHeap) -> __SilexResult<__SilexBox<dyn __SilexRuntimeOpaque>, __SilexHeapError> {
+            Ok(__SilexBox::new(#expression))
         }
     });
     let children = options.children.map(|children| {
         quote! {
-            fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(#path::OpaqueChild<'a>)) {
-                for child in #children { visitor(::core::convert::Into::into(child)); }
+            fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(__SilexOpaqueChild<'a>)) {
+                for child in #children { visitor(__SilexInto::into(child)); }
             }
         }
     });
     let children_mut = options.children_mut.map(|expression| quote! {
-        fn visit_children_mut(&mut self, visitor: &mut dyn FnMut(#path::OpaqueChildMut<'_>) -> ::std::result::Result<(), #path::HeapError>) -> ::std::result::Result<bool, #path::HeapError> {
+        fn visit_children_mut(&mut self, visitor: &mut dyn for<'child> FnMut(__SilexOpaqueChildMut<'child>) -> __SilexResult<(), __SilexHeapError>) -> __SilexResult<bool, __SilexHeapError> {
             #expression?;
             Ok(true)
         }
     });
     let cloning = if options.runtime {
         quote! {
-            impl #impl_generics #path::RuntimeOpaque for #ident #type_generics #where_clause {
-                fn clone_runtime(&self) -> ::std::boxed::Box<dyn #path::RuntimeOpaque> {
-                    ::std::boxed::Box::new(::std::clone::Clone::clone(self))
+            impl #impl_generics __SilexRuntimeOpaque for #ident #type_generics #where_clause {
+                fn clone_runtime(&self) -> __SilexBox<dyn __SilexRuntimeOpaque> {
+                    __SilexBox::new(__SilexClone::clone(self))
                 }
                 #deep_clone_in
                 #children_mut
@@ -247,31 +269,72 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
         }
     } else {
         if deep_clone_in.is_some() || children_mut.is_some() {
-            return Err(syn::Error::new_spanned(input, "heap-aware cloning requires #[opaque(runtime)]"));
+            return Err(Error::new_spanned(input, "heap-aware cloning requires #[opaque(runtime)]"));
         }
         quote! {
-            impl #impl_generics #path::Opaque for #ident #type_generics #where_clause {
-                fn clone_box(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
-                    ::std::boxed::Box::new(::std::clone::Clone::clone(self))
+            impl #impl_generics __SilexOpaque for #ident #type_generics #where_clause {
+                fn clone_box(&self) -> __SilexBox<dyn __SilexOpaque> {
+                    __SilexBox::new(__SilexClone::clone(self))
                 }
-                fn deep_clone(&self) -> ::std::boxed::Box<dyn #path::Opaque> {
-                    ::std::boxed::Box::new(#deep_clone)
+
+                fn deep_clone(&self) -> __SilexBox<dyn __SilexOpaque> {
+                    __SilexBox::new(#deep_clone)
                 }
             }
         }
     };
     Ok(quote! {
-        #type_impl
-        #json_impl
-        #cloning
-        impl #impl_generics #path::OpaqueValue for #ident #type_generics #where_clause {
-            #display
-            #serializable
-            #hash
-            #eq
-            #size
-            #children
-        }
+        // Scoped imports avoid leaking generated names into the caller's module.
+        const _: () = {
+            #[allow(unused_imports)]
+            use ::std::{
+                boxed::Box as __SilexBox,
+                clone::Clone as __SilexClone,
+                convert::Into as __SilexInto,
+                fmt::{
+                    Debug as __SilexDebug,
+                    Display as __SilexDisplay,
+                    Formatter as __SilexFormatter,
+                    Result as __SilexFmtResult,
+                },
+                marker::{Send as __SilexSend, Sync as __SilexSync},
+                result::Result as __SilexResult,
+            };
+            #[allow(unused_imports)]
+            use #path::{
+                Heap as __SilexHeap,
+                HeapError as __SilexHeapError,
+                Opaque as __SilexOpaque,
+                OpaqueChild as __SilexOpaqueChild,
+                OpaqueChildMut as __SilexOpaqueChildMut,
+                OpaqueValue as __SilexOpaqueValue,
+                RuntimeOpaque as __SilexRuntimeOpaque,
+                traits::{
+                    DynEq as __SilexDynEq,
+                    DynHash as __SilexDynHash,
+                    DynSerializable as __SilexDynSerializable,
+                    DynType as __SilexDynType,
+                    JSONHelper as __SilexJSONHelper,
+                },
+                __private::{
+                    matriochka::Error as __SilexError,
+                    serde::Serialize as __SilexSerialize,
+                    serde_json::Value as __SilexJsonValue,
+                },
+            };
+
+            #type_impl
+            #json_impl
+            #cloning
+            impl #impl_generics __SilexOpaqueValue for #ident #type_generics #where_clause {
+                #display
+                #serializable
+                #hash
+                #eq
+                #size
+                #children
+            }
+        };
     })
 }
 
@@ -286,6 +349,11 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// - `hash`: expose hashing through `Hash` or a custom `DynHash` implementation.
 /// - `eq`: expose equality through `PartialEq` or a custom `DynEq` implementation.
 ///   Map keys require both `hash` and `eq`.
+///   Custom implementations can charge through `pre_hash_cost`/`pre_eq_cost`
+///   hooks, which receive a `GasMeter` and return `Result<(), ValueError>`.
+///   Runtime operations call each hook immediately before the corresponding
+///   dynamic operation, including every map collision comparison.
+///   Blanket adapters add no gas charge.
 /// - `size = expression`: override the size used for value accounting.
 /// - `deep_clone = expression`: produce an independent `Self` with retained VM
 ///   owned values deeply cloned. Defaults to `Clone`.
@@ -309,9 +377,10 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 /// `Sync`. Generic parameters and where clauses are preserved.
 ///
 /// ```ignore
+/// use serde::Serialize;
 /// use silex_types::Opaque;
 ///
-/// #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, Opaque)]
+/// #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Opaque)]
 /// #[opaque(name = "Account", display, json, serializable)]
 /// struct Account { /* ... */ }
 /// // Implement Display and octet::Serializable separately.
@@ -320,7 +389,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> syn::Result<Tokens> {
 pub fn derive_opaque(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand(&input, false)
-        .unwrap_or_else(syn::Error::into_compile_error)
+        .unwrap_or_else(Error::into_compile_error)
         .into()
 }
 
@@ -329,7 +398,7 @@ pub fn derive_opaque(input: TokenStream) -> TokenStream {
 pub fn derive_dyn_type(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand(&input, true)
-        .unwrap_or_else(syn::Error::into_compile_error)
+        .unwrap_or_else(Error::into_compile_error)
         .into()
 }
 

@@ -1,11 +1,24 @@
 use std::{
     collections::HashSet,
     mem,
-    sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+        Mutex,
+    },
 };
-use indexmap::IndexMap;
-use crate::{RuntimeOpaqueWrapper, Opaque, OpaqueWrapper, OwnedValue, PrimitiveInteger, StackValue};
+
 use super::*;
+use crate::{
+    GasMeter,
+    Opaque,
+    OpaqueWrapper,
+    OwnedValue,
+    PrimitiveInteger,
+    RuntimeMap,
+    RuntimeOpaqueWrapper,
+    StackValue,
+};
 
 #[derive(Debug, Clone, Opaque)]
 struct Probe(Arc<AtomicUsize>);
@@ -131,7 +144,7 @@ fn maps_release_shared_payloads_once() {
     let mut heap = unsafe { Heap::new() };
     let drops = Arc::new(AtomicUsize::new(0));
     let child = probe(&mut heap, &drops);
-    drop(RuntimeValue::Map(Box::new(IndexMap::from_iter([(OwnedValue::from(0u8), child.clone()), (OwnedValue::from(1u8), child)]))));
+    drop(RuntimeValue::Map(Box::new(RuntimeMap::from_entries([(OwnedValue::from(0u8), child.clone()), (OwnedValue::from(1u8), child)], &mut GasMeter::default()).unwrap())));
     assert_eq!(drops.load(Ordering::Relaxed), 1);
     assert!(heap.is_empty());
 }
@@ -346,7 +359,7 @@ struct MutableOpaqueChildren {
 impl MutableOpaqueChildren {
     fn visit(
         &mut self,
-        visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+        visitor: &mut dyn for<'child> FnMut(OpaqueChildMut<'child>) -> Result<(), HeapError>,
     ) -> Result<(), HeapError> {
         visitor(OpaqueChildMut::Value(&mut self.value))?;
         visitor(OpaqueChildMut::Pointer(&mut self.pointer))?;
@@ -384,7 +397,7 @@ struct UnstableOpaqueChildren {
 impl UnstableOpaqueChildren {
     fn visit(
         &mut self,
-        visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+        visitor: &mut dyn for<'child> FnMut(OpaqueChildMut<'child>) -> Result<(), HeapError>,
     ) -> Result<(), HeapError> {
         if !self.visited {
             self.visited = true;

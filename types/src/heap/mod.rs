@@ -7,11 +7,23 @@ mod pointer;
 mod tests;
 
 use std::{mem, rc::Rc};
-use indexmap::IndexMap;
 
-use crate::{OpaqueChildMut, OwnedValue, RuntimeOpaqueWrapper, RuntimeValue, StackValue, ValueError};
-use storage::StorageCell;
+use indexmap::IndexMap;
 use slot::HeapSlot;
+use storage::StorageCell;
+
+use crate::{
+    values::runtime_map::insert_metered,
+    GasMeter,
+    OpaqueChildMut,
+    OwnedValue,
+    RuntimeMap,
+    RuntimeOpaqueWrapper,
+    RuntimeValue,
+    StackValue,
+    ValueError,
+};
+
 pub use pointer::ValuePointer;
 
 pub use error::HeapError;
@@ -63,7 +75,6 @@ pub use error::HeapError;
 pub struct Heap {
     storage: Rc<StorageCell>,
 }
-
 
 impl Heap {
     /// Create a heap for sequential runtime access. It may be reused across
@@ -159,18 +170,33 @@ impl Heap {
         self.len() == 0
     }
 
-    /// Import portable data into fresh slots in this heap.
+    /// Import host data without execution metering. VM execution must use `import_in`.
     #[inline]
     pub fn import(&mut self, value: &OwnedValue) -> RuntimeValue {
         value.to_runtime_value(self)
     }
 
-    /// Consume portable input, moving buffers and map keys into runtime storage.
-    pub fn import_owned(&mut self, mut root: OwnedValue) -> RuntimeValue {
+    /// Import execution data, metering hashing and equality when maps are rebuilt.
+    pub fn import_in(&mut self, value: &OwnedValue, gas: &mut GasMeter) -> Result<RuntimeValue, ValueError> {
+        value.to_runtime_value_in(self, gas)
+    }
+
+    /// Consume host data without execution metering, moving buffers and keys.
+    /// VM execution must use `import_owned_in`.
+    pub fn import_owned(&mut self, root: OwnedValue) -> RuntimeValue {
+        self.import_owned_impl(root, None).expect("host import")
+    }
+
+    /// Consume execution data, charging any map reconstruction to the caller.
+    pub fn import_owned_in(&mut self, root: OwnedValue, gas: &mut GasMeter) -> Result<RuntimeValue, ValueError> {
+        self.import_owned_impl(root, Some(gas))
+    }
+
+    fn import_owned_impl(&mut self, mut root: OwnedValue, mut gas: Option<&mut GasMeter>) -> Result<RuntimeValue, ValueError> {
         match &mut root {
-            OwnedValue::Primitive(value) => return RuntimeValue::Primitive(mem::take(value)),
-            OwnedValue::Bytes(value) => return RuntimeValue::Bytes(mem::take(value)),
-            OwnedValue::Opaque(value) => return RuntimeValue::Opaque(value.deep_clone().into()),
+            OwnedValue::Primitive(value) => return Ok(RuntimeValue::Primitive(mem::take(value))),
+            OwnedValue::Bytes(value) => return Ok(RuntimeValue::Bytes(mem::take(value))),
+            OwnedValue::Opaque(value) => return Ok(RuntimeValue::Opaque(value.deep_clone().into())),
             _ => {}
         }
 
@@ -204,19 +230,31 @@ impl Heap {
                 }
                 Work::Map(keys) => {
                     let values = results.drain(results.len() - keys.len()..);
-                    let values = keys.into_iter().zip(values).map(|(key, value)| (key, self.insert(value)))
-                        .collect();
-                    results.push(RuntimeValue::Map(Box::new(values)));
+                    let values = keys.into_iter().zip(values).map(|(key, value)| (key, self.insert(value)));
+                    let map = match gas.as_deref_mut() {
+                        Some(gas) => RuntimeMap::from_entries(values, gas)?,
+                        None => RuntimeMap::from_entries_unmetered(values),
+                    };
+                    results.push(RuntimeValue::Map(Box::new(map)));
                 }
             }
         }
 
-        results.pop().expect("portable input has one root")
+        Ok(results.pop().expect("portable input has one root"))
     }
 
-    /// Copy an acyclic runtime graph into portable owned data.
+    /// Copy an acyclic graph without execution metering. VM execution must use `snapshot_in`.
     #[inline]
     pub fn snapshot(&self, root: &RuntimeValue) -> Result<OwnedValue, ValueError> {
+        self.snapshot_impl(root, None)
+    }
+
+    /// Copy execution data, including the cost of rebuilding portable maps.
+    pub fn snapshot_in(&self, root: &RuntimeValue, gas: &mut GasMeter) -> Result<OwnedValue, ValueError> {
+        self.snapshot_impl(root, Some(gas))
+    }
+
+    fn snapshot_impl(&self, root: &RuntimeValue, mut gas: Option<&mut GasMeter>) -> Result<OwnedValue, ValueError> {
         match root {
             RuntimeValue::Primitive(value) => return Ok(OwnedValue::Primitive(value.clone())),
             RuntimeValue::Bytes(value) => return Ok(OwnedValue::Bytes(value.clone())),
@@ -256,7 +294,7 @@ impl Heap {
                 }
                 Work::Map(keys) => {
                     let values = output.split_off(output.len() - keys.len());
-                    output.push(OwnedValue::Map(keys.into_iter().zip(values).collect()));
+                    output.push(OwnedValue::Map(Self::portable_map(keys.into_iter().zip(values), gas.as_deref_mut())?));
                 }
             }
         }
@@ -269,9 +307,37 @@ impl Heap {
         self.snapshot(root.as_ref(self))
     }
 
-    /// Export a consumed stack value, moving root buffers and detaching opaque
-    /// payloads without rebuilding ordinary containers in intermediate slots.
+    /// Snapshot a stack value using the active execution budget.
+    pub fn snapshot_stack_in(&self, root: &StackValue, gas: &mut GasMeter) -> Result<OwnedValue, ValueError> {
+        self.snapshot_in(root.as_ref(self), gas)
+    }
+
+    fn portable_map(entries: impl IntoIterator<Item = (OwnedValue, OwnedValue)>, gas: Option<&mut GasMeter>) -> Result<IndexMap<OwnedValue, OwnedValue>, ValueError> {
+        match gas {
+            None => Ok(entries.into_iter().collect()),
+            Some(gas) => {
+                let entries = entries.into_iter();
+                let mut map = IndexMap::with_capacity(entries.size_hint().0);
+                for (key, value) in entries {
+                    insert_metered(&mut map, key, value, gas)?;
+                }
+                Ok(map)
+            },
+        }
+    }
+
+    /// Export host data without execution metering, moving root buffers and
+    /// detaching opaque payloads. VM execution must use `export_in`.
     pub fn export(&mut self, value: StackValue) -> Result<OwnedValue, ValueError> {
+        self.export_impl(value, None)
+    }
+
+    /// Export execution data, charging hashes and comparisons even on final return.
+    pub fn export_in(&mut self, value: StackValue, gas: &mut GasMeter) -> Result<OwnedValue, ValueError> {
+        self.export_impl(value, Some(gas))
+    }
+
+    fn export_impl(&mut self, value: StackValue, mut gas: Option<&mut GasMeter>) -> Result<OwnedValue, ValueError> {
         enum Work {
             Visit(RuntimeValue),
             Array(usize),
@@ -315,7 +381,7 @@ impl Heap {
                 }
                 Work::Map(keys) => {
                     let children = output.split_off(output.len() - keys.len());
-                    output.push(OwnedValue::Map(keys.into_iter().zip(children).collect()));
+                    output.push(OwnedValue::Map(Self::portable_map(keys.into_iter().zip(children), gas.as_deref_mut())?));
                 }
             }
         }
@@ -332,7 +398,7 @@ impl Heap {
         enum Work {
             Visit(RuntimeValue),
             Array(Vec<ValuePointer>),
-            Map(Box<IndexMap<OwnedValue, ValuePointer>>),
+            Map(Box<RuntimeMap>),
             Opaque(RuntimeOpaqueWrapper, usize),
         }
 

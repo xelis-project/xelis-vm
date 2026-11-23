@@ -1,8 +1,33 @@
-use std::{cell::Cell, marker::PhantomData, rc::Rc, sync::Arc, any::Any, mem};
+use std::{
+    any::Any,
+    cell::Cell,
+    marker::PhantomData,
+    mem,
+    rc::Rc,
+    sync::Arc,
+};
+
 use futures::future::BoxFuture;
 use silex_bytecode::Module;
-use silex_types::{Heap, OwnedValue, Primitive, RuntimeValue, StackValue, Opaque};
-use crate::{Environment, EnvironmentError, SysCallResult, AsyncHandler, CallbackType, CallbackState, FnParams};
+use silex_types::{
+    GasMeter,
+    Heap,
+    Opaque,
+    OwnedValue,
+    Primitive,
+    RuntimeValue,
+    StackValue,
+};
+
+use crate::{
+    AsyncHandler,
+    CallbackState,
+    CallbackType,
+    Environment,
+    EnvironmentError,
+    FnParams,
+    SysCallResult,
+};
 
 /// A non-owning value valid only during one native call.
 ///
@@ -15,7 +40,7 @@ use crate::{Environment, EnvironmentError, SysCallResult, AsyncHandler, Callback
 ///
 /// ```compile_fail
 /// use silex_environment::NativeScope;
-/// fn parallel(scope: &NativeScope<'_, ()>) {
+/// fn parallel<'call>(scope: &NativeScope<'call, ()>) {
 ///     let view = scope.argument(0).unwrap();
 ///     std::thread::scope(|threads| {
 ///         threads.spawn(move || { drop(view); });
@@ -24,10 +49,11 @@ use crate::{Environment, EnvironmentError, SysCallResult, AsyncHandler, Callback
 /// ```
 ///
 /// ```compile_fail
+/// use std::any::Any;
 /// use silex_environment::NativeScope;
-/// fn retain(scope: &NativeScope<'_, ()>) {
+/// fn retain<'call>(scope: &NativeScope<'call, ()>) {
 ///     let view = scope.argument(0).unwrap();
-///     let state: Box<dyn std::any::Any + Send + Sync> = Box::new(view);
+///     let state: Box<dyn Any + Send + Sync> = Box::new(view);
 /// }
 /// ```
 /// It cannot be sent to a thread, retained in host state, or resolved without
@@ -40,9 +66,12 @@ pub struct ValueView<'call> {
 }
 
 pub type NativeState = Box<dyn Any + Send + Sync>;
+
+/// A resumed native call receives the active meter for portable-data conversions.
 pub type NativeCallback<M> = for<'call> fn(
     NativeState,
     &mut NativeScope<'call, M>,
+    &mut GasMeter,
 ) -> Result<(), EnvironmentError>;
 
 struct CallbackOwner<M> {
@@ -76,7 +105,7 @@ enum Action<M> {
 ///
 /// ```compile_fail
 /// use silex_environment::NativeScope;
-/// fn steal(scope: &mut NativeScope<'_, ()>) {
+/// fn steal<'call>(scope: &mut NativeScope<'call, ()>) {
 ///     let heap = &mut scope.heap;
 /// }
 /// ```
@@ -85,11 +114,11 @@ enum Action<M> {
 ///
 /// ```compile_fail
 /// use silex_environment::NativeScope;
-/// use silex_types::OwnedValue;
-/// fn alias(scope: &mut NativeScope<'_, ()>) {
+/// use silex_types::{GasMeter, OwnedValue};
+/// fn alias<'call>(scope: &mut NativeScope<'call, ()>, gas: &mut GasMeter) {
 ///     let view = scope.argument(0).unwrap();
 ///     let text = scope.as_string(view).unwrap();
-///     scope.replace(view, OwnedValue::from(42u64)).unwrap();
+///     scope.replace(view, OwnedValue::from(42u64), gas).unwrap();
 ///     println!("{text}");
 /// }
 /// ```
@@ -190,15 +219,16 @@ impl<'call, M: 'static> NativeScope<'call, M> {
         self.value(view).is_json_serializable(self.heap)
     }
 
-    pub fn snapshot(&self, view: ValueView<'call>) -> Result<OwnedValue, EnvironmentError> {
-        Ok(self.heap.snapshot(self.value(view))?)
+    /// Copy portable data using the execution's meter for any rebuilt maps.
+    pub fn snapshot(&self, view: ValueView<'call>, gas: &mut GasMeter) -> Result<OwnedValue, EnvironmentError> {
+        Ok(self.heap.snapshot_in(self.value(view), gas)?)
     }
 
     /// Consume this scope root as portable data, moving unique buffers. Copied
     /// views of the consumed root subsequently observe null.
-    pub fn take_owned(&mut self, view: ValueView<'call>) -> Result<OwnedValue, EnvironmentError> {
+    pub fn take_owned(&mut self, view: ValueView<'call>, gas: &mut GasMeter) -> Result<OwnedValue, EnvironmentError> {
         let value = self.roots[view.index].take();
-        Ok(self.heap.export(value)?)
+        Ok(self.heap.export_in(value, gas)?)
     }
 
     pub fn array_len(&self, view: ValueView<'call>) -> Result<usize, EnvironmentError> {
@@ -219,14 +249,15 @@ impl<'call, M: 'static> NativeScope<'call, M> {
         Ok(Self::view(self.roots.len() - 1))
     }
 
-    pub fn owned(&mut self, value: OwnedValue) -> Result<ValueView<'call>, EnvironmentError> {
-        let value = self.heap.import_owned(value);
+    /// Import portable data and charge map reconstruction before exposing a view.
+    pub fn owned(&mut self, value: OwnedValue, gas: &mut GasMeter) -> Result<ValueView<'call>, EnvironmentError> {
+        let value = self.heap.import_owned_in(value, gas)?;
         self.roots.push(value.into());
         Ok(Self::view(self.roots.len() - 1))
     }
 
-    pub fn replace(&mut self, view: ValueView<'call>, value: OwnedValue) -> Result<(), EnvironmentError> {
-        let value = self.heap.import_owned(value);
+    pub fn replace(&mut self, view: ValueView<'call>, value: OwnedValue, gas: &mut GasMeter) -> Result<(), EnvironmentError> {
+        let value = self.heap.import_owned_in(value, gas)?;
         self.heap.replace_stack(&mut self.roots[view.index], value);
         Ok(())
     }
@@ -237,8 +268,8 @@ impl<'call, M: 'static> NativeScope<'call, M> {
         self.result = Some(Action::Return(view.index));
     }
 
-    pub fn return_owned(&mut self, value: OwnedValue) -> Result<(), EnvironmentError> {
-        let view = self.owned(value)?;
+    pub fn return_owned(&mut self, value: OwnedValue, gas: &mut GasMeter) -> Result<(), EnvironmentError> {
+        let view = self.owned(value, gas)?;
         self.return_value(view);
         Ok(())
     }
@@ -330,7 +361,7 @@ impl<'call, M: 'static> NativeScope<'call, M> {
                             params: values,
                             state: Box::new(CallbackOwner { state, retained, callback }),
                             callback_params_len,
-                            callback: CallbackType::Sync(resume),
+                            callback: CallbackType::MeteredSync(resume),
                         }
                     }
                     None => SysCallResult::DynamicCall { ptr, params: values },
@@ -353,17 +384,17 @@ impl<'call, M: 'static> NativeScope<'call, M> {
     }
 }
 
-fn resume<M: 'static>(state: CallbackState, params: FnParams<'_>, heap: &mut Heap) -> Result<SysCallResult<M>, EnvironmentError> {
+fn resume<'params, M: 'static>(state: CallbackState, params: FnParams<'params>, heap: &mut Heap, gas: &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError> {
     let owner = state.downcast::<CallbackOwner<M>>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-    resume_owned(owner.state, owner.callback, owner.retained, mem::take(params), heap)
+    resume_owned(owner.state, owner.callback, owner.retained, mem::take(params), heap, gas)
 }
 
-pub(crate) fn resume_owned<M: 'static>(state: NativeState, callback: NativeCallback<M>, retained: Vec<StackValue>, params: Vec<StackValue>, heap: &mut Heap) -> Result<SysCallResult<M>, EnvironmentError> {
+pub(crate) fn resume_owned<M: 'static>(state: NativeState, callback: NativeCallback<M>, retained: Vec<StackValue>, params: Vec<StackValue>, heap: &mut Heap, gas: &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError> {
     let mut scope = NativeScope::new(heap, params, None);
     for value in retained {
         scope.retained.push(scope.roots.len());
         scope.roots.push(value);
     }
-    callback(state, &mut scope)?;
+    callback(state, &mut scope, gas)?;
     Ok(scope.finish())
 }

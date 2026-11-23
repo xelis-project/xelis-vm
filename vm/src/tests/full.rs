@@ -1,12 +1,34 @@
+use std::{
+    any::TypeId,
+    array::TryFromSliceError,
+    hash::Hasher,
+    io::Error as IoError,
+};
+
 use futures::future::LocalBoxFuture;
-use silex_types::OpaqueValue;
 use matriochka::{Error, ResultExt};
+use silex_builder::EnvironmentBuilder;
 use silex_compiler::Compiler;
 use silex_environment::{Environment, EnvironmentError};
-use silex_builder::EnvironmentBuilder;
 use silex_lexer::Lexer;
 use silex_parser::{Parser, ParserError};
-use silex_types::{PrimitiveInteger, traits::{DynEq, DynType, JSONHelper}, Opaque, Primitive, RuntimeValue};
+use silex_types::{
+    traits::{
+        DynEq,
+        DynHash,
+        DynType,
+        JSONHelper,
+    },
+    GasMeter,
+    Opaque,
+    OpaqueValue,
+    OwnedValue,
+    Primitive,
+    PrimitiveInteger,
+    RuntimeValue,
+    ValueError,
+};
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +39,8 @@ impl DynType for NonHashableOpaque {
         "NonHashableOpaque"
     }
 
-    fn get_type(&self) -> std::any::TypeId {
-        std::any::TypeId::of::<Self>()
+    fn get_type(&self) -> TypeId {
+        TypeId::of::<Self>()
     }
 }
 
@@ -58,7 +80,7 @@ fn try_prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> R
         .context("tokenizing Silex source")?;
     let (program, _) = Parser::with(tokens.into_iter(), &env).parse()
         // Parser errors borrow the source and cannot be stored in an owned error.
-        .map_err(|e| Error::new(std::io::Error::other(e.to_string())))
+        .map_err(|e| Error::new(IoError::other(e.to_string())))
         .context("parsing Silex source")?;
 
     let env = env.build();
@@ -67,7 +89,6 @@ fn try_prepare_module_with<'a>(code: &str, env: EnvironmentBuilder<'a, ()>) -> R
 
     Ok((module, env))
 }
-
 
 #[track_caller]
 fn try_parse_code_with<'a>(code: &'a str, env: &'a EnvironmentBuilder<'a, ()>) -> Result<(), ParserError<'a>> {
@@ -127,7 +148,7 @@ fn test_byte_decoding_errors_preserve_context_and_cause() {
         let diagnostic = format!("{error:#}");
         assert!(diagnostic.contains(&format!("u64::from_{endian}_bytes")));
         assert!(diagnostic.contains("expected 8 bytes, got 0"));
-        assert!(error.downcast_ref::<std::array::TryFromSliceError>().is_some());
+        assert!(error.downcast_ref::<TryFromSliceError>().is_some());
     }
 }
 
@@ -664,7 +685,6 @@ fn test_foreach_range() {
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 }
 
-
 #[test]
 fn test_foreach_range_with_var() {
     let code = r#"
@@ -693,7 +713,6 @@ fn test_foreach_range_with_var() {
 
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 
-
     let code = r#"
         entry main() {
             let x: u64 = 0;
@@ -709,7 +728,6 @@ fn test_foreach_range_with_var() {
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(45)));
 }
 
-
 #[test]
 fn test_range_contains() {
     let code = r#"
@@ -721,7 +739,6 @@ fn test_range_contains() {
 
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(1)));
 }
-
 
 #[test]
 fn test_range() {
@@ -1092,7 +1109,6 @@ fn test_optional_cast() {
         Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
-
 
 #[test]
 fn test_optional_unwrap_or() {
@@ -1725,6 +1741,194 @@ fn test_map_insert_rejects_non_hashable_opaque_key() {
     assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))));
 }
 
+#[derive(Debug, Clone, DynType)]
+struct CapabilityValue {
+    hash: bool,
+    eq: bool,
+    hash_cost: u64,
+    eq_cost: u64,
+}
+
+impl JSONHelper for CapabilityValue {}
+
+impl Opaque for CapabilityValue {
+    fn clone_box(&self) -> Box<dyn Opaque> {
+        Box::new(self.clone())
+    }
+}
+
+impl OpaqueValue for CapabilityValue {
+    fn as_hashable(&self) -> Option<&dyn DynHash> {
+        self.hash.then_some(self)
+    }
+
+    fn as_eq(&self) -> Option<&dyn DynEq> {
+        self.eq.then_some(self)
+    }
+}
+
+impl DynHash for CapabilityValue {
+    fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        gas.charge(self.hash_cost)?;
+        Ok(())
+    }
+
+    fn dyn_hash(&self, state: &mut dyn Hasher) {
+        assert!(self.hash);
+        state.write_u8(self.hash as u8);
+        state.write_u8(self.eq as u8);
+    }
+}
+
+impl DynEq for CapabilityValue {
+    fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        gas.charge(self.eq_cost)?;
+        Ok(())
+    }
+
+    fn is_equal(&self, other: &dyn DynEq) -> bool {
+        assert!(self.eq);
+        other.as_any().downcast_ref::<Self>()
+            .is_some_and(|other| self.hash == other.hash && self.eq == other.eq)
+    }
+}
+
+fn capability_environment() -> EnvironmentBuilder<'static, ()> {
+    let mut env = EnvironmentBuilder::default();
+    let ty = Type::Opaque(env.register_opaque::<CapabilityValue>("CapabilityValue", true));
+    env.register_native_function("capability", None, vec![("hash", Type::Bool), ("eq", Type::Bool)], unsafe {
+        FunctionHandler::sync_unchecked(|_, params, _, _, heap| {
+            let hash = params[0].as_bool(heap)?;
+            let eq = params[1].as_bool(heap)?;
+            Ok(SysCallResult::Return(CapabilityValue { hash, eq, hash_cost: 0, eq_cost: 0 }.into()))
+        })
+    }, 0, Some(ty.clone()));
+    env.register_native_function("charged", None, vec![("hash_cost", Type::U64), ("eq_cost", Type::U64)], unsafe {
+        FunctionHandler::sync_unchecked(|_, params, _, _, heap| {
+            let hash_cost = params[0].as_u64(heap)?;
+            let eq_cost = params[1].as_u64(heap)?;
+            Ok(SysCallResult::Return(CapabilityValue { hash: true, eq: true, hash_cost, eq_cost }.into()))
+        })
+    }, 0, Some(ty));
+    env
+}
+
+#[test]
+fn test_dynamic_operations_charge_vm_gas_and_propagate_exhaustion() {
+    fn execute(code: &str, limit: u64) -> (Result<OwnedValue, VMError>, u64) {
+        let (module, env) = prepare_module_with(code, capability_environment());
+        let mut vm = VM::default();
+        vm.append_module(ModuleMetadata {
+            module: (&module).into(),
+            environment: (&env).into(),
+            metadata: (&()).into(),
+        }).unwrap();
+        vm.invoke_entry_chunk(0).unwrap();
+        vm.context_mut().set_gas_limit(limit);
+        let result = vm.run_blocking();
+        (result, vm.context().current_gas_usage())
+    }
+
+    // Compare each program to the identical bytecode with zero-cost adapters.
+    // All execution paths prepay immediately before each dynamic operation.
+    for (operation, hashes, comparisons) in [
+        ("let values: CapabilityValue[] = [value, value]; assert(values.contains(value));", 0, 1),
+        ("let values: CapabilityValue[][] = [[value]]; assert(values.contains([value]));", 0, 1),
+        ("let values: CapabilityValue[] = [value, value]; assert(values.index_of(value).unwrap() == 0u32);", 0, 1),
+        ("assert(value == value);", 0, 1),
+        ("assert(!(value != value));", 0, 1),
+        ("let map: map<CapabilityValue, u64> = { value: 1u64 };", 1, 0),
+        ("let map: map<CapabilityValue[], u64> = { [value]: 1u64 }; assert(map.get([value]).unwrap() == 1u64);", 2, 1),
+        ("let map: map<CapabilityValue, u64> = {}; map.insert(value, 1u64); assert(map.contains_key(value));", 2, 1),
+        ("let map: map<CapabilityValue, u64> = { value: 1u64 }; assert(map.insert(value, 2u64).unwrap() == 1u64);", 2, 1),
+        ("let map: map<CapabilityValue, u64> = { value: 1u64 }; assert(map.get(value).unwrap() == 1u64);", 2, 1),
+        ("let map: map<CapabilityValue, u64> = { value: 1u64 }; assert(map.shift_remove(value).unwrap() == 1u64);", 2, 1),
+        ("let map: map<CapabilityValue, u64> = { value: 1u64 }; assert(map.swap_remove(value).unwrap() == 1u64);", 2, 1),
+        ("let a: map<CapabilityValue, CapabilityValue> = { value: value }; let b: map<CapabilityValue, CapabilityValue> = { value: value }; assert(a == b);", 2, 2),
+    ] {
+        let code = |hash_cost, eq_cost| format!("entry main() {{ let value: CapabilityValue = charged({hash_cost}u64, {eq_cost}u64); {operation} return 0 }}");
+        let (baseline, baseline_gas) = execute(&code(0, 0), u64::MAX);
+        baseline.unwrap();
+        let (result, gas) = execute(&code(7, 11), u64::MAX);
+        result.unwrap();
+        assert_eq!(gas - baseline_gas, hashes * 7 + comparisons * 11, "{operation}");
+
+        // The ordinary execution fits comfortably; the opaque operation itself
+        // exceeds the remaining budget and must surface the VM gas error.
+        let (result, used) = execute(&code(10_000, 10_000), baseline_gas + 1_000);
+        assert!(matches!(result, Err(VMError::EnvironmentError(EnvironmentError::NotEnoughGas { .. }))), "{operation}: {result:?}");
+        assert_eq!(used, baseline_gas + 1_000);
+    }
+}
+
+#[test]
+fn test_map_operations_require_dynamic_hash_and_equality() {
+    for (hash, eq) in [(false, false), (true, false), (false, true)] {
+        let key = format!("capability({hash}, {eq})");
+        for operation in [
+            format!("let _: map<CapabilityValue, u64> = {{ {key}: 1u64 }};"),
+            format!("let _: map<CapabilityValue[], u64> = {{ [{key}]: 1u64 }};"),
+            format!("map.insert({key}, 1u64);"),
+            format!("map.get({key});"),
+            format!("map.contains_key({key});"),
+            format!("map.shift_remove({key});"),
+            format!("map.swap_remove({key});"),
+        ] {
+            let code = format!("entry main() {{ let map: map<CapabilityValue, u64> = {{}}; {operation} return 0 }}");
+            let (module, env) = prepare_module_with(&code, capability_environment());
+            assert!(matches!(run_internal(module, &env, 0),
+                Err(VMError::EnvironmentError(EnvironmentError::InvalidKeyType))), "{operation}");
+        }
+    }
+
+    let code = r#"
+        entry main() {
+            let map: map<CapabilityValue, u64> = { capability(true, true): 1u64 };
+            assert(map.contains_key(capability(true, true)));
+            assert(map.insert(capability(true, true), 2u64).unwrap() == 1u64);
+            assert(map.get(capability(true, true)).unwrap() == 2u64);
+            assert(map.shift_remove(capability(true, true)).unwrap() == 2u64);
+            map.insert(capability(true, true), 3u64);
+            return map.swap_remove(capability(true, true)).unwrap()
+        }
+    "#;
+    let (module, env) = prepare_module_with(code, capability_environment());
+    assert_eq!(run_internal(module, &env, 0).unwrap(), PrimitiveInteger::U64(3).into());
+}
+
+#[test]
+fn test_array_search_requires_dynamic_equality() {
+    for method in ["contains", "index_of"] {
+        for operation in [
+            format!("let values: CapabilityValue[] = []; values.{method}(capability(true, false));"),
+            format!("let values: CapabilityValue[] = [capability(true, true)]; values.{method}(capability(true, false));"),
+            format!("let values: CapabilityValue[][] = [[capability(true, true)]]; values.{method}([capability(true, false)]);"),
+        ] {
+            let code = format!("entry main() {{ {operation} return 0 }}");
+            let (module, env) = prepare_module_with(&code, capability_environment());
+            assert!(matches!(run_internal(module, &env, 0),
+                Err(VMError::EnvironmentError(EnvironmentError::ValueError(ValueError::EqualityNotSupported)))), "{operation}");
+        }
+    }
+
+    // Equality-only values remain valid for searches, including nested arrays.
+    let code = r#"
+        entry main() {
+            let values: CapabilityValue[] = [capability(false, true)];
+            assert(values.contains(capability(false, true)));
+            assert(values.index_of(capability(false, true)).unwrap() == 0u32);
+            let nested: CapabilityValue[][] = [values];
+            assert(nested.contains([capability(false, true)]));
+            let short_circuit: CapabilityValue[] = [capability(true, true), capability(true, false)];
+            assert(short_circuit.contains(capability(true, true)));
+            assert(short_circuit.index_of(capability(true, true)).unwrap() == 0u32);
+            return nested.index_of([capability(false, true)]).unwrap() as u64
+        }
+    "#;
+    let (module, env) = prepare_module_with(code, capability_environment());
+    assert_eq!(run_internal(module, &env, 0).unwrap(), PrimitiveInteger::U64(0).into());
+}
+
 #[test]
 fn test_shadow_variable() {
     let code = r#"
@@ -2182,7 +2386,6 @@ fn test_match() {
 
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 
-
     let code = r#"
         enum Foo {
             A { value: u64 },
@@ -2385,7 +2588,6 @@ fn test_mixed_enum_variants() {
 
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(35))); // 10 + 20 + 5
 }
-
 
 #[test]
 fn test_match_variant() {
@@ -3721,7 +3923,6 @@ fn test_struct_with_function() {
             value: u64
         }
 
-
         fn (self Foo) get_value() -> u64 {
             return self.value
         }
@@ -3847,7 +4048,6 @@ fn test_raw_value_cast_to_optional() {
         Primitive::Integer(PrimitiveInteger::U64(10))
     );
 }
-
 
 #[test]
 fn test_destructive_unwrap() {
@@ -4073,7 +4273,6 @@ fn test_array_map() {
     assert_eq!(run_code(code), Primitive::Integer(PrimitiveInteger::U64(0)));
 }
 
-
 #[test]
 fn test_array_map_double_depth() {
     let code = r#"
@@ -4254,7 +4453,6 @@ fn test_async_callback_with_two_params() {
                 .ok_or(EnvironmentError::InvalidCallbackParameters)?
                 .clone();
 
-
             let mapped = mapped_value.into_owned(heap).unwrap();
             let mapped = heap.insert(mapped);
             let tmp = state.tmp.as_mut_vec(heap)?;
@@ -4285,10 +4483,10 @@ fn test_async_callback_with_two_params() {
     }
 
     // Native function that uses async callback
-    fn async_map_indexed<'a, 'ty, 'r, M: 'static>(
+    fn async_map_indexed<'metadata, 'a, 'ty, 'r, M: 'static>(
         zelf: FnInstance<'a>,
         parameters: FnParams<'a>,
-        _: &'a ModuleMetadata<'_, M>,
+        _: &'a ModuleMetadata<'metadata, M>,
         context: &'a mut VMContext<'ty, 'r>, heap: &'a mut Heap
     ) -> LocalBoxFuture<'a, FnReturnType<M>> {
         async move {

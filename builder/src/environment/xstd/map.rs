@@ -1,17 +1,21 @@
-use crate::environment::xstd::native;
-use silex_types::Heap;
 use silex_environment::{
-    VMContext,
     EnvironmentError,
     FnInstance,
     FnParams,
     FnReturnType,
-    SysCallResult,
     ModuleMetadata,
+    SysCallResult,
+    VMContext,
 };
-use silex_types::{PrimitiveInteger, Type, Primitive, RuntimeValue};
+use silex_types::{
+    Heap,
+    Primitive,
+    PrimitiveInteger,
+    RuntimeValue,
+    Type,
+};
 
-use crate::EnvironmentBuilder;
+use crate::{environment::xstd::native, EnvironmentBuilder};
 
 pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     let key_type = Type::T(Some(0));
@@ -29,31 +33,23 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
     env.register_native_function_with_comment("entries", Some(_type.clone()), vec![], native(entries), 80, Some(Type::Array(Box::new(Type::Tuples(vec![key_type.clone(), value_type.clone()])))), "Returns all key-value pairs in insertion order.");
 }
 
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn len<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let len = zelf?.as_ref(heap).as_map()?.len();
     Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
-fn contains_key<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn contains_key<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let key = &parameters[0];
-    let k = heap.snapshot_stack(key)?;
-    if !k.is_hashable() {
-        return Err(EnvironmentError::InvalidKeyType);
-    }
-
-    let contains = zelf?.as_ref(heap).as_map()?.contains_key(&k);
+    let k = heap.snapshot_stack_in(key, context.gas_meter())?;
+    let contains = zelf?.as_ref(heap).as_map()?.contains_key(&k, context.gas_meter())?;
     Ok(SysCallResult::Return(Primitive::Boolean(contains).into()))
 }
 
-fn get<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn get<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let key = &parameters[0];
-    let k = heap.snapshot_stack(key)?;
-    if !k.is_hashable() {
-        return Err(EnvironmentError::InvalidKeyType);
-    }
-
+    let k = heap.snapshot_stack_in(key, context.gas_meter())?;
     let value = zelf?.as_ref(heap).as_map()?
-        .get(&k);
+        .get(&k, context.gas_meter())?;
 
     Ok(SysCallResult::Return(match value {
         Some(v) => v.clone_value(heap).into(),
@@ -61,14 +57,10 @@ fn get<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _co
     }))
 }
 
-fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn insert<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     // Export directly to immutable owned key data; no detached runtime copy
     // is needed before crossing this boundary.
-    let key = heap.export(parameters.remove(0))?;
-    if !key.is_hashable() {
-        return Err(EnvironmentError::InvalidKeyType);
-    }
-
+    let key = heap.export_in(parameters.remove(0), context.gas_meter())?;
     let zelf = zelf?;
     let len = zelf.as_ref(heap).as_map()?.len();
 
@@ -80,7 +72,7 @@ fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
     let value = param.into_owned(heap)?;
 
     let value = heap.insert(value);
-    let previous = zelf.as_mut(heap).as_mut_map()?.insert(key, value);
+    let previous = zelf.as_mut(heap).as_mut_map()?.insert(key, value, context.gas_meter())?;
 
     Ok(SysCallResult::Return(match previous {
         Some(v) => v.into(),
@@ -88,13 +80,9 @@ fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
     }))
 }
 
-fn shift_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn shift_remove<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     // Export consumes the argument while preserving any remaining aliases.
-    let key = heap.export(parameters.remove(0))?;
-
-    if !key.is_hashable() {
-        return Err(EnvironmentError::InvalidKeyType);
-    }
+    let key = heap.export_in(parameters.remove(0), context.gas_meter())?;
 
     let zelf = zelf?;
     let map = zelf.as_mut(heap)
@@ -103,25 +91,22 @@ fn shift_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_
     // pay based on O(N)
     context.increase_gas_usage(map.len() as _)?;
 
-    let value = map.shift_remove(&key);
+    let value = map.shift_remove(&key, context.gas_meter())?;
     Ok(SysCallResult::Return(match value {
         Some(v) => v.into(),
         None => Primitive::Null.into(),
     }))
 }
 
-fn swap_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn swap_remove<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     // Export consumes the argument while preserving any remaining aliases.
-    let key = heap.export(parameters.remove(0))?;
+    let key = heap.export_in(parameters.remove(0), context.gas_meter())?;
 
-    if !key.is_hashable() {
-        return Err(EnvironmentError::InvalidKeyType);
-    }
     context.increase_gas_usage(key.calculate_memory_usage(context.memory_left())? as u64)?;
 
     let value = zelf?.as_mut(heap)
         .as_mut_map()?
-        .swap_remove(&key);
+        .swap_remove(&key, context.gas_meter())?;
 
     Ok(SysCallResult::Return(match value {
         Some(v) => v.into(),
@@ -129,7 +114,7 @@ fn swap_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_,
     }))
 }
 
-fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn clear<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let map = zelf.as_mut(heap).as_mut_map()?;
     context.increase_gas_usage(map.len() as u64)?;
@@ -138,23 +123,23 @@ fn clear<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &
     Ok(SysCallResult::None)
 }
 
-fn keys<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn keys<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     // Temporarily move the runtime map out so its keys can be borrowed while
     // allocating runtime copies, without first cloning an OwnedValue tree.
     let keys = heap.with_value(zelf?, |value, heap| -> Result<_, EnvironmentError> {
         let map = value.as_map()?;
         context.increase_gas_usage((map.len() as u64) * 8)?;
         let keys = map.keys().map(|key| {
-            let key = heap.import(key);
-            heap.insert(key)
-        }).collect();
+            let key = heap.import_in(key, context.gas_meter())?;
+            Ok(heap.insert(key))
+        }).collect::<Result<Vec<_>, EnvironmentError>>()?;
         Ok(keys)
     })?;
 
     Ok(SysCallResult::Return(RuntimeValue::Object(keys).into()))
 }
 
-fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn values<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let map = zelf.as_ref(heap).as_map()?;
 
@@ -168,15 +153,15 @@ fn values<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: 
     Ok(SysCallResult::Return(RuntimeValue::Object(values).into()))
 }
 
-fn entries<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn entries<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let entries = heap.with_value(zelf?, |value, heap| -> Result<_, EnvironmentError> {
         let map = value.as_map()?;
         context.increase_gas_usage((map.len() as u64) * 10)?;
         let entries = map.iter().map(|(key, value)| {
-            let key = heap.import(key);
+            let key = heap.import_in(key, context.gas_meter())?;
             let key = heap.insert(key);
-            heap.insert(RuntimeValue::Object(vec![key, value.clone()]))
-        }).collect();
+            Ok(heap.insert(RuntimeValue::Object(vec![key, value.clone()])))
+        }).collect::<Result<Vec<_>, EnvironmentError>>()?;
         Ok(entries)
     })?;
 

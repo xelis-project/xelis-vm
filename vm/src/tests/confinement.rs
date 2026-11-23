@@ -1,21 +1,38 @@
-use super::*;
-use crate::stack::Stack;
-use futures::{
-    executor::block_on,
-    future::{pending, poll_fn, BoxFuture, LocalBoxFuture},
-    task::noop_waker_ref,
-};
 use std::{
     future::Future,
-    sync::{atomic::{AtomicPtr, Ordering}, Arc, Mutex, Weak},
+    hash::{Hash, Hasher},
+    sync::{
+        atomic::{AtomicPtr, AtomicUsize, Ordering},
+        Arc,
+        Barrier,
+        Mutex,
+        Weak,
+    },
     task::{Context, Poll},
     thread,
 };
+
+use futures::{
+    channel::oneshot::{Receiver, Sender},
+    executor::block_on,
+    future::{
+        pending,
+        poll_fn,
+        BoxFuture,
+        LocalBoxFuture,
+    },
+    task::noop_waker_ref,
+};
+use silex_bytecode::{Chunk, OpCode};
 use silex_compiler::Compiler;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
+use silex_types::GasMeter;
 
-fn compile<M: 'static>(code: &str, builder: EnvironmentBuilder<'_, M>) -> (Module, Environment<M>) {
+use super::*;
+use crate::stack::Stack;
+
+fn compile<'env, M: 'static>(code: &str, builder: EnvironmentBuilder<'env, M>) -> (Module, Environment<M>) {
     let tokens = Lexer::new(code)
         .into_iter()
         .collect::<Result<Vec<_>, _>>()
@@ -29,18 +46,18 @@ fn compile<M: 'static>(code: &str, builder: EnvironmentBuilder<'_, M>) -> (Modul
 
 #[test]
 fn native_calls_charge_the_registered_cost_once() {
-    fn sync(
-        scope: &mut NativeScope<'_, ()>,
-        _: &ModuleMetadata<'_, ()>,
-        _: &mut VMContext,
+    fn sync<'call, 'metadata>(
+        scope: &mut NativeScope<'call, ()>,
+        _: &ModuleMetadata<'metadata, ()>,
+        context: &mut VMContext,
     ) -> Result<(), EnvironmentError> {
-        scope.return_owned(OwnedValue::from(0u64))
+        scope.return_owned(OwnedValue::from(0u64), context.gas_meter())
     }
 
-    fn asynchronous<'a, 'ty, 'r>(
+    fn asynchronous<'metadata, 'a, 'ty, 'r>(
         _: Option<OwnedValue>,
         _: Vec<OwnedValue>,
-        _: &'a ModuleMetadata<'_, ()>,
+        _: &'a ModuleMetadata<'metadata, ()>,
         _: &'a mut VMContext<'ty, 'r>,
     ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>> {
         Box::pin(async { Ok(OwnedValue::from(0u64)) })
@@ -53,22 +70,22 @@ fn native_calls_charge_the_registered_cost_once() {
                 builder.register_native_function("native", None, vec![], handler, cost, Some(Type::U64));
                 let environment = builder.build();
                 let mut module = Module::new();
-                let mut chunk = silex_bytecode::Chunk::new();
+                let mut chunk = Chunk::new();
                 if dynamic {
                     let ptr = module.add_constant(OwnedValue::Object(vec![
                         OwnedValue::from(0u16),
                         OwnedValue::from(true),
                         OwnedValue::from(0u16),
                     ]));
-                    chunk.emit_opcode(silex_bytecode::OpCode::Constant);
+                    chunk.emit_opcode(OpCode::Constant);
                     chunk.write_u16(ptr as u16);
-                    chunk.emit_opcode(silex_bytecode::OpCode::DynamicCall);
+                    chunk.emit_opcode(OpCode::DynamicCall);
                     chunk.write_u8(0);
                 } else {
-                    chunk.emit_opcode(silex_bytecode::OpCode::SysCall);
+                    chunk.emit_opcode(OpCode::SysCall);
                     chunk.write_u16(0);
                 }
-                chunk.emit_opcode(silex_bytecode::OpCode::Return);
+                chunk.emit_opcode(OpCode::Return);
                 module.add_entry_chunk(chunk, None);
                 let mut vm = VM::default();
                 vm.append_module(ModuleMetadata {
@@ -85,9 +102,9 @@ fn native_calls_charge_the_registered_cost_once() {
     }
 }
 
-fn pop(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn pop<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let instance = scope.instance()?;
@@ -136,7 +153,7 @@ fn scoped_borrowed_returns_preserve_gas_and_memory_accounting() {
     assert_eq!(results[0], results[1]);
 }
 
-fn resume_array(_: NativeState, scope: &mut NativeScope<'_, ()>) -> Result<(), EnvironmentError> {
+fn resume_array<'call>(_: NativeState, scope: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
     let response = scope.argument(0)?;
     let index = scope.as_u32(response)? as usize;
     let array = scope.retained(0)?;
@@ -145,9 +162,9 @@ fn resume_array(_: NativeState, scope: &mut NativeScope<'_, ()>) -> Result<(), E
     Ok(())
 }
 
-fn suspend_array(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn suspend_array<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let array = scope.argument(0)?;
@@ -178,6 +195,7 @@ fn scoped_io_resumes_with_retained_runtime_values_on_another_thread() {
     );
     let (module, environment) = compile("entry main() { return suspend([11u64, 42u64]) }", builder);
     let mut vm = VM::default();
+
     fn public_bounds<T: Send + Sync>(_: &T) {}
     public_bounds(&vm);
     vm.append_module(ModuleMetadata {
@@ -205,7 +223,7 @@ fn scoped_io_resumes_with_retained_runtime_values_on_another_thread() {
 })]
 struct NativeKey {
     value: u64,
-    copies: Arc<std::sync::atomic::AtomicUsize>,
+    copies: Arc<AtomicUsize>,
 }
 
 impl PartialEq for NativeKey {
@@ -214,9 +232,9 @@ impl PartialEq for NativeKey {
     }
 }
 
-impl std::hash::Hash for NativeKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(&self.value, state);
+impl Hash for NativeKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Hash::hash(&self.value, state);
     }
 }
 
@@ -226,7 +244,7 @@ fn map_construction_exports_keys_without_a_detached_runtime_copy() {
         "entry main(key: any) { let values: map<any, u64> = { key: 42u64 }; return values.len() as u64 }",
         EnvironmentBuilder::<()>::default(),
     );
-    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let copies = Arc::new(AtomicUsize::new(0));
     let key = OwnedValue::from(NativeKey {
         value: 7,
         copies: Arc::clone(&copies),
@@ -273,7 +291,7 @@ fn native_panic_formats_runtime_values_without_copying_payloads() {
         "entry main(value: any) { panic(value); return 0u64 }",
         EnvironmentBuilder::<()>::default(),
     );
-    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let copies = Arc::new(AtomicUsize::new(0));
     let value = OwnedValue::Object(vec![OwnedValue::from(NativeKey {
         value: 7,
         copies: Arc::clone(&copies),
@@ -304,7 +322,7 @@ fn native_map_keys_and_entries_copy_keys_only_once() {
             &format!("entry main(values: map<any, u64>) {{ let result = values.{method}(); return result.len() as u64 }}"),
             EnvironmentBuilder::<()>::default(),
         );
-        let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let copies = Arc::new(AtomicUsize::new(0));
         let key = OwnedValue::from(NativeKey {
             value: 7,
             copies: Arc::clone(&copies),
@@ -335,7 +353,7 @@ fn native_map_writes_export_keys_without_a_detached_runtime_copy() {
             &format!("entry main(values: map<any, u64>, key: any) {{ values.{operation}; return values.len() as u64 }}"),
             EnvironmentBuilder::<()>::default(),
         );
-        let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let copies = Arc::new(AtomicUsize::new(0));
         let map_key = OwnedValue::from(NativeKey {
             value: 7,
             copies: Arc::clone(&copies),
@@ -396,9 +414,9 @@ fn optimized_map_natives_preserve_structured_key_independence() {
     assert!(vm.is_idle());
 }
 
-fn check_runtime_capabilities(
-    scope: &mut NativeScope<'_, Arc<std::sync::atomic::AtomicUsize>>,
-    metadata: &ModuleMetadata<'_, Arc<std::sync::atomic::AtomicUsize>>,
+fn check_runtime_capabilities<'call, 'metadata>(
+    scope: &mut NativeScope<'call, Arc<AtomicUsize>>,
+    metadata: &ModuleMetadata<'metadata, Arc<AtomicUsize>>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let value = scope.argument(0)?;
@@ -412,7 +430,7 @@ fn check_runtime_capabilities(
 
 #[test]
 fn scoped_capability_checks_borrow_runtime_values_without_copying() {
-    let mut builder = EnvironmentBuilder::<Arc<std::sync::atomic::AtomicUsize>>::default();
+    let mut builder = EnvironmentBuilder::<Arc<AtomicUsize>>::default();
     builder.register_native_function(
         "check_capabilities",
         None,
@@ -425,7 +443,7 @@ fn scoped_capability_checks_borrow_runtime_values_without_copying() {
         "entry main(value: any) { let retained = check_capabilities(value); return 42u64 }",
         builder,
     );
-    let copies = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let copies = Arc::new(AtomicUsize::new(0));
     let key = OwnedValue::from(NativeKey {
         value: 7,
         copies: Arc::clone(&copies),
@@ -447,9 +465,9 @@ fn scoped_capability_checks_borrow_runtime_values_without_copying() {
 #[derive(Debug, Clone, Opaque)]
 struct Tracked(Arc<()>);
 
-fn hold(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn hold<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let value = scope.argument(0)?;
@@ -506,16 +524,16 @@ fn cancelling_after_thread_migration_releases_every_retained_owner() {
     assert!(future.as_mut().poll(&mut context).is_pending());
 }
 
-fn resume_closure(_: NativeState, scope: &mut NativeScope<'_, ()>) -> Result<(), EnvironmentError> {
+fn resume_closure<'call>(_: NativeState, scope: &mut NativeScope<'call, ()>, gas: &mut GasMeter) -> Result<(), EnvironmentError> {
     let result = scope.as_u64(scope.argument(0)?)?;
     let array = scope.retained(0)?;
     let element = scope.array_pop(array)?;
-    scope.return_owned(OwnedValue::from(result + scope.as_u64(element)?))
+    scope.return_owned(OwnedValue::from(result + scope.as_u64(element)?), gas)
 }
 
-fn invoke_closure(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn invoke_closure<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let function = scope.argument(0)?;
@@ -547,11 +565,11 @@ fn scoped_closure_callbacks_retain_their_runtime_graph() {
     assert_eq!(vm.run_blocking().unwrap().as_u64().unwrap(), 15);
 }
 
-fn multiply<'a: 'r, 'ty: 'a, 'r>(
+fn multiply<'code, 'a: 'r, 'ty: 'a, 'r>(
     _: &Backend<'a, 'ty, 'r, ()>,
     stack: &mut Stack<()>,
     _: &mut ChunkManager,
-    _: &mut ChunkReader<'_>,
+    _: &mut ChunkReader<'code>,
     _: &mut VMContext<'ty, 'r>,
     heap: &mut Heap,
 ) -> Result<InstructionResult<'a, ()>, VMError> {
@@ -589,11 +607,11 @@ fn custom_instructions_receive_stack_arguments() {
 
 #[test]
 fn custom_instruction_replacement_preserves_other_handlers_and_costs() {
-    fn add<'a: 'r, 'ty: 'a, 'r>(
+    fn add<'code, 'a: 'r, 'ty: 'a, 'r>(
         _: &Backend<'a, 'ty, 'r, ()>,
         stack: &mut Stack<()>,
         _: &mut ChunkManager,
-        _: &mut ChunkReader<'_>,
+        _: &mut ChunkReader<'code>,
         _: &mut VMContext<'ty, 'r>,
         heap: &mut Heap,
     ) -> Result<InstructionResult<'a, ()>, VMError> {
@@ -638,9 +656,9 @@ fn custom_instruction_replacement_preserves_other_handlers_and_costs() {
     assert_eq!(repriced_gas - gas, 4 + 2 * 7);
 }
 
-fn append_self(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn append_self<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _context: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let array = scope.argument(0)?;
@@ -678,10 +696,10 @@ fn scoped_array_insertion_cannot_create_a_reference_cycle() {
     assert_eq!(array[1].as_vec().unwrap()[0].as_u64().unwrap(), 7);
 }
 
-fn owned_io<'a, 'ty, 'r>(
+fn owned_io<'metadata, 'a, 'ty, 'r>(
     _: Option<OwnedValue>,
     params: Vec<OwnedValue>,
-    _: &'a ModuleMetadata<'_, ()>,
+    _: &'a ModuleMetadata<'metadata, ()>,
     _: &'a mut VMContext<'ty, 'r>,
 ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>> {
     Box::pin(async move {
@@ -715,9 +733,9 @@ fn async_native_functions_receive_only_portable_data() {
 #[derive(Clone)]
 struct ModuleTarget(Arc<Module>);
 
-fn call_target(
-    scope: &mut NativeScope<'_, ModuleTarget>,
-    metadata: &ModuleMetadata<'_, ModuleTarget>,
+fn call_target<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ModuleTarget>,
+    metadata: &ModuleMetadata<'metadata, ModuleTarget>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let argument = scope.argument(0)?;
@@ -794,20 +812,20 @@ fn runtime_iterators_cannot_escape_into_owned_outputs_or_io() {
     }
 }
 
-fn produce_buffer(
-    scope: &mut NativeScope<'_, AtomicPtr<u8>>,
-    metadata: &ModuleMetadata<'_, AtomicPtr<u8>>,
-    _: &mut VMContext,
+fn produce_buffer<'call, 'metadata>(
+    scope: &mut NativeScope<'call, AtomicPtr<u8>>,
+    metadata: &ModuleMetadata<'metadata, AtomicPtr<u8>>,
+    context: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let mut bytes = vec![7; 1024];
     metadata.metadata.store(bytes.as_mut_ptr(), Ordering::Relaxed);
-    scope.return_owned(OwnedValue::Bytes(bytes))
+    scope.return_owned(OwnedValue::Bytes(bytes), context.gas_meter())
 }
 
-fn echo_buffer<'a, 'ty, 'r>(
+fn echo_buffer<'metadata, 'a, 'ty, 'r>(
     _: Option<OwnedValue>,
     mut params: Vec<OwnedValue>,
-    metadata: &'a ModuleMetadata<'_, AtomicPtr<u8>>,
+    metadata: &'a ModuleMetadata<'metadata, AtomicPtr<u8>>,
     _: &'a mut VMContext<'ty, 'r>,
 ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>> {
     Box::pin(async move {
@@ -853,10 +871,10 @@ fn unique_buffers_move_through_native_owned_io_without_copying() {
     assert_eq!(value.as_bytes().unwrap().as_ptr(), metadata.load(Ordering::Relaxed).cast_const());
 }
 
-fn delayed_double<'a, 'ty, 'r>(
+fn delayed_double<'metadata, 'a, 'ty, 'r>(
     _: Option<OwnedValue>,
     params: Vec<OwnedValue>,
-    _: &'a ModuleMetadata<'_, ()>,
+    _: &'a ModuleMetadata<'metadata, ()>,
     _: &'a mut VMContext<'ty, 'r>,
 ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>> {
     let mut yielded = false;
@@ -977,7 +995,7 @@ fn concurrent_vms_share_modules_without_sharing_runtime_mutations() {
         "entry main(seed: u64) -> u64[] { let values: u64[] = [1, 2]; values.push(seed); return values.iter().map(|x: u64| { return delayed_double(x) }).collect() }",
         builder,
     );
-    let barrier = std::sync::Barrier::new(4);
+    let barrier = Barrier::new(4);
     thread::scope(|threads| {
         let workers: Vec<_> = (0..4u64).map(|worker| {
             let (module, environment, barrier) = (&module, &environment, &barrier);
@@ -1012,13 +1030,14 @@ fn concurrent_vms_share_modules_without_sharing_runtime_mutations() {
 }
 
 type IoResponse = Mutex<Option<(
-    futures::channel::oneshot::Receiver<OwnedValue>,
-    futures::channel::oneshot::Sender<()>,
+    Receiver<OwnedValue>,
+    Sender<()>,
 )>>;
 
-fn resume_io(
+fn resume_io<'call>(
     _: NativeState,
-    scope: &mut NativeScope<'_, IoResponse>,
+    scope: &mut NativeScope<'call, IoResponse>,
+    _: &mut GasMeter,
 ) -> Result<(), EnvironmentError> {
     // The VM value survives while only the portable response and waker are
     // accessible to the I/O thread.
@@ -1028,9 +1047,9 @@ fn resume_io(
     Ok(())
 }
 
-fn await_io(
-    scope: &mut NativeScope<'_, IoResponse>,
-    metadata: &ModuleMetadata<'_, IoResponse>,
+fn await_io<'call, 'metadata>(
+    scope: &mut NativeScope<'call, IoResponse>,
+    metadata: &ModuleMetadata<'metadata, IoResponse>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let (receiver, armed) = metadata.metadata.lock().unwrap().take().unwrap();
@@ -1094,13 +1113,13 @@ fn external_io_wakes_a_migrated_execution_with_retained_values() {
     assert!(vm.is_idle());
 }
 
-fn panic_on_resume(_: NativeState, _: &mut NativeScope<'_, ()>) -> Result<(), EnvironmentError> {
+fn panic_on_resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
     panic!("native callback panic");
 }
 
-fn suspend_then_panic(
-    scope: &mut NativeScope<'_, ()>,
-    _: &ModuleMetadata<'_, ()>,
+fn suspend_then_panic<'call, 'metadata>(
+    scope: &mut NativeScope<'call, ()>,
+    _: &ModuleMetadata<'metadata, ()>,
     _: &mut VMContext,
 ) -> Result<(), EnvironmentError> {
     let value = scope.argument(0)?;
@@ -1246,10 +1265,10 @@ fn failed_argument_checks_stop_before_the_next_pop_and_preserve_drop_order() {
 
 #[test]
 fn synchronous_native_errors_drop_arguments_before_instance() {
-    fn fail(
+    fn fail<'metadata>(
         _: FnInstance,
         _: FnParams,
-        _: &ModuleMetadata<'_, ()>,
+        _: &ModuleMetadata<'metadata, ()>,
         _: &mut VMContext,
         _: &mut Heap,
     ) -> FnReturnType<()> {
@@ -1293,21 +1312,21 @@ fn synchronous_native_errors_drop_arguments_before_instance() {
 
 #[test]
 fn asynchronous_native_errors_drop_arguments_before_instance() {
-    fn fail<'a, 'ty, 'r>(
+    fn fail<'metadata, 'a, 'ty, 'r>(
         _: FnInstance<'a>,
         _: FnParams<'a>,
-        _: &'a ModuleMetadata<'_, Arc<Mutex<Vec<u8>>>>,
+        _: &'a ModuleMetadata<'metadata, Arc<Mutex<Vec<u8>>>>,
         _: &'a mut VMContext<'ty, 'r>,
         _: &'a mut Heap,
     ) -> LocalBoxFuture<'a, FnReturnType<Arc<Mutex<Vec<u8>>>>> {
         Box::pin(async { Err(EnvironmentError::Static("native failure")) })
     }
 
-    fn invoke<'a: 'r, 'ty: 'a, 'r>(
+    fn invoke<'code, 'a: 'r, 'ty: 'a, 'r>(
         backend: &Backend<'a, 'ty, 'r, Arc<Mutex<Vec<u8>>>>,
         _: &mut Stack<Arc<Mutex<Vec<u8>>>>,
         _: &mut ChunkManager,
-        _: &mut ChunkReader<'_>,
+        _: &mut ChunkReader<'code>,
         _: &mut VMContext<'ty, 'r>,
         _: &mut Heap,
     ) -> Result<InstructionResult<'a, Arc<Mutex<Vec<u8>>>>, VMError> {

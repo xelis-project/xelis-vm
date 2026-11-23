@@ -1,12 +1,6 @@
-#[cfg(test)]
-mod tests;
-
-mod serialization;
-mod backward_compatibility;
-
 use std::{
     borrow::Cow,
-    fmt,
+    fmt::{Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
     mem,
 };
@@ -14,9 +8,28 @@ use std::{
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 
-use crate::{Opaque, Type, PrimitiveRange, Either, OpaqueWrapper, PrimitiveInteger, U256, ValueError, Primitive};
+use crate::{
+    Either,
+    GasMeter,
+    Heap,
+    Opaque,
+    OpaqueWrapper,
+    Primitive,
+    PrimitiveInteger,
+    PrimitiveRange,
+    RuntimeMap,
+    RuntimeValue,
+    Type,
+    ValueError,
+    ValuePointer,
+    U256,
+};
 
-use crate::{RuntimeValue, ValuePointer, Heap};
+#[cfg(test)]
+mod tests;
+
+mod serialization;
+mod backward_compatibility;
 
 /// An owned value for constants, inputs, and outputs.
 ///
@@ -131,6 +144,83 @@ impl Hash for OwnedValue {
 }
 
 impl OwnedValue {
+    /// Prepay hashing for a map key, including nested opaque values.
+    pub fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        let mut work = vec![self];
+        while let Some(value) = work.pop() {
+            match value {
+                Self::Primitive(_) | Self::Bytes(_) => {},
+                Self::Opaque(value) => value.pre_hash_cost(gas)?,
+                Self::Object(values) => work.extend(values.iter().rev()),
+                Self::Map(_) => return Err(ValueError::InvalidMapKey),
+            }
+        }
+        Ok(())
+    }
+
+    /// Prepay equality for all opaque values contained in this value.
+    pub fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        let mut work = vec![self];
+        while let Some(value) = work.pop() {
+            match value {
+                Self::Primitive(_) | Self::Bytes(_) => {},
+                Self::Opaque(value) => value.pre_eq_cost(gas)?,
+                Self::Object(values) => work.extend(values.iter().rev()),
+                Self::Map(values) => work.extend(values.iter().rev().flat_map(|(key, value)| [value, key])),
+            }
+        }
+        Ok(())
+    }
+
+    /// Compare portable data during execution, metering every opaque comparison.
+    /// Charge only comparisons that are reached, preserving early returns.
+    pub fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+        match (self, other) {
+            (Self::Primitive(a), Self::Primitive(b)) => return Ok(a == b),
+            (Self::Bytes(a), Self::Bytes(b)) => return Ok(a == b),
+            _ => {}
+        }
+        let mut work = vec![(self, other)];
+        while let Some((left, right)) = work.pop() {
+            match (left, right) {
+                (Self::Primitive(a), Self::Primitive(b)) if a == b => {},
+                (Self::Bytes(a), Self::Bytes(b)) if a == b => {},
+                (Self::Opaque(a), Self::Opaque(b)) => {
+                    if !a.equals(b, gas)? { return Ok(false); }
+                },
+                (Self::Object(a), Self::Object(b)) if a.len() == b.len() => {
+                    work.extend(a.iter().zip(b).rev());
+                },
+                (Self::Map(a), Self::Map(b)) if a.len() == b.len() => {
+                    work.extend(a.iter().zip(b).rev().flat_map(|((ak, av), (bk, bv))| [(ak, bk), (av, bv)]));
+                },
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
+    /// Hash a VM key, charging opaque operations through the metered adapter.
+    /// Type tags and traversal order match the portable host Hash adapter.
+    pub fn hash_in<H: Hasher>(&self, state: &mut H, gas: &mut GasMeter) -> Result<(), ValueError> {
+        match self {
+            Self::Primitive(value) => { value.hash(state); return Ok(()); },
+            Self::Bytes(value) => { 12u8.hash(state); value.hash(state); return Ok(()); },
+            _ => {}
+        }
+        let mut work = vec![self];
+        while let Some(value) = work.pop() {
+            match value {
+                Self::Primitive(value) => value.hash(state),
+                Self::Bytes(value) => { 12u8.hash(state); value.hash(state); },
+                Self::Opaque(value) => { 10u8.hash(state); value.hash_in(state, gas)?; },
+                Self::Object(values) => { 11u8.hash(state); work.extend(values.iter().rev()); },
+                Self::Map(_) => return Err(ValueError::HashingNotSupported),
+            }
+        }
+        Ok(())
+    }
+
     fn take_map(results: &mut Vec<Self>, len: usize) -> IndexMap<Self, Self> {
         let mut entries = results.drain(results.len() - len * 2..);
         (0..len).map(|_| {
@@ -153,14 +243,30 @@ impl OwnedValue {
         self.to_nested_runtime_value(heap)
     }
 
+    /// Convert borrowed execution data without cloning whole maps first:
+    /// rebuilding maps must happen through the metered insertion path.
+    pub fn to_runtime_value_in(&self, heap: &mut Heap, gas: &mut GasMeter) -> Result<RuntimeValue, ValueError> {
+        match self {
+            Self::Primitive(p) => return Ok(RuntimeValue::Primitive(p.clone())),
+            Self::Opaque(p) => return Ok(RuntimeValue::Opaque(p.deep_clone().into())),
+            Self::Bytes(b) => return Ok(RuntimeValue::Bytes(b.clone())),
+            _ => {}
+        }
+        self.to_nested_runtime_value_impl(heap, Some(gas))
+    }
+
     fn to_nested_runtime_value(&self, heap: &mut Heap) -> RuntimeValue {
+        self.to_nested_runtime_value_impl(heap, None).expect("host import")
+    }
+
+    fn to_nested_runtime_value_impl<'value>(&'value self, heap: &mut Heap, mut gas: Option<&mut GasMeter>) -> Result<RuntimeValue, ValueError> {
         enum Work<'a> {
             Visit(&'a OwnedValue),
             BuildArray(usize),
             BuildMap(Vec<OwnedValue>),
         }
 
-        let mut work: Vec<Work<'_>> = vec![Work::Visit(self)];
+        let mut work: Vec<Work<'value>> = vec![Work::Visit(self)];
         let mut results: Vec<RuntimeValue> = Vec::new();
 
         while let Some(item) = work.pop() {
@@ -172,9 +278,12 @@ impl OwnedValue {
                 }
                 Work::BuildMap(keys) => {
                     let start = results.len() - keys.len();
-                    let entries = keys.into_iter().zip(results.drain(start..)).map(|(key, value)| (key, heap.insert(value)))
-                        .collect();
-                    results.push(RuntimeValue::Map(Box::new(entries)));
+                    let entries = keys.into_iter().zip(results.drain(start..)).map(|(key, value)| (key, heap.insert(value)));
+                    let map = match gas.as_deref_mut() {
+                        Some(gas) => RuntimeMap::from_entries(entries, gas)?,
+                        None => RuntimeMap::from_entries_unmetered(entries),
+                    };
+                    results.push(RuntimeValue::Map(Box::new(map)));
                 }
                 Work::Visit(cell) => match cell {
                     Self::Primitive(p) => results.push(RuntimeValue::Primitive(p.clone())),
@@ -185,6 +294,9 @@ impl OwnedValue {
                         work.extend(values.iter().rev().map(Work::Visit));
                     }
                     Self::Map(map) => {
+                        if gas.is_some() && map.keys().any(|key| !key.is_hashable()) {
+                            return Err(ValueError::InvalidMapKey);
+                        }
                         work.push(Work::BuildMap(map.keys().cloned().collect()));
                         work.extend(map.values().rev().map(Work::Visit));
                     }
@@ -193,7 +305,7 @@ impl OwnedValue {
         }
 
         debug_assert_eq!(results.len(), 1);
-        results.pop().expect("runtime value root")
+        Ok(results.pop().expect("runtime value root"))
     }
 
     // Calculate logical VM memory usage iteratively.
@@ -341,8 +453,8 @@ impl From<Primitive> for OwnedValue {
     }
 }
 
-impl fmt::Display for OwnedValue {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for OwnedValue {
+    fn fmt<'fmt>(&self, formatter: &mut Formatter<'fmt>) -> FmtResult {
         enum Item<'a> {
             Value(&'a OwnedValue),
             Text(&'static str),
@@ -427,7 +539,6 @@ impl From<bool> for OwnedValue {
         Self::Primitive(Primitive::Boolean(value))
     }
 }
-
 
 impl OwnedValue {
     #[inline]
@@ -590,7 +701,6 @@ impl OwnedValue {
             _ => Err(ValueError::ExpectedBytes)
         }
     }
-
 
     #[inline]
     pub fn as_bytes_mut(&mut self) -> Result<&mut Vec<u8>, ValueError> {
@@ -776,7 +886,7 @@ impl OwnedValue {
 
     // Transform a value to a string
     #[inline]
-    pub fn as_string_formatted(&self) -> Result<Cow<'_, str>, ValueError> {
+    pub fn as_string_formatted<'value>(&'value self) -> Result<Cow<'value, str>, ValueError> {
         match self {
             Self::Primitive(v) => v.as_string_formatted(),
             _ => Err(ValueError::ExpectedValueOfType(Type::String))
@@ -952,6 +1062,12 @@ impl OwnedValue {
         }
     }
 
+    /// Whether every contained value supports equality, including map entries.
+    pub fn is_equatable(&self) -> bool {
+        self.all_opaques_satisfy(|value| value.as_eq().is_some())
+    }
+
+    /// Whether this value can be used as a map key (hashing and equality required).
     pub fn is_hashable(&self) -> bool {
         if matches!(self, Self::Primitive(_) | Self::Bytes(_)) {
             return true;

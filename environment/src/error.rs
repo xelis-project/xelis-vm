@@ -1,5 +1,6 @@
+use matriochka::Error as ContextError;
+use silex_types::{GasError, HeapError, ValueError};
 use thiserror::Error;
-use silex_types::{HeapError, ValueError};
 
 #[derive(Debug, Error)]
 pub enum EnvironmentError {
@@ -43,7 +44,7 @@ pub enum EnvironmentError {
     #[error("Invalid key type")]
     InvalidKeyType,
     #[error(transparent)]
-    Any(#[from] matriochka::Error),
+    Any(#[from] ContextError),
     #[error("Out of memory")]
     OutOfMemory,
     #[error("Unexpected behavior: {0}")]
@@ -65,8 +66,19 @@ impl From<&'static str> for EnvironmentError {
 impl From<ValueError> for EnvironmentError {
     fn from(error: ValueError) -> Self {
         match error {
+            ValueError::Gas(error) => error.into(),
+            ValueError::InvalidMapKey => Self::InvalidKeyType,
             ValueError::HeapError(error) => Self::HeapError(error),
             other => Self::ValueError(other),
+        }
+    }
+}
+
+impl From<GasError> for EnvironmentError {
+    fn from(error: GasError) -> Self {
+        match error {
+            GasError::NotEnoughGas { limit, actual } => Self::NotEnoughGas { limit, actual },
+            GasError::Overflow => Self::GasOverflow,
         }
     }
 }

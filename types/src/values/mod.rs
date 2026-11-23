@@ -1,30 +1,37 @@
+use std::{
+    borrow::Cow,
+    cmp::Ordering,
+    fmt::{Display, Formatter, Result as FmtResult},
+    hash::{Hash, Hasher},
+};
+
+use schemars::JsonSchema;
+use serde::{
+    de::Error as DeserializeError,
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
+
+use super::{Type, U256};
+
 mod integer;
 mod range;
 mod serde_map;
 mod error;
 mod runtime_value;
+pub(crate) mod runtime_map;
 mod stack_value;
 pub(crate) mod owned;
-
-use std::{
-    borrow::Cow,
-    cmp::Ordering,
-    hash::{Hash, Hasher}
-};
-use schemars::JsonSchema;
-
-use super::{
-    Type,
-    U256
-};
 
 pub use integer::PrimitiveInteger;
 pub use range::PrimitiveRange;
 pub use runtime_value::*;
+pub use runtime_map::RuntimeMap;
 pub use stack_value::*;
 pub use owned::*;
 pub use error::*;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // Helper functions for U64 string serialization/deserialization
 // JSON parsers may have issues with large integers above 2^53
@@ -40,7 +47,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
+    s.parse::<u64>().map_err(DeserializeError::custom)
 }
 
 // Helper functions for U128 string serialization
@@ -57,7 +64,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    s.parse::<u128>().map_err(serde::de::Error::custom)
+    s.parse::<u128>().map_err(DeserializeError::custom)
 }
 
 macro_rules! checked_cast {
@@ -122,12 +129,14 @@ impl Primitive {
             _ => Err(ValueError::OperationNotNumberType),
         }
     }
+
     pub fn to_integer(self) -> Result<PrimitiveInteger, ValueError> {
         match self {
             Self::Integer(value) => Ok(value),
             _ => Err(ValueError::OperationNotNumberType),
         }
     }
+
     pub fn new_range(start: Self, end: Self) -> Result<Self, ValueError> {
         PrimitiveRange::try_from((start, end)).map(|range| Self::Range(Box::new(range)))
     }
@@ -294,12 +303,14 @@ impl Primitive {
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any)))),
         }
     }
+
     pub fn to_range(self) -> Result<PrimitiveRange, ValueError> {
         match self {
             Self::Range(range) => Ok(*range),
             v => Err(ValueError::InvalidValue(v.clone(), Type::Range(Box::new(Type::Any)))),
         }
     }
+
     pub fn is_number(&self) -> bool { matches!(self, Self::Integer(_)) }
 
     pub fn add(self, other: &Primitive) -> Result<Primitive, ValueError> {
@@ -538,8 +549,8 @@ impl Primitive {
     }
 }
 
-impl std::fmt::Display for Primitive {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Primitive {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         match self {
             Primitive::Null => write!(f, "null"),
             Primitive::Integer(v) => write!(f, "{}", v),

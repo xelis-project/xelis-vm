@@ -1,22 +1,44 @@
-pub mod traits;
-mod runtime;
-pub use runtime::RuntimeOpaqueWrapper;
-
 use std::{
     any::TypeId,
     borrow::Cow,
-    fmt,
+    fmt::{
+        Debug,
+        Display,
+        Formatter,
+        Result as FmtResult,
+    },
     hash::{Hash, Hasher},
 };
+
+use matriochka::{Error as ContextError, OptionExt, ResultExt as _};
 use schemars::*;
-use matriochka::{OptionExt, ResultExt as _};
-use serde::{Deserialize, Serialize, ser::SerializeStruct};
-use serde_json::Value;
-use crate::{
-    Heap, HeapError, IdentifierType, OwnedValue, RuntimeValue, StackValue, ValueError, ValuePointer,
+use serde::{
+    de::Error as DeserializeError,
+    ser::{Error as SerializeError, SerializeStruct},
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
 };
+use serde_json::Value;
 use traits::*;
+
 use super::Type;
+use crate::{
+    GasMeter,
+    Heap,
+    HeapError,
+    IdentifierType,
+    OwnedValue,
+    RuntimeValue,
+    StackValue,
+    ValueError,
+    ValuePointer,
+};
+
+pub mod traits;
+mod runtime;
+pub use runtime::RuntimeOpaqueWrapper;
 
 /// Type-level markers that can be declared on an [`OpaqueType`] descriptor.
 /// These drive static type-checking behaviour (method-dispatch compatibility,
@@ -50,7 +72,7 @@ impl OpaqueTypeTraits {
 }
 
 impl Serialize for OpaqueTypeTraits {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let markers: Vec<_> = [OpaqueTypeTrait::Iterable]
             .into_iter()
             .filter(|marker| self.contains(*marker))
@@ -61,7 +83,7 @@ impl Serialize for OpaqueTypeTraits {
 }
 
 impl<'de> Deserialize<'de> for OpaqueTypeTraits {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let mut flags = Self::default();
 
         for marker in Vec::<OpaqueTypeTrait>::deserialize(deserializer)? {
@@ -190,8 +212,8 @@ impl OpaqueType {
     }
 }
 
-impl fmt::Display for OpaqueType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for OpaqueType {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         write!(f, "{}", self.0.name)?;
         if !self.0.generics.is_empty() {
             write!(f, "<")?;
@@ -208,13 +230,13 @@ impl fmt::Display for OpaqueType {
 }
 
 impl Serialize for OpaqueType {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.0.serialize(serializer)
     }
 }
 
 impl<'a> Deserialize<'a> for OpaqueType {
-    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
         Ok(Self(OpaqueTypeInner::deserialize(deserializer)?))
     }
 }
@@ -269,31 +291,32 @@ pub enum OpaqueChildMut<'a> {
 }
 
 /// Shared inspection capabilities. This trait exposes no heap access.
-pub trait OpaqueValue: AsAny + DynType + JSONHelper + fmt::Debug {
+pub trait OpaqueValue: AsAny + DynType + JSONHelper + Debug {
     /// Return the binary serialization capability when supported.
     fn as_serializable(&self) -> Option<&dyn DynSerializable> {
         None
     }
 
-    /// Return the hashing capability when supported.
+    /// Return the hashing capability when supported for this value.
+    /// Return None when support depends on contents that cannot be hashed.
     fn as_hashable(&self) -> Option<&dyn DynHash> {
         None
     }
 
-    /// Return the value equality capability when supported.
+    /// Return the value equality capability when supported for this value.
     /// Without it, wrappers compare equal only when they are the same wrapper.
     fn as_eq(&self) -> Option<&dyn DynEq> {
         None
     }
 
     /// Size used for value accounting, including non-serializable values.
-    fn get_size(&self) -> Result<usize, matriochka::Error> {
+    fn get_size(&self) -> Result<usize, ContextError> {
         self.as_serializable()
             .context("opaque value does not support size accounting")
             .and_then(DynSerializable::get_size)
     }
 
-    fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn display<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         write!(f, "Opaque<{0}>", self.get_type_name())
     }
 
@@ -338,7 +361,7 @@ pub trait RuntimeOpaque: OpaqueValue {
     /// Return false without invoking the visitor when using deep_clone_in instead.
     fn visit_children_mut(
         &mut self,
-        _visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>,
+        _visitor: &mut dyn for<'child> FnMut(OpaqueChildMut<'child>) -> Result<(), HeapError>,
     ) -> Result<bool, HeapError> {
         Ok(false)
     }
@@ -393,6 +416,40 @@ impl Hash for OpaqueWrapper {
 }
 
 impl OpaqueWrapper {
+    /// VM equality; unlike host PartialEq this always uses the execution's meter.
+    pub fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+        if self.get_type_id() != other.get_type_id() {
+            return Ok(false);
+        }
+        match (self.as_eq(), other.as_eq()) {
+            (Some(left), Some(right)) => {
+                left.pre_eq_cost(gas)?;
+                Ok(left.is_equal(right))
+            },
+            _ => Err(ValueError::EqualityNotSupported),
+        }
+    }
+
+    /// VM hashing, with the same type tags as the portable host Hash adapter.
+    pub fn hash_in(&self, state: &mut dyn Hasher, gas: &mut GasMeter) -> Result<(), ValueError> {
+        let hashable = self.as_hashable().ok_or(ValueError::HashingNotSupported)?;
+        hashable.pre_hash_cost(gas)?;
+        self.get_type_id().hash(&mut &mut *state);
+        self.inner.get_type().hash(&mut &mut *state);
+        hashable.dyn_hash(state);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        self.as_hashable().ok_or(ValueError::HashingNotSupported)?.pre_hash_cost(gas)
+    }
+
+    #[inline]
+    pub fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        self.as_eq().ok_or(ValueError::EqualityNotSupported)?.pre_eq_cost(gas)
+    }
+
     /// Create a new OpaqueWrapper
     /// OpaqueType id is the index of the type in the OpaqueManager
     #[inline]
@@ -465,7 +522,7 @@ impl OpaqueWrapper {
     }
 
     #[inline]
-    pub fn get_size(&self) -> Result<usize, matriochka::Error> {
+    pub fn get_size(&self) -> Result<usize, ContextError> {
         self.inner.get_size()
     }
 
@@ -481,7 +538,7 @@ impl OpaqueWrapper {
 }
 
 impl Serialize for OpaqueWrapper {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut structure = serializer.serialize_struct("OpaqueWrapper", 2)?;
         structure.serialize_field("type", &self.inner.get_type_name())?;
 
@@ -492,7 +549,7 @@ impl Serialize for OpaqueWrapper {
                     "serializing opaque value of type {}",
                     self.inner.get_type_name(),
                 ))
-                .map_err(|error| serde::ser::Error::custom(format!("{error:#}")))?
+                .map_err(|error| SerializeError::custom(format!("{error:#}")))?
         } else {
             Value::String("JSON not supported".to_owned())
         };
@@ -503,7 +560,7 @@ impl Serialize for OpaqueWrapper {
 }
 
 impl<'a> Deserialize<'a> for OpaqueWrapper {
-    fn deserialize<D: serde::Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'a>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct OpaqueWrapperData {
             #[serde(rename = "type")]
@@ -515,18 +572,18 @@ impl<'a> Deserialize<'a> for OpaqueWrapper {
         let type_name = data.type_;
         let value = data.value;
 
-        let registry = JSON_REGISTRY.read().map_err(serde::de::Error::custom)?;
+        let registry = JSON_REGISTRY.read().map_err(DeserializeError::custom)?;
 
         let deserialize_fn = registry
             .get(&type_name.as_str())
-            .ok_or_else(|| serde::de::Error::custom(format!(
+            .ok_or_else(|| DeserializeError::custom(format!(
                 "Unknown type '{}' for registry",
                 type_name,
             )))?;
 
         deserialize_fn(value)
             .with_context(|| format!("deserializing opaque value of type {type_name}"))
-            .map_err(|error| serde::de::Error::custom(format!("{error:#}")))
+            .map_err(|error| DeserializeError::custom(format!("{error:#}")))
     }
 }
 
@@ -552,38 +609,45 @@ impl<T: Opaque> From<T> for OpaqueWrapper {
     }
 }
 
-impl fmt::Display for OpaqueWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for OpaqueWrapper {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         self.inner.display(f)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use octet::Serializable;
     use std::{
         any::TypeId,
         hash::{DefaultHasher, Hasher},
     };
     use indexmap::IndexMap;
 
-    use crate::{register_opaque_json, Primitive, Type};
+    use crate::{
+        register_opaque_json,
+        DynType,
+        Opaque,
+        Primitive,
+        Type,
+    };
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, crate::Opaque)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Opaque)]
     #[opaque(display, json, hash, eq, size = 4)]
     struct CustomOpaque {
         value: i32,
     }
 
-    impl fmt::Display for CustomOpaque {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    impl Display for CustomOpaque {
+        fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
             write!(f, "CustomOpaque({})", self.value)
         }
     }
 
     #[test]
     fn test_serialization_capability() {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, crate::DynType)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, DynType)]
         struct BinaryOpaque(u32);
 
         impl JSONHelper for BinaryOpaque {}
@@ -609,7 +673,7 @@ mod tests {
         );
         assert_eq!(
             &bytes[1..],
-            octet::Serializable::to_bytes(&42u32).unwrap().as_ref(),
+            Serializable::to_bytes(&42u32).unwrap().as_ref(),
         );
         assert_eq!(bytes[0], 99);
 

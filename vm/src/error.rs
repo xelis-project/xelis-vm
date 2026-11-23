@@ -1,8 +1,8 @@
-use thiserror::Error;
 use matriochka::Error as AnyError;
 use silex_bytecode::ChunkReaderError;
 use silex_environment::EnvironmentError;
 use silex_types::{HeapError, ValueError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum VMError {
@@ -101,6 +101,8 @@ impl From<ValueError> for VMError {
     fn from(error: ValueError) -> Self {
         match error {
             ValueError::HeapError(error) => Self::HeapError(error),
+            ValueError::Gas(error) => EnvironmentError::from(error).into(),
+            ValueError::InvalidMapKey => EnvironmentError::InvalidKeyType.into(),
             other => Self::ValueError(other),
         }
     }

@@ -1,13 +1,33 @@
-use std::{any::Any, fmt, sync::Arc};
+use std::{
+    any::Any,
+    collections::HashMap,
+    fmt::{Debug, Formatter, Result as FmtResult},
+    sync::Arc,
+};
 
 use futures::future::{BoxFuture, LocalBoxFuture};
-use std::collections::HashMap;
 use silex_bytecode::Module;
-use silex_types::{Primitive, StackValue, Type, RuntimeValue, Heap, ValuePointer, OwnedValue};
-use crate::scope::resume_owned;
-use crate::{NativeState, NativeCallback, NativeScope, VMContext, Environment, ModuleMetadata};
+use silex_types::{
+    GasMeter,
+    Heap,
+    OwnedValue,
+    Primitive,
+    RuntimeValue,
+    StackValue,
+    Type,
+    ValuePointer,
+};
 
 use super::EnvironmentError;
+use crate::{
+    scope::resume_owned,
+    Environment,
+    ModuleMetadata,
+    NativeCallback,
+    NativeScope,
+    NativeState,
+    VMContext,
+};
 
 pub type CallbackState = Box<dyn Any>;
 
@@ -20,6 +40,8 @@ pub type CallbackFunction<M> = fn(
 /// Callback type can be sync or async
 pub enum CallbackType<M> {
     Sync(CallbackFunction<M>),
+    /// Scoped callbacks need the active meter when converting portable data.
+    MeteredSync(fn(CallbackState, FnParams, &mut Heap, &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError>),
     Async(for<'a> fn(
         state: CallbackState,
         params: FnParams<'a>,
@@ -112,32 +134,32 @@ impl<M> From<StackValue> for SysCallResult<M> {
 pub type FnReturnType<M> = Result<SysCallResult<M>, EnvironmentError>;
 pub type FnInstance<'a> = Result<&'a mut StackValue, EnvironmentError>;
 pub type FnParams<'a> = &'a mut Vec<StackValue>;
-pub type OnCallSyncFn<M> = for<'a, 'ty, 'r> fn(
+pub type OnCallSyncFn<M> = for<'a, 'ty, 'r, 'metadata> fn(
         FnInstance<'a>,
         FnParams<'a>,
-        &'a ModuleMetadata<'_, M>,
+        &'a ModuleMetadata<'metadata, M>,
         &'a mut VMContext<'ty, 'r>,
         &'a mut Heap,
     ) -> FnReturnType<M>;
 
-pub type RawAsyncFn<M> = for<'a, 'ty, 'r> fn(
+pub type RawAsyncFn<M> = for<'a, 'ty, 'r, 'metadata> fn(
         FnInstance<'a>,
         FnParams<'a>,
-        &'a ModuleMetadata<'_, M>,
+        &'a ModuleMetadata<'metadata, M>,
         &'a mut VMContext<'ty, 'r>,
         &'a mut Heap,
     ) -> LocalBoxFuture<'a, FnReturnType<M>>;
 
-pub type ScopedNativeFn<M> = for<'call, 'ty, 'r> fn(
+pub type ScopedNativeFn<M> = for<'call, 'ty, 'r, 'metadata> fn(
     &mut NativeScope<'call, M>,
-    &ModuleMetadata<'_, M>,
+    &ModuleMetadata<'metadata, M>,
     &mut VMContext<'ty, 'r>,
 ) -> Result<(), EnvironmentError>;
 
-pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r> fn(
+pub type OnCallAsyncFn<M> = for<'a, 'ty, 'r, 'metadata> fn(
     Option<OwnedValue>,
     Vec<OwnedValue>,
-    &'a ModuleMetadata<'_, M>,
+    &'a ModuleMetadata<'metadata, M>,
     &'a mut VMContext<'ty, 'r>,
 ) -> BoxFuture<'a, Result<OwnedValue, EnvironmentError>>;
 
@@ -160,7 +182,7 @@ impl<M> Clone for RawHandler<M> {
 /// ```compile_fail
 /// use silex_environment::{FunctionHandler, FnInstance, FnParams, FnReturnType, ModuleMetadata, VMContext, SysCallResult};
 /// use silex_types::Heap;
-/// fn raw(_: FnInstance, _: FnParams, _: &ModuleMetadata<'_, ()>, _: &mut VMContext, _: &mut Heap) -> FnReturnType<()> {
+/// fn raw<'metadata>(_: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext, _: &mut Heap) -> FnReturnType<()> {
 ///     Ok(SysCallResult::None)
 /// }
 /// let handler = FunctionHandler::sync_unchecked(raw);
@@ -219,19 +241,19 @@ pub enum AsyncHandler<M> {
 }
 
 impl<M: 'static> AsyncHandler<M> {
-    pub async fn call<'ty, 'r>(self, instance: FnInstance<'_>, params: FnParams<'_>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> FnReturnType<M> {
+    pub async fn call<'instance, 'params, 'metadata, 'ty, 'r>(self, instance: FnInstance<'instance>, params: FnParams<'params>, metadata: &ModuleMetadata<'metadata, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> FnReturnType<M> {
         match self {
             Self::Prepared { future, state, callback, retained } => {
                 let response = future.await?;
-                let response = heap.import_owned(response);
-                resume_owned(state, callback, retained, vec![response.into()], heap)
+                let response = heap.import_owned_in(response, context.gas_meter())?;
+                resume_owned(state, callback, retained, vec![response.into()], heap, context.gas_meter())
             }
             Self::Owned(handler) => {
-                let instance = instance.ok().map(|value| heap.export(value.take())).transpose()?;
-                let params = params.iter_mut().map(|value| heap.export(value.take()))
+                let instance = instance.ok().map(|value| heap.export_in(value.take(), context.gas_meter())).transpose()?;
+                let params = params.iter_mut().map(|value| heap.export_in(value.take(), context.gas_meter()))
                     .collect::<Result<Vec<_>, _>>()?;
                 let value = handler(instance, params, metadata, context).await?;
-                Ok(SysCallResult::Return(heap.import_owned(value).into()))
+                Ok(SysCallResult::Return(heap.import_owned_in(value, context.gas_meter())?.into()))
             }
             Self::Unchecked(UncheckedFunction(RawHandler::Async(handler))) => {
                 handler(instance, params, metadata, context, heap).await
@@ -285,7 +307,7 @@ impl<M> NativeFunction<M> {
     }
 
     // Execute the function
-    pub fn call_function<'ty, 'r>(&self, mut parameters: Vec<StackValue>, metadata: &ModuleMetadata<'_, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<SysCallResult<M>, EnvironmentError>
+    pub fn call_function<'metadata, 'ty, 'r>(&self, mut parameters: Vec<StackValue>, metadata: &ModuleMetadata<'metadata, M>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<SysCallResult<M>, EnvironmentError>
     where
         M: 'static,
     {
@@ -365,8 +387,8 @@ impl<M> NativeFunction<M> {
     }
 }
 
-impl<'ty, M> fmt::Debug for NativeFunction<M> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'ty, M> Debug for NativeFunction<M> {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         f.debug_struct("NativeFunction")
             .field("on_type", &self.on_type)
             .field("require_instance", &self.require_instance)

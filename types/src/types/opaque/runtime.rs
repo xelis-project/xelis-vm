@@ -1,6 +1,26 @@
-use std::{fmt, any::TypeId};
-use super::{Opaque, OpaqueValue, RuntimeOpaque, OpaqueWrapper, DynSerializable, DynHash, DynEq};
-use crate::{Heap, HeapError, OpaqueChildMut, ValueError};
+use std::{
+    any::TypeId,
+    fmt::{Display, Formatter, Result as FmtResult},
+};
+
+use matriochka::Error as ContextError;
+
+use super::{
+    DynEq,
+    DynHash,
+    DynSerializable,
+    Opaque,
+    OpaqueValue,
+    OpaqueWrapper,
+    RuntimeOpaque,
+};
+use crate::{
+    GasMeter,
+    Heap,
+    HeapError,
+    OpaqueChildMut,
+    ValueError,
+};
 
 #[derive(Debug)]
 enum RuntimeOpaqueData {
@@ -15,6 +35,20 @@ pub struct RuntimeOpaqueWrapper {
 }
 
 impl RuntimeOpaqueWrapper {
+    /// Compare an execution-local or portable payload with execution gas.
+    pub fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+        if self.get_type_id() != other.get_type_id() {
+            return Ok(false);
+        }
+        match (self.as_eq(), other.as_eq()) {
+            (Some(left), Some(right)) => {
+                left.pre_eq_cost(gas)?;
+                Ok(left.is_equal(right))
+            },
+            _ => Err(ValueError::EqualityNotSupported),
+        }
+    }
+
     /// Wrap portable host data for runtime use.
     #[inline]
     pub fn new<T: Opaque>(value: T) -> Self {
@@ -83,7 +117,7 @@ impl RuntimeOpaqueWrapper {
     }
 
     #[inline]
-    pub fn get_size(&self) -> Result<usize, matriochka::Error> {
+    pub fn get_size(&self) -> Result<usize, ContextError> {
         self.inner().get_size()
     }
 
@@ -123,7 +157,7 @@ impl RuntimeOpaqueWrapper {
         Ok(Self { inner })
     }
 
-    pub(crate) fn visit_children_mut(&mut self, visitor: &mut dyn FnMut(OpaqueChildMut<'_>) -> Result<(), HeapError>) -> Result<bool, HeapError> {
+    pub(crate) fn visit_children_mut(&mut self, visitor: &mut dyn for<'child> FnMut(OpaqueChildMut<'child>) -> Result<(), HeapError>) -> Result<bool, HeapError> {
         match &mut self.inner {
             RuntimeOpaqueData::Portable(_) => Ok(false),
             RuntimeOpaqueData::Local(value) => value.visit_children_mut(visitor),
@@ -155,18 +189,6 @@ impl Clone for RuntimeOpaqueWrapper {
     }
 }
 
-impl PartialEq for RuntimeOpaqueWrapper {
-    fn eq(&self, other: &Self) -> bool {
-        if std::ptr::eq(self, other) {
-            return true;
-        }
-        self.get_type_id() == other.get_type_id() && match (self.as_eq(), other.as_eq()) {
-            (Some(left), Some(right)) => left.is_equal(right),
-            _ => false,
-        }
-    }
-}
-
 impl From<OpaqueWrapper> for RuntimeOpaqueWrapper {
     fn from(value: OpaqueWrapper) -> Self {
         Self {
@@ -181,8 +203,8 @@ impl<T: Opaque> From<T> for RuntimeOpaqueWrapper {
     }
 }
 
-impl fmt::Display for RuntimeOpaqueWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for RuntimeOpaqueWrapper {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         self.inner().display(f)
     }
 }

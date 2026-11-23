@@ -1,36 +1,48 @@
-use silex_types::{traits::DynSerializable, Opaque, OwnedValue, Primitive, PrimitiveRange, U256};
+use matriochka::Error as ContextError;
+use serde::{Serialize, Serializer};
+use silex_types::{
+    traits::DynSerializable,
+    GasMeter,
+    Opaque,
+    OwnedValue,
+    Primitive,
+    PrimitiveRange,
+    RuntimeMap,
+    U256,
+};
 
-#[derive(Debug, Clone, Opaque)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Opaque)]
+#[opaque(hash, eq)]
 struct Unsupported;
 
-#[derive(Debug, Clone, serde::Serialize, Opaque)]
-#[opaque(json)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Opaque)]
+#[opaque(hash, eq, json)]
 struct JsonOnly;
 
-#[derive(Debug, Clone, serde::Serialize, Opaque)]
-#[opaque(serializable)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Opaque)]
+#[opaque(hash, eq, serializable)]
 struct BinaryOnly(u32);
 
 impl DynSerializable for BinaryOnly {
-    fn get_size(&self) -> Result<usize, matriochka::Error> {
+    fn get_size(&self) -> Result<usize, ContextError> {
         self.0.get_size()
     }
 
-    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error> {
+    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, ContextError> {
         DynSerializable::serialize(&self.0, buffer)
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, Opaque)]
-#[opaque(json, serializable)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Opaque)]
+#[opaque(hash, eq, json, serializable)]
 struct Both(u32);
 
 impl DynSerializable for Both {
-    fn get_size(&self) -> Result<usize, matriochka::Error> {
+    fn get_size(&self) -> Result<usize, ContextError> {
         self.0.get_size()
     }
 
-    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, matriochka::Error> {
+    fn serialize(&self, buffer: &mut Vec<u8>) -> Result<usize, ContextError> {
         DynSerializable::serialize(&self.0, buffer)
     }
 }
@@ -150,17 +162,17 @@ fn capability_checks_do_not_run_serializers() {
     struct PanickingSerializers;
 
     impl DynSerializable for PanickingSerializers {
-        fn get_size(&self) -> Result<usize, matriochka::Error> {
+        fn get_size(&self) -> Result<usize, ContextError> {
             panic!("capability checks must not run binary serialization");
         }
 
-        fn serialize(&self, _: &mut Vec<u8>) -> Result<usize, matriochka::Error> {
+        fn serialize(&self, _: &mut Vec<u8>) -> Result<usize, ContextError> {
             panic!("capability checks must not run binary serialization");
         }
     }
 
-    impl serde::Serialize for PanickingSerializers {
-        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+    impl Serialize for PanickingSerializers {
+        fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
             panic!("capability checks must not run JSON serialization");
         }
     }
@@ -179,7 +191,7 @@ fn runtime_capabilities_include_owned_keys_and_shared_runtime_children() {
         let child = heap.import_owned(opaque);
         let child = heap.insert(child);
         let object = heap.insert(RuntimeValue::Object(vec![child.clone(), child]));
-        let map = RuntimeValue::Map(Box::new([(key, object)].into_iter().collect()));
+        let map = RuntimeValue::Map(Box::new(RuntimeMap::from_entries([(key, object)], &mut GasMeter::default()).unwrap()));
         let slots = heap.len();
         assert_eq!(map.is_serializable(&heap), binary);
         assert_eq!(map.is_json_serializable(&heap), json);
@@ -195,7 +207,7 @@ fn runtime_capabilities_include_owned_keys_and_shared_runtime_children() {
 fn runtime_capabilities_do_not_require_an_owned_snapshot() {
     use silex_types::{Heap, RuntimeOpaqueWrapper, RuntimeValue};
 
-    #[derive(Debug, Clone, serde::Serialize, Opaque)]
+    #[derive(Debug, Clone, Serialize, Opaque)]
     #[opaque(runtime, json)]
     struct LocalJson(u32);
 

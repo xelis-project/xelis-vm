@@ -1,5 +1,8 @@
 use std::ops::{Deref, DerefMut};
+
 use runtime_context::Context;
+use silex_types::GasMeter;
+
 use crate::EnvironmentError;
 
 pub struct VMContext<'ty, 'r> {
@@ -8,13 +11,11 @@ pub struct VMContext<'ty, 'r> {
     // Configurable gas limit for an execution
     // By default, set to u64::MAX because
     // no program should be able to run indefinitely
-    max_gas: u64,
+    gas: GasMeter,
     // Price per byte of memory
     memory_price_per_byte: u64,
     // Max memory usage allowed
     max_memory_usage: usize,
-    // Current gas used in the execution
-    current_gas: u64,
     // Current memory used in the execution
     current_memory: usize,
     // Peak memory used in the execution (Ethereum-style)
@@ -22,7 +23,7 @@ pub struct VMContext<'ty, 'r> {
     peak_memory: usize,
 }
 
-impl Default for VMContext<'_, '_> {
+impl<'ty, 'r> Default for VMContext<'ty, 'r> {
     #[inline]
     fn default() -> Self {
         Self::new()
@@ -41,8 +42,7 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     pub fn with_context(context: Context<'ty, 'r>) -> Self {
         Self {
             context,
-            max_gas: u64::MAX,
-            current_gas: 0,
+            gas: GasMeter::default(),
             memory_price_per_byte: 1,
             max_memory_usage: 1024 * 1024 * 128, // 128 MB
             current_memory: 0,
@@ -53,28 +53,25 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     // Set a gas limit for the Context
     #[inline(always)]
     pub fn set_gas_limit(&mut self, gas: u64) {
-        self.max_gas = gas;
+        self.gas.set_limit(gas);
     }
 
     // Increase the gas limit by N
     #[inline(always)]
     pub fn increase_gas_limit(&mut self, gas: u64) -> Result<(), EnvironmentError> {
-         self.max_gas = self.max_gas.checked_add(gas)
-            .ok_or_else(|| EnvironmentError::GasOverflow)?;
-
-        Ok(())
+        self.gas.increase_limit(gas).map_err(Into::into)
     }
 
     // Get current gas limit
     #[inline(always)]
     pub fn get_gas_limit(&self) -> u64 {
-        self.max_gas
+        self.gas.limit()
     }
 
     // Get gas left
     #[inline(always)]
     pub fn get_gas_left(&self) -> u64 {
-        self.max_gas.saturating_sub(self.current_gas)
+        self.gas.left()
     }
 
     // Set the price per byte of memory
@@ -92,25 +89,19 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     // Get the current gas usage
     #[inline(always)]
     pub fn current_gas_usage(&self) -> u64 {
-        self.current_gas
+        self.gas.used()
     }
 
     // Increase the gas usage by a specific amount
     #[inline]
     pub fn increase_gas_usage(&mut self, gas: u64) -> Result<(), EnvironmentError> {
-        let new_gas = self.current_gas.checked_add(gas)
-            .ok_or_else(|| EnvironmentError::GasOverflow)?;
+        self.gas.charge(gas).map_err(Into::into)
+    }
 
-        if new_gas > self.max_gas {
-            // used gas exceeds limit
-            // cap it to the max_gas value
-            self.current_gas = self.max_gas;
-            return Err(EnvironmentError::NotEnoughGas { limit: self.max_gas, actual: new_gas });
-        }
-
-        self.current_gas = new_gas;
-
-        Ok(())
+    #[inline]
+    /// Borrow the same meter used for instruction, native, and memory charges.
+    pub fn gas_meter(&mut self) -> &mut GasMeter {
+        &mut self.gas
     }
 
     // Get the current memory usage
@@ -196,7 +187,7 @@ impl<'ty, 'r> VMContext<'ty, 'r> {
     // Reset the gas & memory usage
     #[inline]
     pub fn reset_usage(&mut self) {
-        self.current_gas = 0;
+        self.gas.reset();
         self.current_memory = 0;
         self.peak_memory = 0;
     }

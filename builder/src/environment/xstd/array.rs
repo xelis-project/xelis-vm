@@ -1,10 +1,30 @@
-use crate::environment::xstd::native;
-use silex_types::{PrimitiveInteger, ClosureType, OwnedValue, Primitive, StackValue, Type, U256, RuntimeValue, Heap};
-use silex_environment::{VMContext, CallbackState, CallbackType, EnvironmentError, FnInstance, FnParams, FnReturnType, ModuleMetadata, SysCallResult};
-use crate::ConstFunctionError;
+use paste::paste;
+use silex_environment::{
+    CallbackState,
+    CallbackType,
+    EnvironmentError,
+    FnInstance,
+    FnParams,
+    FnReturnType,
+    ModuleMetadata,
+    SysCallResult,
+    VMContext,
+};
+use silex_types::{
+    ClosureType,
+    Heap,
+    OwnedValue,
+    Primitive,
+    PrimitiveInteger,
+    RuntimeValue,
+    StackValue,
+    Type,
+    ValueError,
+    U256,
+};
 
 use super::EnvironmentBuilder;
-use paste::paste;
+use crate::{environment::xstd::native, ConstFunctionError};
 
 macro_rules! array_number_with_size {
     ($env: expr, $op: ident, $t: ident) => {
@@ -119,12 +139,12 @@ pub fn register<M>(env: &mut EnvironmentBuilder<M>) {
 }
 
 // native functions
-fn len<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn len<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let len = zelf?.as_vec(heap)?.len();
     Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(len as u32)).into()))
 }
 
-fn push<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn push<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     if zelf.as_vec(heap)?.len() >= u32::MAX as usize {
         return Err(EnvironmentError::OutOfMemory)
@@ -136,7 +156,7 @@ fn push<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _c
     Ok(SysCallResult::None)
 }
 
-fn remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn remove<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let index = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let zelf = zelf?;
     let len = zelf.as_vec(heap)?.len();
@@ -148,7 +168,7 @@ fn remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
     Ok(SysCallResult::Return(zelf.as_mut_vec(heap)?.remove(index).into()))
 }
 
-fn swap_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn swap_remove<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let index = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let zelf = zelf?;
     let array = zelf.as_vec(heap)?;
@@ -161,7 +181,7 @@ fn swap_remove<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_,
     Ok(SysCallResult::Return(zelf.as_mut_vec(heap)?.swap_remove(index).into()))
 }
 
-fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn insert<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let index = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let param = parameters.remove(0);
     let value = param.into_owned(heap)?;
@@ -180,7 +200,7 @@ fn insert<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
     Ok(SysCallResult::None)
 }
 
-fn index_of<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn index_of<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let value = &parameters[0];
     let handle = value.as_ref(heap);
     let zelf = zelf?;
@@ -189,8 +209,10 @@ fn index_of<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
+    require_equality(handle, heap)?;
+
     for (i, v) in vec.iter().enumerate() {
-        if v.as_ref(heap).equals(handle, heap) {
+        if v.as_ref(heap).equals(handle, heap, context.gas_meter())? {
             return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(i as u32)).into()))
         }
     }
@@ -198,7 +220,7 @@ fn index_of<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>
     Ok(Primitive::Null.into())
 }
 
-fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn pop<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let array = zelf.as_mut(heap).as_mut_vec()?;
     if let Some(value) = array.pop() {
@@ -208,7 +230,7 @@ fn pop<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &m
     }
 }
 
-fn slice<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn slice<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let param = &parameters[0];
     let range = param.as_ref(heap).as_range()?;
     let start = Primitive::Integer(range.start()).as_u32()?;
@@ -224,7 +246,7 @@ fn slice<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, c
     Ok(SysCallResult::Return(RuntimeValue::Object(slice).into()))
 }
 
-fn contains<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn contains<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let value = &parameters[0];
     let handle = value.as_ref(heap);
     let zelf = zelf?;
@@ -233,10 +255,26 @@ fn contains<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    Ok(SysCallResult::Return(Primitive::Boolean(vec.iter().find(|v| v.as_ref(heap).equals(handle, heap)).is_some()).into()))
+    require_equality(handle, heap)?;
+
+    for value in vec {
+        if value.as_ref(heap).equals(handle, heap, context.gas_meter())? {
+            return Ok(SysCallResult::Return(Primitive::Boolean(true).into()));
+        }
+    }
+    Ok(SysCallResult::Return(Primitive::Boolean(false).into()))
 }
 
-fn get<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+// Validate only the search target. The search meters each comparison it reaches
+// and can return early without inspecting the rest of the array.
+fn require_equality(value: &RuntimeValue, heap: &Heap) -> Result<(), EnvironmentError> {
+    if !value.is_equatable(heap) {
+        return Err(ValueError::EqualityNotSupported.into());
+    }
+    Ok(())
+}
+
+fn get<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let index = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let zelf = zelf?;
     let vec = zelf.as_vec(heap)?;
@@ -247,7 +285,7 @@ fn get<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, _co
     }
 }
 
-fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn first<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec(heap)?;
     if let Some(value) = vec.first() {
@@ -257,7 +295,7 @@ fn first<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: 
     }
 }
 
-fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn last<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec(heap)?;
     if let Some(value) = vec.last() {
@@ -267,7 +305,7 @@ fn last<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, _context: &
     }
 }
 
-fn extend<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn extend<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let other = parameters.remove(0).into_owned(heap)?.to_vec()?;
     context.increase_gas_usage(other.len() as _)?;
     let zelf = zelf?;
@@ -279,7 +317,7 @@ fn extend<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, 
     Ok(SysCallResult::None)
 }
 
-fn concat<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn concat<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let vec = zelf.as_vec(heap)?;
     context.increase_gas_usage(vec.len() as u64)?;
@@ -307,7 +345,7 @@ fn const_with(mut params: Vec<OwnedValue>) -> Result<OwnedValue, ConstFunctionEr
     Ok(OwnedValue::Object(values))
 }
 
-fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn to_bytes<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let values = zelf.as_vec(heap)?;
     let len = values.len();
@@ -321,7 +359,7 @@ fn to_bytes<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context
     Ok(SysCallResult::Return(RuntimeValue::Bytes(bytes).into()))
 }
 
-fn split_off<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn split_off<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let index = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let zelf = zelf?;
     let len = zelf.as_vec(heap)?.len();
@@ -333,7 +371,7 @@ fn split_off<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M
     Ok(SysCallResult::Return(RuntimeValue::Object(second).into()))
 }
 
-fn truncate<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn truncate<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let size = parameters.remove(0).into_owned(heap)?.as_u32()? as usize;
     let zelf = zelf?;
     let len = zelf.as_vec(heap)?.len();
@@ -345,7 +383,7 @@ fn truncate<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>
     Ok(SysCallResult::None)
 }
 
-fn sort<M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn sort<'metadata, M>(zelf: FnInstance, params: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let ascending = params[0].as_bool(heap)?;
     let array = zelf.as_vec(heap)?;
@@ -385,7 +423,7 @@ fn reorder<T>(values: &mut [T], order: impl Iterator<Item = usize>) {
     }
 }
 
-fn reverse<M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn reverse<'metadata, M>(zelf: FnInstance, _: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let zelf = zelf?;
     let len = zelf.as_vec(heap)?.len();
     context.increase_gas_usage((len / 2) as u64)?;
@@ -400,7 +438,7 @@ pub struct MapState {
     tmp: StackValue,
 }
 
-fn map<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn map<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let key_fn = parameters.remove(0);
     let zelf = zelf?;
 
@@ -529,7 +567,7 @@ enum OrdKeyKind {
     Bytes,
 }
 
-fn sort_by_key<M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'_, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
+fn sort_by_key<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {
     let ascending = parameters.remove(1).into_owned(heap)?.as_bool()?;
     let key_fn = parameters.remove(0);
     let zelf = zelf?;

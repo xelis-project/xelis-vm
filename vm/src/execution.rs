@@ -1,5 +1,12 @@
-use std::{mem, future::Future, pin::Pin, task::{Context, Poll}};
+use std::{
+    future::Future,
+    mem,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
 use futures::future::LocalBoxFuture;
+
 use super::*;
 use crate::stack::Stack;
 
@@ -13,7 +20,7 @@ pub(super) struct ConfinedRun<'run> {
 // Safe extensions receive scoped views or owned data; trusted raw extensions
 // explicitly opt into this invariant with an unsafe constructor. Poll and Drop
 // require exclusive ownership. A synchronized handoff moves every alias together.
-unsafe impl Send for ConfinedRun<'_> {}
+unsafe impl<'run> Send for ConfinedRun<'run> {}
 
 impl<'run> ConfinedRun<'run> {
     pub(super) fn new_with_scope<'a: 'r, 'ty: 'a, 'r, M, F>(vm: &'run mut VM<'a, 'ty, 'r, M>, finish: F) -> Self
@@ -46,10 +53,10 @@ impl<'run> ConfinedRun<'run> {
     }
 }
 
-impl Future for ConfinedRun<'_> {
+impl<'run> Future for ConfinedRun<'run> {
     type Output = Result<OwnedValue, VMError>;
 
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll<'task>(mut self: Pin<&mut Self>, context: &mut Context<'task>) -> Poll<Self::Output> {
         self.inner.as_mut().poll(context)
     }
 }
@@ -63,7 +70,7 @@ where F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMErro
     finish: F,
 }
 
-impl<'a: 'r, 'ty: 'a, 'r, M: 'static, F> Drop for HeapScope<'_, 'a, 'ty, 'r, M, F>
+impl<'run, 'a: 'r, 'ty: 'a, 'r, M: 'static, F> Drop for HeapScope<'run, 'a, 'ty, 'r, M, F>
 where F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMError>>) -> Result<(), VMError> {
     fn drop(&mut self) {
         let _ = (self.finish)(self.vm.context_mut(), &self.heap, None);
@@ -74,11 +81,11 @@ where F: FnMut(&mut VMContext<'ty, 'r>, &Heap, Option<&Result<OwnedValue, VMErro
 // suspension return to the async engine with the same per-instruction gas checks.
 // We never inline the function to prevent being wrapped into the async state machine.
 #[inline(never)]
-fn execute_sync<'a: 'r, 'ty: 'a, 'r, M: 'static>(
+fn execute_sync<'code, 'a: 'r, 'ty: 'a, 'r, M: 'static>(
     backend: &Backend<'a, 'ty, 'r, M>,
     stack: &mut Stack<M>,
     manager: &mut ChunkManager,
-    reader: &mut ChunkReader<'_>,
+    reader: &mut ChunkReader<'code>,
     context: &mut VMContext<'ty, 'r>,
     heap: &mut Heap,
 ) -> Option<Result<InstructionResult<'a, M>, VMError>> {
@@ -103,7 +110,7 @@ pub(super) struct Execution<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> {
     tail_call_optimization: bool,
 }
 
-impl<M: 'static> Drop for Execution<'_, '_, '_, '_, M> {
+impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Drop for Execution<'vm, 'a, 'ty, 'r, M> {
     fn drop(&mut self) {
         self.backend.modules.clear();
     }
@@ -161,7 +168,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
     // Add the chunk manager to the call stack if required
     // Returns `false` if not added back
     #[inline]
-    fn push_back_call_stack(&mut self, mut manager: ChunkManager, reader: ChunkReader<'_>) {
+    fn push_back_call_stack<'code>(&mut self, mut manager: ChunkManager, reader: ChunkReader<'code>) {
         // If tail call optimization is enabled,
         // we have another instruction and that its not a OpCode::Return
         // push current frame back to our call_stack
@@ -209,7 +216,7 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
 
     pub(super) async fn run(&mut self, heap: &mut Heap) -> Result<OwnedValue, VMError> {
         for value in mem::take(&mut self.pending_values) {
-            let value = heap.import_owned(value);
+            let value = heap.import_owned_in(value, self.context.gas_meter())?;
             self.stack.push_stack(value.into())?;
         }
 
@@ -246,6 +253,12 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                                     callback.state,
                                                     &mut params,
                                                     heap,
+                                                ),
+                                                CallbackType::MeteredSync(f) => f(
+                                                    callback.state,
+                                                    &mut params,
+                                                    heap,
+                                                    self.context.gas_meter(),
                                                 ),
                                                 CallbackType::Async(f) => f(
                                                     callback.state,
@@ -456,6 +469,6 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
             return Err(VMError::StackNotCleaned(self.stack.count()));
         }
 
-        heap.export(end_value).map_err(VMError::from)
+        heap.export_in(end_value, self.context.gas_meter()).map_err(VMError::from)
     }
 }

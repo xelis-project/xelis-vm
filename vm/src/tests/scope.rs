@@ -1,14 +1,21 @@
-use super::*;
-use futures::{executor::block_on, future::{pending, poll_fn}, task::noop_waker_ref};
-use silex_compiler::Compiler;
-use silex_lexer::Lexer;
-use silex_parser::Parser;
 use std::{
     future::Future,
     panic::{catch_unwind, AssertUnwindSafe},
     task::{Context, Poll},
-    thread,
+    thread::{self, ThreadId},
 };
+
+use futures::{
+    executor::block_on,
+    future::{pending, poll_fn},
+    task::noop_waker_ref,
+};
+use silex_compiler::Compiler;
+use silex_lexer::Lexer;
+use silex_parser::Parser;
+use silex_types::GasMeter;
+
+use super::*;
 
 #[derive(Default)]
 struct Storage {
@@ -17,7 +24,7 @@ struct Storage {
     events: Vec<Option<bool>>,
     cleanup_had_live_value: bool,
     empty_after_cleanup: bool,
-    finish_thread: Option<thread::ThreadId>,
+    finish_thread: Option<ThreadId>,
 }
 
 // SAFETY: these tests access Storage only through the exclusively borrowed VM
@@ -58,7 +65,7 @@ fn queue<'a: 'r, 'ty: 'a, 'r>(vm: &mut VM<'a, 'ty, 'r, ()>, module: &'a Module, 
     vm.invoke_entry_chunk(0).unwrap();
 }
 
-fn retain(_: FnInstance, params: FnParams, _: &ModuleMetadata<'_, ()>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<()> {
+fn retain<'metadata>(_: FnInstance, params: FnParams, _: &ModuleMetadata<'metadata, ()>, context: &mut VMContext, heap: &mut Heap) -> FnReturnType<()> {
     let mut value = params.remove(0);
     context.get_mut::<Storage>().unwrap().retained = Some(value.reference_pointer(heap));
     Ok(SysCallResult::None)
@@ -85,7 +92,7 @@ fn finish(context: &mut VMContext, heap: &Heap, result: Option<&Result<OwnedValu
     Ok(())
 }
 
-fn assert_released(vm: &VM<'_, '_, '_, ()>, events: &[Option<bool>]) {
+fn assert_released<'vm, 'vm2, 'vm3>(vm: &VM<'vm, 'vm2, 'vm3, ()>, events: &[Option<bool>]) {
     assert!(vm.is_idle());
     let storage = vm.context().get::<Storage>().unwrap();
     assert!(storage.retained.is_none());
@@ -114,19 +121,19 @@ fn scope_exports_mutations_and_releases_handles_before_heap_destruction() {
     }
 }
 
-fn resume(_: NativeState, _: &mut NativeScope<'_, ()>) -> Result<(), EnvironmentError> { Ok(()) }
+fn resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> { Ok(()) }
 
-fn wait(scope: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+fn wait<'call, 'metadata>(scope: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     let argument = scope.argument(0)?;
     scope.await_and_resume(Box::pin(pending()), &[argument], Box::new(()), resume);
     Ok(())
 }
 
-fn fail(_: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+fn fail<'call, 'metadata>(_: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     Err(EnvironmentError::Static("deliberate failure"))
 }
 
-fn unwind(_: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+fn unwind<'call, 'metadata>(_: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     panic!("deliberate native panic")
 }
 
@@ -155,7 +162,7 @@ fn scope_cleanup_runs_after_execution_errors_cancellation_and_unwind() {
     }
 }
 
-fn yield_once(scope: &mut NativeScope<'_, ()>, _: &ModuleMetadata<'_, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
+fn yield_once<'call, 'metadata>(scope: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     let mut yielded = false;
     let future = poll_fn(move |context| {
         if yielded {

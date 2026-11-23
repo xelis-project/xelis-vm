@@ -1,3 +1,29 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
+use constructor::*;
+use iterator::*;
+use memory::*;
+use operator::*;
+use r#impl::*;
+use silex_bytecode::OpCode;
+use silex_environment::{AsyncHandler, ModuleMetadata};
+use silex_types::{
+    Heap,
+    Primitive,
+    PrimitiveInteger,
+    PrimitiveRange,
+    RuntimeValue,
+    StackValue,
+};
+
+use super::{
+    stack::Stack,
+    Backend,
+    ChunkManager,
+    VMError,
+};
+use crate::{ChunkReader, VMContext};
+
 mod operator;
 mod r#impl;
 mod iterator;
@@ -6,20 +32,6 @@ mod memory;
 mod syscall;
 
 pub use syscall::*;
-use std::fmt::Debug;
-
-use operator::*;
-use r#impl::*;
-use iterator::*;
-use constructor::*;
-use memory::*;
-
-use silex_bytecode::OpCode;
-use silex_environment::{ModuleMetadata, AsyncHandler};
-use silex_types::{Heap, PrimitiveInteger, PrimitiveRange, Primitive, StackValue, RuntimeValue};
-
-use crate::{ChunkReader, VMContext};
-use super::{stack::Stack, Backend, ChunkManager, VMError};
 
 /// A macro to log debug messages
 /// It will only log if the feature "logging" is enabled
@@ -69,8 +81,8 @@ pub enum InstructionResult<'a, M> {
     },
 }
 
-impl<M> Debug for InstructionResult<'_, M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a, M> Debug for InstructionResult<'a, M> {
+    fn fmt<'fmt>(&self, f: &mut Formatter<'fmt>) -> FmtResult {
         match self {
             InstructionResult::Nothing => write!(f, "InstructionResult::Nothing"),
             InstructionResult::Break => write!(f, "InstructionResult::Break"),
@@ -82,11 +94,11 @@ impl<M> Debug for InstructionResult<'_, M> {
     }
 } 
 
-pub type OpCodeHandler<'a, 'ty, 'r, M> = fn(
+pub type OpCodeHandler<'a, 'ty, 'r, M> = for<'code> fn(
     &Backend<'a, 'ty, 'r, M>,
     &mut Stack<M>,
     &mut ChunkManager,
-    &mut ChunkReader<'_>,
+    &mut ChunkReader<'code>,
     &mut VMContext<'ty, 'r>,
     &mut Heap,
 ) -> Result<InstructionResult<'a, M>, VMError>;
@@ -217,7 +229,7 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> InstructionTable<'a, 'ty, 'r, M> {
 
     // Execute an instruction
     #[inline(always)]
-    pub fn execute(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+    pub fn execute<'code>(&self, opcode: u8, backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, chunk_manager: &mut ChunkManager, reader: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
         trace!("Executing opcode: {:?} with {:?}", OpCode::from_byte(opcode), stack.get_inner());
         let (instruction, cost) = self.instructions[opcode as usize];
 
@@ -229,16 +241,16 @@ impl<'a: 'r, 'ty: 'a, 'r, M: 'static> InstructionTable<'a, 'ty, 'r, M> {
 }
 
 #[inline(always)]
-fn unimplemented<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn unimplemented<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'code>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     Err(VMError::UnknownOpCode)
 }
 
 #[inline(always)]
-fn return_fn<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn return_fn<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'code>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     Ok(InstructionResult::Break)
 }
 
-fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'code>, _context: &mut VMContext<'ty, 'r>, _heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     debug!("jump at address {}", addr);
 
@@ -246,7 +258,7 @@ fn jump<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, _: &mut Stack<M>, _
     Ok(InstructionResult::Nothing)
 }
 
-fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'_>, _context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn jump_if_false<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, reader: &mut ChunkReader<'code>, _context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let addr = reader.read_u32()?;
     let value = stack.pop_stack()?;
     debug!("jump_if_false at address {}", addr);
@@ -257,7 +269,7 @@ fn jump_if_false<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mu
     Ok(InstructionResult::Nothing)
 }
 
-fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn flatten<'code, 'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, _: &mut ChunkManager, _: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let value = stack.pop_stack()?;
     let values = value.into_owned(heap)?
         .to_vec()?;
@@ -268,7 +280,7 @@ fn flatten<'a: 'r, 'ty: 'a, 'r, M>(_: &Backend<'a, 'ty, 'r, M>, stack: &mut Stac
     Ok(InstructionResult::Nothing)
 }
 
-fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'_>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
+fn match_<'code, 'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut Stack<M>, manager: &mut ChunkManager, reader: &mut ChunkReader<'code>, context: &mut VMContext<'ty, 'r>, heap: &mut Heap) -> Result<InstructionResult<'a, M>, VMError> {
     let magic_byte = reader.read_u8()?;
     let same = if magic_byte > 0 {
         let actual = stack.last_stack()?
@@ -306,10 +318,10 @@ fn match_<'a: 'r, 'ty: 'a, 'r, M>(backend: &Backend<'a, 'ty, 'r, M>, stack: &mut
                 Primitive::Integer(PrimitiveInteger::U32(v)) => match_range!(U32, v),
                 Primitive::Integer(PrimitiveInteger::U64(v)) => match_range!(U64, v),
                 Primitive::Integer(PrimitiveInteger::U128(v)) => match_range!(U128, v),
-                _ => actual.equals(expected_ref, heap)
+                _ => actual.equals(expected_ref, heap, context.gas_meter())?
             }
         } else {
-            actual.equals(expected_ref, heap)
+            actual.equals(expected_ref, heap, context.gas_meter())?
         };
         matches
     };
