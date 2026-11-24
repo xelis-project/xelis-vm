@@ -20,18 +20,14 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-description = "Silex language tooling and the Xelis virtual machine"
 license = "MIT"
 repository = "https://github.com/xelis-project/xelis-vm"
 
 [workspace.dependencies]
-silex-abi = { path = "abi", version = "0.1.0" }
-silex-assembler = { path = "assembler", version = "0.1.0" }
 silex-ast = { path = "ast", version = "0.1.0" }
 silex-builder = { path = "builder", version = "0.1.0" }
 silex-bytecode = { path = "bytecode", version = "0.1.0" }
 silex-compiler = { path = "compiler", version = "0.1.0" }
-silex-decompiler = { path = "decompiler", version = "0.1.0" }
 silex-environment = { path = "environment", version = "0.1.0" }
 silex-lexer = { path = "lexer", version = "0.1.0" }
 silex-parser = { path = "parser", version = "0.1.0" }
@@ -47,7 +43,6 @@ futures = "0.3.31"
 hashbrown = "0.17"
 hex = "0.4.3"
 indexmap = "2.8.0"
-itertools = "0.15"
 lazy_static = "1.5.0"
 log = "0.4.26"
 paste = "1.0.15"
@@ -56,7 +51,6 @@ schemars = "1.0.4"
 serde = "1.0.215"
 serde_json = "1.0.133"
 thiserror = "2.0.3"
-clap = { version = "4.5.48", features = ["derive"] }
 
 proc-macro2 = "1"
 quote = "1"
