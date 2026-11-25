@@ -10,7 +10,6 @@ use silex_builder::EnvironmentBuilder;
 use silex_compiler::Compiler;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::GasMeter;
 use xelis_vm::{
     Environment,
     EnvironmentError,
@@ -86,7 +85,11 @@ fn prepare(code: &str, builder: EnvironmentBuilder<()>) -> (Module, Environment<
     (module, environment)
 }
 
-fn resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
+fn resume<'call, 'ty, 'r>(
+    _: NativeState,
+    _: &mut NativeScope<'call, ()>,
+    _: &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError> {
     Ok(())
 }
 

@@ -452,10 +452,11 @@ fn map<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<
         return Ok(SysCallResult::Return(zelf.take()))
     };
 
-    fn map_callback<M>(
+    fn map_callback<'params, 'ty, 'r, M>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut state = state
             .downcast::<MapState>()
@@ -585,10 +586,11 @@ fn sort_by_key<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleM
     let log2n = len.ilog2() as u64;
     context.increase_gas_usage(len * (log2n + 5))?;
 
-    fn sort_by_key_callback<M>(
+    fn sort_by_key_callback<'params, 'ty, 'r, M>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut state = state
             .downcast::<SortByKeyState>()

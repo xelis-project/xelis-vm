@@ -13,7 +13,6 @@ use futures::{
 use silex_compiler::Compiler;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::GasMeter;
 
 use super::*;
 
@@ -121,7 +120,13 @@ fn scope_exports_mutations_and_releases_handles_before_heap_destruction() {
     }
 }
 
-fn resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> { Ok(()) }
+fn resume<'call, 'ty, 'r>(
+    _: NativeState,
+    _: &mut NativeScope<'call, ()>,
+    _: &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError> {
+    Ok(())
+}
 
 fn wait<'call, 'metadata>(scope: &mut NativeScope<'call, ()>, _: &ModuleMetadata<'metadata, ()>, _: &mut VMContext) -> Result<(), EnvironmentError> {
     let argument = scope.argument(0)?;

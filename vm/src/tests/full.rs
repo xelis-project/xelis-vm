@@ -4428,6 +4428,10 @@ fn test_enum_matching() {
 fn test_async_callback_with_two_params() {
     use futures::FutureExt;
 
+    struct CallbackCount(usize);
+
+    tid!(CallbackCount);
+
     // Define state for async callback
     struct AsyncMapState {
         closure_ptr: StackValue,
@@ -4437,12 +4441,15 @@ fn test_async_callback_with_two_params() {
     }
 
     // Async callback function that receives element and index as parameters
-    fn async_map_callback<'a, M: 'static>(
+    fn async_map_callback<'a, 'ty, 'r, M: 'static>(
         state: CallbackState,
         params: FnParams<'a>,
         heap: &'a mut Heap,
+        context: &'a mut VMContext<'ty, 'r>,
     ) -> LocalBoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>> {
         async move {
+            context.get_mut::<CallbackCount>().unwrap().0 += 1;
+            context.increase_gas_usage(3)?;
             let mut state = state
                 .downcast::<AsyncMapState>()
                 .map_err(|_| EnvironmentError::InvalidCallbackState)?;
@@ -4554,8 +4561,9 @@ fn test_async_callback_with_two_params() {
 
     let (module, environment) = prepare_module_with(code, env);
     
-    // Use async execution for async callbacks
+    // Async callbacks borrow the execution's context for their whole future.
     let mut vm = VM::default();
+    vm.context_mut().insert(CallbackCount(0));
     vm.append_module(ModuleMetadata {
         module: (&module).into(),
         environment: (&environment).into(),
@@ -4568,6 +4576,7 @@ fn test_async_callback_with_two_params() {
     let result = result.as_u64().expect("u64 result");
     // Expected: [10+0, 20+1, 30+2] = [10, 21, 32] => sum = 63
     assert_eq!(result, 63);
+    assert_eq!(vm.context().get::<CallbackCount>().unwrap().0, 3);
 }
 
 // Helper to prepare module with enforce_public_parameters enabled

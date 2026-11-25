@@ -253,17 +253,13 @@ impl<'vm, 'a: 'r, 'ty: 'a, 'r, M: 'static> Execution<'vm, 'a, 'ty, 'r, M> {
                                                     callback.state,
                                                     &mut params,
                                                     heap,
-                                                ),
-                                                CallbackType::MeteredSync(f) => f(
-                                                    callback.state,
-                                                    &mut params,
-                                                    heap,
-                                                    self.context.gas_meter(),
+                                                    self.context,
                                                 ),
                                                 CallbackType::Async(f) => f(
                                                     callback.state,
                                                     &mut params,
                                                     heap,
+                                                    self.context,
                                                 ).await,
                                             };
                                             let res = res?;

@@ -27,6 +27,7 @@ use crate::{
     EnvironmentError,
     FnParams,
     SysCallResult,
+    VMContext,
 };
 
 /// A non-owning value valid only during one native call.
@@ -67,11 +68,11 @@ pub struct ValueView<'call> {
 
 pub type NativeState = Box<dyn Any + Send + Sync>;
 
-/// A resumed native call receives the active meter for portable-data conversions.
-pub type NativeCallback<M> = for<'call> fn(
+/// Resumed native calls share the execution context, including its gas meter.
+pub type NativeCallback<M> = for<'call, 'ty, 'r> fn(
     NativeState,
     &mut NativeScope<'call, M>,
-    &mut GasMeter,
+    &mut VMContext<'ty, 'r>,
 ) -> Result<(), EnvironmentError>;
 
 struct CallbackOwner<M> {
@@ -361,7 +362,7 @@ impl<'call, M: 'static> NativeScope<'call, M> {
                             params: values,
                             state: Box::new(CallbackOwner { state, retained, callback }),
                             callback_params_len,
-                            callback: CallbackType::MeteredSync(resume),
+                            callback: CallbackType::Sync(resume),
                         }
                     }
                     None => SysCallResult::DynamicCall { ptr, params: values },
@@ -384,17 +385,29 @@ impl<'call, M: 'static> NativeScope<'call, M> {
     }
 }
 
-fn resume<'params, M: 'static>(state: CallbackState, params: FnParams<'params>, heap: &mut Heap, gas: &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError> {
+fn resume<'params, 'ty, 'r, M: 'static>(
+    state: CallbackState,
+    params: FnParams<'params>,
+    heap: &mut Heap,
+    context: &mut VMContext<'ty, 'r>,
+) -> Result<SysCallResult<M>, EnvironmentError> {
     let owner = state.downcast::<CallbackOwner<M>>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
-    resume_owned(owner.state, owner.callback, owner.retained, mem::take(params), heap, gas)
+    resume_owned(owner.state, owner.callback, owner.retained, mem::take(params), heap, context)
 }
 
-pub(crate) fn resume_owned<M: 'static>(state: NativeState, callback: NativeCallback<M>, retained: Vec<StackValue>, params: Vec<StackValue>, heap: &mut Heap, gas: &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError> {
+pub(crate) fn resume_owned<'ty, 'r, M: 'static>(
+    state: NativeState,
+    callback: NativeCallback<M>,
+    retained: Vec<StackValue>,
+    params: Vec<StackValue>,
+    heap: &mut Heap,
+    context: &mut VMContext<'ty, 'r>,
+) -> Result<SysCallResult<M>, EnvironmentError> {
     let mut scope = NativeScope::new(heap, params, None);
     for value in retained {
         scope.retained.push(scope.roots.len());
         scope.roots.push(value);
     }
-    callback(state, &mut scope, gas)?;
+    callback(state, &mut scope, context)?;
     Ok(scope.finish())
 }

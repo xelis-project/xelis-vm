@@ -1,4 +1,3 @@
-use silex_types::RuntimeOpaqueWrapper;
 use std::{collections::VecDeque, mem};
 
 use silex_environment::{
@@ -8,11 +7,13 @@ use silex_environment::{
     FnParams,
     FnReturnType,
     SysCallResult,
+    VMContext,
 };
 use silex_types::{
     PrimitiveInteger,
     Primitive,
     StackValue,
+    RuntimeOpaqueWrapper,
     RuntimeValue,
     ValuePointer,
     Heap,
@@ -399,10 +400,11 @@ fn collect_work<M: 'static>(
                 take_limit: Option<usize>,
             }
 
-            fn callback<M: 'static>(
+            fn callback<'params, 'ty, 'r, M: 'static>(
                 state: CallbackState,
-                params: FnParams,
+                params: FnParams<'params>,
                 heap: &mut Heap,
+                _: &mut VMContext<'ty, 'r>,
             ) -> Result<SysCallResult<M>, EnvironmentError> {
                 let mut s = state.downcast::<LocalState>()
                     .map_err(|_| EnvironmentError::InvalidCallbackState)?;
@@ -467,10 +469,11 @@ pub(crate) fn apply_items_map<M: 'static>(
         then: TerminalOp,
     }
 
-    fn callback<M: 'static>(
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let result = params.first_mut().map(StackValue::take).ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.into_owned(heap)?;
@@ -517,10 +520,11 @@ pub(crate) fn apply_items_filter<M: 'static>(
         then: TerminalOp,
     }
 
-    fn callback<M: 'static>(
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>()
             .map_err(|_| EnvironmentError::InvalidCallbackState)?;
@@ -563,10 +567,12 @@ pub(crate) fn apply_items_none<M: 'static>(items: VecDeque<ValuePointer>, f: Sta
         index: usize,
         f: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        _: FnParams,
+        _: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
 
@@ -601,10 +607,12 @@ pub(crate) fn apply_items_find<M: 'static>(items: VecDeque<ValuePointer>, pred: 
         index: usize,
         pred: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
@@ -644,10 +652,12 @@ pub(crate) fn apply_items_any<M: 'static>(items: VecDeque<ValuePointer>, pred: S
         index: usize,
         pred: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
@@ -687,10 +697,12 @@ pub(crate) fn apply_items_all<M: 'static>(items: VecDeque<ValuePointer>, pred: S
         index: usize,
         pred: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
@@ -730,10 +742,12 @@ pub(crate) fn apply_items_position<M: 'static>(items: VecDeque<ValuePointer>, pr
         index: usize,
         pred: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let matched = params.first().ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?.as_bool(heap)?;
@@ -781,10 +795,12 @@ pub(crate) fn apply_items_fold<M: 'static>(
         closure: StackValue,
         acc: StackValue,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state.downcast::<LocalState>().map_err(|_| EnvironmentError::InvalidCallbackState)?;
         let new_acc = params.first_mut().map(StackValue::take).ok_or_else(|| EnvironmentError::InvalidCallbackParameters)?;
@@ -1082,10 +1098,12 @@ fn lazy_next_pipe<M: 'static>(
                     pipe_idx: usize,
                     write_back: IteratorWriteBack,
                 }
-                fn callback<M: 'static>(
+
+                fn callback<'params, 'ty, 'r, M: 'static>(
                     state: CallbackState,
-                    params: FnParams,
+                    params: FnParams<'params>,
                     heap: &mut Heap,
+                    _: &mut VMContext<'ty, 'r>,
                 ) -> Result<SysCallResult<M>, EnvironmentError> {
                     let s = state
                         .downcast::<LocalState>()
@@ -1114,10 +1132,12 @@ fn lazy_next_pipe<M: 'static>(
                     pipe_idx: usize,
                     write_back: IteratorWriteBack,
                 }
-                fn callback<M: 'static>(
+
+                fn callback<'params, 'ty, 'r, M: 'static>(
                     state: CallbackState,
-                    params: FnParams,
+                    params: FnParams<'params>,
                     heap: &mut Heap,
+                    _: &mut VMContext<'ty, 'r>,
                 ) -> Result<SysCallResult<M>, EnvironmentError> {
                     let s = state
                         .downcast::<LocalState>()
@@ -1257,10 +1277,12 @@ fn lazy_next_unfold<M: 'static>(
         iter: XIterator,
         write_back: IteratorWriteBack,
     }
-    fn callback<M: 'static>(
+
+    fn callback<'params, 'ty, 'r, M: 'static>(
         state: CallbackState,
-        params: FnParams,
+        params: FnParams<'params>,
         heap: &mut Heap,
+        _: &mut VMContext<'ty, 'r>,
     ) -> Result<SysCallResult<M>, EnvironmentError> {
         let mut s = state
             .downcast::<LocalState>()
@@ -1350,7 +1372,7 @@ mod tests {
             panic!("expected a synchronous callback continuation");
         };
         let mut params = vec![value.into()];
-        callback(state, &mut params, heap)
+        callback(state, &mut params, heap, &mut VMContext::default())
     }
 
     fn assert_count(result: SysCallResult<()>, heap: &Heap) {

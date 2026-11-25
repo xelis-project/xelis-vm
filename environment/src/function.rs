@@ -8,7 +8,6 @@ use std::{
 use futures::future::{BoxFuture, LocalBoxFuture};
 use silex_bytecode::Module;
 use silex_types::{
-    GasMeter,
     Heap,
     OwnedValue,
     Primitive,
@@ -31,21 +30,22 @@ use crate::{
 
 pub type CallbackState = Box<dyn Any>;
 
-pub type CallbackFunction<M> = fn(
+pub type CallbackFunction<M> = for<'params, 'ty, 'r> fn(
     state: CallbackState,
-    params: FnParams,
+    params: FnParams<'params>,
     heap: &mut Heap,
+    context: &mut VMContext<'ty, 'r>,
 ) -> Result<SysCallResult<M>, EnvironmentError>;
 
-/// Callback type can be sync or async
+/// Callbacks share the active execution context so resumed work uses the same
+/// gas and memory accounting as the original native call.
 pub enum CallbackType<M> {
     Sync(CallbackFunction<M>),
-    /// Scoped callbacks need the active meter when converting portable data.
-    MeteredSync(fn(CallbackState, FnParams, &mut Heap, &mut GasMeter) -> Result<SysCallResult<M>, EnvironmentError>),
-    Async(for<'a> fn(
+    Async(for<'a, 'ty, 'r> fn(
         state: CallbackState,
         params: FnParams<'a>,
         heap: &'a mut Heap,
+        context: &'a mut VMContext<'ty, 'r>,
     ) -> LocalBoxFuture<'a, Result<SysCallResult<M>, EnvironmentError>>),
 }
 
@@ -246,7 +246,7 @@ impl<M: 'static> AsyncHandler<M> {
             Self::Prepared { future, state, callback, retained } => {
                 let response = future.await?;
                 let response = heap.import_owned_in(response, context.gas_meter())?;
-                resume_owned(state, callback, retained, vec![response.into()], heap, context.gas_meter())
+                resume_owned(state, callback, retained, vec![response.into()], heap, context)
             }
             Self::Owned(handler) => {
                 let instance = instance.ok().map(|value| heap.export_in(value.take(), context.gas_meter())).transpose()?;

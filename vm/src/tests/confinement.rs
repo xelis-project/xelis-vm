@@ -27,7 +27,6 @@ use silex_bytecode::{Chunk, OpCode};
 use silex_compiler::Compiler;
 use silex_lexer::Lexer;
 use silex_parser::Parser;
-use silex_types::GasMeter;
 
 use super::*;
 use crate::stack::Stack;
@@ -153,7 +152,11 @@ fn scoped_borrowed_returns_preserve_gas_and_memory_accounting() {
     assert_eq!(results[0], results[1]);
 }
 
-fn resume_array<'call>(_: NativeState, scope: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
+fn resume_array<'call, 'ty, 'r>(
+    _: NativeState,
+    scope: &mut NativeScope<'call, ()>,
+    _: &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError> {
     let response = scope.argument(0)?;
     let index = scope.as_u32(response)? as usize;
     let array = scope.retained(0)?;
@@ -524,11 +527,15 @@ fn cancelling_after_thread_migration_releases_every_retained_owner() {
     assert!(future.as_mut().poll(&mut context).is_pending());
 }
 
-fn resume_closure<'call>(_: NativeState, scope: &mut NativeScope<'call, ()>, gas: &mut GasMeter) -> Result<(), EnvironmentError> {
+fn resume_closure<'call, 'ty, 'r>(
+    _: NativeState,
+    scope: &mut NativeScope<'call, ()>,
+    context: &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError> {
     let result = scope.as_u64(scope.argument(0)?)?;
     let array = scope.retained(0)?;
     let element = scope.array_pop(array)?;
-    scope.return_owned(OwnedValue::from(result + scope.as_u64(element)?), gas)
+    scope.return_owned(OwnedValue::from(result + scope.as_u64(element)?), context.gas_meter())
 }
 
 fn invoke_closure<'call, 'metadata>(
@@ -1034,10 +1041,10 @@ type IoResponse = Mutex<Option<(
     Sender<()>,
 )>>;
 
-fn resume_io<'call>(
+fn resume_io<'call, 'ty, 'r>(
     _: NativeState,
     scope: &mut NativeScope<'call, IoResponse>,
-    _: &mut GasMeter,
+    _: &mut VMContext<'ty, 'r>,
 ) -> Result<(), EnvironmentError> {
     // The VM value survives while only the portable response and waker are
     // accessible to the I/O thread.
@@ -1113,7 +1120,11 @@ fn external_io_wakes_a_migrated_execution_with_retained_values() {
     assert!(vm.is_idle());
 }
 
-fn panic_on_resume<'call>(_: NativeState, _: &mut NativeScope<'call, ()>, _: &mut GasMeter) -> Result<(), EnvironmentError> {
+fn panic_on_resume<'call, 'ty, 'r>(
+    _: NativeState,
+    _: &mut NativeScope<'call, ()>,
+    _: &mut VMContext<'ty, 'r>,
+) -> Result<(), EnvironmentError> {
     panic!("native callback panic");
 }
 
