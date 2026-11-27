@@ -29,6 +29,7 @@ struct Options {
     eq_cost: Option<Expr>,
     skip_json: bool,
     size: Option<Expr>,
+    validate: Option<Expr>,
     children: Option<Expr>,
     children_mut: Option<Expr>,
     deep_clone: Option<Expr>,
@@ -72,6 +73,7 @@ fn options(input: &DeriveInput, type_only: bool) -> SynResult<Options> {
                 }
                 "skip_json" if !type_only => options.skip_json = true,
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
+                "validate" if !type_only => options.validate = Some(meta.value()?.parse()?),
                 "children" if !type_only => options.children = Some(meta.value()?.parse()?),
                 "children_mut" if !type_only => options.children_mut = Some(meta.value()?.parse()?),
                 "deep_clone" if !type_only => options.deep_clone = Some(meta.value()?.parse()?),
@@ -256,6 +258,11 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
             fn get_size(&self) -> Result<usize, __SilexError> { Ok(#size) }
         }
     });
+    let validate = options.validate.map(|expression| quote! {
+        fn validate(&self) -> __SilexResult<(), __SilexValueError> {
+            #expression
+        }
+    });
     let deep_clone = options
         .deep_clone
         .unwrap_or_else(|| parse_quote!(__SilexClone::clone(self)));
@@ -356,6 +363,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
                 #hash_cost
                 #eq_cost
                 #size
+                #validate
                 #children
             }
         };
@@ -381,6 +389,8 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
 ///   `OpaqueValue::pre_hash_cost` and `OpaqueValue::pre_eq_cost` hooks for
 ///   the options provided.
 /// - `size = expression`: override the size used for value accounting.
+/// - `validate = expression`: override `OpaqueValue::validate`. The expression
+///   can refer to `self` and must return `Result<(), ValueError>`.
 /// - `deep_clone = expression`: produce an independent `Self` with retained VM
 ///   owned values deeply cloned. Defaults to `Clone`.
 /// - `runtime`: implement `RuntimeOpaque` for an execution-local type instead

@@ -2,7 +2,7 @@ use silex_types::OpaqueValue;
 use indexmap::IndexMap;
 use silex_builder::EnvironmentBuilder;
 use silex_bytecode::{Chunk, Module};
-use silex_types::{DynType, PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynEq, DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, OwnedValue, OpaqueChild};
+use silex_types::{PrimitiveInteger, PrimitiveRange, ValueError, traits::{DynEq, DynType, JSONHelper}, NumberType, Opaque, OpaqueWrapper, Primitive, TypePacked, OwnedValue, OpaqueChild};
 use silex_lexer::Lexer;
 use silex_parser::Parser;
 use silex_compiler::Compiler;
@@ -1282,24 +1282,14 @@ fn test_opaque_validation_runs_after_bounded_child_checks() {
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
-    #[derive(Debug, Clone, DynType)]
+    #[derive(Debug, Clone, Opaque)]
+    #[opaque(children = std::iter::once(&self.value), validate = self.check())]
     struct ValidatedContainer {
         value: OwnedValue,
         calls: Arc<AtomicUsize>,
     }
-    impl JSONHelper for ValidatedContainer {}
-    impl Opaque for ValidatedContainer {
-    fn clone_box(&self) -> Box<dyn Opaque> {
-            Box::new(self.clone())
-        }
-}
-
-impl OpaqueValue for ValidatedContainer {
-
-        fn visit_children<'a>(&'a self, visitor: &mut dyn FnMut(OpaqueChild<'a>)) {
-            visitor((&self.value).into());
-        }
-        fn validate(&self) -> Result<(), ValueError> {
+    impl ValidatedContainer {
+        fn check(&self) -> Result<(), ValueError> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             Err(ValueError::UnknownType)
         }

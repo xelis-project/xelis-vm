@@ -50,6 +50,19 @@ use silex_types::{
 struct Plain;
 
 #[test]
+fn runtime_opaque_can_validate_its_payload() {
+    #[derive(Debug, Clone, Opaque)]
+    #[opaque(runtime, validate = self.0.then_some(()).ok_or(ValueError::UnknownType))]
+    struct Checked(bool);
+
+    assert!(RuntimeOpaqueWrapper::local(Checked(true)).validate().is_ok());
+    assert!(matches!(
+        RuntimeOpaqueWrapper::local(Checked(false)).validate(),
+        Err(ValueError::UnknownType)
+    ));
+}
+
+#[test]
 fn opaque_heap_errors_propagate_through_import_clone_and_export() {
     #[derive(Debug, Clone, Opaque)]
     #[opaque(runtime, deep_clone_in = Err::<Self, HeapError>(HeapError::CapacityExceeded)?)]
