@@ -1,17 +1,7 @@
 use std::hash::{Hash, Hasher};
 
-use crate::{GasMeter, ValueError};
-
-/// Hashing and optional prepaid costs for VM opaque values.
-/// `Hash` types receive a blanket adapter with no additional gas charge.
-/// Implement directly on types without `Hash` to charge for custom work.
+/// Object-safe hashing for opaque values, with a blanket adapter for `Hash` types.
 pub trait DynHash {
-    /// Called by metered hashing immediately before `dyn_hash`.
-    /// Default adapters add no charge; custom types can price their own work.
-    fn pre_hash_cost(&self, _: &mut GasMeter) -> Result<(), ValueError> {
-        Ok(())
-    }
-
     fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 

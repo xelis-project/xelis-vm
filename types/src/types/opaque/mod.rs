@@ -309,6 +309,17 @@ pub trait OpaqueValue: AsAny + DynType + JSONHelper + Debug {
         None
     }
 
+    /// Prepay the gas cost of a metered hash. The default adds no charge.
+    fn pre_hash_cost(&self, _: &mut GasMeter) -> Result<(), ValueError> {
+        Ok(())
+    }
+
+    /// Prepay the gas cost of a metered comparison, including map collisions.
+    /// The default adds no charge.
+    fn pre_eq_cost(&self, _: &mut GasMeter) -> Result<(), ValueError> {
+        Ok(())
+    }
+
     /// Size used for value accounting, including non-serializable values.
     fn get_size(&self) -> Result<usize, ContextError> {
         self.as_serializable()
@@ -346,6 +357,24 @@ pub trait Opaque: OpaqueValue + Send + Sync {
 
     fn deep_clone(&self) -> Box<dyn Opaque> {
         self.clone_box()
+    }
+}
+
+fn opaque_equals(
+    left: &dyn OpaqueValue,
+    right: &dyn OpaqueValue,
+    gas: &mut GasMeter,
+) -> Result<bool, ValueError> {
+    if left.get_type() != right.get_type() {
+        return Ok(false);
+    }
+
+    match (left.as_eq(), right.as_eq()) {
+        (Some(left_eq), Some(right_eq)) => {
+            left.pre_eq_cost(gas)?;
+            Ok(left_eq.is_equal(right_eq))
+        }
+        _ => Err(ValueError::EqualityNotSupported),
     }
 }
 
@@ -418,22 +447,12 @@ impl Hash for OpaqueWrapper {
 impl OpaqueWrapper {
     /// VM equality; unlike host PartialEq this always uses the execution's meter.
     pub fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
-        if self.get_type_id() != other.get_type_id() {
-            return Ok(false);
-        }
-        match (self.as_eq(), other.as_eq()) {
-            (Some(left), Some(right)) => {
-                left.pre_eq_cost(gas)?;
-                Ok(left.is_equal(right))
-            },
-            _ => Err(ValueError::EqualityNotSupported),
-        }
+        opaque_equals(self.inner(), other.inner(), gas)
     }
 
     /// VM hashing, with the same type tags as the portable host Hash adapter.
     pub fn hash_in(&self, state: &mut dyn Hasher, gas: &mut GasMeter) -> Result<(), ValueError> {
-        let hashable = self.as_hashable().ok_or(ValueError::HashingNotSupported)?;
-        hashable.pre_hash_cost(gas)?;
+        let hashable = self.hashable_in(gas)?;
         self.get_type_id().hash(&mut &mut *state);
         self.inner.get_type().hash(&mut &mut *state);
         hashable.dyn_hash(state);
@@ -442,12 +461,19 @@ impl OpaqueWrapper {
 
     #[inline]
     pub fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        self.as_hashable().ok_or(ValueError::HashingNotSupported)?.pre_hash_cost(gas)
+        self.hashable_in(gas).map(|_| ())
+    }
+
+    fn hashable_in(&self, gas: &mut GasMeter) -> Result<&dyn DynHash, ValueError> {
+        let hashable = self.as_hashable().ok_or(ValueError::HashingNotSupported)?;
+        self.inner.pre_hash_cost(gas)?;
+        Ok(hashable)
     }
 
     #[inline]
     pub fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        self.as_eq().ok_or(ValueError::EqualityNotSupported)?.pre_eq_cost(gas)
+        self.as_eq().ok_or(ValueError::EqualityNotSupported)?;
+        self.inner.pre_eq_cost(gas)
     }
 
     /// Create a new OpaqueWrapper

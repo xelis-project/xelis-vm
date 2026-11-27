@@ -1765,14 +1765,19 @@ impl OpaqueValue for CapabilityValue {
     fn as_eq(&self) -> Option<&dyn DynEq> {
         self.eq.then_some(self)
     }
-}
 
-impl DynHash for CapabilityValue {
     fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
         gas.charge(self.hash_cost)?;
         Ok(())
     }
 
+    fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
+        gas.charge(self.eq_cost)?;
+        Ok(())
+    }
+}
+
+impl DynHash for CapabilityValue {
     fn dyn_hash(&self, state: &mut dyn Hasher) {
         assert!(self.hash);
         state.write_u8(self.hash as u8);
@@ -1781,11 +1786,6 @@ impl DynHash for CapabilityValue {
 }
 
 impl DynEq for CapabilityValue {
-    fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        gas.charge(self.eq_cost)?;
-        Ok(())
-    }
-
     fn is_equal(&self, other: &dyn DynEq) -> bool {
         assert!(self.eq);
         other.as_any().downcast_ref::<Self>()

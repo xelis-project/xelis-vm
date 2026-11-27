@@ -15,6 +15,7 @@ use silex_types::{
     OwnedValue,
     PrimitiveInteger,
     RuntimeMap,
+    RuntimeOpaqueWrapper,
     RuntimeValue,
     ValueError,
 };
@@ -27,21 +28,24 @@ struct Calls {
     eq: AtomicUsize,
 }
 
-// Custom cost hooks do not require standard Hash or PartialEq/Eq.
+// The derive can price custom hashing and equality implementations.
 #[derive(Debug, Clone, Opaque)]
-#[opaque(hash, eq)]
+#[opaque(
+    hash_cost = {
+        self.calls.hash_cost.fetch_add(1, Ordering::Relaxed);
+        7
+    },
+    eq_cost = {
+        self.calls.eq_cost.fetch_add(1, Ordering::Relaxed);
+        11
+    }
+)]
 struct Charged {
     id: u64,
     calls: Arc<Calls>,
 }
 
 impl DynHash for Charged {
-    fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        gas.charge(7)?;
-        self.calls.hash_cost.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
     fn dyn_hash(&self, state: &mut dyn Hasher) {
         self.calls.hash.fetch_add(1, Ordering::Relaxed);
         // Force collisions to distinguish operation pricing from the actual
@@ -51,12 +55,6 @@ impl DynHash for Charged {
 }
 
 impl DynEq for Charged {
-    fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        gas.charge(11)?;
-        self.calls.eq_cost.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
     fn is_equal(&self, other: &dyn DynEq) -> bool {
         self.calls.eq.fetch_add(1, Ordering::Relaxed);
         other
@@ -74,7 +72,7 @@ fn key(id: u64, calls: &Arc<Calls>) -> OwnedValue {
 }
 
 #[test]
-fn blanket_adapters_have_noop_prepaid_costs() {
+fn omitted_derive_costs_add_no_charge() {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Opaque)]
     #[opaque(hash, eq)]
     struct Ordinary(u64);
@@ -88,6 +86,53 @@ fn blanket_adapters_have_noop_prepaid_costs() {
     let value = heap.import(&key);
     assert!(value.equals(&value.clone(), &heap, &mut gas).unwrap());
     assert_eq!(gas.used(), 0);
+}
+
+#[test]
+fn derive_costs_apply_to_metered_hashes_and_comparisons() {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Opaque)]
+    #[opaque(hash, eq, hash_cost = 7, eq_cost = self.0)]
+    struct Key(u64);
+
+    let key = OwnedValue::from(Key(11));
+    let mut gas = GasMeter::new(18);
+    let mut metered = DefaultHasher::new();
+    key.hash_in(&mut metered, &mut gas).unwrap();
+    assert_eq!(gas.used(), 7);
+    assert!(key.equals(&key.clone(), &mut gas).unwrap());
+    assert_eq!(gas.used(), 18);
+
+    let mut unmetered = DefaultHasher::new();
+    std::hash::Hash::hash(&key, &mut unmetered);
+    assert_eq!(metered.finish(), unmetered.finish());
+
+    gas.reset();
+    key.pre_hash_cost(&mut gas).unwrap();
+    key.pre_eq_cost(&mut gas).unwrap();
+    assert_eq!(gas.used(), 18);
+
+    let mut heap = unsafe { Heap::new() };
+    let mut map = RuntimeMap::new();
+    let value = heap.insert(PrimitiveInteger::U64(42).into());
+    map.insert(key.clone(), value, &mut GasMeter::new(7)).unwrap();
+    assert!(map.contains_key(&key, &mut GasMeter::new(18)).unwrap());
+    assert!(matches!(
+        map.contains_key(&key, &mut GasMeter::new(17)),
+        Err(ValueError::Gas(GasError::NotEnoughGas { limit: 17, actual: 18 }))
+    ));
+}
+
+#[test]
+fn derive_equality_cost_alone_enables_runtime_equality() {
+    #[derive(Debug, Clone, PartialEq, Opaque)]
+    #[opaque(runtime, eq_cost = 3)]
+    struct Local;
+
+    let value = RuntimeOpaqueWrapper::local(Local);
+    let mut gas = GasMeter::new(3);
+    assert!(value.equals(&value.clone(), &mut gas).unwrap());
+    assert_eq!(gas.used(), 3);
+    assert!(value.as_hashable().is_none());
 }
 
 #[test]
@@ -275,19 +320,13 @@ fn execution_conversions_meter_every_rebuilt_map() {
 
 #[test]
 fn local_opaque_equality_prepays_without_exporting() {
-    use silex_types::RuntimeOpaqueWrapper;
     use std::{cell::Cell, rc::Rc};
 
     #[derive(Debug, Clone, Opaque)]
-    #[opaque(runtime, eq)]
+    #[opaque(runtime, eq_cost = 13)]
     struct Local(Rc<Cell<u64>>);
 
     impl DynEq for Local {
-        fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-            gas.charge(13)?;
-            Ok(())
-        }
-
         fn is_equal(&self, other: &dyn DynEq) -> bool {
             other
                 .as_any()

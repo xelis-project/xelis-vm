@@ -11,14 +11,12 @@ use xelis_vm::{
     traits::{DynEq, DynHash},
     EnvironmentError,
     FunctionHandler,
-    GasMeter,
     ModuleMetadata,
     Opaque,
     OwnedValue,
     SysCallResult,
     Type,
     VMError,
-    ValueError,
     VM,
 };
 
@@ -28,7 +26,16 @@ static HASH_COSTS: AtomicUsize = AtomicUsize::new(0);
 static EQ_COSTS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Opaque)]
-#[opaque(hash, eq)]
+#[opaque(
+    hash_cost = {
+        HASH_COSTS.fetch_add(1, Ordering::Relaxed);
+        self.hash_cost
+    },
+    eq_cost = {
+        EQ_COSTS.fetch_add(1, Ordering::Relaxed);
+        self.eq_cost
+    }
+)]
 struct Probe {
     id: u64,
     hash_cost: u64,
@@ -36,12 +43,6 @@ struct Probe {
 }
 
 impl DynHash for Probe {
-    fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        gas.charge(self.hash_cost)?;
-        HASH_COSTS.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
     fn dyn_hash(&self, state: &mut dyn Hasher) {
         HASH_CALLS.fetch_add(1, Ordering::Relaxed);
         // Deliberately collide to exercise every candidate comparison.
@@ -50,12 +51,6 @@ impl DynHash for Probe {
 }
 
 impl DynEq for Probe {
-    fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        gas.charge(self.eq_cost)?;
-        EQ_COSTS.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }
-
     fn is_equal(&self, other: &dyn DynEq) -> bool {
         EQ_CALLS.fetch_add(1, Ordering::Relaxed);
         other

@@ -6,6 +6,7 @@ use std::{
 use matriochka::Error as ContextError;
 
 use super::{
+    opaque_equals,
     DynEq,
     DynHash,
     DynSerializable,
@@ -37,16 +38,7 @@ pub struct RuntimeOpaqueWrapper {
 impl RuntimeOpaqueWrapper {
     /// Compare an execution-local or portable payload with execution gas.
     pub fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
-        if self.get_type_id() != other.get_type_id() {
-            return Ok(false);
-        }
-        match (self.as_eq(), other.as_eq()) {
-            (Some(left), Some(right)) => {
-                left.pre_eq_cost(gas)?;
-                Ok(left.is_equal(right))
-            },
-            _ => Err(ValueError::EqualityNotSupported),
-        }
+        opaque_equals(self.inner(), other.inner(), gas)
     }
 
     /// Wrap portable host data for runtime use.

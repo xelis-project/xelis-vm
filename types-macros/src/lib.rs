@@ -25,6 +25,8 @@ struct Options {
     serializable: bool,
     hash: bool,
     eq: bool,
+    hash_cost: Option<Expr>,
+    eq_cost: Option<Expr>,
     skip_json: bool,
     size: Option<Expr>,
     children: Option<Expr>,
@@ -60,6 +62,14 @@ fn options(input: &DeriveInput, type_only: bool) -> SynResult<Options> {
                 "serializable" if !type_only => options.serializable = true,
                 "hash" if !type_only => options.hash = true,
                 "eq" if !type_only => options.eq = true,
+                "hash_cost" if !type_only => {
+                    options.hash = true;
+                    options.hash_cost = Some(meta.value()?.parse()?);
+                }
+                "eq_cost" if !type_only => {
+                    options.eq = true;
+                    options.eq_cost = Some(meta.value()?.parse()?);
+                }
                 "skip_json" if !type_only => options.skip_json = true,
                 "size" if !type_only => options.size = Some(meta.value()?.parse()?),
                 "children" if !type_only => options.children = Some(meta.value()?.parse()?),
@@ -231,6 +241,16 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
             fn as_eq(&self) -> Option<&dyn __SilexDynEq> { Some(self) }
         }
     });
+    let hash_cost = options.hash_cost.map(|cost| quote! {
+        fn pre_hash_cost(&self, gas: &mut __SilexGasMeter) -> __SilexResult<(), __SilexValueError> {
+            Ok(gas.charge(#cost)?)
+        }
+    });
+    let eq_cost = options.eq_cost.map(|cost| quote! {
+        fn pre_eq_cost(&self, gas: &mut __SilexGasMeter) -> __SilexResult<(), __SilexValueError> {
+            Ok(gas.charge(#cost)?)
+        }
+    });
     let size = options.size.map(|size| {
         quote! {
             fn get_size(&self) -> Result<usize, __SilexError> { Ok(#size) }
@@ -302,6 +322,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
             };
             #[allow(unused_imports)]
             use #path::{
+                GasMeter as __SilexGasMeter,
                 Heap as __SilexHeap,
                 HeapError as __SilexHeapError,
                 Opaque as __SilexOpaque,
@@ -309,6 +330,7 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
                 OpaqueChildMut as __SilexOpaqueChildMut,
                 OpaqueValue as __SilexOpaqueValue,
                 RuntimeOpaque as __SilexRuntimeOpaque,
+                ValueError as __SilexValueError,
                 traits::{
                     DynEq as __SilexDynEq,
                     DynHash as __SilexDynHash,
@@ -331,6 +353,8 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
                 #serializable
                 #hash
                 #eq
+                #hash_cost
+                #eq_cost
                 #size
                 #children
             }
@@ -349,11 +373,13 @@ fn expand(input: &DeriveInput, type_only: bool) -> SynResult<Tokens> {
 /// - `hash`: expose hashing through `Hash` or a custom `DynHash` implementation.
 /// - `eq`: expose equality through `PartialEq` or a custom `DynEq` implementation.
 ///   Map keys require both `hash` and `eq`.
-///   Custom implementations can charge through `pre_hash_cost`/`pre_eq_cost`
-///   hooks, which receive a `GasMeter` and return `Result<(), ValueError>`.
-///   Runtime operations call each hook immediately before the corresponding
-///   dynamic operation, including every map collision comparison.
-///   Blanket adapters add no gas charge.
+/// - `hash_cost = expression`: enable hashing and charge the given `u64` gas
+///   before each metered hash.
+/// - `eq_cost = expression`: enable equality and charge the given `u64` gas
+///   before each metered comparison, including map collisions.
+///   Both expressions can refer to `self`. The macro implements the
+///   `OpaqueValue::pre_hash_cost` and `OpaqueValue::pre_eq_cost` hooks for
+///   the options provided.
 /// - `size = expression`: override the size used for value accounting.
 /// - `deep_clone = expression`: produce an independent `Self` with retained VM
 ///   owned values deeply cloned. Defaults to `Clone`.
