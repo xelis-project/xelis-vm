@@ -8,14 +8,13 @@ mod tests;
 
 use std::{mem, rc::Rc};
 
-use indexmap::IndexMap;
 use slot::HeapSlot;
 use storage::StorageCell;
 
 use crate::{
-    values::runtime_map::insert_metered,
     GasMeter,
     OpaqueChildMut,
+    OwnedMap,
     OwnedValue,
     RuntimeMap,
     RuntimeOpaqueWrapper,
@@ -294,7 +293,7 @@ impl Heap {
                 }
                 Work::Map(keys) => {
                     let values = output.split_off(output.len() - keys.len());
-                    output.push(OwnedValue::Map(Self::portable_map(keys.into_iter().zip(values), gas.as_deref_mut())?));
+                    output.push(Self::portable_map(keys.into_iter().zip(values), gas.as_deref_mut())?);
                 }
             }
         }
@@ -312,17 +311,10 @@ impl Heap {
         self.snapshot_in(root.as_ref(self), gas)
     }
 
-    fn portable_map(entries: impl IntoIterator<Item = (OwnedValue, OwnedValue)>, gas: Option<&mut GasMeter>) -> Result<IndexMap<OwnedValue, OwnedValue>, ValueError> {
+    fn portable_map(entries: impl IntoIterator<Item = (OwnedValue, OwnedValue)>, gas: Option<&mut GasMeter>) -> Result<OwnedValue, ValueError> {
         match gas {
-            None => Ok(entries.into_iter().collect()),
-            Some(gas) => {
-                let entries = entries.into_iter();
-                let mut map = IndexMap::with_capacity(entries.size_hint().0);
-                for (key, value) in entries {
-                    insert_metered(&mut map, key, value, gas)?;
-                }
-                Ok(map)
-            },
+            None => Ok(OwnedValue::Map(entries.into_iter().collect())),
+            Some(gas) => Ok(OwnedMap::from_entries(entries, gas)?.into()),
         }
     }
 
@@ -381,7 +373,7 @@ impl Heap {
                 }
                 Work::Map(keys) => {
                     let children = output.split_off(output.len() - keys.len());
-                    output.push(OwnedValue::Map(Self::portable_map(keys.into_iter().zip(children), gas.as_deref_mut())?));
+                    output.push(Self::portable_map(keys.into_iter().zip(children), gas.as_deref_mut())?);
                 }
             }
         }

@@ -1,5 +1,5 @@
 use std::{
-    hash::{DefaultHasher, Hasher},
+    hash::{DefaultHasher, Hash, Hasher},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -9,9 +9,12 @@ use std::{
 use silex_types::{
     traits::{DynEq, DynHash},
     GasError,
+    GasMap,
+    GasMapKey,
     GasMeter,
     Heap,
     Opaque,
+    OwnedMap,
     OwnedValue,
     PrimitiveInteger,
     RuntimeMap,
@@ -80,8 +83,7 @@ fn omitted_derive_costs_add_no_charge() {
     let mut heap = unsafe { Heap::new() };
     let mut gas = GasMeter::new(0);
     let key = OwnedValue::from(Ordinary(42));
-    key.pre_hash_cost(&mut gas).unwrap();
-    key.pre_eq_cost(&mut gas).unwrap();
+    key.hash_in(&mut DefaultHasher::new(), &mut gas).unwrap();
     assert!(key.equals(&key.clone(), &mut gas).unwrap());
     let value = heap.import(&key);
     assert!(value.equals(&value.clone(), &heap, &mut gas).unwrap());
@@ -106,11 +108,6 @@ fn derive_costs_apply_to_metered_hashes_and_comparisons() {
     std::hash::Hash::hash(&key, &mut unmetered);
     assert_eq!(metered.finish(), unmetered.finish());
 
-    gas.reset();
-    key.pre_hash_cost(&mut gas).unwrap();
-    key.pre_eq_cost(&mut gas).unwrap();
-    assert_eq!(gas.used(), 18);
-
     let mut heap = unsafe { Heap::new() };
     let mut map = RuntimeMap::new();
     let value = heap.insert(PrimitiveInteger::U64(42).into());
@@ -120,6 +117,37 @@ fn derive_costs_apply_to_metered_hashes_and_comparisons() {
         map.contains_key(&key, &mut GasMeter::new(17)),
         Err(ValueError::Gas(GasError::NotEnoughGas { limit: 17, actual: 18 }))
     ));
+}
+
+#[test]
+fn gas_map_accepts_custom_keys_and_values() {
+    #[derive(PartialEq, Eq, Hash)]
+    struct Key(u64);
+
+    impl GasMapKey for Key {
+        fn hash_in<H: Hasher>(&self, state: &mut H, gas: &mut GasMeter) -> Result<(), ValueError> {
+            gas.charge(2)?;
+            self.hash(state);
+            Ok(())
+        }
+
+        fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+            gas.charge(3)?;
+            Ok(self == other)
+        }
+    }
+
+    let mut gas = GasMeter::new(7);
+    let mut map = GasMap::from_entries([(Key(1), "original")], &mut gas).unwrap();
+    assert_eq!(gas.used(), 2);
+    assert_eq!(map.get(&Key(1), &mut gas).unwrap(), Some(&"original"));
+    assert_eq!(gas.used(), 7);
+
+    assert!(matches!(
+        map.insert(Key(1), "replacement", &mut GasMeter::new(4)),
+        Err(ValueError::Gas(GasError::NotEnoughGas { limit: 4, actual: 5 }))
+    ));
+    assert_eq!(map.into_iter().map(|(_, value)| value).collect::<Vec<_>>(), ["original"]);
 }
 
 #[test]
@@ -136,17 +164,18 @@ fn derive_equality_cost_alone_enables_runtime_equality() {
 }
 
 #[test]
-fn nested_cost_hooks_charge_without_running_hashing_or_equality() {
+fn nested_hashes_and_comparisons_charge_for_each_opaque_value() {
     let calls = Arc::new(Calls::default());
     let value = OwnedValue::Object(vec![key(1, &calls), key(2, &calls)]);
     let mut gas = GasMeter::new(36);
-    value.pre_hash_cost(&mut gas).unwrap();
-    value.pre_eq_cost(&mut gas).unwrap();
+    value.hash_in(&mut DefaultHasher::new(), &mut gas).unwrap();
+    assert_eq!(gas.used(), 14);
+    assert!(value.equals(&value.clone(), &mut gas).unwrap());
     assert_eq!(gas.used(), 36);
     assert_eq!(calls.hash_cost.load(Ordering::Relaxed), 2);
     assert_eq!(calls.eq_cost.load(Ordering::Relaxed), 2);
-    assert_eq!(calls.hash.load(Ordering::Relaxed), 0);
-    assert_eq!(calls.eq.load(Ordering::Relaxed), 0);
+    assert_eq!(calls.hash.load(Ordering::Relaxed), 2);
+    assert_eq!(calls.eq.load(Ordering::Relaxed), 2);
 }
 
 #[test]
@@ -164,6 +193,29 @@ fn failed_prepaid_costs_stop_before_expensive_operations() {
     ));
     assert_eq!(calls.hash.load(Ordering::Relaxed), 0);
     assert_eq!(calls.eq.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn hashing_checks_nested_map_keys_as_it_goes() {
+    #[derive(Debug, Clone, Hash, Opaque)]
+    #[opaque(hash)]
+    struct HashOnly;
+
+    let calls = Arc::new(Calls::default());
+    let invalid_key = OwnedValue::Object(vec![
+        key(1, &calls),
+        OwnedValue::from(HashOnly),
+        key(2, &calls),
+    ]);
+    let mut map = OwnedMap::new();
+    let mut gas = GasMeter::default();
+    assert!(matches!(
+        map.insert(invalid_key, OwnedValue::from(0u8), &mut gas),
+        Err(ValueError::InvalidMapKey)
+    ));
+    assert!(map.is_empty());
+    assert_eq!(gas.used(), 7);
+    assert_eq!(calls.hash.load(Ordering::Relaxed), 1);
 }
 
 #[test]

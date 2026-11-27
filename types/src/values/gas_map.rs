@@ -1,6 +1,6 @@
 use std::{
     collections::hash_map::RandomState,
-    hash::{BuildHasher, Hasher},
+    hash::{BuildHasher, Hash, Hasher},
 };
 
 use indexmap::{
@@ -16,33 +16,40 @@ use indexmap::{
     IndexMap,
 };
 
-use crate::{
-    GasMeter,
-    OwnedValue,
-    ValueError,
-    ValuePointer,
-};
+use crate::{GasMeter, ValueError};
 
-/// An insertion-ordered execution map. Key operations always use the caller's
-/// gas meter; the backing map and mutable keys are deliberately not exposed.
-/// Cloning copies IndexMap's cached hashes without hashing or comparing keys.
-#[derive(Debug, Clone, Default)]
-pub struct RuntimeMap {
-    entries: IndexMap<OwnedValue, ValuePointer>,
-}
-
-/// Compute the query hash once, charging each opaque value before hashing it.
-/// Raw-entry lookups and insertions reuse this hash rather than computing it again.
-#[inline]
-fn key_hash<V>(
-    map: &IndexMap<OwnedValue, V>,
-    key: &OwnedValue,
-    gas: &mut GasMeter,
-) -> Result<u64, ValueError> {
-    if !key.is_hashable() {
-        return Err(ValueError::InvalidMapKey);
+/// A key that can hash and compare itself with an execution gas meter.
+/// Successful operations must agree with `Hash` and `Eq`.
+/// The default implementations use those traits without charging gas.
+pub trait GasMapKey: Hash + Eq {
+    /// Hash this key, charging any gas due before the work it covers.
+    fn hash_in<H: Hasher>(&self, state: &mut H, _: &mut GasMeter) -> Result<(), ValueError> {
+        self.hash(state);
+        Ok(())
     }
 
+    /// Compare two keys, charging any gas due before the work it covers.
+    fn equals(&self, other: &Self, _: &mut GasMeter) -> Result<bool, ValueError> {
+        Ok(self == other)
+    }
+}
+
+/// An insertion-ordered map that passes the caller's gas meter to key operations.
+/// The backing map and mutable keys are private.
+/// Cloning copies IndexMap's cached hashes without hashing or comparing keys.
+#[derive(Debug, Clone)]
+pub struct GasMap<K, V> {
+    entries: IndexMap<K, V>,
+}
+
+/// Compute and meter the query hash once.
+/// Raw-entry lookups and insertions reuse this hash rather than computing it again.
+#[inline]
+fn key_hash<K: GasMapKey, V>(
+    map: &IndexMap<K, V>,
+    key: &K,
+    gas: &mut GasMeter,
+) -> Result<u64, ValueError> {
     let mut state = map.hasher().build_hasher();
     key.hash_in(&mut state, gas)?;
 
@@ -53,9 +60,9 @@ fn key_hash<V>(
 /// Returning true on error stops probing immediately; callers must propagate
 /// the captured error before reading or modifying the returned entry.
 #[inline]
-fn compare_key(
-    key: &OwnedValue,
-    candidate: &OwnedValue,
+fn compare_key<K: GasMapKey>(
+    key: &K,
+    candidate: &K,
     gas: &mut GasMeter,
     error: &mut Option<ValueError>,
 ) -> bool {
@@ -71,12 +78,12 @@ fn compare_key(
 /// Probe using a hash whose computation has already been paid for.
 /// Each candidate comparison charges equality through `compare_key`.
 #[inline]
-fn entry<'a, V>(
-    map: &'a mut IndexMap<OwnedValue, V>,
-    key: &OwnedValue,
+fn entry<'a, K: GasMapKey, V>(
+    map: &'a mut IndexMap<K, V>,
+    key: &K,
     hash: u64,
     gas: &mut GasMeter,
-) -> Result<RawEntryMut<'a, OwnedValue, V, RandomState>, ValueError> {
+) -> Result<RawEntryMut<'a, K, V, RandomState>, ValueError> {
     let mut error = None;
     let entry = map.raw_entry_mut_v1().from_hash(hash, |candidate| {
         compare_key(key, candidate, gas, &mut error)
@@ -89,41 +96,18 @@ fn entry<'a, V>(
     Ok(entry)
 }
 
-/// Meter an insertion or update, including every collision comparison.
-/// Portable-data conversions use this same path when rebuilding owned maps.
-#[inline]
-pub(crate) fn insert_metered<V>(
-    map: &mut IndexMap<OwnedValue, V>,
-    key: OwnedValue,
-    value: V,
-    gas: &mut GasMeter,
-) -> Result<Option<V>, ValueError> {
-    let hash = key_hash(map, &key, gas)?;
-
-    match entry(map, &key, hash, gas)? {
-        RawEntryMut::Occupied(mut entry) => Ok(Some(entry.insert(value))),
-        RawEntryMut::Vacant(entry) => {
-            // A regular insertion would compute the hash a second time.
-            entry.insert_hashed_nocheck(hash, key, value);
-            Ok(None)
+impl<K, V> Default for GasMap<K, V> {
+    fn default() -> Self {
+        Self {
+            entries: IndexMap::new(),
         }
     }
 }
 
-impl RuntimeMap {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            entries: IndexMap::with_capacity(capacity),
-        }
-    }
-
+impl<K: GasMapKey, V> GasMap<K, V> {
     /// Build a map using the same metering as individual insertions.
     pub fn from_entries(
-        entries: impl IntoIterator<Item = (OwnedValue, ValuePointer)>,
+        entries: impl IntoIterator<Item = (K, V)>,
         gas: &mut GasMeter,
     ) -> Result<Self, ValueError> {
         let entries = entries.into_iter();
@@ -137,9 +121,7 @@ impl RuntimeMap {
     }
 
     /// Build host data outside execution. VM execution must use `from_entries`.
-    pub(crate) fn from_entries_unmetered(
-        entries: impl IntoIterator<Item = (OwnedValue, ValuePointer)>,
-    ) -> Self {
+    pub(crate) fn from_entries_unmetered(entries: impl IntoIterator<Item = (K, V)>) -> Self {
         Self {
             entries: entries.into_iter().collect(),
         }
@@ -147,11 +129,7 @@ impl RuntimeMap {
 
     /// Hash the query once and meter each candidate comparison until it matches.
     #[inline]
-    pub fn get<'a>(
-        &'a self,
-        key: &OwnedValue,
-        gas: &mut GasMeter,
-    ) -> Result<Option<&'a ValuePointer>, ValueError> {
+    pub fn get<'a>(&'a self, key: &K, gas: &mut GasMeter) -> Result<Option<&'a V>, ValueError> {
         let hash = key_hash(&self.entries, key, gas)?;
         let mut error = None;
         let found = self.entries.raw_entry_v1().from_hash(hash, |candidate| {
@@ -166,26 +144,32 @@ impl RuntimeMap {
     }
 
     #[inline]
-    pub fn contains_key(&self, key: &OwnedValue, gas: &mut GasMeter) -> Result<bool, ValueError> {
+    pub fn contains_key(&self, key: &K, gas: &mut GasMeter) -> Result<bool, ValueError> {
         Ok(self.get(key, gas)?.is_some())
     }
 
+    /// Meter an insertion or update, including every collision comparison.
     #[inline]
     pub fn insert(
         &mut self,
-        key: OwnedValue,
-        value: ValuePointer,
+        key: K,
+        value: V,
         gas: &mut GasMeter,
-    ) -> Result<Option<ValuePointer>, ValueError> {
-        insert_metered(&mut self.entries, key, value, gas)
+    ) -> Result<Option<V>, ValueError> {
+        let hash = key_hash(&self.entries, &key, gas)?;
+
+        match entry(&mut self.entries, &key, hash, gas)? {
+            RawEntryMut::Occupied(mut entry) => Ok(Some(entry.insert(value))),
+            RawEntryMut::Vacant(entry) => {
+                // A regular insertion would compute the hash a second time.
+                entry.insert_hashed_nocheck(hash, key, value);
+                Ok(None)
+            }
+        }
     }
 
     #[inline]
-    pub fn shift_remove(
-        &mut self,
-        key: &OwnedValue,
-        gas: &mut GasMeter,
-    ) -> Result<Option<ValuePointer>, ValueError> {
+    pub fn shift_remove(&mut self, key: &K, gas: &mut GasMeter) -> Result<Option<V>, ValueError> {
         let hash = key_hash(&self.entries, key, gas)?;
 
         match entry(&mut self.entries, key, hash, gas)? {
@@ -195,16 +179,24 @@ impl RuntimeMap {
     }
 
     #[inline]
-    pub fn swap_remove(
-        &mut self,
-        key: &OwnedValue,
-        gas: &mut GasMeter,
-    ) -> Result<Option<ValuePointer>, ValueError> {
+    pub fn swap_remove(&mut self, key: &K, gas: &mut GasMeter) -> Result<Option<V>, ValueError> {
         let hash = key_hash(&self.entries, key, gas)?;
 
         match entry(&mut self.entries, key, hash, gas)? {
             RawEntryMut::Occupied(entry) => Ok(Some(entry.swap_remove())),
             RawEntryMut::Vacant(_) => Ok(None),
+        }
+    }
+}
+
+impl<K, V> GasMap<K, V> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: IndexMap::with_capacity(capacity),
         }
     }
 
@@ -221,35 +213,36 @@ impl RuntimeMap {
     }
 
     // Iteration and value mutation neither hash nor compare keys.
-    pub fn iter<'a>(&'a self) -> Iter<'a, OwnedValue, ValuePointer> {
+    pub fn iter(&self) -> Iter<'_, K, V> {
         self.entries.iter()
     }
 
-    pub fn keys<'a>(&'a self) -> Keys<'a, OwnedValue, ValuePointer> {
+    pub fn keys(&self) -> Keys<'_, K, V> {
         self.entries.keys()
     }
 
-    pub fn values<'a>(&'a self) -> Values<'a, OwnedValue, ValuePointer> {
+    pub fn values(&self) -> Values<'_, K, V> {
         self.entries.values()
     }
 
-    pub fn values_mut<'a>(&'a mut self) -> ValuesMut<'a, OwnedValue, ValuePointer> {
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
         self.entries.values_mut()
     }
 
-    pub(crate) fn get_index_mut<'a>(
-        &'a mut self,
-        index: usize,
-    ) -> Option<(&'a OwnedValue, &'a mut ValuePointer)> {
+    pub(crate) fn get_index_mut(&mut self, index: usize) -> Option<(&K, &mut V)> {
         self.entries
             .get_index_mut(index)
             .map(|(key, value)| (&*key, value))
     }
+
+    pub(crate) fn into_entries(self) -> IndexMap<K, V> {
+        self.entries
+    }
 }
 
-impl IntoIterator for RuntimeMap {
-    type Item = (OwnedValue, ValuePointer);
-    type IntoIter = IntoIter<OwnedValue, ValuePointer>;
+impl<K, V> IntoIterator for GasMap<K, V> {
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries.into_iter()

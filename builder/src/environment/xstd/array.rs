@@ -19,7 +19,6 @@ use silex_types::{
     RuntimeValue,
     StackValue,
     Type,
-    ValueError,
     U256,
 };
 
@@ -209,8 +208,6 @@ fn index_of<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMeta
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    require_equality(handle, heap)?;
-
     for (i, v) in vec.iter().enumerate() {
         if v.as_ref(heap).equals(handle, heap, context.gas_meter())? {
             return Ok(SysCallResult::Return(Primitive::Integer(PrimitiveInteger::U32(i as u32)).into()))
@@ -255,23 +252,12 @@ fn contains<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMeta
     // we need to go through all elements in the slice, thus we increase the gas usage
     context.increase_gas_usage((vec.len() as u64) * 5)?;
 
-    require_equality(handle, heap)?;
-
     for value in vec {
         if value.as_ref(heap).equals(handle, heap, context.gas_meter())? {
             return Ok(SysCallResult::Return(Primitive::Boolean(true).into()));
         }
     }
     Ok(SysCallResult::Return(Primitive::Boolean(false).into()))
-}
-
-// Validate only the search target. The search meters each comparison it reaches
-// and can return early without inspecting the rest of the array.
-fn require_equality(value: &RuntimeValue, heap: &Heap) -> Result<(), EnvironmentError> {
-    if !value.is_equatable(heap) {
-        return Err(ValueError::EqualityNotSupported.into());
-    }
-    Ok(())
 }
 
 fn get<'metadata, M>(zelf: FnInstance, parameters: FnParams, _: &ModuleMetadata<'metadata, M>, _context: &mut VMContext, heap: &mut Heap) -> FnReturnType<M> {

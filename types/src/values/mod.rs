@@ -21,17 +21,23 @@ mod range;
 mod serde_map;
 mod error;
 mod runtime_value;
-pub(crate) mod runtime_map;
+mod gas_map;
 mod stack_value;
 pub(crate) mod owned;
 
 pub use integer::PrimitiveInteger;
 pub use range::PrimitiveRange;
 pub use runtime_value::*;
-pub use runtime_map::RuntimeMap;
+pub use gas_map::{GasMap, GasMapKey};
 pub use stack_value::*;
 pub use owned::*;
 pub use error::*;
+
+/// An execution map with owned keys and heap-backed values.
+pub type RuntimeMap = GasMap<OwnedValue, crate::ValuePointer>;
+
+/// A metered map with owned keys and values, convertible to `OwnedValue`.
+pub type OwnedMap = GasMap<OwnedValue, OwnedValue>;
 
 // Helper functions for U64 string serialization/deserialization
 // JSON parsers may have issues with large integers above 2^53

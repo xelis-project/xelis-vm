@@ -452,28 +452,14 @@ impl OpaqueWrapper {
 
     /// VM hashing, with the same type tags as the portable host Hash adapter.
     pub fn hash_in(&self, state: &mut dyn Hasher, gas: &mut GasMeter) -> Result<(), ValueError> {
-        let hashable = self.hashable_in(gas)?;
+        let hashable = self.as_hashable()
+            .ok_or(ValueError::HashingNotSupported)?;
+
+        self.inner.pre_hash_cost(gas)?;
         self.get_type_id().hash(&mut &mut *state);
         self.inner.get_type().hash(&mut &mut *state);
         hashable.dyn_hash(state);
         Ok(())
-    }
-
-    #[inline]
-    pub fn pre_hash_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        self.hashable_in(gas).map(|_| ())
-    }
-
-    fn hashable_in(&self, gas: &mut GasMeter) -> Result<&dyn DynHash, ValueError> {
-        let hashable = self.as_hashable().ok_or(ValueError::HashingNotSupported)?;
-        self.inner.pre_hash_cost(gas)?;
-        Ok(hashable)
-    }
-
-    #[inline]
-    pub fn pre_eq_cost(&self, gas: &mut GasMeter) -> Result<(), ValueError> {
-        self.as_eq().ok_or(ValueError::EqualityNotSupported)?;
-        self.inner.pre_eq_cost(gas)
     }
 
     /// Create a new OpaqueWrapper

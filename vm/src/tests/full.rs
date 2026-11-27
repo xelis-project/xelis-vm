@@ -1897,10 +1897,9 @@ fn test_map_operations_require_dynamic_hash_and_equality() {
 }
 
 #[test]
-fn test_array_search_requires_dynamic_equality() {
+fn test_array_search_checks_dynamic_equality_when_comparing() {
     for method in ["contains", "index_of"] {
         for operation in [
-            format!("let values: CapabilityValue[] = []; values.{method}(capability(true, false));"),
             format!("let values: CapabilityValue[] = [capability(true, true)]; values.{method}(capability(true, false));"),
             format!("let values: CapabilityValue[][] = [[capability(true, true)]]; values.{method}([capability(true, false)]);"),
         ] {
@@ -1914,10 +1913,16 @@ fn test_array_search_requires_dynamic_equality() {
     // Equality-only values remain valid for searches, including nested arrays.
     let code = r#"
         entry main() {
+            let empty: CapabilityValue[] = [];
+            assert(!empty.contains(capability(true, false)));
+            assert(empty.index_of(capability(true, false)).is_none());
             let values: CapabilityValue[] = [capability(false, true)];
             assert(values.contains(capability(false, true)));
             assert(values.index_of(capability(false, true)).unwrap() == 0u32);
             let nested: CapabilityValue[][] = [values];
+            let different_length: CapabilityValue[] = [capability(true, false), capability(true, false)];
+            assert(!nested.contains(different_length));
+            assert(nested.index_of(different_length).is_none());
             assert(nested.contains([capability(false, true)]));
             let short_circuit: CapabilityValue[] = [capability(true, true), capability(true, false)];
             assert(short_circuit.contains(capability(true, true)));

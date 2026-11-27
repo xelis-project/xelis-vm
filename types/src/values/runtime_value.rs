@@ -12,6 +12,7 @@ use super::{
 };
 use crate::{
     opaque::OpaqueWrapper,
+    GasMapKey,
     GasMeter,
     Heap,
     Opaque,
@@ -660,7 +661,9 @@ impl RuntimeValue {
             match (left, right) {
                 (Self::Primitive(a), Self::Primitive(b)) if a == b => {}
                 (Self::Opaque(a), Self::Opaque(b)) => {
-                    if !a.equals(b, gas)? { return Ok(false); }
+                    if !a.equals(b, gas)? {
+                        return Ok(false);
+                    }
                 }
                 (Self::Bytes(a), Self::Bytes(b)) if a == b => {}
                 (Self::Object(a), Self::Object(b)) if a.len() == b.len() => {
