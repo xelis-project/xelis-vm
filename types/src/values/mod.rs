@@ -14,7 +14,7 @@ use serde::{
     Serializer,
 };
 
-use super::{Type, U256};
+use super::{GasMeter, Type, U256};
 
 mod integer;
 mod range;
@@ -125,6 +125,37 @@ impl Hash for Primitive {
 impl Default for Primitive {
     fn default() -> Self {
         Primitive::Null
+    }
+}
+
+impl GasMapKey for Primitive {
+    fn hash_in<H: Hasher>(&self, state: &mut H, gas: &mut GasMeter) -> Result<(), ValueError> {
+        match self {
+            Self::Integer(PrimitiveInteger::U256(_)) => gas.charge(U256::HASH_GAS_COST)?,
+            Self::Range(range) if matches!(range.as_ref(), PrimitiveRange::U256(_)) => {
+                gas.charge(2 * U256::HASH_GAS_COST)?;
+            }
+            _ => {}
+        }
+
+        self.hash(state);
+        Ok(())
+    }
+
+    fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+        match (self, other) {
+            (
+                Self::Integer(PrimitiveInteger::U256(left)),
+                Self::Integer(PrimitiveInteger::U256(right)),
+            ) => left.equals(right, gas),
+            (Self::Range(left), Self::Range(right)) => match (left.as_ref(), right.as_ref()) {
+                (PrimitiveRange::U256(left), PrimitiveRange::U256(right)) => {
+                    Ok(left.start.equals(&right.start, gas)? && left.end.equals(&right.end, gas)?)
+                }
+                _ => Ok(left == right),
+            },
+            _ => Ok(self == other),
+        }
     }
 }
 

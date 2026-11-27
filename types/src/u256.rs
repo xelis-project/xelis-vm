@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{
     cmp::Ordering,
+    hash::{Hash, Hasher},
     ops::*,
     str::FromStr
 };
@@ -8,9 +9,24 @@ use std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::{GasMapKey, GasMeter, ValueError};
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, JsonSchema)]
 #[schemars(with = "String", description = "A 256-bit unsigned integer represented as a decimal string.")]
 pub struct U256([u64; 4]);
+
+impl GasMapKey for U256 {
+    fn hash_in<H: Hasher>(&self, state: &mut H, gas: &mut GasMeter) -> Result<(), ValueError> {
+        gas.charge(Self::HASH_GAS_COST)?;
+        self.hash(state);
+        Ok(())
+    }
+
+    fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
+        gas.charge(Self::EQ_GAS_COST)?;
+        Ok(self == other)
+    }
+}
 
 impl Default for U256 {
     fn default() -> Self {
@@ -32,6 +48,10 @@ impl<'a> Deserialize<'a> for U256 {
 }
 
 impl U256 {
+    // One unit of gas per 64-bit limb in a hash or equality operation.
+    pub(crate) const HASH_GAS_COST: u64 = 4;
+    const EQ_GAS_COST: u64 = 4;
+
     pub const ONE: U256 = U256([1, 0, 0, 0]);
     pub const ZERO: U256 = U256([0, 0, 0, 0]);
 

@@ -652,14 +652,18 @@ impl RuntimeValue {
 
     pub fn equals(&self, other: &Self, heap: &Heap, gas: &mut GasMeter) -> Result<bool, ValueError> {
         match (self, other) {
-            (Self::Primitive(left), Self::Primitive(right)) => return Ok(left == right),
+            (Self::Primitive(left), Self::Primitive(right)) => return left.equals(right, gas),
             (Self::Bytes(left), Self::Bytes(right)) => return Ok(left == right),
             _ => {}
         }
         let mut work = vec![(self, other)];
         while let Some((left, right)) = work.pop() {
             match (left, right) {
-                (Self::Primitive(a), Self::Primitive(b)) if a == b => {}
+                (Self::Primitive(a), Self::Primitive(b)) => {
+                    if !a.equals(b, gas)? {
+                        return Ok(false);
+                    }
+                }
                 (Self::Opaque(a), Self::Opaque(b)) => {
                     if !a.equals(b, gas)? {
                         return Ok(false);

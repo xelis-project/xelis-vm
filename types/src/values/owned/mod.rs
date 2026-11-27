@@ -146,18 +146,22 @@ impl Hash for OwnedValue {
 }
 
 impl GasMapKey for OwnedValue {
-    /// Compare portable data during execution, metering every opaque comparison.
+    /// Compare portable data during execution, metering comparisons as needed.
     /// Charge only comparisons that are reached, preserving early returns.
     fn equals(&self, other: &Self, gas: &mut GasMeter) -> Result<bool, ValueError> {
         match (self, other) {
-            (Self::Primitive(a), Self::Primitive(b)) => return Ok(a == b),
+            (Self::Primitive(a), Self::Primitive(b)) => return a.equals(b, gas),
             (Self::Bytes(a), Self::Bytes(b)) => return Ok(a == b),
             _ => {}
         }
         let mut work = vec![(self, other)];
         while let Some((left, right)) = work.pop() {
             match (left, right) {
-                (Self::Primitive(a), Self::Primitive(b)) if a == b => {}
+                (Self::Primitive(a), Self::Primitive(b)) => {
+                    if !a.equals(b, gas)? {
+                        return Ok(false);
+                    }
+                }
                 (Self::Bytes(a), Self::Bytes(b)) if a == b => {}
                 (Self::Opaque(a), Self::Opaque(b)) => {
                     if !a.equals(b, gas)? {
@@ -178,14 +182,11 @@ impl GasMapKey for OwnedValue {
         Ok(true)
     }
 
-    /// Hash a VM key, charging opaque operations through the metered adapter.
+    /// Hash a VM key, charging each metered operation as it is reached.
     /// Type tags and traversal order match the portable host Hash adapter.
     fn hash_in<H: Hasher>(&self, state: &mut H, gas: &mut GasMeter) -> Result<(), ValueError> {
         match self {
-            Self::Primitive(value) => {
-                value.hash(state);
-                return Ok(());
-            }
+            Self::Primitive(value) => return value.hash_in(state, gas),
             Self::Bytes(value) => {
                 12u8.hash(state);
                 value.hash(state);
@@ -196,7 +197,7 @@ impl GasMapKey for OwnedValue {
         let mut work = vec![self];
         while let Some(value) = work.pop() {
             match value {
-                Self::Primitive(value) => value.hash(state),
+                Self::Primitive(value) => value.hash_in(state, gas)?,
                 Self::Bytes(value) => {
                     12u8.hash(state);
                     value.hash(state);

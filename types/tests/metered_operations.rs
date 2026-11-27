@@ -16,10 +16,12 @@ use silex_types::{
     Opaque,
     OwnedMap,
     OwnedValue,
+    Primitive,
     PrimitiveInteger,
     RuntimeMap,
     RuntimeOpaqueWrapper,
     RuntimeValue,
+    U256,
     ValueError,
 };
 
@@ -148,6 +150,59 @@ fn gas_map_accepts_custom_keys_and_values() {
         Err(ValueError::Gas(GasError::NotEnoughGas { limit: 4, actual: 5 }))
     ));
     assert_eq!(map.into_iter().map(|(_, value)| value).collect::<Vec<_>>(), ["original"]);
+}
+
+#[test]
+fn u256_hashing_and_equality_charge_four_gas() {
+    let number = U256::MAX;
+    let mut gas = GasMeter::new(4);
+    let mut direct = GasMap::new();
+    direct.insert(number, (), &mut gas).unwrap();
+    assert_eq!(gas.used(), 4);
+    assert!(matches!(
+        direct.get(&number, &mut GasMeter::new(7)),
+        Err(ValueError::Gas(GasError::NotEnoughGas { limit: 7, actual: 8 }))
+    ));
+
+    let key = OwnedValue::Object(vec![OwnedValue::from(number)]);
+    let mut metered = DefaultHasher::new();
+    let mut unmetered = DefaultHasher::new();
+    gas.reset();
+    key.hash_in(&mut metered, &mut gas).unwrap();
+    key.hash(&mut unmetered);
+    assert_eq!(metered.finish(), unmetered.finish());
+    assert_eq!(gas.used(), 4);
+
+    let mut heap = unsafe { Heap::new() };
+    let runtime = heap.import(&key);
+    assert!(matches!(
+        runtime.equals(&runtime, &heap, &mut GasMeter::new(3)),
+        Err(ValueError::Gas(GasError::NotEnoughGas { limit: 3, actual: 4 }))
+    ));
+    gas.reset();
+    assert!(runtime.equals(&runtime, &heap, &mut gas).unwrap());
+    assert_eq!(gas.used(), 4);
+}
+
+#[test]
+fn u256_ranges_meter_each_endpoint_reached() {
+    let range = |start: U256| {
+        let start = Primitive::Integer(PrimitiveInteger::U256(start));
+        let end = Primitive::Integer(PrimitiveInteger::U256(U256::MAX));
+        OwnedValue::from(Primitive::new_range(start, end).unwrap())
+    };
+    let value = range(U256::ZERO);
+    let mut gas = GasMeter::new(8);
+    value.hash_in(&mut DefaultHasher::new(), &mut gas).unwrap();
+    assert_eq!(gas.used(), 8);
+
+    gas.reset();
+    assert!(value.equals(&value, &mut gas).unwrap());
+    assert_eq!(gas.used(), 8);
+
+    gas.reset();
+    assert!(!value.equals(&range(U256::ONE), &mut gas).unwrap());
+    assert_eq!(gas.used(), 4);
 }
 
 #[test]
